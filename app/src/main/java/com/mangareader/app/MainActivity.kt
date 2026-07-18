@@ -7,10 +7,16 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,9 +30,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -148,7 +158,7 @@ private fun App() {
         ) {
             Text("Manga Reader", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.5 — library with covers + resume", style = MaterialTheme.typography.bodyMedium)
+            Text("v0.6 — immersive reading polish", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(20.dp))
             Button(onClick = { folderPicker.launch(null) }) {
                 Text("Choose library folder")
@@ -260,6 +270,7 @@ private fun ReaderScreen(
 ) {
     var webtoon by remember { mutableStateOf(false) }
     var rtl by remember { mutableStateOf(false) }
+    var showBar by remember { mutableStateOf(true) }
     var pendingJump by remember { mutableStateOf(-1) }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
@@ -271,6 +282,14 @@ private fun ReaderScreen(
     val currentIndex =
         if (webtoon) listState.firstVisibleItemIndex
         else pagerState.currentPage
+
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
+    BackHandler { onClose() }
 
     LaunchedEffect(currentIndex) { onProgress(currentIndex) }
 
@@ -288,55 +307,91 @@ private fun ReaderScreen(
         contentColor = Color.White
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onClose,
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("✕") }
-                Text(
-                    text = book.fileName,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = (currentIndex + 1).toString() + " / " + book.pages.size,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (!webtoon) {
+            if (showBar) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     TextButton(
-                        onClick = { rtl = !rtl },
+                        onClick = onClose,
                         contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text(if (rtl) "RTL" else "LTR") }
+                    ) { Text("✕") }
+                    Text(
+                        text = book.fileName,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = (currentIndex + 1).toString() + " / " + book.pages.size,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (!webtoon) {
+                        TextButton(
+                            onClick = { rtl = !rtl },
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) { Text(if (rtl) "RTL" else "LTR") }
+                    }
+                    TextButton(
+                        onClick = {
+                            pendingJump = currentIndex
+                            webtoon = !webtoon
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text(if (webtoon) "Paged" else "Webtoon") }
                 }
-                TextButton(
-                    onClick = {
-                        pendingJump = currentIndex
-                        webtoon = !webtoon
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text(if (webtoon) "Paged" else "Webtoon") }
             }
             if (webtoon) {
-                LazyColumn(
-                    state = listState,
+                var wtScale by remember { mutableStateOf(1f) }
+                var wtOffsetX by remember { mutableStateOf(0f) }
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .clipToBounds()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                do {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.size >= 2) {
+                                        val zoom = event.calculateZoom()
+                                        val pan = event.calculatePan()
+                                        wtScale = (wtScale * zoom).coerceIn(1f, 3f)
+                                        val maxOff = (wtScale - 1f) * size.width / 2f
+                                        wtOffsetX = (wtOffsetX + pan.x).coerceIn(-maxOff, maxOff)
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
                 ) {
-                    items(book.pages) { file ->
-                        AsyncImage(
-                            model = file,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.FillWidth
-                        )
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = wtScale
+                                scaleY = wtScale
+                                translationX = wtOffsetX
+                            }
+                    ) {
+                        items(book.pages) { file ->
+                            AsyncImage(
+                                model = file,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { showBar = !showBar },
+                                contentScale = ContentScale.FillWidth
+                            )
+                        }
                     }
                 }
             } else {
@@ -350,7 +405,8 @@ private fun ReaderScreen(
                     ZoomableAsyncImage(
                         model = book.pages[index],
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onClick = { showBar = !showBar }
                     )
                 }
             }
