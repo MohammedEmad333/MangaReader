@@ -1,16 +1,23 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
@@ -30,6 +37,7 @@ import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import java.io.File
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,39 +54,91 @@ class MainActivity : ComponentActivity() {
 
 private data class Book(
     val fileName: String,
+    val key: String,
     val pages: List<File>
 )
+
+private data class LibBook(
+    val name: String,
+    val uri: Uri,
+    val cover: File?
+)
+
+private fun prefs(context: Context) =
+    context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
 @Composable
 private fun App() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    var libraryUri by remember {
+        mutableStateOf(prefs(context).getString("library_uri", null)?.let(Uri::parse))
+    }
+    var books by remember { mutableStateOf<List<LibBook>?>(null) }
+    var scanTick by remember { mutableStateOf(0) }
     var book by remember { mutableStateOf<Book?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
-    val picker = rememberLauncherForActivityResult(
+    fun openBookUri(uri: Uri) {
+        loading = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { extractCbz(context, uri) }
+            }
+            loading = false
+            result
+                .onSuccess { book = it }
+                .onFailure { error = it.message ?: "Failed to open file" }
+        }
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        if (uri != null) openBookUri(uri)
+    }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
         if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            prefs(context).edit().putString("library_uri", uri.toString()).apply()
+            books = null
+            libraryUri = uri
+        }
+    }
+
+    LaunchedEffect(libraryUri, scanTick) {
+        val lib = libraryUri
+        if (lib != null) {
             loading = true
-            error = null
-            scope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    runCatching { extractCbz(context, uri) }
-                }
-                loading = false
-                result
-                    .onSuccess { book = it }
-                    .onFailure { error = it.message ?: "Failed to open file" }
+            books = withContext(Dispatchers.IO) {
+                runCatching { scanLibrary(context, lib) }.getOrDefault(emptyList())
             }
+            loading = false
         }
     }
 
     val current = book
     if (current != null) {
-        ReaderScreen(book = current, onClose = { book = null })
-    } else {
+        val saved = prefs(context)
+            .getInt("pos:" + current.key, 0)
+            .coerceIn(0, current.pages.size - 1)
+        ReaderScreen(
+            book = current,
+            initialPage = saved,
+            onProgress = { p ->
+                prefs(context).edit().putInt("pos:" + current.key, p).apply()
+            },
+            onClose = { book = null }
+        )
+    } else if (libraryUri == null) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -88,14 +148,18 @@ private fun App() {
         ) {
             Text("Manga Reader", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.4 — zoom, RTL, dark reader", style = MaterialTheme.typography.bodyMedium)
+            Text("v0.5 — library with covers + resume", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(20.dp))
+            Button(onClick = { folderPicker.launch(null) }) {
+                Text("Choose library folder")
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
+                Text("Open single CBZ")
+            }
             if (loading) {
+                Spacer(modifier = Modifier.height(16.dp))
                 CircularProgressIndicator()
-            } else {
-                Button(onClick = { picker.launch(arrayOf("*/*")) }) {
-                    Text("Open CBZ")
-                }
             }
             val e = error
             if (e != null) {
@@ -103,18 +167,120 @@ private fun App() {
                 Text(e, color = MaterialTheme.colorScheme.error)
             }
         }
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Library — " + (books?.size ?: 0),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = { scanTick++ },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("⟳") }
+                TextButton(
+                    onClick = { folderPicker.launch(null) },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("Folder") }
+                TextButton(
+                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("File") }
+            }
+            val e = error
+            if (e != null) {
+                Text(
+                    e,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+            if (loading && books == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+            } else if (books.isNullOrEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) { Text("No .cbz / .zip files found in this folder") }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 110.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(6.dp)
+                ) {
+                    items(books.orEmpty()) { b ->
+                        Column(
+                            modifier = Modifier
+                                .padding(6.dp)
+                                .clickable { openBookUri(b.uri) }
+                        ) {
+                            AsyncImage(
+                                model = b.cover,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.7f),
+                                contentScale = ContentScale.Crop
+                            )
+                            Text(
+                                text = b.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ReaderScreen(book: Book, onClose: () -> Unit) {
+private fun ReaderScreen(
+    book: Book,
+    initialPage: Int,
+    onProgress: (Int) -> Unit,
+    onClose: () -> Unit
+) {
     var webtoon by remember { mutableStateOf(false) }
     var rtl by remember { mutableStateOf(false) }
-    val pagerState = rememberPagerState(pageCount = { book.pages.size })
-    val listState = rememberLazyListState()
-    val currentPage =
-        if (webtoon) listState.firstVisibleItemIndex + 1
-        else pagerState.currentPage + 1
+    var pendingJump by remember { mutableStateOf(-1) }
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { book.pages.size }
+    )
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialPage
+    )
+    val currentIndex =
+        if (webtoon) listState.firstVisibleItemIndex
+        else pagerState.currentPage
+
+    LaunchedEffect(currentIndex) { onProgress(currentIndex) }
+
+    LaunchedEffect(webtoon) {
+        if (pendingJump >= 0) {
+            if (webtoon) listState.scrollToItem(pendingJump)
+            else pagerState.scrollToPage(pendingJump)
+            pendingJump = -1
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -140,7 +306,7 @@ private fun ReaderScreen(book: Book, onClose: () -> Unit) {
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "$currentPage / ${book.pages.size}",
+                    text = (currentIndex + 1).toString() + " / " + book.pages.size,
                     style = MaterialTheme.typography.bodySmall
                 )
                 if (!webtoon) {
@@ -150,7 +316,10 @@ private fun ReaderScreen(book: Book, onClose: () -> Unit) {
                     ) { Text(if (rtl) "RTL" else "LTR") }
                 }
                 TextButton(
-                    onClick = { webtoon = !webtoon },
+                    onClick = {
+                        pendingJump = currentIndex
+                        webtoon = !webtoon
+                    },
                     contentPadding = PaddingValues(horizontal = 8.dp)
                 ) { Text(if (webtoon) "Paged" else "Webtoon") }
             }
@@ -203,6 +372,77 @@ private val digitRegex = Regex("\\d+")
 private fun naturalSortKey(name: String): String =
     digitRegex.replace(name.lowercase()) { it.value.padStart(8, '0') }
 
+private fun scanLibrary(context: Context, treeUri: Uri): List<LibBook> {
+    val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+    val found = mutableListOf<DocumentFile>()
+    fun walk(dir: DocumentFile) {
+        for (f in dir.listFiles()) {
+            if (f.isDirectory) {
+                walk(f)
+            } else {
+                val n = (f.name ?: "").lowercase()
+                if (n.endsWith(".cbz") || n.endsWith(".zip")) found.add(f)
+            }
+        }
+    }
+    walk(root)
+    return found
+        .sortedBy { naturalSortKey(it.name ?: "") }
+        .map { d ->
+            LibBook(
+                name = d.name ?: "book",
+                uri = d.uri,
+                cover = ensureCover(context, d.uri)
+            )
+        }
+}
+
+private fun ensureCover(context: Context, bookUri: Uri): File? {
+    val coversDir = File(context.cacheDir, "covers")
+    coversDir.mkdirs()
+    val coverFile = File(coversDir, bookUri.toString().hashCode().toString() + ".jpg")
+    if (coverFile.exists()) return coverFile
+    try {
+        val names = mutableListOf<String>()
+        context.contentResolver.openInputStream(bookUri)?.use { ins ->
+            ZipInputStream(ins).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && isImageEntry(entry.name)) names.add(entry.name)
+                    entry = zip.nextEntry
+                }
+            }
+        }
+        val target = names.minByOrNull { naturalSortKey(it) } ?: return null
+        var bmp: Bitmap? = null
+        context.contentResolver.openInputStream(bookUri)?.use { ins ->
+            ZipInputStream(ins).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (entry.name == target) {
+                        bmp = BitmapFactory.decodeStream(zip)
+                        break
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+        }
+        val full = bmp ?: return null
+        val targetW = 300
+        val small = if (full.width > targetW) {
+            val h = (full.height.toFloat() * targetW / full.width).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(full, targetW, h, true)
+        } else full
+        coverFile.outputStream().use { out ->
+            small.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        }
+        if (small !== full) full.recycle()
+        return coverFile
+    } catch (e: Exception) {
+        return null
+    }
+}
+
 private fun extractCbz(context: Context, uri: Uri): Book {
     val fileName = DocumentFile.fromSingleUri(context, uri)?.name ?: "book.cbz"
 
@@ -234,5 +474,5 @@ private fun extractCbz(context: Context, uri: Uri): Book {
     }
     tmp.delete()
 
-    return Book(fileName = fileName, pages = pages)
+    return Book(fileName = fileName, key = uri.toString(), pages = pages)
 }
