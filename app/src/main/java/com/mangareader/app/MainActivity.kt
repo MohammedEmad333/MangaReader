@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,6 +27,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -33,7 +35,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     App()
                 }
@@ -86,7 +88,7 @@ private fun App() {
         ) {
             Text("Manga Reader", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.3 — pick a .cbz and read it", style = MaterialTheme.typography.bodyMedium)
+            Text("v0.4 — zoom, RTL, dark reader", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(20.dp))
             if (loading) {
                 CircularProgressIndicator()
@@ -107,64 +109,81 @@ private fun App() {
 @Composable
 private fun ReaderScreen(book: Book, onClose: () -> Unit) {
     var webtoon by remember { mutableStateOf(false) }
+    var rtl by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(pageCount = { book.pages.size })
     val listState = rememberLazyListState()
     val currentPage =
         if (webtoon) listState.firstVisibleItemIndex + 1
         else pagerState.currentPage + 1
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onClose) { Text("Close") }
-            Text(
-                text = book.fileName,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "$currentPage / ${book.pages.size}",
-                style = MaterialTheme.typography.bodySmall
-            )
-            TextButton(onClick = { webtoon = !webtoon }) {
-                Text(if (webtoon) "Paged" else "Webtoon")
-            }
-        }
-        if (webtoon) {
-            LazyColumn(
-                state = listState,
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Black,
+        contentColor = Color.White
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(book.pages) { file ->
-                    AsyncImage(
-                        model = file,
+                TextButton(
+                    onClick = onClose,
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("✕") }
+                Text(
+                    text = book.fileName,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "$currentPage / ${book.pages.size}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (!webtoon) {
+                    TextButton(
+                        onClick = { rtl = !rtl },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text(if (rtl) "RTL" else "LTR") }
+                }
+                TextButton(
+                    onClick = { webtoon = !webtoon },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text(if (webtoon) "Paged" else "Webtoon") }
+            }
+            if (webtoon) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    items(book.pages) { file ->
+                        AsyncImage(
+                            model = file,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth(),
+                            contentScale = ContentScale.FillWidth
+                        )
+                    }
+                }
+            } else {
+                HorizontalPager(
+                    state = pagerState,
+                    reverseLayout = rtl,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) { index ->
+                    ZoomableAsyncImage(
+                        model = book.pages[index],
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentScale = ContentScale.FillWidth
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-            }
-        } else {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) { index ->
-                AsyncImage(
-                    model = book.pages[index],
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
             }
         }
     }
