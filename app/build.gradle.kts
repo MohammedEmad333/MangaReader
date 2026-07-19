@@ -12,8 +12,8 @@ android {
         applicationId = "com.mangareader.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.7"
+        versionCode = 8
+        versionName = "0.8"
     }
 
     signingConfigs {
@@ -47,5 +47,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 }

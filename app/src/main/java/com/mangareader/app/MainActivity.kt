@@ -36,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -76,7 +77,28 @@ private fun App() {
     var libraryUri by remember {
         mutableStateOf(prefs(context).getString("library_uri", null)?.let(Uri::parse))
     }
-    val source = remember(libraryUri) { libraryUri?.let { LocalSource(context, it) } }
+    var activeSource by remember {
+        mutableStateOf(prefs(context).getString("active_source", "local") ?: "local")
+    }
+    var komgaTick by remember { mutableStateOf(0) }
+    var showKomgaDialog by remember { mutableStateOf(false) }
+
+    val source: Source? = remember(libraryUri, activeSource, komgaTick) {
+        if (activeSource == "komga") {
+            val p = prefs(context)
+            val url = p.getString("komga_url", "") ?: ""
+            if (url.isBlank()) null
+            else KomgaSource(
+                baseUrl = url,
+                user = p.getString("komga_user", "") ?: "",
+                pass = p.getString("komga_pass", "") ?: "",
+                cacheDir = context.cacheDir
+            )
+        } else {
+            libraryUri?.let { LocalSource(context, it) }
+        }
+    }
+
     var seriesList by remember { mutableStateOf<List<Series>?>(null) }
     var scanTick by remember { mutableStateOf(0) }
     var openSeries by remember { mutableStateOf<Series?>(null) }
@@ -85,6 +107,15 @@ private fun App() {
     var book by remember { mutableStateOf<Book?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+
+    fun switchSource(target: String) {
+        activeSource = target
+        prefs(context).edit().putString("active_source", target).apply()
+        seriesList = null
+        openSeries = null
+        chapters = emptyList()
+        error = null
+    }
 
     fun openChapterAt(list: List<Chapter>, index: Int) {
         loading = true
@@ -112,17 +143,19 @@ private fun App() {
         loading = true
         error = null
         scope.launch {
-            val list = withContext(Dispatchers.IO) {
-                runCatching { src.listChapters(s) }.getOrDefault(emptyList())
+            val result = withContext(Dispatchers.IO) {
+                runCatching { src.listChapters(s) }
             }
             loading = false
-            if (list.isEmpty()) {
-                error = "No chapters found in this series"
-            } else {
-                chapters = list
-                openSeries = s
-                if (list.size == 1) openChapterAt(list, 0)
-            }
+            result.onSuccess { list ->
+                if (list.isEmpty()) {
+                    error = "No chapters found in this series"
+                } else {
+                    chapters = list
+                    openSeries = s
+                    if (list.size == 1) openChapterAt(list, 0)
+                }
+            }.onFailure { error = it.message ?: "Failed to load chapters" }
         }
     }
 
@@ -152,6 +185,7 @@ private fun App() {
             seriesList = null
             openSeries = null
             libraryUri = uri
+            if (activeSource != "local") switchSource("local")
         }
     }
 
@@ -159,11 +193,28 @@ private fun App() {
         val src = source
         if (src != null) {
             loading = true
-            seriesList = withContext(Dispatchers.IO) {
-                runCatching { src.listSeries() }.getOrDefault(emptyList())
+            val result = withContext(Dispatchers.IO) {
+                runCatching { src.listSeries() }
             }
             loading = false
+            result.onSuccess { seriesList = it }
+                .onFailure {
+                    seriesList = emptyList()
+                    error = it.message ?: "Failed to load library"
+                }
         }
+    }
+
+    if (showKomgaDialog) {
+        KomgaDialog(
+            context = context,
+            onDismiss = { showKomgaDialog = false },
+            onSaved = {
+                showKomgaDialog = false
+                komgaTick++
+                switchSource("komga")
+            }
+        )
     }
 
     val currentBook = book
@@ -199,7 +250,7 @@ private fun App() {
                 chapters = emptyList()
             }
         )
-    } else if (libraryUri == null) {
+    } else if (source == null) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -209,10 +260,14 @@ private fun App() {
         ) {
             Text("Manga Reader", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.7 — series, chapters, sources", style = MaterialTheme.typography.bodyMedium)
+            Text("v0.8 — two sources, one seam", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(20.dp))
             Button(onClick = { folderPicker.launch(null) }) {
                 Text("Choose library folder")
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(onClick = { showKomgaDialog = true }) {
+                Text("Connect Komga server")
             }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
@@ -237,7 +292,7 @@ private fun App() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Library — " + (seriesList?.size ?: 0),
+                    text = source.name + " — " + (seriesList?.size ?: 0),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f)
                 )
@@ -245,14 +300,33 @@ private fun App() {
                     onClick = { scanTick++ },
                     contentPadding = PaddingValues(horizontal = 8.dp)
                 ) { Text("⟳") }
-                TextButton(
-                    onClick = { folderPicker.launch(null) },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("Folder") }
-                TextButton(
-                    onClick = { filePicker.launch(arrayOf("*/*")) },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("File") }
+                if (activeSource == "local") {
+                    TextButton(
+                        onClick = { folderPicker.launch(null) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("Folder") }
+                    TextButton(
+                        onClick = { filePicker.launch(arrayOf("*/*")) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("File") }
+                    TextButton(
+                        onClick = {
+                            val url = prefs(context).getString("komga_url", "") ?: ""
+                            if (url.isBlank()) showKomgaDialog = true
+                            else switchSource("komga")
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("Komga") }
+                } else {
+                    TextButton(
+                        onClick = { showKomgaDialog = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("⚙") }
+                    TextButton(
+                        onClick = { switchSource("local") },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("Local") }
+                }
             }
             val e = error
             if (e != null) {
@@ -275,7 +349,7 @@ private fun App() {
                         .fillMaxSize()
                         .weight(1f),
                     contentAlignment = Alignment.Center
-                ) { Text("No .cbz / .zip files found in this folder") }
+                ) { Text("Nothing here yet — check the source settings") }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 110.dp),
@@ -310,6 +384,60 @@ private fun App() {
             }
         }
     }
+}
+
+@Composable
+private fun KomgaDialog(
+    context: Context,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val p = prefs(context)
+    var url by remember { mutableStateOf(p.getString("komga_url", "") ?: "") }
+    var user by remember { mutableStateOf(p.getString("komga_user", "") ?: "") }
+    var pass by remember { mutableStateOf(p.getString("komga_pass", "") ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Komga server") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Server URL (http://192.168…:25600)") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = user,
+                    onValueChange = { user = it },
+                    label = { Text("Email") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = pass,
+                    onValueChange = { pass = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                p.edit()
+                    .putString("komga_url", url.trim())
+                    .putString("komga_user", user.trim())
+                    .putString("komga_pass", pass)
+                    .apply()
+                onSaved()
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
