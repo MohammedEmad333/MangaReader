@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -660,6 +661,7 @@ private fun ReaderScreen(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var webtoon by remember { mutableStateOf(prefs(context).getBoolean("mode_webtoon", false)) }
     var rtl by remember { mutableStateOf(prefs(context).getBoolean("mode_rtl", false)) }
     var showBar by remember { mutableStateOf(true) }
@@ -791,31 +793,87 @@ private fun ReaderScreen(
                     }
                 }
             } else {
+                var pagerWidth by remember { mutableStateOf(0) }
                 HorizontalPager(
                     state = pagerState,
                     reverseLayout = rtl,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .onSizeChanged { pagerWidth = it.width }
                 ) { index ->
                     ZoomableAsyncImage(
                         model = book.pages[index],
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        onClick = { showBar = !showBar }
+                        onClick = { offset ->
+                            val w = pagerWidth
+                            if (w <= 0) {
+                                showBar = !showBar
+                            } else {
+                                val leftZone = offset.x < w / 3f
+                                val rightZone = offset.x > w * 2f / 3f
+                                val advance = if (rtl) leftZone else rightZone
+                                val back = if (rtl) rightZone else leftZone
+                                when {
+                                    advance && currentIndex < book.pages.size - 1 ->
+                                        scope.launch { pagerState.animateScrollToPage(currentIndex + 1) }
+                                    back && currentIndex > 0 ->
+                                        scope.launch { pagerState.animateScrollToPage(currentIndex - 1) }
+                                    !leftZone && !rightZone -> showBar = !showBar
+                                    else -> { /* boundary edge tap: ignore */ }
+                                }
+                            }
+                        }
                     )
                 }
             }
-            if (showBar && (hasPrev || hasNext)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onPrev, enabled = hasPrev) { Text("◀ Prev") }
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = onNext, enabled = hasNext) { Text("Next ▶") }
+            if (showBar) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (book.pages.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                (currentIndex + 1).toString(),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Slider(
+                                value = currentIndex.toFloat()
+                                    .coerceIn(0f, (book.pages.size - 1).toFloat()),
+                                onValueChange = { v ->
+                                    val target = v.toInt().coerceIn(0, book.pages.size - 1)
+                                    scope.launch {
+                                        if (webtoon) listState.scrollToItem(target)
+                                        else pagerState.scrollToPage(target)
+                                    }
+                                },
+                                valueRange = 0f..(book.pages.size - 1).toFloat(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                            )
+                            Text(
+                                book.pages.size.toString(),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    if (hasPrev || hasNext) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = onPrev, enabled = hasPrev) { Text("◀ Prev") }
+                            Spacer(modifier = Modifier.weight(1f))
+                            TextButton(onClick = onNext, enabled = hasNext) { Text("Next ▶") }
+                        }
+                    }
                 }
             }
         }

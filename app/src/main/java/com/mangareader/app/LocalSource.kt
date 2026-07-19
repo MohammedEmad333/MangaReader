@@ -10,9 +10,13 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 /**
- * Source backed by a local folder tree:
- * - each subfolder containing archives = one series (chapters = its .cbz/.zip files)
- * - each loose .cbz/.zip in the root = a single-chapter series
+ * Source backed by a local folder tree, with nested-folder scanning:
+ * - any folder that DIRECTLY contains archives is a series
+ *   (its chapters = the archives directly inside it), at any depth
+ * - archives sitting loose in the chosen root = single-chapter series
+ *
+ * So Library/Shonen/One Piece/ch01.cbz makes "One Piece" a series,
+ * not "Shonen".
  */
 class LocalSource(
     private val context: Context,
@@ -23,44 +27,59 @@ class LocalSource(
 
     override suspend fun listSeries(): List<Series> {
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
-        val result = mutableListOf<Series>()
-        for (child in root.listFiles()) {
-            if (child.isDirectory) {
-                val archives = findArchives(child)
-                if (archives.isNotEmpty()) {
-                    result.add(
-                        Series(
-                            id = child.uri.toString(),
-                            title = child.name ?: "series",
-                            cover = ensureCover(context, archives.first().uri),
-                            handle = child
-                        )
-                    )
-                }
-            } else if (isArchive(child.name)) {
-                result.add(
+        val out = mutableListOf<Series>()
+
+        // loose archives directly in root -> single-chapter series
+        val rootChildren = root.listFiles()
+        for (f in rootChildren) {
+            if (!f.isDirectory && isArchive(f.name)) {
+                out.add(
                     Series(
-                        id = child.uri.toString(),
-                        title = (child.name ?: "book").substringBeforeLast('.'),
-                        cover = ensureCover(context, child.uri),
-                        handle = child
+                        id = f.uri.toString(),
+                        title = (f.name ?: "book").substringBeforeLast('.'),
+                        cover = ensureCover(context, f.uri),
+                        handle = f
                     )
                 )
             }
         }
-        return result.sortedBy { naturalSortKey(it.title) }
+
+        // any nested folder that directly holds archives = a series
+        fun walk(dir: DocumentFile) {
+            val children = dir.listFiles()
+            val direct = children
+                .filter { !it.isDirectory && isArchive(it.name) }
+                .sortedBy { naturalSortKey(it.name ?: "") }
+            if (direct.isNotEmpty()) {
+                out.add(
+                    Series(
+                        id = dir.uri.toString(),
+                        title = dir.name ?: "series",
+                        cover = ensureCover(context, direct.first().uri),
+                        handle = dir
+                    )
+                )
+            }
+            for (c in children) if (c.isDirectory) walk(c)
+        }
+        for (c in rootChildren) if (c.isDirectory) walk(c)
+
+        return out.sortedBy { naturalSortKey(it.title) }
     }
 
     override suspend fun listChapters(series: Series): List<Chapter> {
         val doc = series.handle as? DocumentFile ?: return emptyList()
         return if (doc.isDirectory) {
-            findArchives(doc).map { f ->
-                Chapter(
-                    id = f.uri.toString(),
-                    name = (f.name ?: "chapter").substringBeforeLast('.'),
-                    handle = f
-                )
-            }
+            doc.listFiles()
+                .filter { !it.isDirectory && isArchive(it.name) }
+                .sortedBy { naturalSortKey(it.name ?: "") }
+                .map { f ->
+                    Chapter(
+                        id = f.uri.toString(),
+                        name = (f.name ?: "chapter").substringBeforeLast('.'),
+                        handle = f
+                    )
+                }
         } else {
             listOf(Chapter(id = doc.uri.toString(), name = series.title, handle = doc))
         }
@@ -71,18 +90,6 @@ class LocalSource(
             ?: (chapter.handle as? Uri)
             ?: Uri.parse(chapter.id)
         return extractPages(context, uri)
-    }
-
-    private fun findArchives(dir: DocumentFile): List<DocumentFile> {
-        val found = mutableListOf<DocumentFile>()
-        fun walk(d: DocumentFile) {
-            for (f in d.listFiles()) {
-                if (f.isDirectory) walk(f)
-                else if (isArchive(f.name)) found.add(f)
-            }
-        }
-        walk(dir)
-        return found.sortedBy { naturalSortKey(it.name ?: "") }
     }
 
     private fun isArchive(name: String?): Boolean {
