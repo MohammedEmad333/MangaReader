@@ -74,30 +74,13 @@ private fun App() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var libraryUri by remember {
-        mutableStateOf(prefs(context).getString("library_uri", null)?.let(Uri::parse))
-    }
-    var activeSource by remember {
-        mutableStateOf(prefs(context).getString("active_source", "local") ?: "local")
-    }
-    var komgaTick by remember { mutableStateOf(0) }
-    var showKomgaDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { SourceManager.migrateLegacy(context) }
 
-    val source: Source? = remember(libraryUri, activeSource, komgaTick) {
-        if (activeSource == "komga") {
-            val p = prefs(context)
-            val url = p.getString("komga_url", "") ?: ""
-            if (url.isBlank()) null
-            else KomgaSource(
-                baseUrl = url,
-                user = p.getString("komga_user", "") ?: "",
-                pass = p.getString("komga_pass", "") ?: "",
-                cacheDir = context.cacheDir
-            )
-        } else {
-            libraryUri?.let { LocalSource(context, it) }
-        }
-    }
+    var sources by remember { mutableStateOf(SourceManager.list(context)) }
+    fun refreshSources() { sources = SourceManager.list(context) }
+
+    var activeConfig by remember { mutableStateOf<SourceConfig?>(null) }
+    fun activeSource(): Source? = activeConfig?.let { SourceManager.build(context, it) }
 
     var seriesList by remember { mutableStateOf<List<Series>?>(null) }
     var scanTick by remember { mutableStateOf(0) }
@@ -108,13 +91,24 @@ private fun App() {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
-    fun switchSource(target: String) {
-        activeSource = target
-        prefs(context).edit().putString("active_source", target).apply()
-        seriesList = null
-        openSeries = null
-        chapters = emptyList()
+    // dialog / add-flow state
+    var showTypeChooser by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<SourceConfig?>(null) }
+    var folderPickTarget by remember { mutableStateOf<String?>(null) } // "new" | config id | null
+
+    fun openSingleFile(uri: Uri) {
+        loading = true
         error = null
+        scope.launch {
+            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: "file"
+            val result = withContext(Dispatchers.IO) { runCatching { extractPages(context, uri) } }
+            loading = false
+            result.onSuccess { pages ->
+                chapters = emptyList()
+                chapterIndex = 0
+                book = Book(fileName = name.substringBeforeLast('.'), key = uri.toString(), pages = pages)
+            }.onFailure { error = it.message ?: "Failed to open file" }
+        }
     }
 
     fun openChapterAt(list: List<Chapter>, index: Int) {
@@ -122,11 +116,11 @@ private fun App() {
         error = null
         scope.launch {
             val ch = list[index]
+            val src = activeSource()
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val src = source
                     if (src != null) src.loadPages(ch)
-                    else extractPages(context, (ch.handle as? Uri) ?: Uri.parse(ch.id))
+                    else throw IllegalStateException("No source selected")
                 }
             }
             loading = false
@@ -139,13 +133,11 @@ private fun App() {
     }
 
     fun openSeriesAt(s: Series) {
-        val src = source ?: return
+        val src = activeSource() ?: return
         loading = true
         error = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { src.listChapters(s) }
-            }
+            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
             loading = false
             result.onSuccess { list ->
                 if (list.isEmpty()) {
@@ -161,41 +153,37 @@ private fun App() {
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: "file"
-            val ch = Chapter(
-                id = uri.toString(),
-                name = name.substringBeforeLast('.'),
-                handle = uri
-            )
-            openSeries = null
-            openChapterAt(listOf(ch), 0)
-        }
-    }
+    ) { uri: Uri? -> if (uri != null) openSingleFile(uri) }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
+        val target = folderPickTarget
+        folderPickTarget = null
         if (uri != null) {
             context.contentResolver.takePersistableUriPermission(
                 uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-            prefs(context).edit().putString("library_uri", uri.toString()).apply()
-            seriesList = null
-            openSeries = null
-            libraryUri = uri
-            if (activeSource != "local") switchSource("local")
+            val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Local folder"
+            if (target == "new") {
+                SourceManager.upsert(
+                    context,
+                    SourceConfig(SourceManager.newId(), "local", name, treeUri = uri.toString())
+                )
+                refreshSources()
+            } else if (target != null) {
+                // editing an existing local source's folder
+                editing = editing?.copy(treeUri = uri.toString())
+            }
         }
     }
 
-    LaunchedEffect(source, scanTick) {
-        val src = source
+    // ---- open library scan ----
+    LaunchedEffect(activeConfig?.id, scanTick) {
+        val src = activeSource()
         if (src != null) {
             loading = true
-            val result = withContext(Dispatchers.IO) {
-                runCatching { src.listSeries() }
-            }
+            val result = withContext(Dispatchers.IO) { runCatching { src.listSeries() } }
             loading = false
             result.onSuccess { seriesList = it }
                 .onFailure {
@@ -205,239 +193,394 @@ private fun App() {
         }
     }
 
-    if (showKomgaDialog) {
-        KomgaDialog(
-            context = context,
-            onDismiss = { showKomgaDialog = false },
-            onSaved = {
-                showKomgaDialog = false
-                komgaTick++
-                switchSource("komga")
+    // ---- config dialog ----
+    val edit = editing
+    if (edit != null) {
+        SourceDialog(
+            value = edit,
+            onChange = { editing = it },
+            onPickFolder = {
+                folderPickTarget = edit.id
+                folderPicker.launch(null)
+            },
+            onDismiss = { editing = null },
+            onSave = {
+                SourceManager.upsert(context, edit)
+                refreshSources()
+                editing = null
             }
         )
     }
 
+    if (showTypeChooser) {
+        AlertDialog(
+            onDismissRequest = { showTypeChooser = false },
+            title = { Text("Add a source") },
+            text = { Text("Local folder reads CBZ/ZIP on this device. Komga connects to a self-hosted server.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTypeChooser = false
+                    folderPickTarget = "new"
+                    folderPicker.launch(null)
+                }) { Text("Local folder") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showTypeChooser = false
+                    editing = SourceConfig(SourceManager.newId(), "komga", "Komga")
+                }) { Text("Komga server") }
+            }
+        )
+    }
+
+    // ---- navigation ----
     val currentBook = book
-    if (currentBook != null) {
-        val saved = prefs(context)
-            .getInt("pos:" + currentBook.key, 0)
-            .coerceIn(0, currentBook.pages.size - 1)
-        key(currentBook.key) {
-            ReaderScreen(
-                book = currentBook,
-                initialPage = saved,
-                hasPrev = chapterIndex > 0,
-                hasNext = chapterIndex < chapters.size - 1,
-                onPrev = { openChapterAt(chapters, chapterIndex - 1) },
-                onNext = { openChapterAt(chapters, chapterIndex + 1) },
-                onProgress = { p ->
-                    prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
-                },
-                onClose = {
-                    book = null
-                    if (chapters.size <= 1) openSeries = null
+    when {
+        currentBook != null -> {
+            val saved = prefs(context)
+                .getInt("pos:" + currentBook.key, 0)
+                .coerceIn(0, currentBook.pages.size - 1)
+            key(currentBook.key) {
+                ReaderScreen(
+                    book = currentBook,
+                    initialPage = saved,
+                    hasPrev = chapters.isNotEmpty() && chapterIndex > 0,
+                    hasNext = chapters.isNotEmpty() && chapterIndex < chapters.size - 1,
+                    onPrev = { openChapterAt(chapters, chapterIndex - 1) },
+                    onNext = { openChapterAt(chapters, chapterIndex + 1) },
+                    onProgress = { p ->
+                        prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
+                    },
+                    onClose = {
+                        book = null
+                        if (chapters.size <= 1) openSeries = null
+                    }
+                )
+            }
+        }
+
+        openSeries != null -> {
+            SeriesScreen(
+                series = openSeries!!,
+                chapters = chapters,
+                progressFor = { ch -> prefs(context).getInt("pos:" + ch.id, 0) },
+                onOpen = { i -> openChapterAt(chapters, i) },
+                onBack = {
+                    openSeries = null
+                    chapters = emptyList()
                 }
             )
         }
-    } else if (openSeries != null) {
-        SeriesScreen(
-            series = openSeries!!,
-            chapters = chapters,
-            progressFor = { ch -> prefs(context).getInt("pos:" + ch.id, 0) },
-            onOpen = { i -> openChapterAt(chapters, i) },
-            onBack = {
-                openSeries = null
-                chapters = emptyList()
-            }
-        )
-    } else if (source == null) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("Yomu", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.9 — Yomu, signed release", style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(onClick = { folderPicker.launch(null) }) {
-                Text("Choose library folder")
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            OutlinedButton(onClick = { showKomgaDialog = true }) {
-                Text("Connect Komga server")
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            OutlinedButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                Text("Open single CBZ")
-            }
-            if (loading) {
-                Spacer(modifier = Modifier.height(16.dp))
-                CircularProgressIndicator()
-            }
-            val e = error
-            if (e != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(e, color = MaterialTheme.colorScheme.error)
-            }
+
+        activeConfig != null -> {
+            LibraryScreen(
+                title = activeConfig!!.label,
+                series = seriesList,
+                loading = loading,
+                error = error,
+                onRescan = { scanTick++ },
+                onOpen = { s -> openSeriesAt(s) },
+                onBack = {
+                    activeConfig = null
+                    seriesList = null
+                    error = null
+                }
+            )
         }
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = source.name + " — " + (seriesList?.size ?: 0),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    onClick = { scanTick++ },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("⟳") }
-                if (activeSource == "local") {
-                    TextButton(
-                        onClick = { folderPicker.launch(null) },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("Folder") }
-                    TextButton(
-                        onClick = { filePicker.launch(arrayOf("*/*")) },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("File") }
-                    TextButton(
-                        onClick = {
-                            val url = prefs(context).getString("komga_url", "") ?: ""
-                            if (url.isBlank()) showKomgaDialog = true
-                            else switchSource("komga")
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("Komga") }
-                } else {
-                    TextButton(
-                        onClick = { showKomgaDialog = true },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("⚙") }
-                    TextButton(
-                        onClick = { switchSource("local") },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("Local") }
-                }
-            }
-            val e = error
-            if (e != null) {
-                Text(
-                    e,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-            }
-            if (loading && seriesList == null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator() }
-            } else if (seriesList.isNullOrEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) { Text("Nothing here yet — check the source settings") }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 110.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentPadding = PaddingValues(6.dp)
-                ) {
-                    items(seriesList.orEmpty()) { s ->
-                        Column(
-                            modifier = Modifier
-                                .padding(6.dp)
-                                .clickable { openSeriesAt(s) }
-                        ) {
-                            AsyncImage(
-                                model = s.cover,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.7f),
-                                contentScale = ContentScale.Crop
-                            )
-                            Text(
-                                text = s.title,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+
+        else -> {
+            SourcesManagerScreen(
+                sources = sources,
+                loading = loading,
+                error = error,
+                onAdd = { showTypeChooser = true },
+                onOpen = { cfg ->
+                    if (cfg.isConfigured) {
+                        error = null
+                        seriesList = null
+                        activeConfig = cfg
+                    } else {
+                        editing = cfg
                     }
-                }
-            }
+                },
+                onEdit = { cfg ->
+                    editing = cfg
+                },
+                onDelete = { cfg ->
+                    SourceManager.remove(context, cfg.id)
+                    refreshSources()
+                },
+                onOpenFile = { filePicker.launch(arrayOf("*/*")) }
+            )
         }
     }
 }
 
 @Composable
-private fun KomgaDialog(
-    context: Context,
-    onDismiss: () -> Unit,
-    onSaved: () -> Unit
+private fun SourcesManagerScreen(
+    sources: List<SourceConfig>,
+    loading: Boolean,
+    error: String?,
+    onAdd: () -> Unit,
+    onOpen: (SourceConfig) -> Unit,
+    onEdit: (SourceConfig) -> Unit,
+    onDelete: (SourceConfig) -> Unit,
+    onOpenFile: () -> Unit
 ) {
-    val p = prefs(context)
-    var url by remember { mutableStateOf(p.getString("komga_url", "") ?: "") }
-    var user by remember { mutableStateOf(p.getString("komga_user", "") ?: "") }
-    var pass by remember { mutableStateOf(p.getString("komga_pass", "") ?: "") }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Yomu — Sources",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onOpenFile) { Text("Open file") }
+        }
+        if (error != null) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+        if (sources.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    "No sources yet",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Add a local folder of CBZ files, or connect a Komga server.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                items(sources) { cfg ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(6.dp)
+                            .clickable { onOpen(cfg) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val subtitle = when (cfg.type) {
+                                    "komga" -> cfg.url.ifBlank { "not configured" }
+                                    else -> typeLabel(cfg.type)
+                                }
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            TextButton(
+                                onClick = { onEdit(cfg) },
+                                contentPadding = PaddingValues(horizontal = 10.dp)
+                            ) { Text("Edit") }
+                            TextButton(
+                                onClick = { onDelete(cfg) },
+                                contentPadding = PaddingValues(horizontal = 10.dp)
+                            ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+            }
+        }
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        Button(
+            onClick = onAdd,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) { Text("+  Add source") }
+    }
+}
+
+@Composable
+private fun SourceDialog(
+    value: SourceConfig,
+    onChange: (SourceConfig) -> Unit,
+    onPickFolder: () -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Komga server") },
+        title = { Text(typeLabel(value.type)) },
         text = {
             Column {
                 OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("Server URL (http://192.168…:25600)") },
+                    value = value.label,
+                    onValueChange = { onChange(value.copy(label = it)) },
+                    label = { Text("Name") },
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = user,
-                    onValueChange = { user = it },
-                    label = { Text("Email") },
-                    singleLine = true
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = { pass = it },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
-                )
+                if (value.type == "komga") {
+                    OutlinedTextField(
+                        value = value.url,
+                        onValueChange = { onChange(value.copy(url = it)) },
+                        label = { Text("Server URL (http://192.168…:25600)") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = value.user,
+                        onValueChange = { onChange(value.copy(user = it)) },
+                        label = { Text("Email") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = value.pass,
+                        onValueChange = { onChange(value.copy(pass = it)) },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                } else {
+                    Text(
+                        text = if (value.treeUri.isBlank()) "No folder chosen"
+                        else "Folder set — tap to change",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedButton(onClick = onPickFolder) { Text("Choose folder") }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                p.edit()
-                    .putString("komga_url", url.trim())
-                    .putString("komga_user", user.trim())
-                    .putString("komga_pass", pass)
-                    .apply()
-                onSaved()
-            }) { Text("Save") }
+            TextButton(onClick = onSave, enabled = value.isConfigured) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun LibraryScreen(
+    title: String,
+    series: List<Series>?,
+    loading: Boolean,
+    error: String?,
+    onRescan: () -> Unit,
+    onOpen: (Series) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text("←") }
+            Text(
+                text = title + " — " + (series?.size ?: 0),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = onRescan,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text("⟳") }
+        }
+        if (error != null) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
+        if (loading && series == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+        } else if (series.isNullOrEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { Text("Nothing here yet — check the source settings") }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 110.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(6.dp)
+            ) {
+                items(series) { s ->
+                    Column(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clickable { onOpen(s) }
+                    ) {
+                        AsyncImage(
+                            model = s.cover,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f),
+                            contentScale = ContentScale.Crop
+                        )
+                        Text(
+                            text = s.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
