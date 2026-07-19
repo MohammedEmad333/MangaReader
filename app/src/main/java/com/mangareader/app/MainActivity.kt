@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -17,6 +18,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -92,6 +94,12 @@ private fun App() {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
+    // continue-reading state
+    var readingSeries by remember { mutableStateOf<Series?>(null) }
+    var readingConfigId by remember { mutableStateOf("") }
+    var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
+    var historyState by remember { mutableStateOf(History.list(context)) }
+
     // dialog / add-flow state
     var showTypeChooser by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<SourceConfig?>(null) }
@@ -105,9 +113,19 @@ private fun App() {
             val result = withContext(Dispatchers.IO) { runCatching { extractPages(context, uri) } }
             loading = false
             result.onSuccess { pages ->
+                readingSeries = null
+                readingConfigId = ""
                 chapters = emptyList()
                 chapterIndex = 0
-                book = Book(fileName = name.substringBeforeLast('.'), key = uri.toString(), pages = pages)
+                val key = uri.toString()
+                val title = name.substringBeforeLast('.')
+                val initial = prefs(context).getInt("pos:" + key, 0).coerceIn(0, pages.size - 1)
+                val entry = HistoryEntry(
+                    key, title, "", "", "", initial, pages.size, System.currentTimeMillis()
+                )
+                currentHistory = entry
+                History.touch(context, entry)
+                book = Book(fileName = title, key = key, pages = pages)
             }.onFailure { error = it.message ?: "Failed to open file" }
         }
     }
@@ -128,6 +146,15 @@ private fun App() {
             result.onSuccess { pages ->
                 chapters = list
                 chapterIndex = index
+                val initial = prefs(context).getInt("pos:" + ch.id, 0).coerceIn(0, pages.size - 1)
+                val title = readingSeries?.let { it.title + " — " + ch.name } ?: ch.name
+                val cover = readingSeries?.cover?.absolutePath ?: ""
+                val entry = HistoryEntry(
+                    ch.id, title, readingConfigId, readingSeries?.id ?: "",
+                    cover, initial, pages.size, System.currentTimeMillis()
+                )
+                currentHistory = entry
+                History.touch(context, entry)
                 book = Book(fileName = ch.name, key = ch.id, pages = pages)
             }.onFailure { error = it.message ?: "Failed to open chapter" }
         }
@@ -144,11 +171,45 @@ private fun App() {
                 if (list.isEmpty()) {
                     error = "No chapters found in this series"
                 } else {
+                    readingSeries = s
+                    readingConfigId = activeConfig?.id ?: ""
                     chapters = list
                     openSeries = s
                     if (list.size == 1) openChapterAt(list, 0)
                 }
             }.onFailure { error = it.message ?: "Failed to load chapters" }
+        }
+    }
+
+    fun openFromHistory(entry: HistoryEntry) {
+        if (entry.sourceId.isBlank()) {
+            openSingleFile(Uri.parse(entry.chapterKey))
+            return
+        }
+        val cfg = SourceManager.list(context).find { it.id == entry.sourceId }
+        if (cfg == null) { error = "That source was removed"; return }
+        val src = SourceManager.build(context, cfg)
+        if (src == null) { error = "Source not configured"; return }
+        loading = true
+        error = null
+        scope.launch {
+            val res = withContext(Dispatchers.IO) {
+                runCatching {
+                    val ser = src.listSeries().find { it.id == entry.seriesId }
+                        ?: throw IllegalStateException("Series no longer found")
+                    val chs = src.listChapters(ser)
+                    val idx = chs.indexOfFirst { it.id == entry.chapterKey }
+                    if (idx < 0) throw IllegalStateException("Chapter no longer found")
+                    Triple(ser, chs, idx)
+                }
+            }
+            loading = false
+            res.onSuccess { (ser, chs, idx) ->
+                activeConfig = cfg
+                readingSeries = ser
+                readingConfigId = cfg.id
+                openChapterAt(chs, idx)
+            }.onFailure { error = it.message ?: "Couldn't reopen" }
         }
     }
 
@@ -176,6 +237,12 @@ private fun App() {
                 // editing an existing local source's folder
                 editing = editing?.copy(treeUri = uri.toString())
             }
+        }
+    }
+
+    LaunchedEffect(book, openSeries, activeConfig) {
+        if (book == null && openSeries == null && activeConfig == null) {
+            historyState = History.list(context)
         }
     }
 
@@ -251,6 +318,11 @@ private fun App() {
                     onNext = { openChapterAt(chapters, chapterIndex + 1) },
                     onProgress = { p ->
                         prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
+                        currentHistory?.let {
+                            val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
+                            currentHistory = e
+                            History.touch(context, e)
+                        }
                     },
                     onClose = {
                         book = null
@@ -294,6 +366,8 @@ private fun App() {
                 sources = sources,
                 loading = loading,
                 error = error,
+                history = historyState,
+                onOpenHistory = { openFromHistory(it) },
                 onAdd = { showTypeChooser = true },
                 onOpen = { cfg ->
                     if (cfg.isConfigured) {
@@ -322,6 +396,8 @@ private fun SourcesManagerScreen(
     sources: List<SourceConfig>,
     loading: Boolean,
     error: String?,
+    history: List<HistoryEntry>,
+    onOpenHistory: (HistoryEntry) -> Unit,
     onAdd: () -> Unit,
     onOpen: (SourceConfig) -> Unit,
     onEdit: (SourceConfig) -> Unit,
@@ -348,6 +424,56 @@ private fun SourcesManagerScreen(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
+        }
+        if (history.isNotEmpty()) {
+            Text(
+                "Continue reading",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp)
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                items(history) { h ->
+                    Column(
+                        modifier = Modifier
+                            .width(96.dp)
+                            .padding(end = 10.dp)
+                            .clickable { onOpenHistory(h) }
+                    ) {
+                        if (h.coverPath.isNotBlank()) {
+                            AsyncImage(
+                                model = File(h.coverPath),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.7f),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.7f)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
+                        Text(
+                            h.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "p. " + (h.page + 1) + " / " + h.total,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            HorizontalDivider()
         }
         if (sources.isEmpty()) {
             Column(
