@@ -258,9 +258,9 @@ private fun App() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Manga Reader", style = MaterialTheme.typography.headlineMedium)
+            Text("Yomu", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("v0.8 — two sources, one seam", style = MaterialTheme.typography.bodyMedium)
+            Text("v0.9 — Yomu, signed release", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(20.dp))
             Button(onClick = { folderPicker.launch(null) }) {
                 Text("Choose library folder")
