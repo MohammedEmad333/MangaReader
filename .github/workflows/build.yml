@@ -26,8 +26,10 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Build APKs
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        run: gradle assembleDebug assembleRelease
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -40,6 +42,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest app/build/outputs/apk/debug/app-debug.apk \
+          gh release create latest app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release.apk \
             -t "Latest debug build" -p \
             -n "Auto-built from commit ${{ github.sha }}"
