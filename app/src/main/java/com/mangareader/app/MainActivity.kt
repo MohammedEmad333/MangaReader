@@ -413,12 +413,6 @@ private fun App() {
         }
     }
 
-    private data class HistoryPayload(
-    val source: Source,
-    val series: Series,
-    val chapters: List<Chapter>,
-    val index: Int
-)
 
     
 
@@ -2234,3 +2228,11 @@ private fun ReaderScreen(
         }
     }
 }
+
+
+    private data class HistoryPayload(
+    val source: Source,
+    val series: Series,
+    val chapters: List<Chapter>,
+    val index: Int
+)
