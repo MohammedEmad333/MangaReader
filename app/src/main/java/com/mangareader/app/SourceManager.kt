@@ -1,4 +1,4 @@
-Package com.mangareader.app
+package com.mangareader.app
 
 import android.content.Context
 import android.net.Uri
