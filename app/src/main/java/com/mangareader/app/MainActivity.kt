@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -1182,11 +1184,34 @@ private fun LibraryScreen(
     var selectedCat by remember { mutableStateOf<String?>(null) }
     var assignTarget by remember { mutableStateOf<Series?>(null) }
 
-    val shown = remember(series, selectedCat, categoryTick) {
-        val all = series.orEmpty()
-        val sel = selectedCat
-        if (sel == null) all
-        else all.filter { Categories.categoriesFor(context, it.id).contains(sel) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var sort by remember {
+        mutableStateOf(prefs(context).getString("library_sort", "name") ?: "name")
+    }
+    var layout by remember {
+        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
+    }
+    var menuOpen by remember { mutableStateOf(false) }
+
+    val lastRead = remember(sort, series) {
+        if (sort == "recent")
+            History.list(context).groupBy { it.seriesId }
+                .mapValues { e -> e.value.maxOf { it.updatedAt } }
+        else emptyMap()
+    }
+
+    val shown = remember(series, selectedCat, categoryTick, query, sort, lastRead) {
+        var s = series.orEmpty()
+        selectedCat?.let { sel ->
+            s = s.filter { Categories.categoriesFor(context, it.id).contains(sel) }
+        }
+        if (query.isNotBlank()) s = s.filter { it.title.contains(query, ignoreCase = true) }
+        s = when (sort) {
+            "recent" -> s.sortedByDescending { lastRead[it.id] ?: 0L }
+            else -> s.sortedBy { naturalSortKey(it.title) }
+        }
+        s
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1200,17 +1225,87 @@ private fun LibraryScreen(
                 onClick = onBack,
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) { Text("←") }
-            Text(
-                text = title + " — " + (series?.size ?: 0),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(
-                onClick = onRescan,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("⟳") }
+            if (searching) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = { searching = false; query = "" },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("✕") }
+            } else {
+                Text(
+                    text = title + " — " + (series?.size ?: 0),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { searching = true }) {
+                    Icon(Icons.Filled.Search, contentDescription = "Search")
+                }
+                TextButton(
+                    onClick = onRescan,
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) { Text("⟳") }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        Text(
+                            "Sort by",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Name" + if (sort == "name") "  ✓" else "") },
+                            onClick = {
+                                sort = "name"
+                                prefs(context).edit().putString("library_sort", "name").apply()
+                                menuOpen = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Recently read" + if (sort == "recent") "  ✓" else "") },
+                            onClick = {
+                                sort = "recent"
+                                prefs(context).edit().putString("library_sort", "recent").apply()
+                                menuOpen = false
+                            }
+                        )
+                        HorizontalDivider()
+                        Text(
+                            "Layout",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Grid" + if (layout == "grid") "  ✓" else "") },
+                            onClick = {
+                                layout = "grid"
+                                prefs(context).edit().putString("library_layout", "grid").apply()
+                                menuOpen = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("List" + if (layout == "list") "  ✓" else "") },
+                            onClick = {
+                                layout = "list"
+                                prefs(context).edit().putString("library_layout", "list").apply()
+                                menuOpen = false
+                            }
+                        )
+                    }
+                }
+            }
         }
         if (categories.isNotEmpty()) {
             LazyRow(
@@ -1244,31 +1339,57 @@ private fun LibraryScreen(
         }
         if (loading && series == null) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize().weight(1f),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
         } else if (series.isNullOrEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize().weight(1f),
                 contentAlignment = Alignment.Center
             ) { Text("Nothing here yet — check the source settings") }
         } else if (shown.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize().weight(1f),
                 contentAlignment = Alignment.Center
-            ) { Text("Nothing in this category yet — long-press a series to add it") }
+            ) {
+                Text(
+                    if (query.isNotBlank()) "No matches for \"" + query + "\""
+                    else "Nothing in this category yet — long-press a series to add it"
+                )
+            }
+        } else if (layout == "list") {
+            LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
+                items(shown) { s ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onOpen(s) },
+                                onLongClick = { assignTarget = s }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier.width(48.dp).aspectRatio(0.7f)
+                        )
+                        Text(
+                            text = s.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(start = 12.dp)
+                        )
+                    }
+                    HorizontalDivider()
+                }
+            }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize().weight(1f),
                 contentPadding = PaddingValues(6.dp)
             ) {
                 items(shown) { s ->
@@ -1283,9 +1404,7 @@ private fun LibraryScreen(
                         CoverImage(
                             cover = s.cover,
                             title = s.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
+                            modifier = Modifier.fillMaxWidth().aspectRatio(0.7f)
                         )
                         Text(
                             text = s.title,
