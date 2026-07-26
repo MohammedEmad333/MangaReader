@@ -38,7 +38,7 @@ object ExtensionManager {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val arr = JSONArray(jsonStr)
                 
-                for (i in 0 until arr.length()) {
+                                for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val pkg = obj.getString("pkg")
                     
@@ -49,9 +49,10 @@ object ExtensionManager {
                         false
                     }
 
-                    // RESOLVE URL: Fixes "no protocol" error for relative paths like in Keiyoushi
+                    // FIXED: Prepend "apk/" so it points to the correct subdirectory on GitHub
                     val rawApkUrl = obj.getString("apk")
-                    val absoluteApkUrl = URL(URL(repoUrl), rawApkUrl).toString()
+                    val relativePath = if (rawApkUrl.startsWith("http")) rawApkUrl else "apk/$rawApkUrl"
+                    val absoluteApkUrl = URL(URL(repoUrl), relativePath).toString()
 
                     available.add(
                         Extension(
@@ -63,6 +64,7 @@ object ExtensionManager {
                         )
                     )
                 }
+
             } catch (e: Exception) {
                 e.printStackTrace() 
             }
