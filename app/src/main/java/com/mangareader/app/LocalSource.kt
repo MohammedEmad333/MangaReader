@@ -19,6 +19,7 @@ import java.util.zip.ZipInputStream
  * not "Shonen".
  */
 class LocalSource(
+    override val id: String,
     private val context: Context,
     private val treeUri: Uri
 ) : Source {
