@@ -821,7 +821,8 @@ private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
 
 @Composable
 private fun SourcesManagerScreen(
-    sources: List<SourceConfig>,
+    sources: List<Source>,
+    configs: List<SourceConfig>,
     loading: Boolean,
     error: String?,
     history: List<HistoryEntry>,
