@@ -39,7 +39,7 @@ object ExtensionManager {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val arr = JSONArray(jsonStr)
                 
-                for (i in 0 until arr.length()) {
+                                for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val pkg = obj.getString("pkg")
                     
@@ -50,16 +50,25 @@ object ExtensionManager {
                         false
                     }
 
+                    // 1. Get the raw APK string from the JSON
+                    val rawApkUrl = obj.getString("apk")
+                    
+                    // 2. Safely resolve it into an absolute URL
+                    // If it is already "https://...", it stays the same.
+                    // If it is a relative "apk/..." path, it merges with the repo URL.
+                    val absoluteApkUrl = java.net.URL(java.net.URL(repoUrl), rawApkUrl).toString()
+
                     available.add(
                         Extension(
                             name = obj.getString("name"),
                             pkgName = pkg,
                             versionName = obj.getString("version"),
-                            apkUrl = obj.getString("apk"),
+                            apkUrl = absoluteApkUrl, // 3. Save the correctly formatted URL
                             isInstalled = installed
                         )
                     )
                 }
+
             } catch (e: Exception) {
                 e.printStackTrace() // Skips broken or offline repos safely
             }
