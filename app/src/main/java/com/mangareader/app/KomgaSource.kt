@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
  * different backend (REST + Basic auth instead of SAF + zip).
  */
 class KomgaSource(
+    override val id: String,
     baseUrl: String,
     user: String,
     pass: String,
