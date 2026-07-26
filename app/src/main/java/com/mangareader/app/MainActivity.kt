@@ -87,414 +87,11 @@ private enum class Tab { LIBRARY, HISTORY, MORE }
 private fun prefs(context: Context) =
     context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
-@Composable
-private fun App() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { SourceManager.migrateLegacy(context) }
-
-    // FIXED: Changed from SourceManager.list(context) to SourceManager.listAllSources(context)
-    // so that locally installed extension APK sources show up automatically under the Sources tab.
-    var sources by remember { mutableStateOf(SourceManager.listAllSources(context)) }
-    fun refreshSources() { sources = SourceManager.listAllSources(context) }
-
-    var activeConfig by remember { mutableStateOf<SourceConfig?>(null) }
-    fun activeSource(): Source? = activeConfig?.let { SourceManager.build(context, it) }
-
-    var seriesList by remember { mutableStateOf<List<Series>?>(null) }
-    var scanTick by remember { mutableStateOf(0) }
-    var openSeries by remember { mutableStateOf<Series?>(null) }
-    var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
-    var chapterIndex by remember { mutableStateOf(0) }
-    var book by remember { mutableStateOf<Book?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-
-    // continue-reading state
-    var readingSeries by remember { mutableStateOf<Series?>(null) }
-    var readingConfigId by remember { mutableStateOf("") }
-    var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
-    var historyState by remember { mutableStateOf(History.list(context)) }
-    var tab by remember { mutableStateOf(Tab.LIBRARY) }
-    var globalSearch by remember { mutableStateOf(false) }
-
-    fun saveHistory(e: HistoryEntry) {
-        if (!prefs(context).getBoolean("incognito", false)) {
-            History.touch(context, e)
-        }
-    }
-
-    // dialog / add-flow state
-    var showTypeChooser by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<SourceConfig?>(null) }
-    var folderPickTarget by remember { mutableStateOf<String?>(null) } // "new" | config id | null
-
-    fun openSingleFile(uri: Uri) {
-        loading = true
-        error = null
-        scope.launch {
-            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: "file"
-            val result = withContext(Dispatchers.IO) { runCatching { extractPages(context, uri) } }
-            loading = false
-            result.onSuccess { pages ->
-                readingSeries = null
-                readingConfigId = ""
-                chapters = emptyList()
-                chapterIndex = 0
-                val key = uri.toString()
-                val title = name.substringBeforeLast('.')
-                val initial = prefs(context).getInt("pos:" + key, 0).coerceIn(0, pages.size - 1)
-                val entry = HistoryEntry(
-                    key, title, "", "", "", initial, pages.size, System.currentTimeMillis()
-                )
-                currentHistory = entry
-                saveHistory(entry)
-                book = Book(fileName = title, key = key, pages = pages)
-            }.onFailure { error = it.message ?: "Failed to open file" }
-        }
-    }
-
-    fun openChapterAt(list: List<Chapter>, index: Int) {
-        loading = true
-        error = null
-        scope.launch {
-            val ch = list[index]
-            val src = activeSource()
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (src != null) src.loadPages(ch)
-                    else throw IllegalStateException("No source selected")
-                }
-            }
-            loading = false
-            result.onSuccess { pages ->
-                chapters = list
-                chapterIndex = index
-                val initial = prefs(context).getInt("pos:" + ch.id, 0).coerceIn(0, pages.size - 1)
-                val title = readingSeries?.let { it.title + " — " + ch.name } ?: ch.name
-                val cover = readingSeries?.cover?.absolutePath ?: ""
-                val entry = HistoryEntry(
-                    ch.id, title, readingConfigId, readingSeries?.id ?: "",
-                    cover, initial, pages.size, System.currentTimeMillis()
-                )
-                currentHistory = entry
-                saveHistory(entry)
-                book = Book(fileName = ch.name, key = ch.id, pages = pages)
-            }.onFailure { error = it.message ?: "Failed to open chapter" }
-        }
-    }
-
-    fun openSeriesAt(s: Series) {
-        val src = activeSource() ?: return
-        loading = true
-        error = null
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
-            loading = false
-            result.onSuccess { list ->
-                if (list.isEmpty()) {
-                    error = "No chapters found in this series"
-                } else {
-                    readingSeries = s
-                    readingConfigId = activeConfig?.id ?: ""
-                    chapters = list
-                    openSeries = s
-                    if (list.size == 1) openChapterAt(list, 0)
-                }
-            }.onFailure { error = it.message ?: "Failed to load chapters" }
-        }
-    }
-
-    fun openFromHistory(entry: HistoryEntry) {
-        if (entry.sourceId.isBlank()) {
-            openSingleFile(Uri.parse(entry.chapterKey))
-            return
-        }
-        val cfg = SourceManager.listAllSources(context).find { it.id == entry.sourceId }
-        if (cfg == null) { error = "That source was removed"; return }
-        val src = SourceManager.build(context, cfg)
-        if (src == null) { error = "Source not configured"; return }
-        loading = true
-        error = null
-        scope.launch {
-            val res = withContext(Dispatchers.IO) {
-                runCatching {
-                    val ser = src.listSeries().find { it.id == entry.seriesId }
-                        ?: throw IllegalStateException("Series no longer found")
-                    val chs = src.listChapters(ser)
-                    val idx = chs.indexOfFirst { it.id == entry.chapterKey }
-                    if (idx < 0) throw IllegalStateException("Chapter no longer found")
-                    Triple(ser, chs, idx)
-                }
-            }
-            loading = false
-            res.onSuccess { (ser, chs, idx) ->
-                activeConfig = cfg
-                readingSeries = ser
-                readingConfigId = cfg.id
-                openChapterAt(chs, idx)
-            }.onFailure { error = it.message ?: "Couldn't reopen" }
-        }
-    }
-
-    fun openSeriesFrom(cfg: SourceConfig, s: Series) {
-        val src = SourceManager.build(context, cfg) ?: return
-        loading = true
-        error = null
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
-            loading = false
-            result.onSuccess { list ->
-                if (list.isEmpty()) {
-                    error = "No chapters found in this series"
-                } else {
-                    globalSearch = false
-                    activeConfig = cfg
-                    readingSeries = s
-                    readingConfigId = cfg.id
-                    chapters = list
-                    openSeries = s
-                    if (list.size == 1) openChapterAt(list, 0)
-                }
-            }.onFailure { error = it.message ?: "Failed to load chapters" }
-        }
-    }
-
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> if (uri != null) openSingleFile(uri) }
-
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        val target = folderPickTarget
-        folderPickTarget = null
-        if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Local folder"
-            if (target == "new") {
-                SourceManager.upsert(
-                    context,
-                    SourceConfig(SourceManager.newId(), "local", name, treeUri = uri.toString())
-                )
-                refreshSources()
-            } else if (target != null) {
-                // editing an existing local source's folder
-                editing = editing?.copy(treeUri = uri.toString())
-            }
-        }
-    }
-
-    LaunchedEffect(book, openSeries, activeConfig) {
-        if (book == null && openSeries == null && activeConfig == null) {
-            historyState = History.list(context)
-            // Refresh sources whenever returning to root view to catch newly installed extensions
-            refreshSources()
-        }
-    }
-
-    // ---- open library scan ----
-    LaunchedEffect(activeConfig?.id, scanTick) {
-        val src = activeSource()
-        if (src != null) {
-            loading = true
-            val result = withContext(Dispatchers.IO) { runCatching { src.listSeries() } }
-            loading = false
-            result.onSuccess { seriesList = it }
-                .onFailure {
-                    seriesList = emptyList()
-                    error = it.message ?: "Failed to load library"
-                }
-        }
-    }
-
-    // ---- config dialog ----
-    val edit = editing
-    if (edit != null) {
-        SourceDialog(
-            value = edit,
-            onChange = { editing = it },
-            onPickFolder = {
-                folderPickTarget = edit.id
-                folderPicker.launch(null)
-            },
-            onDismiss = { editing = null },
-            onSave = {
-                SourceManager.upsert(context, edit)
-                refreshSources()
-                editing = null
-            }
-        )
-    }
-
-    if (showTypeChooser) {
-        AlertDialog(
-            onDismissRequest = { showTypeChooser = false },
-            title = { Text("Add a source") },
-            text = { Text("Local folder reads CBZ/ZIP on this device. Komga connects to a self-hosted server.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showTypeChooser = false
-                    folderPickTarget = "new"
-                    folderPicker.launch(null)
-                }) { Text("Local folder") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTypeChooser = false
-                    editing = SourceConfig(SourceManager.newId(), "komga", "Komga")
-                }) { Text("Komga server") }
-            }
-        )
-    }
-
-    // ---- navigation ----
-    val currentBook = book
-    when {
-        currentBook != null -> {
-            val saved = prefs(context)
-                .getInt("pos:" + currentBook.key, 0)
-                .coerceIn(0, currentBook.pages.size - 1)
-            key(currentBook.key) {
-                ReaderScreen(
-                    book = currentBook,
-                    initialPage = saved,
-                    hasPrev = chapters.isNotEmpty() && chapterIndex > 0,
-                    hasNext = chapters.isNotEmpty() && chapterIndex < chapters.size - 1,
-                    onPrev = { openChapterAt(chapters, chapterIndex - 1) },
-                    onNext = { openChapterAt(chapters, chapterIndex + 1) },
-                    onProgress = { p ->
-                        prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
-                        if (p >= currentBook.pages.size - 1) {
-                            ReadState.setRead(context, currentBook.key, true)
-                        }
-                        currentHistory?.let {
-                            val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
-                            currentHistory = e
-                            saveHistory(e)
-                        }
-                    },
-                    onClose = {
-                        book = null
-                        if (chapters.size <= 1) openSeries = null
-                    }
-                )
-            }
-        }
-
-        openSeries != null -> {
-            SeriesScreen(
-                series = openSeries!!,
-                chapters = chapters,
-                progressFor = { ch -> prefs(context).getInt("pos:" + ch.id, 0) },
-                onOpen = { i -> openChapterAt(chapters, i) },
-                onBack = {
-                    openSeries = null
-                    chapters = emptyList()
-                }
-            )
-        }
-
-        activeConfig != null -> {
-            LibraryScreen(
-                title = activeConfig!!.label,
-                series = seriesList,
-                loading = loading,
-                error = error,
-                onRescan = { scanTick++ },
-                onOpen = { s -> openSeriesAt(s) },
-                onBack = {
-                    activeConfig = null
-                    seriesList = null
-                    error = null
-                }
-            )
-        }
-
-        globalSearch -> {
-            GlobalSearchScreen(
-                sources = sources,
-                onOpen = { cfg, s -> openSeriesFrom(cfg, s) },
-                onBack = { globalSearch = false }
-            )
-        }
-
-        else -> {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar {
-                        NavigationBarItem(
-                            selected = tab == Tab.LIBRARY,
-                            onClick = { tab = Tab.LIBRARY },
-                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                            label = { Text("Library") }
-                        )
-                        NavigationBarItem(
-                            selected = tab == Tab.HISTORY,
-                            onClick = { tab = Tab.HISTORY },
-                            icon = { Icon(Icons.Filled.List, contentDescription = null) },
-                            label = { Text("History") }
-                        )
-                        NavigationBarItem(
-                            selected = tab == Tab.MORE,
-                            onClick = { tab = Tab.MORE },
-                            icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
-                            label = { Text("More") }
-                        )
-                    }
-                }
-            ) { padding ->
-                Box(modifier = Modifier.padding(padding)) {
-                    when (tab) {
-                        Tab.LIBRARY -> SourcesManagerScreen(
-                            sources = sources,
-                            loading = loading,
-                            error = error,
-                            history = historyState,
-                            onOpenHistory = { openFromHistory(it) },
-                            onSearch = { globalSearch = true },
-                            onAdd = { showTypeChooser = true },
-                            onOpen = { cfg ->
-                                if (cfg.isConfigured) {
-                                    error = null
-                                    seriesList = null
-                                    activeConfig = cfg
-                                } else {
-                                    editing = cfg
-                                }
-                            },
-                            onEdit = { cfg -> editing = cfg },
-                            onDelete = { cfg ->
-                                SourceManager.remove(context, cfg.id)
-                                refreshSources()
-                            },
-                            onOpenFile = { filePicker.launch(arrayOf("*/*")) }
-                        )
-
-                        Tab.HISTORY -> HistoryScreen(
-                            history = historyState,
-                            onOpen = { openFromHistory(it) },
-                            onDelete = { h ->
-                                History.remove(context, h.chapterKey)
-                                historyState = History.list(context)
-                            },
-                            onClearAll = {
-                                historyState.forEach { History.remove(context, it.chapterKey) }
-                                historyState = History.list(context)
-                            }
-                        )
-
-                        Tab.MORE -> MoreTab()
-                    }
-                }
-            }
-        }
-    }
-}
-
+                                    
+        
+        
+        
 @Composable
 private fun GlobalSearchScreen(
     sources: List<SourceConfig>,
@@ -617,6 +214,543 @@ private fun GlobalSearchScreen(
                     }
                     HorizontalDivider()
                 }
+
+                
+@Composable
+private fun App() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { SourceManager.migrateLegacy(context) }
+
+    var sourceConfigs by remember { mutableStateOf(SourceManager.list(context)) }
+    var allSources by remember { mutableStateOf(SourceManager.listAllSources(context)) }
+
+    fun refreshSources() {
+        sourceConfigs = SourceManager.list(context)
+        allSources = SourceManager.listAllSources(context)
+    }
+
+    var activeSourceObj by remember { mutableStateOf<Source?>(null) }
+    var activeConfig by remember { mutableStateOf<SourceConfig?>(null) }
+
+    fun activeSource(): Source? = activeSourceObj ?: activeConfig?.let { SourceManager.build(context, it) }
+
+    var seriesList by remember { mutableStateOf<List<Series>?>(null) }
+    var scanTick by remember { mutableStateOf(0) }
+    var openSeries by remember { mutableStateOf<Series?>(null) }
+    var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
+    var chapterIndex by remember { mutableStateOf(0) }
+    var book by remember { mutableStateOf<Book?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+
+    // continue-reading state
+    var readingSeries by remember { mutableStateOf<Series?>(null) }
+    var readingConfigId by remember { mutableStateOf("") }
+    var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
+    var historyState by remember { mutableStateOf(History.list(context)) }
+    var tab by remember { mutableStateOf(Tab.LIBRARY) }
+    var globalSearch by remember { mutableStateOf(false) }
+
+    fun saveHistory(e: HistoryEntry) {
+        if (!prefs(context).getBoolean("incognito", false)) {
+            History.touch(context, e)
+        }
+    }
+
+    // dialog / add-flow state
+    var showTypeChooser by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<SourceConfig?>(null) }
+    var folderPickTarget by remember { mutableStateOf<String?>(null) }
+
+    fun openSingleFile(uri: Uri) {
+        loading = true
+        error = null
+        scope.launch {
+            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: "file"
+            val result = withContext(Dispatchers.IO) { runCatching { extractPages(context, uri) } }
+            loading = false
+            result.onSuccess { pages ->
+                readingSeries = null
+                readingConfigId = ""
+                chapters = emptyList()
+                chapterIndex = 0
+                val key = uri.toString()
+                val title = name.substringBeforeLast('.')
+                val initial = prefs(context).getInt("pos:" + key, 0).coerceIn(0, pages.size - 1)
+                val entry = HistoryEntry(
+                    key, title, "", "", "", initial, pages.size, System.currentTimeMillis()
+                )
+                currentHistory = entry
+                saveHistory(entry)
+                book = Book(fileName = title, key = key, pages = pages)
+            }.onFailure { error = it.message ?: "Failed to open file" }
+        }
+    }
+
+    fun openChapterAt(list: List<Chapter>, index: Int) {
+        loading = true
+        error = null
+        scope.launch {
+            val ch = list[index]
+            val src = activeSource()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (src != null) src.loadPages(ch)
+                    else throw IllegalStateException("No source selected")
+                }
+            }
+            loading = false
+            result.onSuccess { pages ->
+                chapters = list
+                chapterIndex = index
+                val initial = prefs(context).getInt("pos:" + ch.id, 0).coerceIn(0, pages.size - 1)
+                val title = readingSeries?.let { it.title + " — " + ch.name } ?: ch.name
+                val cover = readingSeries?.cover?.absolutePath ?: ""
+                val entry = HistoryEntry(
+                    ch.id, title, readingConfigId, readingSeries?.id ?: "",
+                    cover, initial, pages.size, System.currentTimeMillis()
+                )
+                currentHistory = entry
+                saveHistory(entry)
+                book = Book(fileName = ch.name, key = ch.id, pages = pages)
+            }.onFailure { error = it.message ?: "Failed to open chapter" }
+        }
+    }
+
+    fun openSeriesAt(s: Series) {
+        val src = activeSource() ?: return
+        loading = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
+            loading = false
+            result.onSuccess { list ->
+                if (list.isEmpty()) {
+                    error = "No chapters found in this series"
+                } else {
+                    readingSeries = s
+                    readingConfigId = activeSourceObj?.id ?: activeConfig?.id ?: ""
+                    chapters = list
+                    openSeries = s
+                    if (list.size == 1) openChapterAt(list, 0)
+                }
+            }.onFailure { error = it.message ?: "Failed to load chapters" }
+        }
+    }
+
+    fun openFromHistory(entry: HistoryEntry) {
+        if (entry.sourceId.isBlank()) {
+            openSingleFile(Uri.parse(entry.chapterKey))
+            return
+        }
+        val src = SourceManager.listAllSources(context).find { it.id == entry.sourceId }
+        val cfg = sourceConfigs.find { it.id == entry.sourceId }
+        
+        if (src == null && cfg == null) { error = "That source was removed"; return }
+        
+        loading = true
+        error = null
+        scope.launch {
+            val res = withContext(Dispatchers.IO) {
+                runCatching {
+                    val activeSrc = src ?: SourceManager.build(context, cfg!!)
+                        ?: throw IllegalStateException("Source not configured")
+                    val ser = activeSrc.listSeries().find { it.id == entry.seriesId }
+                        ?: throw IllegalStateException("Series no longer found")
+                    val chs = activeSrc.listChapters(ser)
+                    val idx = chs.indexOfFirst { it.id == entry.chapterKey }
+                    if (idx < 0) throw IllegalStateException("Chapter no longer found")
+                    Triple(activeSrc, ser, chs, idx)
+                }
+            }
+            loading = false
+            res.onSuccess { (activeSrc, ser, chs, idx) ->
+                activeSourceObj = activeSrc
+                activeConfig = cfg
+                readingSeries = ser
+                readingConfigId = activeSrc.id
+                openChapterAt(chs, idx)
+            }.onFailure { error = it.message ?: "Couldn't reopen" }
+        }
+    }
+
+    fun openSeriesFromSource(src: Source, s: Series) {
+        loading = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
+            loading = false
+            result.onSuccess { list ->
+                if (list.isEmpty()) {
+                    error = "No chapters found in this series"
+                } else {
+                    globalSearch = false
+                    activeSourceObj = src
+                    activeConfig = sourceConfigs.find { it.id == src.id }
+                    readingSeries = s
+                    readingConfigId = src.id
+                    chapters = list
+                    openSeries = s
+                    if (list.size == 1) openChapterAt(list, 0)
+                }
+            }.onFailure { error = it.message ?: "Failed to load chapters" }
+        }
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> if (uri != null) openSingleFile(uri) }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        val target = folderPickTarget
+        folderPickTarget = null
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Local folder"
+            if (target == "new") {
+                SourceManager.upsert(
+                    context,
+                    SourceConfig(SourceManager.newId(), "local", name, treeUri = uri.toString())
+                )
+                refreshSources()
+            } else if (target != null) {
+                editing = editing?.copy(treeUri = uri.toString())
+            }
+        }
+    }
+
+    LaunchedEffect(book, openSeries, activeConfig, activeSourceObj) {
+        if (book == null && openSeries == null && activeConfig == null && activeSourceObj == null) {
+            historyState = History.list(context)
+            refreshSources()
+        }
+    }
+
+    // ---- open library scan ----
+    LaunchedEffect(activeSourceObj?.id, activeConfig?.id, scanTick) {
+        val src = activeSource()
+        if (src != null) {
+            loading = true
+            val result = withContext(Dispatchers.IO) { runCatching { src.listSeries() } }
+            loading = false
+            result.onSuccess { seriesList = it }
+                .onFailure {
+                    seriesList = emptyList()
+                    error = it.message ?: "Failed to load library"
+                }
+        }
+    }
+
+    // ---- config dialog ----
+    val edit = editing
+    if (edit != null) {
+        SourceDialog(
+            value = edit,
+            onChange = { editing = it },
+            onPickFolder = {
+                folderPickTarget = edit.id
+                folderPicker.launch(null)
+            },
+            onDismiss = { editing = null },
+            onSave = {
+                SourceManager.upsert(context, edit)
+                refreshSources()
+                editing = null
+            }
+        )
+    }
+
+    if (showTypeChooser) {
+        AlertDialog(
+            onDismissRequest = { showTypeChooser = false },
+            title = { Text("Add a source") },
+            text = { Text("Local folder reads CBZ/ZIP on this device. Komga connects to a self-hosted server.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTypeChooser = false
+                    folderPickTarget = "new"
+                    folderPicker.launch(null)
+                }) { Text("Local folder") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showTypeChooser = false
+                    editing = SourceConfig(SourceManager.newId(), "komga", "Komga")
+                }) { Text("Komga server") }
+            }
+        )
+    }
+
+    // ---- navigation ----
+    val currentBook = book
+    when {
+        currentBook != null -> {
+            val saved = prefs(context)
+                .getInt("pos:" + currentBook.key, 0)
+                .coerceIn(0, currentBook.pages.size - 1)
+            key(currentBook.key) {
+                ReaderScreen(
+                    book = currentBook,
+                    initialPage = saved,
+                    hasPrev = chapters.isNotEmpty() && chapterIndex > 0,
+                    hasNext = chapters.isNotEmpty() && chapterIndex < chapters.size - 1,
+                    onPrev = { openChapterAt(chapters, chapterIndex - 1) },
+                    onNext = { openChapterAt(chapters, chapterIndex + 1) },
+                    onProgress = { p ->
+                        prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
+                        if (p >= currentBook.pages.size - 1) {
+                            ReadState.setRead(context, currentBook.key, true)
+                        }
+                        currentHistory?.let {
+                            val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
+                            currentHistory = e
+                            saveHistory(e)
+                        }
+                    },
+                    onClose = {
+                        book = null
+                        if (chapters.size <= 1) openSeries = null
+                    }
+                )
+            }
+        }
+
+        openSeries != null -> {
+            SeriesScreen(
+                series = openSeries!!,
+                chapters = chapters,
+                progressFor = { ch -> prefs(context).getInt("pos:" + ch.id, 0) },
+                onOpen = { i -> openChapterAt(chapters, i) },
+                onBack = {
+                    openSeries = null
+                    chapters = emptyList()
+                }
+            )
+        }
+
+        activeSource() != null -> {
+            val currentSrc = activeSource()!!
+            LibraryScreen(
+                title = currentSrc.name,
+                series = seriesList,
+                loading = loading,
+                error = error,
+                onRescan = { scanTick++ },
+                onOpen = { s -> openSeriesAt(s) },
+                onBack = {
+                    activeSourceObj = null
+                    activeConfig = null
+                    seriesList = null
+                    error = null
+                }
+            )
+        }
+
+        globalSearch -> {
+            GlobalSearchScreen(
+                sources = allSources,
+                onOpen = { src, s -> openSeriesFromSource(src, s) },
+                onBack = { globalSearch = false }
+            )
+        }
+
+        else -> {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = tab == Tab.LIBRARY,
+                            onClick = { tab = Tab.LIBRARY },
+                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+                            label = { Text("Library") }
+                        )
+                        NavigationBarItem(
+                            selected = tab == Tab.HISTORY,
+                            onClick = { tab = Tab.HISTORY },
+                            icon = { Icon(Icons.Filled.List, contentDescription = null) },
+                            label = { Text("History") }
+                        )
+                        NavigationBarItem(
+                            selected = tab == Tab.MORE,
+                            onClick = { tab = Tab.MORE },
+                            icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
+                            label = { Text("More") }
+                        )
+                    }
+                }
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding)) {
+                    when (tab) {
+                        Tab.LIBRARY -> SourcesManagerScreen(
+                            sources = allSources,
+                            configs = sourceConfigs,
+                            loading = loading,
+                            error = error,
+                            history = historyState,
+                            onOpenHistory = { openFromHistory(it) },
+                            onSearch = { globalSearch = true },
+                            onAdd = { showTypeChooser = true },
+                            onOpen = { src ->
+                                error = null
+                                seriesList = null
+                                activeSourceObj = src
+                                activeConfig = sourceConfigs.find { it.id == src.id }
+                            },
+                            onEdit = { cfg -> editing = cfg },
+                            onDelete = { cfg ->
+                                SourceManager.remove(context, cfg.id)
+                                refreshSources()
+                            },
+                            onOpenFile = { filePicker.launch(arrayOf("*/*")) }
+                        )
+
+                        Tab.HISTORY -> HistoryScreen(
+                            history = historyState,
+                            onOpen = { openFromHistory(it) },
+                            onDelete = { h ->
+                                History.remove(context, h.chapterKey)
+                                historyState = History.list(context)
+                            },
+                            onClearAll = {
+                                historyState.forEach { History.remove(context, it.chapterKey) }
+                                historyState = History.list(context)
+                            }
+                        )
+
+                        Tab.MORE -> MoreTab()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlobalSearchScreen(
+    sources: List<Source>,
+    onOpen: (Source, Series) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<Pair<Source, Series>>>(emptyList()) }
+    var scanning by remember { mutableStateOf(true) }
+    var layout by remember {
+        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
+    }
+
+    LaunchedEffect(Unit) {
+        scanning = true
+        val acc = mutableListOf<Pair<Source, Series>>()
+        for (src in sources) {
+            val list = withContext(Dispatchers.IO) {
+                runCatching { src.listSeries() }.getOrDefault(emptyList())
+            }
+            list.forEach { acc.add(src to it) }
+            results = acc.toList()
+        }
+        scanning = false
+    }
+
+    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+        "small" -> 88.dp
+        "large" -> 140.dp
+        else -> 110.dp
+    }
+
+    val shown = remember(results, query) {
+        if (query.isBlank()) results
+        else results.filter { it.second.title.contains(query, ignoreCase = true) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text("←") }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search all sources") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = {
+                    layout = if (layout == "grid") "list" else "grid"
+                    prefs(context).edit().putString("library_layout", layout).apply()
+                },
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text(if (layout == "grid") "List" else "Grid") }
+        }
+        if (scanning) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (shown.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { Text(if (scanning) "Scanning sources…" else "No results") }
+        } else if (layout == "list") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                items(shown) { pair ->
+                    val src = pair.first
+                    val s = pair.second
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpen(src, s) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier
+                                .width(48.dp)
+                                .aspectRatio(0.7f)
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp)
+                        ) {
+                            Text(
+                                text = s.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = src.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                }
             }
         } else {
             LazyVerticalGrid(
@@ -627,12 +761,12 @@ private fun GlobalSearchScreen(
                 contentPadding = PaddingValues(6.dp)
             ) {
                 items(shown) { pair ->
-                    val cfg = pair.first
+                    val src = pair.first
                     val s = pair.second
                     Column(
                         modifier = Modifier
                             .padding(6.dp)
-                            .clickable { onOpen(cfg, s) }
+                            .clickable { onOpen(src, s) }
                     ) {
                         CoverImage(
                             cover = s.cover,
@@ -648,7 +782,7 @@ private fun GlobalSearchScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                            text = src.name,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -661,6 +795,7 @@ private fun GlobalSearchScreen(
     }
 }
 
+                
 @Composable
 private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
     if (cover != null && cover.exists() && cover.length() > 0) {
