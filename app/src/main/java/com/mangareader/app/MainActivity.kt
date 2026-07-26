@@ -361,6 +361,9 @@ private fun App() {
                     onNext = { openChapterAt(chapters, chapterIndex + 1) },
                     onProgress = { p ->
                         prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
+                        if (p >= currentBook.pages.size - 1) {
+                            ReadState.setRead(context, currentBook.key, true)
+                        }
                         currentHistory?.let {
                             val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
                             currentHistory = e
@@ -496,6 +499,9 @@ private fun GlobalSearchScreen(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Pair<SourceConfig, Series>>>(emptyList()) }
     var scanning by remember { mutableStateOf(true) }
+    var layout by remember {
+        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
+    }
 
     LaunchedEffect(Unit) {
         scanning = true
@@ -541,6 +547,13 @@ private fun GlobalSearchScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
+            TextButton(
+                onClick = {
+                    layout = if (layout == "grid") "list" else "grid"
+                    prefs(context).edit().putString("library_layout", layout).apply()
+                },
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text(if (layout == "grid") "List" else "Grid") }
         }
         if (scanning) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -552,6 +565,52 @@ private fun GlobalSearchScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) { Text(if (scanning) "Scanning sources…" else "No results") }
+        } else if (layout == "list") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                items(shown) { pair ->
+                    val cfg = pair.first
+                    val s = pair.second
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpen(cfg, s) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier
+                                .width(48.dp)
+                                .aspectRatio(0.7f)
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp)
+                        ) {
+                            Text(
+                                text = s.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = coverMinDp),
@@ -1682,6 +1741,7 @@ private fun LibraryScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeriesScreen(
     series: Series,
@@ -1691,6 +1751,12 @@ private fun SeriesScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
+    var readTick by remember { mutableStateOf(0) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val readMap = remember(chapters, readTick) {
+        chapters.associate { it.id to ReadState.isRead(context, it.id) }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1710,9 +1776,32 @@ private fun SeriesScreen(
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = chapters.size.toString() + " ch",
+                text = readMap.values.count { it }.toString() + "/" + chapters.size,
                 style = MaterialTheme.typography.bodySmall
             )
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Mark all read") },
+                        onClick = {
+                            chapters.forEach { ReadState.setRead(context, it.id, true) }
+                            readTick++
+                            menuOpen = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Mark all unread") },
+                        onClick = {
+                            chapters.forEach { ReadState.setRead(context, it.id, false) }
+                            readTick++
+                            menuOpen = false
+                        }
+                    )
+                }
+            }
         }
         LazyColumn(
             modifier = Modifier
@@ -1720,23 +1809,44 @@ private fun SeriesScreen(
                 .weight(1f)
         ) {
             itemsIndexed(chapters) { i, ch ->
-                Column(
+                val read = readMap[ch.id] == true
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpen(i) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .combinedClickable(
+                            onClick = { onOpen(i) },
+                            onLongClick = {
+                                ReadState.setRead(context, ch.id, !read)
+                                readTick++
+                            }
+                        )
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = ch.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val p = progressFor(ch)
-                    if (p > 0) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "resume at page " + (p + 1),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = ch.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (read)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                        val p = progressFor(ch)
+                        if (p > 0 && !read) {
+                            Text(
+                                text = "resume at page " + (p + 1),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (read) {
+                        Text(
+                            "✓",
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
