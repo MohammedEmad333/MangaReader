@@ -7,6 +7,7 @@ import java.io.File
  * of this interface (extension APKs plug in at exactly this seam).
  */
 interface Source {
+    val id: String,
     val name: String
 
     /** All series this source offers. */
