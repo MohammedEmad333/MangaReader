@@ -3,6 +3,20 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+        <!-- Required to download JSON and APKs -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Required to prompt the user to install an APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Required for Android 11+ to detect your installed extensions -->
+    <queries>
+        <intent>
+            <action android:name="com.mangareader.app.EXTENSION" />
+        </intent>
+    </queries>
+    
+
     <application
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
