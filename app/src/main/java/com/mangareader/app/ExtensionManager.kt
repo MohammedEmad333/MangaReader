@@ -100,9 +100,17 @@ object ExtensionManager {
                     }
                     context.startActivity(intent)
                 }
-            } catch (e: Exception) {
+                        } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        context, 
+                        "Install Error: ${e.message}", 
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
                 e.printStackTrace()
             }
+
         }
     } // <-- Added missing closing brace for install function
 
