@@ -53,6 +53,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -684,13 +687,14 @@ private fun SourcesManagerScreen(
     error: String?,
     history: List<HistoryEntry>,
     onOpenHistory: (HistoryEntry) -> Unit,
-    onSearch: () -> Unit,
     onAdd: () -> Unit,
     onOpen: (SourceConfig) -> Unit,
     onEdit: (SourceConfig) -> Unit,
     onDelete: (SourceConfig) -> Unit,
     onOpenFile: () -> Unit
 ) {
+    var tabIndex by remember { mutableStateOf(0) } // 0 = Sources, 1 = Extensions
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -699,13 +703,10 @@ private fun SourcesManagerScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Yomu — Sources",
+                text = "Yomu — Browse",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onSearch) {
-                Icon(Icons.Filled.Search, contentDescription = "Search all sources")
-            }
             TextButton(onClick = onOpenFile) { Text("Open file") }
         }
         if (error != null) {
@@ -732,13 +733,23 @@ private fun SourcesManagerScreen(
                             .padding(end = 10.dp)
                             .clickable { onOpenHistory(h) }
                     ) {
-                        CoverImage(
-                            cover = if (h.coverPath.isNotBlank()) File(h.coverPath) else null,
-                            title = h.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
-                        )
+                        if (h.coverPath.isNotBlank()) {
+                            AsyncImage(
+                                model = File(h.coverPath),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.7f),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.7f)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
                         Text(
                             h.title,
                             style = MaterialTheme.typography.bodySmall,
@@ -753,90 +764,111 @@ private fun SourcesManagerScreen(
                     }
                 }
             }
-            HorizontalDivider()
         }
-        if (sources.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    "No sources yet",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "Add a local folder of CBZ files, or connect a Komga server.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(8.dp)
-            ) {
-                items(sources) { cfg ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(6.dp)
-                            .clickable { onOpen(cfg) }
-                    ) {
-                        Row(
+        
+        // --- THE NEW BROWSE MENU ---
+        TabRow(selectedTabIndex = tabIndex) {
+            Tab(
+                selected = tabIndex == 0,
+                onClick = { tabIndex = 0 },
+                text = { Text("Sources") }
+            )
+            Tab(
+                selected = tabIndex == 1,
+                onClick = { tabIndex = 1 },
+                text = { Text("Extensions") }
+            )
+        }
+
+        if (tabIndex == 0) {
+            // --- EXISTING SOURCES VIEW ---
+            if (sources.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "No sources yet",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Add a local folder of CBZ files, or connect a Komga server.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(8.dp)
+                ) {
+                    items(sources) { cfg ->
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(6.dp)
+                                .clickable { onOpen(cfg) }
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = cfg.label.ifBlank { typeLabel(cfg.type) },
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                val subtitle = when (cfg.type) {
-                                    "komga" -> cfg.url.ifBlank { "not configured" }
-                                    else -> typeLabel(cfg.type)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    val subtitle = when (cfg.type) {
+                                        "komga" -> cfg.url.ifBlank { "not configured" }
+                                        else -> typeLabel(cfg.type)
+                                    }
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Text(
-                                    text = subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                TextButton(
+                                    onClick = { onEdit(cfg) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp)
+                                ) { Text("Edit") }
+                                TextButton(
+                                    onClick = { onDelete(cfg) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp)
+                                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                             }
-                            TextButton(
-                                onClick = { onEdit(cfg) },
-                                contentPadding = PaddingValues(horizontal = 10.dp)
-                            ) { Text("Edit") }
-                            TextButton(
-                                onClick = { onDelete(cfg) },
-                                contentPadding = PaddingValues(horizontal = 10.dp)
-                            ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
             }
+            if (loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            Button(
+                onClick = onAdd,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) { Text("+  Add source") }
+        } else {
+            // --- NEW EXTENSIONS VIEW ---
+            ExtensionsListTab()
         }
-        if (loading) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        Button(
-            onClick = onAdd,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) { Text("+  Add source") }
     }
 }
+
 
 @Composable
 private fun HistoryScreen(
@@ -1091,6 +1123,87 @@ private fun ExtensionReposScreen(onBack: () -> Unit) {
                     }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
                 HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExtensionsListTab() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var extensions by remember { mutableStateOf<List<Extension>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        extensions = ExtensionManager.fetchAvailable(context)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) { CircularProgressIndicator() }
+    } else if (extensions.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                "No extensions found",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "Go to More → Extension Repositories to add a repository URL.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            items(extensions) { ext ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = ext.name,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "v" + ext.versionName + "  •  " + ext.pkgName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch { ExtensionManager.install(context, ext) }
+                            },
+                            enabled = !ext.isInstalled,
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Text(if (ext.isInstalled) "Installed" else "Install")
+                        }
+                    }
+                }
             }
         }
     }
