@@ -105,15 +105,15 @@ object SourceManager {
 
     /** Build the live Source for a config, or null if not usable. */
     fun build(context: Context, config: SourceConfig): Source? = when (config.type) {
-        "local" ->
-            if (config.treeUri.isNotBlank()) LocalSource(context, Uri.parse(config.treeUri))
-            else null
-        "komga" ->
-            if (config.url.isNotBlank())
-                KomgaSource(config.url, config.user, config.pass, context.cacheDir)
-            else null
-        else -> null
-    }
+    "local" ->
+        if (config.treeUri.isNotBlank()) LocalSource(config.id, context, Uri.parse(config.treeUri))
+        else null
+    "komga" ->
+        if (config.url.isNotBlank())
+            KomgaSource(config.id, config.url, config.user, config.pass, context.cacheDir)
+        else null
+    else -> null
+}
 
     /** One-time import of v0.9's single-source settings into the new list. */
     fun migrateLegacy(context: Context) {
