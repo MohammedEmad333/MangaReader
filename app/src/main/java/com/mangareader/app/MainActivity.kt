@@ -112,6 +112,7 @@ private fun App() {
     var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
     var historyState by remember { mutableStateOf(History.list(context)) }
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
+    var globalSearch by remember { mutableStateOf(false) }
 
     fun saveHistory(e: HistoryEntry) {
         if (!prefs(context).getBoolean("incognito", false)) {
@@ -229,6 +230,29 @@ private fun App() {
                 readingConfigId = cfg.id
                 openChapterAt(chs, idx)
             }.onFailure { error = it.message ?: "Couldn't reopen" }
+        }
+    }
+
+    fun openSeriesFrom(cfg: SourceConfig, s: Series) {
+        val src = SourceManager.build(context, cfg) ?: return
+        loading = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
+            loading = false
+            result.onSuccess { list ->
+                if (list.isEmpty()) {
+                    error = "No chapters found in this series"
+                } else {
+                    globalSearch = false
+                    activeConfig = cfg
+                    readingSeries = s
+                    readingConfigId = cfg.id
+                    chapters = list
+                    openSeries = s
+                    if (list.size == 1) openChapterAt(list, 0)
+                }
+            }.onFailure { error = it.message ?: "Failed to load chapters" }
         }
     }
 
@@ -380,6 +404,14 @@ private fun App() {
             )
         }
 
+        globalSearch -> {
+            GlobalSearchScreen(
+                sources = sources,
+                onOpen = { cfg, s -> openSeriesFrom(cfg, s) },
+                onBack = { globalSearch = false }
+            )
+        }
+
         else -> {
             Scaffold(
                 bottomBar = {
@@ -413,6 +445,7 @@ private fun App() {
                             error = error,
                             history = historyState,
                             onOpenHistory = { openFromHistory(it) },
+                            onSearch = { globalSearch = true },
                             onAdd = { showTypeChooser = true },
                             onOpen = { cfg ->
                                 if (cfg.isConfigured) {
@@ -453,6 +486,116 @@ private fun App() {
 }
 
 @Composable
+private fun GlobalSearchScreen(
+    sources: List<SourceConfig>,
+    onOpen: (SourceConfig, Series) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<Pair<SourceConfig, Series>>>(emptyList()) }
+    var scanning by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        scanning = true
+        val acc = mutableListOf<Pair<SourceConfig, Series>>()
+        for (cfg in sources) {
+            if (!cfg.isConfigured) continue
+            val src = SourceManager.build(context, cfg) ?: continue
+            val list = withContext(Dispatchers.IO) {
+                runCatching { src.listSeries() }.getOrDefault(emptyList())
+            }
+            list.forEach { acc.add(cfg to it) }
+            results = acc.toList()
+        }
+        scanning = false
+    }
+
+    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+        "small" -> 88.dp
+        "large" -> 140.dp
+        else -> 110.dp
+    }
+
+    val shown = remember(results, query) {
+        if (query.isBlank()) results
+        else results.filter { it.second.title.contains(query, ignoreCase = true) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text("←") }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search all sources") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        if (scanning) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (shown.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { Text(if (scanning) "Scanning sources…" else "No results") }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = coverMinDp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(6.dp)
+            ) {
+                items(shown) { pair ->
+                    val cfg = pair.first
+                    val s = pair.second
+                    Column(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clickable { onOpen(cfg, s) }
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
+                        )
+                        Text(
+                            text = s.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
     if (cover != null && cover.exists() && cover.length() > 0) {
         AsyncImage(
@@ -482,6 +625,7 @@ private fun SourcesManagerScreen(
     error: String?,
     history: List<HistoryEntry>,
     onOpenHistory: (HistoryEntry) -> Unit,
+    onSearch: () -> Unit,
     onAdd: () -> Unit,
     onOpen: (SourceConfig) -> Unit,
     onEdit: (SourceConfig) -> Unit,
@@ -500,6 +644,9 @@ private fun SourcesManagerScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Filled.Search, contentDescription = "Search all sources")
+            }
             TextButton(onClick = onOpenFile) { Text("Open file") }
         }
         if (error != null) {
