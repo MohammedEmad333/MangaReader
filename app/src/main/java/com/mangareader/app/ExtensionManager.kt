@@ -73,15 +73,36 @@ object ExtensionManager {
     /**
      * 2. INSTALL: Downloads the APK to the cache and triggers the Android installer.
      */
-    suspend fun install(context: Context, ext: Extension) {
+        suspend fun install(context: Context, ext: Extension) {
         withContext(Dispatchers.IO) {
             try {
-                // Download the APK file from the resolved URL
-                val url = URL(ext.apkUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                // ADD THIS LINE: Spoof a standard web browser to bypass GitHub's block
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                connection.connect()
+                var currentUrl = ext.apkUrl
+                var connection: HttpURLConnection
+                
+                // Loop to handle potential HTTP redirects (e.g., GitHub releases)
+                while (true) {
+                    val url = URL(currentUrl)
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    connection.instanceFollowRedirects = false
+                    connection.connect()
+
+                    val responseCode = connection.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
+                        responseCode == HttpURLConnection.HTTP_MOVED_PERM || 
+                        responseCode == HttpURLConnection.HTTP_SEE_OTHER) {
+                        val redirectedUrl = connection.getHeaderField("Location")
+                        if (redirectedUrl != null) {
+                            currentUrl = redirectedUrl
+                            continue
+                        }
+                    }
+                    break
+                }
+
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    throw Exception("Server returned HTTP ${connection.responseCode}")
+                }
 
                 val apkFile = File(context.cacheDir, "${ext.pkgName}.apk")
                 connection.inputStream.use { input ->
@@ -109,7 +130,7 @@ object ExtensionManager {
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
-                        "Install Error: ${e.message}",
+                        "Install Error: ${e.localizedMessage ?: e.message}",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
@@ -117,6 +138,7 @@ object ExtensionManager {
             }
         }
     }
+
 
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
