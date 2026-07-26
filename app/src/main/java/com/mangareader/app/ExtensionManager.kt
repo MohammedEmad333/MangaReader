@@ -73,8 +73,8 @@ object ExtensionManager {
     suspend fun install(context: Context, ext: Extension) {
         withContext(Dispatchers.IO) {
             try {
-                // 1. Download the APK file from the extension's download URL
-                val url = java.net.URL(ext.downloadUrl)
+                // FIXED: Changed ext.downloadUrl to ext.apkUrl to match the data class
+                val url = java.net.URL(ext.apkUrl)
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.connect()
 
@@ -104,6 +104,7 @@ object ExtensionManager {
                 e.printStackTrace()
             }
         }
+    } // <-- Added missing closing brace for install function
 
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
