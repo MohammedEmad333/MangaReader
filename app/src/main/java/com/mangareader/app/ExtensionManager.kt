@@ -79,6 +79,8 @@ object ExtensionManager {
                 // Download the APK file from the resolved URL
                 val url = URL(ext.apkUrl)
                 val connection = url.openConnection() as HttpURLConnection
+                // ADD THIS LINE: Spoof a standard web browser to bypass GitHub's block
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 connection.connect()
 
                 val apkFile = File(context.cacheDir, "${ext.pkgName}.apk")
