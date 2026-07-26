@@ -1,4 +1,4 @@
-package com.mangareader.app
+Package com.mangareader.app
 
 import android.content.Context
 import android.net.Uri
@@ -72,18 +72,17 @@ object SourceManager {
         }
     }
 
-        /** Returns all configured local/komga sources plus any dynamically loaded APK extensions. */
+    /** Returns all configured local/komga sources plus any dynamically loaded APK extensions. */
     fun listAllSources(context: Context): List<Source> {
-        // 1. Build the active local/komga sources from saved configs
-        const val activeSources = list(context).mapNotNull { build(context, it) }
+        // 1. Build the active local/komga sources from saved configs (Fixed 'const val' to 'val')
+        val activeSources = list(context).mapNotNull { build(context, it) }
         
         // 2. Load the dynamic APK extension sources
-        const val extensionSources = ExtensionManager.loadInstalledSources(context)
+        val extensionSources = ExtensionManager.loadInstalledSources(context)
         
         // 3. Combine them together into a single list
         return activeSources + extensionSources
     }
-
 
     fun save(context: Context, items: List<SourceConfig>) {
         val arr = JSONArray()
