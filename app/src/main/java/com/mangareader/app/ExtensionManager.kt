@@ -26,7 +26,6 @@ object ExtensionManager {
 
     /**
      * 1. FETCH: Reads the JSON lists from your saved repository URLs.
-     * Expected JSON format: [{"name": "MangaSource", "pkg": "com.ext.source", "version": "1.0", "apk": "https://..."}]
      */
     suspend fun fetchAvailable(context: Context): List<Extension> = withContext(Dispatchers.IO) {
         val repos = ExtensionRepos.list(context)
@@ -39,7 +38,7 @@ object ExtensionManager {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val arr = JSONArray(jsonStr)
                 
-                                for (i in 0 until arr.length()) {
+                for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val pkg = obj.getString("pkg")
                     
@@ -50,27 +49,22 @@ object ExtensionManager {
                         false
                     }
 
-                    // 1. Get the raw APK string from the JSON
+                    // RESOLVE URL: Fixes "no protocol" error for relative paths like in Keiyoushi
                     val rawApkUrl = obj.getString("apk")
-                    
-                    // 2. Safely resolve it into an absolute URL
-                    // If it is already "https://...", it stays the same.
-                    // If it is a relative "apk/..." path, it merges with the repo URL.
-                    val absoluteApkUrl = java.net.URL(java.net.URL(repoUrl), rawApkUrl).toString()
+                    val absoluteApkUrl = URL(URL(repoUrl), rawApkUrl).toString()
 
                     available.add(
                         Extension(
                             name = obj.getString("name"),
                             pkgName = pkg,
                             versionName = obj.getString("version"),
-                            apkUrl = absoluteApkUrl, // 3. Save the correctly formatted URL
+                            apkUrl = absoluteApkUrl,
                             isInstalled = installed
                         )
                     )
                 }
-
             } catch (e: Exception) {
-                e.printStackTrace() // Skips broken or offline repos safely
+                e.printStackTrace() 
             }
         }
         available
@@ -82,9 +76,9 @@ object ExtensionManager {
     suspend fun install(context: Context, ext: Extension) {
         withContext(Dispatchers.IO) {
             try {
-                // FIXED: Changed ext.downloadUrl to ext.apkUrl to match the data class
-                val url = java.net.URL(ext.apkUrl)
-                val connection = url.openConnection() as java.net.HttpURLConnection
+                // Download the APK file from the resolved URL
+                val url = URL(ext.apkUrl)
+                val connection = url.openConnection() as HttpURLConnection
                 connection.connect()
 
                 val apkFile = File(context.cacheDir, "${ext.pkgName}.apk")
@@ -94,9 +88,9 @@ object ExtensionManager {
                     }
                 }
 
-                // 2. Trigger the system installation intent on the Main thread
+                // Trigger the system installation intent on the Main thread
                 withContext(Dispatchers.Main) {
-                    val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                    val apkUri = FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
                         apkFile
@@ -109,19 +103,18 @@ object ExtensionManager {
                     }
                     context.startActivity(intent)
                 }
-                        } catch (e: Exception) {
+            } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
-                        context, 
-                        "Install Error: ${e.message}", 
+                        context,
+                        "Install Error: ${e.message}",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
                 e.printStackTrace()
             }
-
         }
-    } // <-- Added missing closing brace for install function
+    }
 
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
@@ -130,7 +123,6 @@ object ExtensionManager {
         val pm = context.packageManager
         val intent = Intent(EXTENSION_ACTION)
         
-        // Find all installed apps that declare our extension action
         val resolved = pm.queryIntentActivities(intent, PackageManager.GET_META_DATA)
         val loadedSources = mutableListOf<Source>()
         
@@ -139,15 +131,12 @@ object ExtensionManager {
                 val pkg = info.activityInfo.packageName
                 val appInfo = pm.getApplicationInfo(pkg, 0)
                 
-                // Read the target class name from the extension's manifest meta-data
                 val className = info.activityInfo.metaData?.getString("source_class")
                 
                 if (className != null) {
-                    // Use PathClassLoader to load external code safely
                     val classLoader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
                     val clazz = Class.forName(className, false, classLoader)
                     
-                    // Instantiate the external class as a local Source object
                     val source = clazz.getDeclaredConstructor().newInstance() as Source
                     loadedSources.add(source)
                 }
