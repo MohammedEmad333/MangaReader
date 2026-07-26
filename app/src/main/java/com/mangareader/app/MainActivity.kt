@@ -11,6 +11,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -19,6 +23,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -69,6 +75,8 @@ private data class Book(
     val pages: List<File>
 )
 
+private enum class Tab { LIBRARY, HISTORY, MORE }
+
 private fun prefs(context: Context) =
     context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
@@ -99,6 +107,13 @@ private fun App() {
     var readingConfigId by remember { mutableStateOf("") }
     var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
     var historyState by remember { mutableStateOf(History.list(context)) }
+    var tab by remember { mutableStateOf(Tab.LIBRARY) }
+
+    fun saveHistory(e: HistoryEntry) {
+        if (!prefs(context).getBoolean("incognito", false)) {
+            History.touch(context, e)
+        }
+    }
 
     // dialog / add-flow state
     var showTypeChooser by remember { mutableStateOf(false) }
@@ -124,7 +139,7 @@ private fun App() {
                     key, title, "", "", "", initial, pages.size, System.currentTimeMillis()
                 )
                 currentHistory = entry
-                History.touch(context, entry)
+                saveHistory(entry)
                 book = Book(fileName = title, key = key, pages = pages)
             }.onFailure { error = it.message ?: "Failed to open file" }
         }
@@ -154,7 +169,7 @@ private fun App() {
                     cover, initial, pages.size, System.currentTimeMillis()
                 )
                 currentHistory = entry
-                History.touch(context, entry)
+                saveHistory(entry)
                 book = Book(fileName = ch.name, key = ch.id, pages = pages)
             }.onFailure { error = it.message ?: "Failed to open chapter" }
         }
@@ -321,7 +336,7 @@ private fun App() {
                         currentHistory?.let {
                             val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
                             currentHistory = e
-                            History.touch(context, e)
+                            saveHistory(e)
                         }
                     },
                     onClose = {
@@ -362,31 +377,73 @@ private fun App() {
         }
 
         else -> {
-            SourcesManagerScreen(
-                sources = sources,
-                loading = loading,
-                error = error,
-                history = historyState,
-                onOpenHistory = { openFromHistory(it) },
-                onAdd = { showTypeChooser = true },
-                onOpen = { cfg ->
-                    if (cfg.isConfigured) {
-                        error = null
-                        seriesList = null
-                        activeConfig = cfg
-                    } else {
-                        editing = cfg
+            Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = tab == Tab.LIBRARY,
+                            onClick = { tab = Tab.LIBRARY },
+                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+                            label = { Text("Library") }
+                        )
+                        NavigationBarItem(
+                            selected = tab == Tab.HISTORY,
+                            onClick = { tab = Tab.HISTORY },
+                            icon = { Icon(Icons.Filled.List, contentDescription = null) },
+                            label = { Text("History") }
+                        )
+                        NavigationBarItem(
+                            selected = tab == Tab.MORE,
+                            onClick = { tab = Tab.MORE },
+                            icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
+                            label = { Text("More") }
+                        )
                     }
-                },
-                onEdit = { cfg ->
-                    editing = cfg
-                },
-                onDelete = { cfg ->
-                    SourceManager.remove(context, cfg.id)
-                    refreshSources()
-                },
-                onOpenFile = { filePicker.launch(arrayOf("*/*")) }
-            )
+                }
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding)) {
+                    when (tab) {
+                        Tab.LIBRARY -> SourcesManagerScreen(
+                            sources = sources,
+                            loading = loading,
+                            error = error,
+                            history = historyState,
+                            onOpenHistory = { openFromHistory(it) },
+                            onAdd = { showTypeChooser = true },
+                            onOpen = { cfg ->
+                                if (cfg.isConfigured) {
+                                    error = null
+                                    seriesList = null
+                                    activeConfig = cfg
+                                } else {
+                                    editing = cfg
+                                }
+                            },
+                            onEdit = { cfg -> editing = cfg },
+                            onDelete = { cfg ->
+                                SourceManager.remove(context, cfg.id)
+                                refreshSources()
+                            },
+                            onOpenFile = { filePicker.launch(arrayOf("*/*")) }
+                        )
+
+                        Tab.HISTORY -> HistoryScreen(
+                            history = historyState,
+                            onOpen = { openFromHistory(it) },
+                            onDelete = { h ->
+                                History.remove(context, h.chapterKey)
+                                historyState = History.list(context)
+                            },
+                            onClearAll = {
+                                historyState.forEach { History.remove(context, it.chapterKey) }
+                                historyState = History.list(context)
+                            }
+                        )
+
+                        Tab.MORE -> MoreTab()
+                    }
+                }
+            }
         }
     }
 }
@@ -556,6 +613,274 @@ private fun SourcesManagerScreen(
                 .padding(16.dp)
         ) { Text("+  Add source") }
     }
+}
+
+@Composable
+private fun HistoryScreen(
+    history: List<HistoryEntry>,
+    onOpen: (HistoryEntry) -> Unit,
+    onDelete: (HistoryEntry) -> Unit,
+    onClearAll: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "History",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f)
+            )
+            if (history.isNotEmpty()) {
+                TextButton(onClick = onClearAll) { Text("Clear") }
+            }
+        }
+        if (history.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { Text("Nothing read yet") }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
+                items(history) { h ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpen(h) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (h.coverPath.isNotBlank()) {
+                            AsyncImage(
+                                model = File(h.coverPath),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .width(44.dp)
+                                    .aspectRatio(0.7f),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .width(44.dp)
+                                    .aspectRatio(0.7f)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 12.dp)
+                        ) {
+                            Text(
+                                h.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "page " + (h.page + 1) + " / " + h.total + "  ·  " + formatAgo(h.updatedAt),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(
+                            onClick = { onDelete(h) },
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) { Text("✕") }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+private fun formatAgo(ts: Long): String {
+    if (ts <= 0) return ""
+    val diff = System.currentTimeMillis() - ts
+    val min = diff / 60000
+    return when {
+        min < 1 -> "just now"
+        min < 60 -> min.toString() + "m ago"
+        min < 1440 -> (min / 60).toString() + "h ago"
+        else -> (min / 1440).toString() + "d ago"
+    }
+}
+
+@Composable
+private fun MoreTab() {
+    val context = LocalContext.current
+    var route by remember { mutableStateOf("main") }
+
+    when (route) {
+        "stats" -> {
+            val history = History.list(context)
+            val sourceCount = SourceManager.list(context).size
+            val started = history.size
+            val finished = history.count { it.total > 0 && it.page + 1 >= it.total }
+            val pagesRead = history.sumOf { it.page + 1 }
+            SubPage(title = "Statistics", onBack = { route = "main" }) {
+                StatRow("Sources configured", sourceCount.toString())
+                StatRow("Chapters started", started.toString())
+                StatRow("Chapters finished", finished.toString())
+                StatRow("Pages read", pagesRead.toString())
+            }
+        }
+
+        "storage" -> {
+            var sizeText by remember { mutableStateOf(cacheSizeText(context)) }
+            SubPage(title = "Data and storage", onBack = { route = "main" }) {
+                StatRow("Cache used", sizeText)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Cache holds extracted pages and cover thumbnails. Clearing is safe — they rebuild when you open books.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(onClick = {
+                    clearCache(context)
+                    sizeText = cacheSizeText(context)
+                }) { Text("Clear cache") }
+            }
+        }
+
+        "about" -> {
+            SubPage(title = "About", onBack = { route = "main" }) {
+                Text("Yomu", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Version 0.13", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "A local-first manga reader. Reads CBZ/ZIP files on your device and connects to self-hosted servers you run.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        else -> {
+            var incognito by remember {
+                mutableStateOf(prefs(context).getBoolean("incognito", false))
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    "More",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            incognito = !incognito
+                            prefs(context).edit().putBoolean("incognito", incognito).apply()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Incognito mode", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Pauses reading history",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = incognito,
+                        onCheckedChange = {
+                            incognito = it
+                            prefs(context).edit().putBoolean("incognito", it).apply()
+                        }
+                    )
+                }
+                HorizontalDivider()
+                MoreRow("Statistics") { route = "stats" }
+                MoreRow("Data and storage") { route = "storage" }
+                MoreRow("About") { route = "about" }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    BackHandler { onBack() }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { Text("←") }
+            Text(title, style = MaterialTheme.typography.titleMedium)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) { content() }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun MoreRow(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    )
+}
+
+private fun dirSize(f: File): Long {
+    if (!f.exists()) return 0L
+    if (f.isFile) return f.length()
+    return f.listFiles()?.sumOf { dirSize(it) } ?: 0L
+}
+
+private fun cacheSizeText(context: Context): String {
+    val bytes = dirSize(File(context.cacheDir, "covers")) +
+        dirSize(File(context.cacheDir, "current_book")) +
+        dirSize(File(context.cacheDir, "current.cbz"))
+    val mb = bytes.toDouble() / (1024 * 1024)
+    return String.format("%.1f MB", mb)
+}
+
+private fun clearCache(context: Context) {
+    File(context.cacheDir, "covers").deleteRecursively()
+    File(context.cacheDir, "current_book").deleteRecursively()
+    File(context.cacheDir, "current.cbz").delete()
 }
 
 @Composable
