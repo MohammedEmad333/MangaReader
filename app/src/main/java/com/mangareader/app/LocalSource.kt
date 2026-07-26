@@ -118,8 +118,9 @@ fun ensureCover(context: Context, bookUri: Uri): File? {
     val coversDir = File(context.cacheDir, "covers")
     coversDir.mkdirs()
     val coverFile = File(coversDir, bookUri.toString().hashCode().toString() + ".jpg")
-    if (coverFile.exists()) return coverFile
+    if (coverFile.exists() && coverFile.length() > 0) return coverFile
     try {
+        // find the first image entry by natural order
         val names = mutableListOf<String>()
         context.contentResolver.openInputStream(bookUri)?.use { ins ->
             ZipInputStream(ins).use { zip ->
@@ -131,21 +132,35 @@ fun ensureCover(context: Context, bookUri: Uri): File? {
             }
         }
         val target = names.minByOrNull { naturalSortKey(it) } ?: return null
-        var bmp: Bitmap? = null
+
+        // read that entry fully into memory (more reliable than decodeStream)
+        var bytes: ByteArray? = null
         context.contentResolver.openInputStream(bookUri)?.use { ins ->
             ZipInputStream(ins).use { zip ->
                 var entry = zip.nextEntry
                 while (entry != null) {
                     if (entry.name == target) {
-                        bmp = BitmapFactory.decodeStream(zip)
+                        bytes = zip.readBytes()
                         break
                     }
                     entry = zip.nextEntry
                 }
             }
         }
-        val full = bmp ?: return null
-        val targetW = 300
+        val data = bytes ?: return null
+
+        // decode bounds first, then downsample large pages
+        val targetW = 400
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+        var sample = 1
+        if (bounds.outWidth > targetW * 2) {
+            var w = bounds.outWidth
+            while (w / 2 >= targetW) { sample *= 2; w /= 2 }
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val full = BitmapFactory.decodeByteArray(data, 0, data.size, opts) ?: return null
+
         val small = if (full.width > targetW) {
             val h = (full.height.toFloat() * targetW / full.width).toInt().coerceAtLeast(1)
             Bitmap.createScaledBitmap(full, targetW, h, true)
@@ -154,7 +169,7 @@ fun ensureCover(context: Context, bookUri: Uri): File? {
             small.compress(Bitmap.CompressFormat.JPEG, 85, out)
         }
         if (small !== full) full.recycle()
-        return coverFile
+        return if (coverFile.length() > 0) coverFile else null
     } catch (e: Exception) {
         return null
     }

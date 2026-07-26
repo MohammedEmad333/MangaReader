@@ -451,6 +451,29 @@ private fun App() {
 }
 
 @Composable
+private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
+    if (cover != null && cover.exists() && cover.length() > 0) {
+        AsyncImage(
+            model = cover,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        Box(
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                title.trim().take(2).uppercase(),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 private fun SourcesManagerScreen(
     sources: List<SourceConfig>,
     loading: Boolean,
@@ -501,23 +524,13 @@ private fun SourcesManagerScreen(
                             .padding(end = 10.dp)
                             .clickable { onOpenHistory(h) }
                     ) {
-                        if (h.coverPath.isNotBlank()) {
-                            AsyncImage(
-                                model = File(h.coverPath),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.7f),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.7f)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
+                        CoverImage(
+                            cover = if (h.coverPath.isNotBlank()) File(h.coverPath) else null,
+                            title = h.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
+                        )
                         Text(
                             h.title,
                             style = MaterialTheme.typography.bodySmall,
@@ -657,23 +670,13 @@ private fun HistoryScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (h.coverPath.isNotBlank()) {
-                            AsyncImage(
-                                model = File(h.coverPath),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .aspectRatio(0.7f),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .aspectRatio(0.7f)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
+                        CoverImage(
+                            cover = if (h.coverPath.isNotBlank()) File(h.coverPath) else null,
+                            title = h.title,
+                            modifier = Modifier
+                                .width(44.dp)
+                                .aspectRatio(0.7f)
+                        )
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -897,6 +900,9 @@ private fun SettingsScreen(onBack: () -> Unit) {
     var webtoon by remember { mutableStateOf(prefs(context).getBoolean("mode_webtoon", false)) }
     var rtl by remember { mutableStateOf(prefs(context).getBoolean("mode_rtl", false)) }
     var keepOn by remember { mutableStateOf(prefs(context).getBoolean("keep_screen_on", true)) }
+    var readerBg by remember {
+        mutableStateOf(prefs(context).getString("reader_bg", "black") ?: "black")
+    }
     var coverSize by remember {
         mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
     }
@@ -927,6 +933,19 @@ private fun SettingsScreen(onBack: () -> Unit) {
             label = "Keep screen on while reading",
             checked = keepOn,
             onChange = { keepOn = it; putBool("keep_screen_on", it) }
+        )
+        ChoiceRow(
+            label = "Reader background",
+            options = listOf("Black", "Gray", "White"),
+            selectedIndex = when (readerBg) {
+                "gray" -> 1
+                "white" -> 2
+                else -> 0
+            },
+            onSelect = { i ->
+                readerBg = listOf("black", "gray", "white")[i]
+                putStr("reader_bg", readerBg)
+            }
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
@@ -1261,13 +1280,12 @@ private fun LibraryScreen(
                                 onLongClick = { assignTarget = s }
                             )
                     ) {
-                        AsyncImage(
-                            model = s.cover,
-                            contentDescription = null,
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(0.7f),
-                            contentScale = ContentScale.Crop
+                                .aspectRatio(0.7f)
                         )
                         Text(
                             text = s.title,
@@ -1444,10 +1462,16 @@ private fun ReaderScreen(
         }
     }
 
+    val bg = when (prefs(context).getString("reader_bg", "black")) {
+        "white" -> Color.White
+        "gray" -> Color(0xFF303030)
+        else -> Color.Black
+    }
+    val fg = if (bg == Color.White) Color.Black else Color.White
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color.Black,
-        contentColor = Color.White
+        color = bg,
+        contentColor = fg
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (showBar) {
