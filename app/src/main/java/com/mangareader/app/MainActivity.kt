@@ -94,8 +94,10 @@ private fun App() {
 
     LaunchedEffect(Unit) { SourceManager.migrateLegacy(context) }
 
-    var sources by remember { mutableStateOf(SourceManager.list(context)) }
-    fun refreshSources() { sources = SourceManager.list(context) }
+    // FIXED: Changed from SourceManager.list(context) to SourceManager.listAllSources(context)
+    // so that locally installed extension APK sources show up automatically under the Sources tab.
+    var sources by remember { mutableStateOf(SourceManager.listAllSources(context)) }
+    fun refreshSources() { sources = SourceManager.listAllSources(context) }
 
     var activeConfig by remember { mutableStateOf<SourceConfig?>(null) }
     fun activeSource(): Source? = activeConfig?.let { SourceManager.build(context, it) }
@@ -209,7 +211,7 @@ private fun App() {
             openSingleFile(Uri.parse(entry.chapterKey))
             return
         }
-        val cfg = SourceManager.list(context).find { it.id == entry.sourceId }
+        val cfg = SourceManager.listAllSources(context).find { it.id == entry.sourceId }
         if (cfg == null) { error = "That source was removed"; return }
         val src = SourceManager.build(context, cfg)
         if (src == null) { error = "Source not configured"; return }
@@ -289,6 +291,8 @@ private fun App() {
     LaunchedEffect(book, openSeries, activeConfig) {
         if (book == null && openSeries == null && activeConfig == null) {
             historyState = History.list(context)
+            // Refresh sources whenever returning to root view to catch newly installed extensions
+            refreshSources()
         }
     }
 
