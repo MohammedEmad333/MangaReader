@@ -70,35 +70,40 @@ object ExtensionManager {
     /**
      * 2. INSTALL: Downloads the APK to the cache and triggers the Android installer.
      */
-    suspend fun install(context: Context, ext: Extension) = withContext(Dispatchers.IO) {
-        try {
-            val file = File(context.cacheDir, "${ext.pkgName}.apk")
-            val conn = URL(ext.apkUrl).openConnection() as HttpURLConnection
-            
-            conn.inputStream.use { input ->
-                file.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
+    suspend fun install(context: Context, ext: Extension) {
+        withContext(Dispatchers.IO) {
+            try {
+                // 1. Download the APK file from the extension's download URL
+                val url = java.net.URL(ext.downloadUrl)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connect()
 
-            // Generate a secure URI using FileProvider
-            val uri = FileProvider.getUriForFile(
-                context, 
-                "${context.packageName}.provider", 
-                file
-            )
-            
-            // Prompt the system to install the APK
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                val apkFile = File(context.cacheDir, "${ext.pkgName}.apk")
+                connection.inputStream.use { input ->
+                    apkFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // 2. Trigger the system installation intent on the Main thread
+                withContext(Dispatchers.Main) {
+                    val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        apkFile
+                    )
+
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(apkUri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            context.startActivity(intent)
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
-    }
 
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
