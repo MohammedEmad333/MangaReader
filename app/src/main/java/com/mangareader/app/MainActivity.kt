@@ -755,7 +755,7 @@ private fun MoreTab() {
             SubPage(title = "About", onBack = { route = "main" }) {
                 Text("Yomu", style = MaterialTheme.typography.headlineSmall)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Version 0.13", style = MaterialTheme.typography.bodyMedium)
+                Text("Version " + BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     "A local-first manga reader. Reads CBZ/ZIP files on your device and connects to self-hosted servers you run.",
@@ -763,6 +763,8 @@ private fun MoreTab() {
                 )
             }
         }
+
+        "settings" -> SettingsScreen(onBack = { route = "main" })
 
         else -> {
             var incognito by remember {
@@ -807,6 +809,7 @@ private fun MoreTab() {
                 HorizontalDivider()
                 MoreRow("Statistics") { route = "stats" }
                 MoreRow("Data and storage") { route = "storage" }
+                MoreRow("Settings") { route = "settings" }
                 MoreRow("About") { route = "about" }
             }
         }
@@ -884,6 +887,107 @@ private fun clearCache(context: Context) {
 }
 
 @Composable
+private fun SettingsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var webtoon by remember { mutableStateOf(prefs(context).getBoolean("mode_webtoon", false)) }
+    var rtl by remember { mutableStateOf(prefs(context).getBoolean("mode_rtl", false)) }
+    var keepOn by remember { mutableStateOf(prefs(context).getBoolean("keep_screen_on", true)) }
+    var coverSize by remember {
+        mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
+    }
+
+    fun putBool(k: String, v: Boolean) = prefs(context).edit().putBoolean(k, v).apply()
+    fun putStr(k: String, v: String) = prefs(context).edit().putString(k, v).apply()
+
+    SubPage(title = "Settings", onBack = onBack) {
+        Text(
+            "Reading",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        ChoiceRow(
+            label = "Default reading mode",
+            options = listOf("Paged", "Webtoon"),
+            selectedIndex = if (webtoon) 1 else 0,
+            onSelect = { i -> webtoon = i == 1; putBool("mode_webtoon", webtoon) }
+        )
+        ChoiceRow(
+            label = "Reading direction (paged)",
+            options = listOf("LTR", "RTL"),
+            selectedIndex = if (rtl) 1 else 0,
+            onSelect = { i -> rtl = i == 1; putBool("mode_rtl", rtl) }
+        )
+        SwitchRow(
+            label = "Keep screen on while reading",
+            checked = keepOn,
+            onChange = { keepOn = it; putBool("keep_screen_on", it) }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Library",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        ChoiceRow(
+            label = "Cover size",
+            options = listOf("Small", "Medium", "Large"),
+            selectedIndex = when (coverSize) {
+                "small" -> 0
+                "large" -> 2
+                else -> 1
+            },
+            onSelect = { i ->
+                coverSize = listOf("small", "medium", "large")[i]
+                putStr("cover_size", coverSize)
+            }
+        )
+    }
+}
+
+@Composable
+private fun ChoiceRow(
+    label: String,
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row {
+            options.forEachIndexed { i, opt ->
+                FilterChip(
+                    selected = i == selectedIndex,
+                    onClick = { onSelect(i) },
+                    label = { Text(opt) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onChange(!checked) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
 private fun SourceDialog(
     value: SourceConfig,
     onChange: (SourceConfig) -> Unit,
@@ -956,6 +1060,12 @@ private fun LibraryScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
+    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+        "small" -> 88.dp
+        "large" -> 140.dp
+        else -> 110.dp
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1002,7 +1112,7 @@ private fun LibraryScreen(
             ) { Text("Nothing here yet — check the source settings") }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 110.dp),
+                columns = GridCells.Adaptive(minSize = coverMinDp),
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),
@@ -1130,7 +1240,7 @@ private fun ReaderScreen(
 
     val view = LocalView.current
     DisposableEffect(Unit) {
-        view.keepScreenOn = true
+        view.keepScreenOn = prefs(context).getBoolean("keep_screen_on", true)
         onDispose { view.keepScreenOn = false }
     }
 
