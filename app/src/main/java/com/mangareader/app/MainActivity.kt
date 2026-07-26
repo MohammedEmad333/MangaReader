@@ -87,11 +87,6 @@ private enum class Tab { LIBRARY, HISTORY, MORE }
 private fun prefs(context: Context) =
     context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
-
-                                    
-        
-        
-        
 @Composable
 private fun GlobalSearchScreen(
     sources: List<SourceConfig>,
@@ -214,8 +209,50 @@ private fun GlobalSearchScreen(
                     }
                     HorizontalDivider()
                 }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = coverMinDp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(6.dp)
+            ) {
+                items(shown) { pair ->
+                    val cfg = pair.first
+                    val s = pair.second
+                    Column(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clickable { onOpen(cfg, s) }
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
+                        )
+                        Text(
+                            text = s.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
-                
 @Composable
 private fun App() {
     val context = LocalContext.current
@@ -376,10 +413,16 @@ private fun App() {
         }
     }
 
-    fun openSeriesFromSource(src: Source, s: Series) {
+    fun openSeriesFromConfig(cfg: SourceConfig, s: Series) {
         loading = true
         error = null
         scope.launch {
+            val src = SourceManager.build(context, cfg)
+            if (src == null) {
+                error = "Failed to build source"
+                loading = false
+                return@launch
+            }
             val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
             loading = false
             result.onSuccess { list ->
@@ -388,9 +431,9 @@ private fun App() {
                 } else {
                     globalSearch = false
                     activeSourceObj = src
-                    activeConfig = sourceConfigs.find { it.id == src.id }
+                    activeConfig = cfg
                     readingSeries = s
-                    readingConfigId = src.id
+                    readingConfigId = cfg.id
                     chapters = list
                     openSeries = s
                     if (list.size == 1) openChapterAt(list, 0)
@@ -554,8 +597,8 @@ private fun App() {
 
         globalSearch -> {
             GlobalSearchScreen(
-                sources = allSources,
-                onOpen = { src, s -> openSeriesFromSource(src, s) },
+                sources = sourceConfigs,
+                onOpen = { cfg, s -> openSeriesFromConfig(cfg, s) },
                 onBack = { globalSearch = false }
             )
         }
@@ -572,13 +615,13 @@ private fun App() {
                         )
                         NavigationBarItem(
                             selected = tab == Tab.HISTORY,
-                            onClick = { tab = Tab.HISTORY },
+                            onClick = { tab == Tab.HISTORY },
                             icon = { Icon(Icons.Filled.List, contentDescription = null) },
                             label = { Text("History") }
                         )
                         NavigationBarItem(
                             selected = tab == Tab.MORE,
-                            onClick = { tab = Tab.MORE },
+                            onClick = { tab == Tab.MORE },
                             icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
                             label = { Text("More") }
                         )
@@ -632,171 +675,6 @@ private fun App() {
 }
 
 @Composable
-private fun GlobalSearchScreen(
-    sources: List<Source>,
-    onOpen: (Source, Series) -> Unit,
-    onBack: () -> Unit
-) {
-    BackHandler { onBack() }
-    val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Pair<Source, Series>>>(emptyList()) }
-    var scanning by remember { mutableStateOf(true) }
-    var layout by remember {
-        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
-    }
-
-    LaunchedEffect(Unit) {
-        scanning = true
-        val acc = mutableListOf<Pair<Source, Series>>()
-        for (src in sources) {
-            val list = withContext(Dispatchers.IO) {
-                runCatching { src.listSeries() }.getOrDefault(emptyList())
-            }
-            list.forEach { acc.add(src to it) }
-            results = acc.toList()
-        }
-        scanning = false
-    }
-
-    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
-        "small" -> 88.dp
-        "large" -> 140.dp
-        else -> 110.dp
-    }
-
-    val shown = remember(results, query) {
-        if (query.isBlank()) results
-        else results.filter { it.second.title.contains(query, ignoreCase = true) }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("←") }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search all sources") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(
-                onClick = {
-                    layout = if (layout == "grid") "list" else "grid"
-                    prefs(context).edit().putString("library_layout", layout).apply()
-                },
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text(if (layout == "grid") "List" else "Grid") }
-        }
-        if (scanning) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        if (shown.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) { Text(if (scanning) "Scanning sources…" else "No results") }
-        } else if (layout == "list") {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                items(shown) { pair ->
-                    val src = pair.first
-                    val s = pair.second
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpen(src, s) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier
-                                .width(48.dp)
-                                .aspectRatio(0.7f)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 12.dp)
-                        ) {
-                            Text(
-                                text = s.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = src.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    HorizontalDivider()
-                }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(6.dp)
-            ) {
-                items(shown) { pair ->
-                    val src = pair.first
-                    val s = pair.second
-                    Column(
-                        modifier = Modifier
-                            .padding(6.dp)
-                            .clickable { onOpen(src, s) }
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
-                        )
-                        Text(
-                            text = s.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = src.name,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-                
-@Composable
 private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
     if (cover != null && cover.exists() && cover.length() > 0) {
         AsyncImage(
@@ -828,7 +706,7 @@ private fun SourcesManagerScreen(
     history: List<HistoryEntry>,
     onOpenHistory: (HistoryEntry) -> Unit,
     onAdd: () -> Unit,
-    onOpen: (SourceConfig) -> Unit,
+    onOpen: (Source) -> Unit,
     onEdit: (SourceConfig) -> Unit,
     onDelete: (SourceConfig) -> Unit,
     onOpenFile: () -> Unit,
@@ -849,10 +727,10 @@ private fun SourcesManagerScreen(
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = onSearch) {
-        Icon(
-            imageVector = Icons.Default.Search,
-            contentDescription = "Search"
-        )
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search"
+                )
             }
             TextButton(onClick = onOpenFile) { Text("Open file") }
         }
@@ -913,7 +791,6 @@ private fun SourcesManagerScreen(
             }
         }
         
-        // --- THE NEW BROWSE MENU ---
         TabRow(selectedTabIndex = tabIndex) {
             Tab(
                 selected = tabIndex == 0,
@@ -928,7 +805,6 @@ private fun SourcesManagerScreen(
         }
 
         if (tabIndex == 0) {
-            // --- EXISTING SOURCES VIEW ---
             if (sources.isEmpty()) {
                 Column(
                     modifier = Modifier
@@ -955,12 +831,13 @@ private fun SourcesManagerScreen(
                         .weight(1f),
                     contentPadding = PaddingValues(8.dp)
                 ) {
-                    items(sources) { cfg ->
+                    items(sources) { src ->
+                        val cfg = configs.find { it.id == src.id } ?: SourceConfig(src.id, "local", src.name)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(6.dp)
-                                .clickable { onOpen(cfg) }
+                                .clickable { onOpen(src) }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -970,7 +847,7 @@ private fun SourcesManagerScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = cfg.label.ifBlank { typeLabel(cfg.type) },
+                                        text = src.name,
                                         style = MaterialTheme.typography.titleMedium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -1010,12 +887,10 @@ private fun SourcesManagerScreen(
                     .padding(16.dp)
             ) { Text("+  Add source") }
         } else {
-            // --- NEW EXTENSIONS VIEW ---
             ExtensionsListTab()
         }
     }
 }
-
 
 @Composable
 private fun HistoryScreen(
@@ -1156,14 +1031,13 @@ private fun MoreTab() {
             }
         }
 
-                "settings" -> SettingsScreen(onBack = { route = "main" })
+        "settings" -> SettingsScreen(onBack = { route = "main" })
 
         "categories" -> CategoriesScreen(onBack = { route = "main" })
         
-        "extension_repos" -> ExtensionReposScreen(onBack = { route = "main" }) // <-- ADD THIS LINE
+        "extension_repos" -> ExtensionReposScreen(onBack = { route = "main" })
 
         else -> {
-
             var incognito by remember {
                 mutableStateOf(prefs(context).getBoolean("incognito", false))
             }
@@ -1203,14 +1077,13 @@ private fun MoreTab() {
                         }
                     )
                 }
-                                HorizontalDivider()
+                HorizontalDivider()
                 MoreRow("Categories") { route = "categories" }
-                MoreRow("Extension Repositories") { route = "extension_repos" } // <-- ADD THIS LINE
+                MoreRow("Extension Repositories") { route = "extension_repos" }
                 MoreRow("Statistics") { route = "stats" }
                 MoreRow("Data and storage") { route = "storage" }
                 MoreRow("Settings") { route = "settings" }
                 MoreRow("About") { route = "about" }
-
             }
         }
     }
@@ -1355,7 +1228,6 @@ private fun ExtensionsListTab() {
         }
     }
 }
-
 
 @Composable
 private fun SubPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
@@ -2353,4 +2225,3 @@ private fun ReaderScreen(
         }
     }
 }
-
