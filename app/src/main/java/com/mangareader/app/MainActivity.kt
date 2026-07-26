@@ -692,6 +692,7 @@ private fun SourcesManagerScreen(
     onEdit: (SourceConfig) -> Unit,
     onDelete: (SourceConfig) -> Unit,
     onOpenFile: () -> Unit
+    onSearch: () -> Unit
 ) {
     var tabIndex by remember { mutableStateOf(0) } // 0 = Sources, 1 = Extensions
 
@@ -707,6 +708,12 @@ private fun SourcesManagerScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
+            IconButton(onClick = onSearch) {
+        Icon(
+            imageVector = Icons.Default.Search,
+            contentDescription = "Search"
+        )
+            }
             TextButton(onClick = onOpenFile) { Text("Open file") }
         }
         if (error != null) {
