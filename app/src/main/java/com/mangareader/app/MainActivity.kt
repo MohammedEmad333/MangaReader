@@ -771,11 +771,14 @@ private fun MoreTab() {
             }
         }
 
-        "settings" -> SettingsScreen(onBack = { route = "main" })
+                "settings" -> SettingsScreen(onBack = { route = "main" })
 
         "categories" -> CategoriesScreen(onBack = { route = "main" })
+        
+        "extension_repos" -> ExtensionReposScreen(onBack = { route = "main" }) // <-- ADD THIS LINE
 
         else -> {
+
             var incognito by remember {
                 mutableStateOf(prefs(context).getBoolean("incognito", false))
             }
@@ -815,16 +818,78 @@ private fun MoreTab() {
                         }
                     )
                 }
-                HorizontalDivider()
+                                HorizontalDivider()
                 MoreRow("Categories") { route = "categories" }
+                MoreRow("Extension Repositories") { route = "extension_repos" } // <-- ADD THIS LINE
                 MoreRow("Statistics") { route = "stats" }
                 MoreRow("Data and storage") { route = "storage" }
                 MoreRow("Settings") { route = "settings" }
                 MoreRow("About") { route = "about" }
+
             }
         }
     }
 }
+
+@Composable
+private fun ExtensionReposScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    val repos = remember(tick) { ExtensionRepos.list(context) }
+    var newUrl by remember { mutableStateOf("") }
+
+    SubPage(title = "Extension Repositories", onBack = onBack) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newUrl,
+                onValueChange = { newUrl = it },
+                label = { Text("Repository URL") },
+                placeholder = { Text("https://example.com/index.json") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            TextButton(onClick = {
+                if (newUrl.isNotBlank()) {
+                    ExtensionRepos.add(context, newUrl.trim())
+                    newUrl = ""
+                    tick++
+                }
+            }) { Text("Add") }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        if (repos.isEmpty()) {
+            Text(
+                "No extension repositories added yet. Add a repository URL above to fetch extensions.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            repos.forEach { url ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        url,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    TextButton(onClick = {
+                        ExtensionRepos.remove(context, url)
+                        tick++
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun SubPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
@@ -1771,3 +1836,4 @@ private fun ReaderScreen(
         }
     }
 }
+
