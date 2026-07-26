@@ -399,19 +399,28 @@ private fun App() {
                     val chs = activeSrc.listChapters(ser)
                     val idx = chs.indexOfFirst { it.id == entry.chapterKey }
                     if (idx < 0) throw IllegalStateException("Chapter no longer found")
-                    Triple(activeSrc, ser, chs, idx)
+                    HistoryPayload(activeSrc, ser, chs, idx)
                 }
             }
             loading = false
             res.onSuccess { (activeSrc, ser, chs, idx) ->
-                activeSourceObj = activeSrc
-                activeConfig = cfg
-                readingSeries = ser
-                readingConfigId = activeSrc.id
-                openChapterAt(chs, idx)
-            }.onFailure { error = it.message ?: "Couldn't reopen" }
+    activeSourceObj = activeSrc
+    activeConfig = cfg
+    readingSeries = ser
+    readingConfigId = activeSrc.id 
+    openChapterAt(chs, idx)
+}.onFailure { error = it.message ?: "Couldn't reopen" }
         }
     }
+
+    private data class HistoryPayload(
+    val source: Source,
+    val series: Series,
+    val chapters: List<Chapter>,
+    val index: Int
+)
+
+    
 
     fun openSeriesFromConfig(cfg: SourceConfig, s: Series) {
         loading = true
