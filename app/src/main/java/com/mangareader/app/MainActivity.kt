@@ -691,7 +691,7 @@ private fun SourcesManagerScreen(
     onOpen: (SourceConfig) -> Unit,
     onEdit: (SourceConfig) -> Unit,
     onDelete: (SourceConfig) -> Unit,
-    onOpenFile: () -> Unit
+    onOpenFile: () -> Unit,
     onSearch: () -> Unit
 ) {
     var tabIndex by remember { mutableStateOf(0) } // 0 = Sources, 1 = Extensions
