@@ -9,8 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
@@ -766,6 +768,8 @@ private fun MoreTab() {
 
         "settings" -> SettingsScreen(onBack = { route = "main" })
 
+        "categories" -> CategoriesScreen(onBack = { route = "main" })
+
         else -> {
             var incognito by remember {
                 mutableStateOf(prefs(context).getBoolean("incognito", false))
@@ -807,6 +811,7 @@ private fun MoreTab() {
                     )
                 }
                 HorizontalDivider()
+                MoreRow("Categories") { route = "categories" }
                 MoreRow("Statistics") { route = "stats" }
                 MoreRow("Data and storage") { route = "storage" }
                 MoreRow("Settings") { route = "settings" }
@@ -988,6 +993,92 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 }
 
 @Composable
+private fun CategoriesScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    val cats = remember(tick) { Categories.list(context) }
+    var newName by remember { mutableStateOf("") }
+    var renaming by remember { mutableStateOf<Category?>(null) }
+
+    SubPage(title = "Categories", onBack = onBack) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { newName = it },
+                label = { Text("New category") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            TextButton(onClick = {
+                if (newName.isNotBlank()) {
+                    Categories.add(context, newName.trim())
+                    newName = ""
+                    tick++
+                }
+            }) { Text("Add") }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        if (cats.isEmpty()) {
+            Text(
+                "No categories yet. Add one above, then long-press a series in a source to assign it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            cats.forEach { c ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { renaming = c }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        c.name,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    TextButton(onClick = {
+                        Categories.remove(context, c.id)
+                        tick++
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
+                HorizontalDivider()
+            }
+        }
+    }
+
+    val r = renaming
+    if (r != null) {
+        var name by remember(r) { mutableStateOf(r.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename category") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (name.isNotBlank()) {
+                        Categories.rename(context, r.id, name.trim())
+                        tick++
+                    }
+                    renaming = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renaming = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
 private fun SourceDialog(
     value: SourceConfig,
     onChange: (SourceConfig) -> Unit,
@@ -1049,6 +1140,7 @@ private fun SourceDialog(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LibraryScreen(
     title: String,
@@ -1066,6 +1158,18 @@ private fun LibraryScreen(
         "large" -> 140.dp
         else -> 110.dp
     }
+    var categoryTick by remember { mutableStateOf(0) }
+    val categories = remember(categoryTick) { Categories.list(context) }
+    var selectedCat by remember { mutableStateOf<String?>(null) }
+    var assignTarget by remember { mutableStateOf<Series?>(null) }
+
+    val shown = remember(series, selectedCat, categoryTick) {
+        val all = series.orEmpty()
+        val sel = selectedCat
+        if (sel == null) all
+        else all.filter { Categories.categoriesFor(context, it.id).contains(sel) }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1089,6 +1193,29 @@ private fun LibraryScreen(
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) { Text("⟳") }
         }
+        if (categories.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedCat == null,
+                        onClick = { selectedCat = null },
+                        label = { Text("All") },
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                }
+                items(categories) { c ->
+                    FilterChip(
+                        selected = selectedCat == c.id,
+                        onClick = { selectedCat = c.id },
+                        label = { Text(c.name) },
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                }
+            }
+        }
         if (error != null) {
             Text(
                 error,
@@ -1110,6 +1237,13 @@ private fun LibraryScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) { Text("Nothing here yet — check the source settings") }
+        } else if (shown.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) { Text("Nothing in this category yet — long-press a series to add it") }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = coverMinDp),
@@ -1118,11 +1252,14 @@ private fun LibraryScreen(
                     .weight(1f),
                 contentPadding = PaddingValues(6.dp)
             ) {
-                items(series) { s ->
+                items(shown) { s ->
                     Column(
                         modifier = Modifier
                             .padding(6.dp)
-                            .clickable { onOpen(s) }
+                            .combinedClickable(
+                                onClick = { onOpen(s) },
+                                onLongClick = { assignTarget = s }
+                            )
                     ) {
                         AsyncImage(
                             model = s.cover,
@@ -1142,6 +1279,57 @@ private fun LibraryScreen(
                 }
             }
         }
+    }
+
+    val target = assignTarget
+    if (target != null) {
+        var checked by remember(target) {
+            mutableStateOf(Categories.categoriesFor(context, target.id))
+        }
+        AlertDialog(
+            onDismissRequest = { assignTarget = null },
+            title = {
+                Text(target.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            text = {
+                if (categories.isEmpty()) {
+                    Text("No categories yet. Add them in More \u2192 Categories.")
+                } else {
+                    Column {
+                        categories.forEach { cat ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        checked = if (checked.contains(cat.id))
+                                            checked - cat.id else checked + cat.id
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = checked.contains(cat.id),
+                                    onCheckedChange = {
+                                        checked = if (it) checked + cat.id else checked - cat.id
+                                    }
+                                )
+                                Text(cat.name)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Categories.setCategoriesFor(context, target.id, checked)
+                    categoryTick++
+                    assignTarget = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { assignTarget = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
