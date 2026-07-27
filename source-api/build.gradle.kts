@@ -40,7 +40,7 @@ dependencies {
     // `api` not `implementation`: the app module needs to see these to
     // register Injekt bindings and to talk to sources directly.
     // Tachiyomi's own build file made the same choice.
-    api("com.github.inorichi.injekt:injekt-core:65b0440")
+    api("com.github.mihonapp:injekt:91edab2317")
     api("io.reactivex:rxjava:1.3.8")
     api("org.jsoup:jsoup:1.17.2")
 
