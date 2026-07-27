@@ -7,6 +7,10 @@
     <!-- Required to prompt the user to install an APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Lets us enumerate installed extension packages on Android 11+.
+         Tachiyomi/Mihon use this same permission for the same reason. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <!-- Required for Android 11+ to detect your installed extensions -->
     <queries>
         <intent>
