@@ -10,6 +10,8 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -145,6 +147,44 @@ class TachiyomiSourceAdapter(
         delegate.getChapterList(manga).asReversed().map { it.toChapter() }
     }
 
+    /**
+     * Downloads in source order, [PAGE_CONCURRENCY] at a time, publishing after
+     * every batch.
+     *
+     * The empty slot list goes out first so the reader can open on the page count
+     * alone — previously nothing was shown until the last byte of the last page
+     * had landed, which on a 30MB chapter is a long stare at a blank screen.
+     *
+     * In source order rather than starting from the resume position: the adapter
+     * isn't told where the reader will open, and reading is overwhelmingly
+     * front-to-back.
+     */
+    override suspend fun loadPagesProgressively(
+        chapter: Chapter,
+        onUpdate: suspend (List<File?>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val sChapter = chapter.handle as? SChapter
+        if (sChapter == null) {
+            onUpdate(emptyList())
+            return@withContext
+        }
+        val pages = delegate.getPageList(sChapter)
+        val dir = File(context.cacheDir, "pages/${chapter.id.hashCode()}").apply { mkdirs() }
+
+        val done = arrayOfNulls<File>(pages.size)
+        onUpdate(done.toList())
+
+        pages.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
+            val base = batch * PAGE_CONCURRENCY
+            chunk.mapIndexed { offset, page ->
+                async { runCatching { downloadPage(page, dir, base + offset) }.getOrNull() }
+            }.awaitAll().forEachIndexed { offset, file ->
+                done[base + offset] = file
+            }
+            onUpdate(done.toList())
+        }
+    }
+
     override suspend fun loadPages(chapter: Chapter): List<File> = withContext(Dispatchers.IO) {
         val sChapter = chapter.handle as? SChapter ?: return@withContext emptyList()
         val pages = delegate.getPageList(sChapter)
@@ -233,6 +273,10 @@ class TachiyomiSourceAdapter(
 
     private companion object {
         const val TAG = "TachiyomiSourceAdapter"
+
+        /** Pages fetched in parallel. Enough to hide latency, not enough to look
+         *  like a scraper to the source. */
+        const val PAGE_CONCURRENCY = 4
         val fallbackClient = OkHttpClient()
     }
 }
