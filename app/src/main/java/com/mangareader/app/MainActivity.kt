@@ -327,11 +327,31 @@ fun YomuApp() {
         openSource(built)
     }
 
+    /**
+     * Fills in author/description/genres/status in the background.
+     *
+     * Deliberately fire-and-forget: on most sources this is a second network
+     * request, and it must never delay or block the chapter list. A failure just
+     * means the series screen shows less. The id check stops a slow response
+     * overwriting a series the user has since navigated away from.
+     */
+    fun enrichSeries(src: Source, series: Series) {
+        scope.launch {
+            val enriched = runCatching {
+                withContext(Dispatchers.IO) { src.loadDetails(series) }
+            }.getOrNull()
+            if (enriched != null && activeSeries?.id == series.id) {
+                activeSeries = enriched
+            }
+        }
+    }
+
     fun openSeries(series: Series) {
         val src = activeSource ?: return
         activeSeries = series
         chapterList = emptyList()
         errorMessage = null
+        enrichSeries(src, series)
         scope.launch {
             isLoading = true
             try {
@@ -414,6 +434,7 @@ fun YomuApp() {
                 activeSourceId = result.first.id
                 activeSeries = result.second
                 chapterList = result.third
+                enrichSeries(result.first, result.second)
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not open this series"
             }
@@ -518,6 +539,7 @@ fun YomuApp() {
             series = activeSeries!!,
             chapters = chapterList,
             sourceId = activeSourceId ?: "",
+            sourceName = activeSource?.name ?: "",
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,

@@ -115,6 +115,30 @@ class TachiyomiSourceAdapter(
         full.toSeries()
     }
 
+    /**
+     * The details request that [restoreSeries] skips, run on its own so the
+     * series screen can fill in once it arrives. Returns the series untouched if
+     * it fails — metadata is a bonus, not a precondition for reading.
+     */
+    override suspend fun loadDetails(series: Series): Series = withContext(Dispatchers.IO) {
+        val manga = series.handle as? SManga ?: return@withContext series
+        val full = runCatching { delegate.getMangaDetails(manga) }
+            .onFailure { Log.w(TAG, "getMangaDetails failed for ${series.id}", it) }
+            .getOrNull() ?: return@withContext series
+        if (full.safeUrl().isBlank()) full.url = manga.safeUrl()
+        val enriched = full.toSeries()
+        // Keep whatever we already had if the details response omits it.
+        series.copy(
+            title = enriched.title.ifBlank { series.title },
+            cover = enriched.cover ?: series.cover,
+            handle = full,
+            author = enriched.author ?: series.author,
+            description = enriched.description ?: series.description,
+            genres = enriched.genres.ifEmpty { series.genres },
+            status = enriched.status ?: series.status,
+        )
+    }
+
     override suspend fun listChapters(series: Series): List<Chapter> = withContext(Dispatchers.IO) {
         val manga = series.handle as? SManga ?: return@withContext emptyList()
         // Extensions return newest-first; this interface wants reading order.
@@ -186,6 +210,14 @@ class TachiyomiSourceAdapter(
         title = safeTitle(),
         cover = thumbnail_url,
         handle = this,
+        author = listOfNotNull(author, artist)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(", ")
+            .takeIf { it.isNotBlank() },
+        description = description?.takeIf { it.isNotBlank() },
+        genres = getGenres().orEmpty(),
+        status = statusLabel(status),
     )
 
     private fun SChapter.toChapter(): Chapter {
@@ -194,6 +226,8 @@ class TachiyomiSourceAdapter(
             id = "${delegate.id}:$chapterUrl",
             name = safeName().ifBlank { chapterUrl.trimEnd('/').substringAfterLast('/') },
             handle = this,
+            dateUploaded = date_upload,
+            scanlator = scanlator?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -249,4 +283,15 @@ fun langLabel(code: String): String = when (code.lowercase()) {
     "da" -> "Danish"
     "fi" -> "Finnish"
     else -> code.uppercase()
+}
+
+/** SManga.status is an int enum; this is its display form. */
+fun statusLabel(status: Int): String? = when (status) {
+    SManga.ONGOING -> "Ongoing"
+    SManga.COMPLETED -> "Completed"
+    SManga.LICENSED -> "Licensed"
+    SManga.PUBLISHING_FINISHED -> "Publishing finished"
+    SManga.CANCELLED -> "Cancelled"
+    SManga.ON_HIATUS -> "On hiatus"
+    else -> null
 }

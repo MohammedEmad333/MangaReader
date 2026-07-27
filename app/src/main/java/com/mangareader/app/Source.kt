@@ -88,17 +88,39 @@ interface Source {
      * let them skip it. Defaults to [getSeries] for sources that do need it.
      */
     suspend fun restoreSeries(id: String, title: String): Series? = getSeries(id)
+
+    /**
+     * Fill in author, description, genres and status for the series screen.
+     *
+     * Separate from chapter loading on purpose: it's an extra network request on
+     * most sources, and one that can fail on its own. Callers treat a failure as
+     * "no metadata", never as a failure to open the series. Defaults to no-op.
+     */
+    suspend fun loadDetails(series: Series): Series = series
 }
 
+/**
+ * Fields past [handle] are metadata for the series screen. They're all optional
+ * because a source may not supply them, and because reopening a stored entry
+ * deliberately skips the details request that would fill them in — see
+ * [Source.restoreSeries]. A blank field means "not known", never "empty".
+ */
 data class Series(
     val id: String,
     val title: String,
     val cover: Any?,
-    val handle: Any? = null
+    val handle: Any? = null,
+    val author: String? = null,
+    val description: String? = null,
+    val genres: List<String> = emptyList(),
+    val status: String? = null
 )
 
 data class Chapter(
     val id: String,
     val name: String,
-    val handle: Any? = null
+    val handle: Any? = null,
+    /** Epoch millis from the source; 0 when it doesn't publish one. */
+    val dateUploaded: Long = 0L,
+    val scanlator: String? = null
 )
