@@ -62,24 +62,25 @@ They generally prefer receiving **complete files to drop in** rather than
 
 ## 2. Current state — it works
 
-As of the UI split commit, verified on device:
+As of commit `7ff563f`, verified on device:
 
 - **26/26 extensions load, 95 sources total.**
 - Browsing, chapter lists, and page rendering work end to end.
 - Library with categories works.
-- Per-source search + pagination + `getSeries` work.
+- Per-source search + pagination work.
 - Extension index filter and cross-source global search work.
-- **Extension sources are cached** between calls (`3e28e81`).
-- **Sources and Extensions tabs reworked** to match Mihon's layout: icons,
-  pinning, Last used, language groups, 18+ badges (`646d959`).
-- **Per-source settings** from `ConfigurableSource` (`03cabb3`).
-- **Global search limited to pinned sources**, with a toggle (`0023c81`).
-- **The Compose UI is no longer one file** — see §4.
+- Extension sources are cached between calls (`3e28e81`).
+- Sources and Extensions tabs match Mihon's layout: icons, pinning, Last used,
+  language groups, 18+ badges (`646d959`).
+- Per-source settings from `ConfigurableSource` (`03cabb3`).
+- Global search limited to pinned sources, with a toggle (`0023c81`).
+- The Compose UI is split across nine files (`4fc763e`) — see §4.
+- Extension **updates** are detected and offered (`e1913c2`).
+- Series screen reworked: cover backdrop, author/status/description/genres,
+  chapter dates, Start/Resume button (`364d1ce`).
 
-`MainActivity.kt` is now **672 lines**; it holds the Activity, `YomuApp` and the
-shared prefs helpers, and nothing else.
-
----
+`MainActivity.kt` is **750 lines** — the Activity, `YomuApp`, and the shared
+prefs helpers.
 
 ## 3. Build environment
 
@@ -154,11 +155,11 @@ implementation("com.squareup.logcat:logcat:0.1")
 | File | Role |
 |---|---|
 | `ExtensionLoader.kt` | Discovers + loads extension APKs. `loadAllCached()`, `invalidate()`, `diagnose()`. |
-| `ExtensionManager.kt` | Repo index fetch + APK install. `loadInstalledSources()` in it is **dead code** — do not use. |
-| `TachiyomiSourceAdapter.kt` | Wraps `CatalogueSource` → app's `Source`. Also holds `langLabel()`. |
+| `ExtensionManager.kt` | Repo index fetch + APK install + `compareVersions()`. `loadInstalledSources()` in it is **dead code** — do not use. |
+| `TachiyomiSourceAdapter.kt` | Wraps `CatalogueSource` → app's `Source`. Also holds `langLabel()`, `statusLabel()`, and the `safe*()` lateinit guards. |
 | `Source.kt` | App's own `Source` interface + `Series`/`Chapter`/`SeriesPage`. |
 | `SourceManager.kt` | `listAllSources()` = local configs + cached adapter-wrapped extensions. |
-| `SourcePrefs.kt` | Pinned source ids + last-used source id. |
+| `SourcePrefs.kt` | Pinned source ids, last-used source id, pinned-only-search flag. |
 | `App.kt` | `Application` subclass; registers Injekt bindings. |
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
 | `Categories.kt` | Categories + series→category assignments. |
@@ -186,19 +187,56 @@ things between them needs no imports — only visibility changes (see §5).
 the screens stay dumb. That's why the split was safe to do mechanically.
 
 ### The app's `Source` interface
-Beyond `id`/`name` and the browse/chapter/page methods, it carries three
-display-only properties, all defaulted so `LocalSource` needs no changes:
+
+Beyond `id`/`name` and the browse/chapter/page methods:
 
 ```kotlin
 val lang: String get() = ""        // "English", "Multi" — blank hides the line
 val iconPkg: String? get() = null  // extension package, for the launcher icon
 val isNsfw: Boolean get() = false  // drives the 18+ badge
+
+suspend fun getSeries(id: String): Series?
+suspend fun restoreSeries(id: String, title: String): Series? = getSeries(id)
+suspend fun loadDetails(series: Series): Series = series
 ```
+
+Everything is defaulted so `LocalSource` needs no changes.
 
 `TachiyomiSourceAdapter` sets `name = delegate.name` and
 `lang = langLabel(delegate.lang)` — **the language is no longer baked into the
-name string**. `langLabel()` maps ISO codes plus Tachiyomi's `all` → "Multi",
-falling back to the uppercased code.
+name string**. `langLabel()` maps ISO codes plus Tachiyomi's `all` → "Multi";
+`statusLabel()` maps `SManga.status`'s int enum to a display string.
+
+**`restoreSeries` vs `getSeries` — this distinction is load-bearing.**
+`getSeries` synthesises a stub SManga from the id and calls `getMangaDetails` on
+it. `restoreSeries` builds the url + title pair that Tachiyomi says a stored
+entry is, marks it `initialized = true`, and makes **no network call at all**.
+Library and History reopen through `restoreSeries`.
+
+The reason: browsing hands `getChapterList` the fully-parsed SManga from the
+catalogue page and never calls `getMangaDetails`. Reopening from the library used
+to call it, and that one extra request was the *only* difference between the two
+paths — so a source with a broken details endpoint could be browsed but not
+reopened from the library. See §5.
+
+`loadDetails` is that details request, moved somewhere it can fail harmlessly.
+`YomuApp.enrichSeries()` fires it after the chapter list is already loading and
+only applies the result if it succeeds *and* the user is still on the same
+series. Metadata is a bonus; it never blocks reading.
+
+### `Series` and `Chapter`
+
+```kotlin
+data class Series(id, title, cover, handle,
+                  author: String?, description: String?,
+                  genres: List<String>, status: String?)
+
+data class Chapter(id, name, handle, dateUploaded: Long, scanlator: String?)
+```
+
+The metadata fields are populated by `loadDetails`, so they're empty on a series
+that has only been restored, and fill in a moment later. `handle` carries the
+real `SManga`/`SChapter` through, which is what extensions actually need.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -282,9 +320,30 @@ Edit/Delete overflow menu, so only local folders get one.
   explicit invalidation is needed.
 
 #### Extensions sub-tab
-**Installed** and **Available** sections, each row showing icon, name,
-`<lang> <version>` and an 18+ badge. Not-yet-installed rows have no package to
-read an icon from, so they fall back to initials.
+**Update available**, **Installed** and **Available** sections, each row showing
+icon, name, `<lang> <version>` and an 18+ badge. Not-yet-installed rows have no
+package to read an icon from, so they fall back to initials.
+
+`fetchAvailable()` keeps the installed `versionName` alongside the boolean, and
+`Extension.hasUpdate` compares it against the index with `compareVersions()` —
+numeric per dotted component, because a string compare puts `1.4.9` after
+`1.4.10`. Non-numeric parts compare as 0, so a malformed version reports "no
+update" rather than a false one. Updating reuses the install flow; the system
+installer treats a higher versionCode on the same package as an upgrade.
+
+#### Series screen (`SourceBrowseScreens.kt`, reworked `364d1ce`)
+Faded cover backdrop under a gradient, 108dp cover, title, author,
+`<status> \u2022 <source>`, an icon action row, tap-to-expand description, genre
+chips, chapter count, then the chapter list. An `ExtendedFloatingActionButton`
+reads Start or Resume and targets the first unread chapter.
+
+- The action row has two items, not Mihon's four: **Add to library** and
+  **Categories**. Download and Tracking don't exist in this app. Categories
+  revives `CategoryAssignDialog`, which had been orphaned for several handoffs.
+- Genre chips scroll horizontally rather than wrapping: `FlowRow` is still an
+  experimental layout API on this Compose version.
+- `formatChapterDate()` renders Today / Yesterday / `d MMM yyyy`, and returns
+  null when the source published no date (`date_upload == 0`).
 
 `ExtensionManager.fetchAvailable()` parses `lang` and `nsfw` out of the repo
 index (they were always in the JSON, just unused) and strips the
@@ -293,6 +352,7 @@ index (they were always in the JSON, just unused) and strips the
 The client-side filter field and "Installed only" chip are unchanged.
 
 ### Routing chain in `YomuApp` — order is load-bearing
+
 A single `if / else if` chain, in this order:
 
 1. reader (`activeChapterIdx` + pages)
@@ -305,6 +365,17 @@ A single `if / else if` chain, in this order:
 Global search sits **below** `SeriesScreen` on purpose: tapping a result opens
 the series (branch 2 wins), and backing out of it falls through to branch 3, so
 the results are still there.
+
+**The adopted-source trap.** Opening a series from Library, History, or a global
+search hit has to set `activeSource` — chapters and pages are loaded through it.
+But that means backing out of `SeriesScreen` drops into branch 4 and shows the
+per-source browse screen, which has no results behind it ("Nothing found in this
+source"). `SeriesOrigin` (BROWSE / LIBRARY / HISTORY / GLOBAL_SEARCH) records how
+the series was reached, and the back handler only keeps the adopted source for
+BROWSE. Leaving global search releases it too, for the same reason.
+
+Note `openGlobalResult` calls `openSeries`, which sets the origin to BROWSE
+unconditionally — so its own origin assignment has to come *after* that call.
 
 ### Global search
 - State is **hoisted into `YomuApp`**, not held inside `GlobalSearchScreen` —
@@ -339,6 +410,31 @@ would silently return empty results even if it compiled.
 **There are two `Source.kt` files.** `com.mangareader.app.Source` (the app's own
 interface) and `eu.kanade.tachiyomi.source.Source` (vendored). Always specify the
 full path when discussing one.
+
+**The vendored model classes use `lateinit`.** `SMangaImpl.url`, `.title` and
+`SChapterImpl.url`, `.name` are all `lateinit var`. Reading one that was never
+assigned throws `UninitializedPropertyAccessException`, which surfaced to the
+user as "lateinit property title has not been initialized" — from a stub whose
+details fetch had failed. **Never read those four directly**;
+`TachiyomiSourceAdapter` has `safeUrl()` / `safeTitle()` / `safeName()` for it.
+Anything new that touches `SManga` or `SChapter` needs the same care.
+
+**A `runCatching` that swallows an error can turn it into a worse one.** The
+above crashed one line *after* the real failure, reporting an uninitialized field
+instead of the network error that caused it. When swallowing, log the original
+(`Log.w` in the adapter does) and make sure the fallback object is actually
+usable.
+
+**Browsing and reopening take different paths through an extension.** Browse
+passes the catalogue-parsed SManga straight to `getChapterList`; reopening used
+to synthesise a stub and call `getMangaDetails` first. If a source works in
+Browse but not from the Library, that asymmetry is the first place to look — see
+§4's note on `restoreSeries`.
+
+**`import androidx.compose.material.icons.filled.List` shadows nothing, but
+don't.** It puts a property named `List` in file scope alongside `List<Foo>` type
+usages. Different namespaces, so it resolves — but it's not worth the risk in a
+CI-only build. Pick another icon.
 
 **Only `material-icons-core` is on the classpath.** Its set is roughly 40 icons
 (Search, MoreVert, Star, Settings, Delete, …). `Icons.Default.PushPin` and the
@@ -375,10 +471,19 @@ boundary.
 
 ### Termux-specific
 
-**Downloads arrive as `.kt.txt`.** Android's download manager renames by MIME
-type; the files are served as `text/plain` and `.kt` isn't in its table, so it
-appends `.txt`. Contents are untouched. Strip it during the copy — see the loop
-in §1. This bites on *every* handoff of a `.kt` file.
+**A filename that already exists in Downloads gets `.txt` appended.** This is
+the collision rule, worked out the hard way: the download manager doesn't
+overwrite and doesn't number, it appends `.txt`. So the *same* file is
+`MainActivity.kt` on a clean Downloads and `MainActivity.kt.txt` if a previous
+copy is still sitting there — which is why the suffix appeared inconsistent
+across sessions. `.md` behaves the same way.
+
+Contents are untouched either way. Two consequences:
+
+- **Clear Downloads after every push** (`rm ~/storage/downloads/*.kt`). This is
+  the actual fix; everything else is working around it.
+- **Prefer explicit filenames over a glob.** A `*.kt.txt` loop will happily copy
+  a stale file from an earlier session over a newer one and silently revert it.
 
 **Never keep the git repo on `/sdcard`.** A clone at
 `~/storage/shared/MangaReader` (i.e. `/storage/emulated/0/...`) gives
@@ -426,38 +531,43 @@ For search coverage, the global search screen prints
 
 Roughly in order of value:
 
-1. **Global search paging and persistence.** Restricting the fan-out to pinned
+1. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
+   will fail. Restoring needs a WebView flow + the interceptor that was stripped
+   out of the vendored API — the biggest single item left.
+2. **Global search paging and persistence.** Restricting the fan-out to pinned
    sources is done (`0023c81`). Still open: each row shows page 1 only, with no
    way to load more within a source, and the whole result set is lost on app
    restart.
-2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
-   will fail. Restoring needs a WebView flow + the interceptor that was stripped
-   out of the vendored API — the biggest single item left.
 3. **Sort/filter for search.** `getFilterList()` is available on every
    `CatalogueSource` and is currently unused — `searchSeries` passes an empty
-   `FilterList()`.
+   `FilterList()`. This is also what the Browse top bar's missing filter icon
+   would drive.
 4. **`OBSOLETE` badge.** Mihon marks installed extensions that no longer appear
    in the repo index. The Extensions list is built from the index only, so
    installed-but-absent packages aren't visible at all; they'd have to be merged
-   in from `ExtensionLoader` first.
+   in from `ExtensionLoader` first. Update detection (`e1913c2`) already does the
+   version half of this.
 5. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
    single- and multi-select lists and text fields are rendered; any other
    `Preference` subclass is skipped rather than shown as a dead row. Extensions
    that do their real work in an `OnPreferenceChangeListener` are handled (the
-   listener is called before the value is written), but nothing renders a
-   `Preference` that has no key.
-6. **`CategoryAssignDialog` is orphaned.** Still defined (now in
-   `LibraryScreens.kt`) but nothing calls it. Could be revived as a long-press
-   action on library items.
+   listener runs before the value is written), but nothing renders a
+   `Preference` with no key.
+6. **Covers can 403.** Some sources reject hotlinked thumbnails because Coil
+   fetches them without the source's headers (Referer / User-Agent). The reader
+   already downloads pages through the source's own OkHttp client
+   (`TachiyomiSourceAdapter.downloadPage`); covers don't. A Coil `Fetcher` backed
+   by the same client would fix it.
 7. **One extension is lib 1.6** (`AHottie`, v1.6.4). It's inside the accepted
    version range but built against the newer API; it may fail at runtime.
 8. **`HttpException.kt`** was not present in the vendored network package. Some
    extensions catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
    `NoClassDefFoundError` for it appears at runtime, it's a ~3-line class to add.
-9. **`YomuApp` is still ~550 lines.** The screens are split out, but all state
-   and every handler still lives in one composable. Hoisting it into a state
-   holder / view model is the next structural step, and unlike the file split it
-   is *not* mechanical.
+9. **`YomuApp` is ~600 lines.** The screens are split out, but all state and
+   every handler still lives in one composable, and the routing chain plus
+   `SeriesOrigin` now encode real navigation rules in `if / else if`. Hoisting
+   this into a state holder — or adopting a real nav library — is the next
+   structural step, and unlike the file split it is *not* mechanical.
 10. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this app
     has two. Neither is started.
 
@@ -485,7 +595,12 @@ Rework Sources and Extensions tabs                        646d959  verified OK
 Update handoff for source cache and Browse tab rework     362b003
 Add per-source settings from ConfigurableSource           03cabb3  verified OK
 Limit global search to pinned sources with a toggle       0023c81  verified OK
-Split MainActivity into per-screen files
+Split MainActivity into per-screen files                  4fc763e  verified OK
+Fix lateinit crash when a source's details fetch fails    ddaed36  verified OK
+Detect and offer extension updates                        e1913c2  verified OK
+Reopen library entries without a details fetch            c5887f3  verified OK
+Rework series screen with backdrop, metadata, resume      364d1ce  verified OK
+Return to the right screen when backing out of a series   7ff563f
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
