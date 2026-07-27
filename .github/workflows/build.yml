@@ -4,9 +4,19 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Also build the signed release APK"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+
+# A new push cancels an in-flight build of an older commit.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,14 +32,20 @@ jobs:
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+          # Explicit: write the cache from main so later runs can read it.
+          cache-read-only: false
 
-      - name: Build APKs
+      - name: Build debug APK
+        run: gradle assembleDebug --build-cache
+
+      - name: Build release APK
+        if: inputs.release
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-        run: gradle assembleDebug assembleRelease
+        run: gradle assembleRelease --build-cache
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -42,6 +58,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release.apk \
+          gh release create latest app/build/outputs/apk/debug/app-debug.apk \
+            $([ -f app/build/outputs/apk/release/app-release.apk ] && echo app/build/outputs/apk/release/app-release.apk) \
             -t "Latest debug build" -p \
             -n "Auto-built from commit ${{ github.sha }}"
