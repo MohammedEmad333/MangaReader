@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -120,10 +122,23 @@ fun YomuApp() {
     // bumped whenever a read flag / resume position changes, to re-read prefs in lists
     var readTick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        extensionSources = withContext(Dispatchers.IO) {
-            runCatching { ExtensionManager.loadInstalledSources(context) }.getOrDefault(emptyList())
+    // Re-scan installed extensions every time the app comes back to the foreground,
+    // so returning from the system installer picks up the new package. Fires on
+    // first launch too, which is why this replaces the old one-shot LaunchedEffect.
+    val hostActivity = context as? ComponentActivity
+    DisposableEffect(hostActivity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch {
+                    extensionSources = withContext(Dispatchers.IO) {
+                        runCatching { ExtensionManager.loadInstalledSources(context) }
+                            .getOrDefault(emptyList())
+                    }
+                }
+            }
         }
+        hostActivity?.lifecycle?.addObserver(observer)
+        onDispose { hostActivity?.lifecycle?.removeObserver(observer) }
     }
 
     fun openSource(source: Source) {
