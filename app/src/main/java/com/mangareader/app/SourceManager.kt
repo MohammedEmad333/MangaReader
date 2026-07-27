@@ -78,7 +78,10 @@ object SourceManager {
         val activeSources = list(context).mapNotNull { build(context, it) }
         
         // 2. Load the dynamic APK extension sources
-        val extensionSources = ExtensionManager.loadInstalledSources(context)
+        val extensionSources = ExtensionLoader.loadAll(context)
+            .flatMap { it.sources }
+            .filterIsInstance<CatalogueSource>()
+            .map { TachiyomiSourceAdapter(it, context) }
         
         // 3. Combine them together into a single list
         return activeSources + extensionSources

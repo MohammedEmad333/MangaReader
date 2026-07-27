@@ -23,7 +23,7 @@ interface Source {
 data class Series(
     val id: String,
     val title: String,
-    val cover: File?,
+    val cover: Any?,
     val handle: Any? = null
 )
 
