@@ -10,7 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Required for com.github.mihonapp:injekt — it is not on mavenCentral.
+        maven(url = "https://www.jitpack.io")
     }
 }
 rootProject.name = "MangaReader"
 include(":app")
+include(":source-api")
