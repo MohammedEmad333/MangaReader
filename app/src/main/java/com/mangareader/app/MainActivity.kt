@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -889,6 +890,7 @@ private data class BrowseRow(
     val lang: String,
     val iconPkg: String?,
     val isNsfw: Boolean,
+    val configurable: Boolean,
     val config: SourceConfig?,
     val source: Source?
 )
@@ -908,7 +910,8 @@ private fun BrowseSourceRow(
     onOpen: () -> Unit,
     onTogglePin: () -> Unit,
     onEditConfig: ((SourceConfig) -> Unit)? = null,
-    onDeleteConfig: ((SourceConfig) -> Unit)? = null
+    onDeleteConfig: ((SourceConfig) -> Unit)? = null,
+    onOpenSettings: ((Source) -> Unit)? = null
 ) {
     var menuOpen by remember(row.id) { mutableStateOf(false) }
     // Only local folders carry a config, and only they get the Edit/Delete menu.
@@ -928,6 +931,12 @@ private fun BrowseSourceRow(
         modifier = Modifier.clickable { onOpen() },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val src = row.source
+                if (row.configurable && src != null) {
+                    IconButton(onClick = { onOpenSettings?.invoke(src) }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Source settings")
+                    }
+                }
                 IconButton(onClick = onTogglePin) {
                     Icon(
                         Icons.Default.Star,
@@ -988,6 +997,7 @@ private fun BrowseTab(
     // a bottom-nav switch or backing out of a source always causes.
     var pinnedIds by remember { mutableStateOf(SourcePrefs.pinned(context)) }
     val lastUsedId = remember { SourcePrefs.lastUsed(context) }
+    var settingsFor by remember { mutableStateOf<Source?>(null) }
 
     val rows = remember(configs, extensions) {
         configs.map { cfg ->
@@ -997,6 +1007,7 @@ private fun BrowseTab(
                 lang = if (cfg.isConfigured) "Local" else "Local \u2014 not configured",
                 iconPkg = null,
                 isNsfw = false,
+                configurable = false,
                 config = cfg,
                 source = null
             )
@@ -1007,6 +1018,7 @@ private fun BrowseTab(
                 lang = src.lang,
                 iconPkg = src.iconPkg,
                 isNsfw = src.isNsfw,
+                configurable = SourceSettings.isConfigurable(src),
                 config = null,
                 source = src
             )
@@ -1065,7 +1077,8 @@ private fun BrowseTab(
                                 pinnedIds = SourcePrefs.togglePin(context, lastUsedRow.id)
                             },
                             onEditConfig = onEdit,
-                            onDeleteConfig = onDelete
+                            onDeleteConfig = onDelete,
+                            onOpenSettings = { settingsFor = it }
                         )
                     }
                 }
@@ -1079,7 +1092,8 @@ private fun BrowseTab(
                             onOpen = { openRow(row) },
                             onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
                             onEditConfig = onEdit,
-                            onDeleteConfig = onDelete
+                            onDeleteConfig = onDelete,
+                            onOpenSettings = { settingsFor = it }
                         )
                     }
                 }
@@ -1093,7 +1107,8 @@ private fun BrowseTab(
                             onOpen = { openRow(row) },
                             onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
                             onEditConfig = onEdit,
-                            onDeleteConfig = onDelete
+                            onDeleteConfig = onDelete,
+                            onOpenSettings = { settingsFor = it }
                         )
                     }
                 }
@@ -1137,6 +1152,228 @@ private fun BrowseTab(
                     .weight(1f),
                 onInstalled = onExtensionsChanged
             )
+        }
+    }
+
+    val settingsSource = settingsFor
+    if (settingsSource != null) {
+        SourceSettingsDialog(
+            source = settingsSource,
+            onDismiss = { settingsFor = null }
+        )
+    }
+}
+
+/** One row inside the source settings dialog. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SourcePrefRow(
+    title: String,
+    summary: String?,
+    onClick: () -> Unit,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { if (summary != null) Text(summary) },
+        trailingContent = trailing,
+        modifier = Modifier.clickable { onClick() }
+    )
+}
+
+/**
+ * Settings for one extension source, read from its ConfigurableSource screen.
+ *
+ * Every edit bumps `revision`, which re-runs SourceSettings.load and so re-reads
+ * the persisted values — the Preference objects are rebuilt rather than mutated,
+ * which keeps this list honest about what the extension will actually see.
+ */
+@Composable
+private fun SourceSettingsDialog(source: Source, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var revision by remember { mutableIntStateOf(0) }
+    val items = remember(source.id, revision) { SourceSettings.load(context, source) }
+    var editing by remember { mutableStateOf<SourcePrefItem?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(source.name) },
+        text = {
+            if (items.isEmpty()) {
+                Text("This source doesn't expose any settings.")
+            } else {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    items.forEach { item ->
+                        when (item) {
+                            is SourcePrefItem.Toggle -> SourcePrefRow(
+                                title = item.title,
+                                summary = item.summary,
+                                onClick = {
+                                    SourceSettings.apply(context, source, item, !item.checked)
+                                    revision++
+                                },
+                                trailing = {
+                                    Switch(
+                                        checked = item.checked,
+                                        onCheckedChange = { checked ->
+                                            SourceSettings.apply(context, source, item, checked)
+                                            revision++
+                                        }
+                                    )
+                                }
+                            )
+
+                            is SourcePrefItem.Choice -> {
+                                val label = SourceSettings.labelFor(item)
+                                SourcePrefRow(
+                                    title = item.title,
+                                    summary = if (label.isNotBlank()) label else item.summary,
+                                    onClick = { editing = item }
+                                )
+                            }
+
+                            is SourcePrefItem.MultiChoice -> SourcePrefRow(
+                                title = item.title,
+                                summary = "${item.current.size} selected",
+                                onClick = { editing = item }
+                            )
+
+                            is SourcePrefItem.TextEntry -> SourcePrefRow(
+                                title = item.title,
+                                summary = if (item.current.isNotBlank()) item.current
+                                else item.summary,
+                                onClick = { editing = item }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+
+    val target = editing
+    if (target != null) {
+        when (target) {
+            // Toggles are edited in place; they never open a second dialog.
+            is SourcePrefItem.Toggle -> Unit
+
+            is SourcePrefItem.Choice -> AlertDialog(
+                onDismissRequest = { editing = null },
+                title = { Text(target.title) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 380.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        target.entries.forEachIndexed { idx, label ->
+                            val value = target.values.getOrNull(idx)
+                            if (value != null) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            SourceSettings.apply(context, source, target, value)
+                                            revision++
+                                            editing = null
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = value == target.current,
+                                        onClick = null
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(label)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { editing = null }) { Text("Cancel") }
+                }
+            )
+
+            is SourcePrefItem.MultiChoice -> {
+                var selected by remember(target.key) { mutableStateOf(target.current) }
+                AlertDialog(
+                    onDismissRequest = { editing = null },
+                    title = { Text(target.title) },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 380.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            target.entries.forEachIndexed { idx, label ->
+                                val value = target.values.getOrNull(idx)
+                                if (value != null) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selected = if (value in selected) selected - value
+                                                else selected + value
+                                            }
+                                            .padding(vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = value in selected,
+                                            onCheckedChange = null
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(label)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            SourceSettings.apply(context, source, target, selected)
+                            revision++
+                            editing = null
+                        }) { Text("Save") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { editing = null }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            is SourcePrefItem.TextEntry -> {
+                var draft by remember(target.key) { mutableStateOf(target.current) }
+                AlertDialog(
+                    onDismissRequest = { editing = null },
+                    title = { Text(target.title) },
+                    text = {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            SourceSettings.apply(context, source, target, draft)
+                            revision++
+                            editing = null
+                        }) { Text("Save") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { editing = null }) { Text("Cancel") }
+                    }
+                )
+            }
         }
     }
 }

@@ -64,6 +64,10 @@ dependencies {
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // :source-api has this as `implementation`, so it isn't on this module's
+    // compile classpath. Needed here to build the PreferenceScreen that
+    // ConfigurableSource.setupPreferenceScreen() populates.
+    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation(project(":source-api"))
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }

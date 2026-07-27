@@ -31,6 +31,13 @@ class TachiyomiSourceAdapter(
 
     override val id: String = "tachi:${delegate.id}"
 
+    /**
+     * The wrapped extension source. Needed by callers that have to reach the
+     * Tachiyomi-side API rather than this app's — currently only the settings
+     * screen, which checks for ConfigurableSource.
+     */
+    val catalogueSource: CatalogueSource get() = delegate
+
     // Name and language are separate fields now: the sources list shows the
     // language as its own line under the name, the way Mihon does.
     override val name: String = delegate.name
