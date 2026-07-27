@@ -595,6 +595,7 @@ private fun HistoryScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreTab() {
     val context = LocalContext.current
