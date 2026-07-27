@@ -9,11 +9,12 @@ data class Category(val id: String, val name: String)
 
 /**
  * User-defined categories and a mapping of series -> categories.
- * Assignments are keyed by series id (folder URI or "komga:<id>"),
+ * Assignments are keyed by series id (folder URI, or "<sourceId>:<url>"),
  * so they survive rescans and work across sources.
  */
 object Categories {
     private const val KEY_CATS = "categories_json"
+    const val DEFAULT_ID = "default"
     private const val KEY_ASSIGN = "category_assign_json"
 
     private fun prefs(c: Context) =
@@ -39,9 +40,28 @@ object Categories {
     }
 
     fun add(context: Context, name: String) {
+        addAndGet(context, name)
+    }
+
+    /** Adds a category and returns it, so callers can pre-select what they just made. */
+    fun addAndGet(context: Context, name: String): Category {
         val cats = list(context).toMutableList()
-        cats.add(Category(UUID.randomUUID().toString(), name))
+        val created = Category(UUID.randomUUID().toString(), name)
+        cats.add(created)
         saveCats(context, cats)
+        return created
+    }
+
+    /**
+     * The category everything lands in when the user doesn't pick one.
+     * Created on first use so a fresh install always has somewhere to save to.
+     */
+    fun ensureDefault(context: Context): Category {
+        val existing = list(context)
+        existing.firstOrNull { it.id == DEFAULT_ID }?.let { return it }
+        val created = Category(DEFAULT_ID, "Default")
+        saveCats(context, listOf(created) + existing)
+        return created
     }
 
     fun rename(context: Context, id: String, name: String) {
@@ -49,6 +69,7 @@ object Categories {
     }
 
     fun remove(context: Context, id: String) {
+        if (id == DEFAULT_ID) return
         saveCats(context, list(context).filterNot { it.id == id })
         // purge this category from all assignments
         val map = assignments(context)

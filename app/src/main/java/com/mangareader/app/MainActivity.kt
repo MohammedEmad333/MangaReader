@@ -134,6 +134,9 @@ fun YomuApp() {
     // bumped whenever a read flag / resume position changes, to re-read prefs in lists
     var readTick by remember { mutableIntStateOf(0) }
 
+    // bumped whenever the library changes, to re-read it in LibraryTab
+    var libraryTick by remember { mutableIntStateOf(0) }
+
     // Re-scan installed extensions every time the app comes back to the foreground,
     // so returning from the system installer picks up the new package. Fires on
     // first launch too, which is why this replaces the old one-shot LaunchedEffect.
@@ -209,6 +212,31 @@ fun YomuApp() {
                 activeChapterIdx = index
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not open this chapter"
+            }
+            isLoading = false
+        }
+    }
+
+    /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
+    fun openFromLibrary(entry: LibraryEntry) {
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val src = SourceManager.listAllSources(context)
+                        .firstOrNull { it.id == entry.sourceId }
+                        ?: throw IllegalStateException("That source is no longer installed")
+                    val series = src.listSeries().firstOrNull { it.id == entry.seriesId }
+                        ?: throw IllegalStateException("That series is no longer listed by its source")
+                    Triple(src, series, src.listChapters(series))
+                }
+                activeSource = result.first
+                activeSourceId = result.first.id
+                activeSeries = result.second
+                chapterList = result.third
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not open this series"
             }
             isLoading = false
         }
@@ -311,6 +339,7 @@ fun YomuApp() {
                 ReadState.setRead(context, k, !ReadState.isRead(context, k))
                 readTick++
             },
+            onLibraryChanged = { libraryTick++ },
             onBack = {
                 activeSeries = null
                 chapterList = emptyList()
@@ -339,7 +368,7 @@ fun YomuApp() {
                     NavigationBarItem(
                         selected = currentTab == 0,
                         onClick = { currentTab = 0 },
-                        label = { Text("Sources") },
+                        label = { Text("Library") },
                         icon = { Text("📚") }
                     )
                     NavigationBarItem(
@@ -368,10 +397,18 @@ fun YomuApp() {
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
                 when (currentTab) {
-                    0 -> SourcesTab(
+                    0 -> LibraryTab(
+                        libraryTick = libraryTick,
+                        error = errorMessage,
+                        onOpen = { openFromLibrary(it) },
+                        onRemove = {
+                            Library.remove(context, it.seriesId)
+                            libraryTick++
+                        }
+                    )
+                    1 -> BrowseTab(
                         configs = configs,
                         extensions = extensionSources,
-                        error = errorMessage,
                         onAdd = {
                             editingConfig = SourceConfig(SourceManager.newId(), "local", "")
                             showSourceDialog = true
@@ -385,11 +422,7 @@ fun YomuApp() {
                         onDelete = {
                             SourceManager.remove(context, it.id)
                             configs = SourceManager.list(context)
-                        }
-                    )
-                    1 -> BrowseTab(
-                        extensions = extensionSources,
-                        onOpenExtension = { openSource(it) },
+                        },
                         onExtensionsChanged = {
                             scope.launch {
                                 extensionSources = withContext(Dispatchers.IO) {
@@ -484,21 +517,59 @@ private fun ErrorBanner(error: String?) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SourcesTab(
-    configs: List<SourceConfig>,
-    extensions: List<Source>,
+private fun LibraryTab(
+    libraryTick: Int,
     error: String?,
-    onAdd: () -> Unit,
-    onOpenConfig: (SourceConfig) -> Unit,
-    onOpenExtension: (Source) -> Unit,
-    onEdit: (SourceConfig) -> Unit,
-    onDelete: (SourceConfig) -> Unit
+    onOpen: (LibraryEntry) -> Unit,
+    onRemove: (LibraryEntry) -> Unit
 ) {
+    val context = LocalContext.current
+
+    // Re-read on every tick so adds/removes show up immediately.
+    val entries = remember(libraryTick) { Library.list(context) }
+    val categories = remember(libraryTick) { Categories.list(context) }
+    var activeCategory by remember { mutableStateOf<String?>(null) }
+
+    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+        "small" -> 88.dp
+        "large" -> 140.dp
+        else -> 110.dp
+    }
+
+    val shown = remember(entries, activeCategory, libraryTick) {
+        val cat = activeCategory
+        if (cat == null) entries
+        else entries.filter { Categories.categoriesFor(context, it.seriesId).contains(cat) }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("My sources") })
+        TopAppBar(title = { Text("Library") })
         ErrorBanner(error)
 
-        if (configs.isEmpty() && extensions.isEmpty()) {
+        if (categories.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = activeCategory == null,
+                    onClick = { activeCategory = null },
+                    label = { Text("All") }
+                )
+                categories.forEach { cat ->
+                    FilterChip(
+                        selected = activeCategory == cat.id,
+                        onClick = { activeCategory = cat.id },
+                        label = { Text(cat.name) }
+                    )
+                }
+            }
+        }
+
+        if (shown.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -507,89 +578,65 @@ private fun SourcesTab(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    "No sources yet.",
+                    if (entries.isEmpty()) "Your library is empty."
+                    else "Nothing in this category yet.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Add a local folder below, or install extensions from Browse.",
+                    "Open a series from Browse and tap \u201cAdd to library\u201d.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = onAdd) { Text("Add a source") }
             }
         } else {
-            LazyColumn(
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = coverMinDp),
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
+                    .padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(configs) { cfg ->
-                    var menuOpen by remember(cfg.id) { mutableStateOf(false) }
-                    ListItem(
-                        headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
-                        supportingContent = {
-                            Text(
-                                if (cfg.isConfigured) typeLabel(cfg.type)
-                                else typeLabel(cfg.type) + " \u2014 not configured"
-                            )
-                        },
-                        modifier = Modifier.clickable { onOpenConfig(cfg) },
-                        trailingContent = {
-                            Box {
-                                IconButton(onClick = { menuOpen = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                                }
-                                DropdownMenu(
-                                    expanded = menuOpen,
-                                    onDismissRequest = { menuOpen = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Edit") },
-                                        onClick = { menuOpen = false; onEdit(cfg) }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Delete") },
-                                        onClick = { menuOpen = false; onDelete(cfg) }
-                                    )
-                                }
+                items(shown) { entry ->
+                    var menuOpen by remember(entry.seriesId) { mutableStateOf(false) }
+                    Column(
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .pointerInput(entry.seriesId) {
+                                detectTapGestures(
+                                    onTap = { onOpen(entry) },
+                                    onLongPress = { menuOpen = true }
+                                )
+                            }
+                    ) {
+                        CoverImage(
+                            cover = entry.cover.ifBlank { null },
+                            title = entry.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            entry.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Box {
+                            DropdownMenu(
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from library") },
+                                    onClick = { menuOpen = false; onRemove(entry) }
+                                )
                             }
                         }
-                    )
-                    HorizontalDivider()
-                }
-
-                if (extensions.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Installed extensions",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                    items(extensions) { src ->
-                        ListItem(
-                            headlineContent = { Text(src.name) },
-                            supportingContent = { Text("Extension") },
-                            modifier = Modifier.clickable { onOpenExtension(src) }
-                        )
-                        HorizontalDivider()
-                    }
-                }
-
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onAdd,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Add a source") }
                     }
                 }
             }
@@ -602,8 +649,13 @@ private fun SourcesTab(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BrowseTab(
+    configs: List<SourceConfig>,
     extensions: List<Source>,
+    onAdd: () -> Unit,
+    onOpenConfig: (SourceConfig) -> Unit,
     onOpenExtension: (Source) -> Unit,
+    onEdit: (SourceConfig) -> Unit,
+    onDelete: (SourceConfig) -> Unit,
     onExtensionsChanged: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -616,26 +668,65 @@ private fun BrowseTab(
         }
 
         if (tab == 0) {
-            if (extensions.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "No extension sources yet. Install some from the Extensions tab.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(24.dp)
-                    )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                if (configs.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Local sources",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                    items(configs) { cfg ->
+                        var menuOpen by remember(cfg.id) { mutableStateOf(false) }
+                        ListItem(
+                            headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
+                            supportingContent = {
+                                Text(
+                                    if (cfg.isConfigured) typeLabel(cfg.type)
+                                    else typeLabel(cfg.type) + " \u2014 not configured"
+                                )
+                            },
+                            modifier = Modifier.clickable { onOpenConfig(cfg) },
+                            trailingContent = {
+                                Box {
+                                    IconButton(onClick = { menuOpen = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit") },
+                                            onClick = { menuOpen = false; onEdit(cfg) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete") },
+                                            onClick = { menuOpen = false; onDelete(cfg) }
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                        HorizontalDivider()
+                    }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f)
-                ) {
+
+                if (extensions.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Extension sources",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
                     items(extensions) { src ->
                         ListItem(
                             headlineContent = { Text(src.name) },
@@ -643,6 +734,37 @@ private fun BrowseTab(
                             modifier = Modifier.clickable { onOpenExtension(src) }
                         )
                         HorizontalDivider()
+                    }
+                }
+
+                if (configs.isEmpty() && extensions.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No sources yet. Add a local folder, or install " +
+                                    "extensions from the Extensions tab.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onAdd,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Add a local source") }
                     }
                 }
             }
@@ -916,11 +1038,14 @@ private fun SeriesScreen(
     readTick: Int,
     onOpen: (Int) -> Unit,
     onToggleRead: (Chapter) -> Unit,
+    onLibraryChanged: () -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
+    var showAddToLibrary by remember { mutableStateOf(false) }
+    var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -946,7 +1071,15 @@ private fun SeriesScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { showCategories = true }) { Text("Tags") }
+            if (inLibrary) {
+                TextButton(onClick = {
+                    Library.remove(context, series.id)
+                    inLibrary = false
+                    onLibraryChanged()
+                }) { Text("In library \u2713") }
+            } else {
+                TextButton(onClick = { showAddToLibrary = true }) { Text("+ Library") }
+            }
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         ErrorBanner(error)
@@ -987,6 +1120,127 @@ private fun SeriesScreen(
     if (showCategories) {
         CategoryAssignDialog(seriesId = series.id, onDismiss = { showCategories = false })
     }
+
+    if (showAddToLibrary) {
+        AddToLibraryDialog(
+            series = series,
+            sourceId = sourceId,
+            onDismiss = { showAddToLibrary = false },
+            onSaved = {
+                showAddToLibrary = false
+                inLibrary = true
+                onLibraryChanged()
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddToLibraryDialog(
+    series: Series,
+    sourceId: String,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val context = LocalContext.current
+
+    // Guarantees there is always at least one category to save into.
+    val default = remember { Categories.ensureDefault(context) }
+    var cats by remember { mutableStateOf(Categories.list(context)) }
+    var selected by remember { mutableStateOf(setOf(default.id)) }
+    var newName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to library") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    series.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                HorizontalDivider()
+                Text(
+                    "Categories",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    cats.forEach { cat ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selected = if (selected.contains(cat.id)) {
+                                        selected - cat.id
+                                    } else {
+                                        selected + cat.id
+                                    }
+                                }
+                        ) {
+                            Checkbox(
+                                checked = selected.contains(cat.id),
+                                onCheckedChange = { checked ->
+                                    selected = if (checked) selected + cat.id else selected - cat.id
+                                }
+                            )
+                            Text(cat.name)
+                        }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("New category") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        enabled = newName.isNotBlank(),
+                        onClick = {
+                            val created = Categories.addAndGet(context, newName.trim())
+                            cats = Categories.list(context)
+                            selected = selected + created.id
+                            newName = ""
+                        }
+                    ) { Text("Add") }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                // Never save with zero categories; fall back to Default.
+                val finalCats = if (selected.isEmpty()) setOf(default.id) else selected
+                Library.add(
+                    context,
+                    LibraryEntry(
+                        seriesId = series.id,
+                        sourceId = sourceId,
+                        title = series.title,
+                        cover = (series.cover as? String)
+                            ?: (series.cover as? java.io.File)?.absolutePath
+                            ?: "",
+                        addedAt = System.currentTimeMillis()
+                    )
+                )
+                Categories.setCategoriesFor(context, series.id, finalCats)
+                onSaved()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
