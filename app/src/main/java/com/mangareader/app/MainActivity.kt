@@ -1,4 +1,4 @@
-package com.example.yomu
+package com.mangareader.app
 
 import android.content.Context
 import android.content.SharedPreferences
