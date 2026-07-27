@@ -17,6 +17,7 @@ object SourcePrefs {
 
     private const val KEY_PINNED = "pinned_sources"
     private const val KEY_LAST_USED = "last_used_source"
+    private const val KEY_PINNED_ONLY_SEARCH = "global_search_pinned_only"
 
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
@@ -45,5 +46,19 @@ object SourcePrefs {
 
     fun setLastUsed(context: Context, id: String) {
         prefs(context).edit().putString(KEY_LAST_USED, id).apply()
+    }
+
+    /**
+     * Whether global search should fan out to pinned sources only.
+     *
+     * Defaults to true, which is safe even before anything is pinned: the search
+     * falls back to every searchable source when the pinned subset is empty, so
+     * a fresh install behaves exactly as it did before.
+     */
+    fun pinnedOnlySearch(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PINNED_ONLY_SEARCH, true)
+
+    fun setPinnedOnlySearch(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PINNED_ONLY_SEARCH, value).apply()
     }
 }
