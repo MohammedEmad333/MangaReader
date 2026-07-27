@@ -3,23 +3,17 @@
 
     <!-- Required to download JSON and APKs -->
     <uses-permission android:name="android.permission.INTERNET" />
-    
+
     <!-- Required to prompt the user to install an APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Lets us enumerate installed extension packages on Android 11+.
-         Tachiyomi/Mihon use this same permission for the same reason. -->
+         This is what ExtensionLoader relies on to find packages declaring
+         the tachiyomi.extension feature. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!-- Required for Android 11+ to detect your installed extensions -->
-    <queries>
-        <intent>
-            <action android:name="com.mangareader.app.EXTENSION" />
-        </intent>
-    </queries>
-    
-
     <application
+        android:name=".App"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -28,16 +22,14 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <provider
-    android:name="androidx.core.content.FileProvider"
-    android:authorities="${applicationId}.fileprovider" 
-    android:exported="false"
-    android:grantUriPermissions="true">
-    <meta-data
-        android:name="android.support.FILE_PROVIDER_PATHS"
-        android:resource="@xml/file_paths" />
-</provider>
-
-        
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <activity
             android:name=".MainActivity"
@@ -47,6 +39,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 
 </manifest>
