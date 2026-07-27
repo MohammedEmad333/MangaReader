@@ -62,7 +62,7 @@ They generally prefer receiving **complete files to drop in** rather than
 
 ## 2. Current state — it works
 
-As of commit `646d959`, verified on device:
+As of the UI split commit, verified on device:
 
 - **26/26 extensions load, 95 sources total.**
 - Browsing, chapter lists, and page rendering work end to end.
@@ -72,8 +72,12 @@ As of commit `646d959`, verified on device:
 - **Extension sources are cached** between calls (`3e28e81`).
 - **Sources and Extensions tabs reworked** to match Mihon's layout: icons,
   pinning, Last used, language groups, 18+ badges (`646d959`).
+- **Per-source settings** from `ConfigurableSource` (`03cabb3`).
+- **Global search limited to pinned sources**, with a toggle (`0023c81`).
+- **The Compose UI is no longer one file** — see §4.
 
-`MainActivity.kt` is now **2368 lines**.
+`MainActivity.kt` is now **672 lines**; it holds the Activity, `YomuApp` and the
+shared prefs helpers, and nothing else.
 
 ---
 
@@ -158,7 +162,28 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `App.kt` | `Application` subclass; registers Injekt bindings. |
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
 | `Categories.kt` | Categories + series→category assignments. |
-| `MainActivity.kt` | **2368 lines**, all Compose UI in one file. |
+| `SourceSettings.kt` | Reads `ConfigurableSource` preferences into a Compose-renderable model. |
+| `MainActivity.kt` | Activity, `YomuApp` (all shared screen state), prefs helpers. |
+
+### Compose UI file layout
+`MainActivity.kt` used to hold every screen. It was split once it passed 2600
+lines; the cut is by screen, and **all files are in the same package**, so moving
+things between them needs no imports — only visibility changes (see §5).
+
+| File | Holds |
+|---|---|
+| `MainActivity.kt` | `MainActivity`, `YomuApp`, `prefs`/`chapterKeyOf`/`savedPage`/`savePage`/`isIncognito`, `GlobalResult`, `ResumeTarget`, global-search constants |
+| `Ui.kt` | `CoverImage`, `SourceIcon`, `SectionHeader`, `NsfwBadge`, `ErrorBanner` |
+| `BrowseScreen.kt` | `BrowseTab`, `BrowseSourceRow`, `BrowseRow`, `langRank`, `ExtensionsScreen`, `ExtensionRow` |
+| `SourceSettingsUi.kt` | `SourceSettingsDialog`, `SourcePrefRow` |
+| `GlobalSearchScreen.kt` | `GlobalSearchScreen` |
+| `SourceBrowseScreens.kt` | `LibraryScreen` (the **per-source browse** screen), `SeriesScreen` |
+| `LibraryScreens.kt` | `LibraryTab`, `AddToLibraryDialog`, `CategoryAssignDialog` |
+| `ReaderScreen.kt` | `ReaderScreen` |
+| `MoreScreens.kt` | `MoreTab`, `HistoryScreen`, `ExtensionReposDialog`, `CategoryManagerDialog`, `SourceDialog` |
+
+`YomuApp` still owns all cross-screen state and passes it down as parameters, so
+the screens stay dumb. That's why the split was safe to do mechanically.
 
 ### The app's `Source` interface
 Beyond `id`/`name` and the browse/chapter/page methods, it carries three
@@ -325,6 +350,17 @@ large artifact; decide deliberately.
 working; it lives on the per-source browse screen, and the Browse top bar simply
 had no `actions`. Check where a feature is wired before assuming the build failed.
 
+**Top-level `private` is file-scoped in Kotlin.** This is the whole story of the
+UI split: a `private fun LibraryTab(...)` moved to another file becomes invisible
+to `YomuApp`. Every top-level declaration that crosses a file boundary is now
+`internal`. Same package means no imports are needed between these files — only
+the visibility keyword matters.
+
+**When adding a new UI file, copy `MainActivity.kt`'s whole import block.** The
+imports are mostly wildcards (`androidx.compose.foundation.layout.*`,
+`material3.*`, `runtime.*`) and unused imports are warnings, never errors. This
+is what made the split safe to do without a compiler.
+
 **Watch for missing braces when editing `MainActivity.kt`.** A dropped `}` in a
 `DisposableEffect` produced ~40 cascading errors ("Modifier 'private' is not
 applicable to 'local function'"). That signature = unclosed lambda earlier.
@@ -390,34 +426,38 @@ For search coverage, the global search screen prints
 
 Roughly in order of value:
 
-1. **Per-source settings.** Extensions implementing `ConfigurableSource` expose
-   preferences (language, mirror, image quality). No UI reaches them yet; some
-   sources won't behave correctly until they're set. Mihon puts this behind the
-   gear icon on each installed extension row — that row already exists
-   (`ExtensionRow`), it just has no gear. *Top pick.*
-2. **Global search polish.** Page 1 only (no paging within a row), results are
-   lost on app restart, and every searchable source is queried. Now that pinning
-   exists (`SourcePrefs.pinned()`), restricting the fan-out to pinned sources is
-   a small change that would cut a 95-source query to a handful.
-3. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
-   will fail. Restoring needs a WebView flow + the interceptor.
-4. **Sort/filter for search.** `getFilterList()` is available on every
+1. **Global search paging and persistence.** Restricting the fan-out to pinned
+   sources is done (`0023c81`). Still open: each row shows page 1 only, with no
+   way to load more within a source, and the whole result set is lost on app
+   restart.
+2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
+   will fail. Restoring needs a WebView flow + the interceptor that was stripped
+   out of the vendored API — the biggest single item left.
+3. **Sort/filter for search.** `getFilterList()` is available on every
    `CatalogueSource` and is currently unused — `searchSeries` passes an empty
    `FilterList()`.
-5. **`OBSOLETE` badge.** Mihon marks installed extensions that no longer appear
+4. **`OBSOLETE` badge.** Mihon marks installed extensions that no longer appear
    in the repo index. The Extensions list is built from the index only, so
    installed-but-absent packages aren't visible at all; they'd have to be merged
    in from `ExtensionLoader` first.
-6. **`CategoryAssignDialog` is orphaned.** Still defined in `MainActivity.kt` but
-   nothing calls it. Could be revived as a long-press action on library items.
+5. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
+   single- and multi-select lists and text fields are rendered; any other
+   `Preference` subclass is skipped rather than shown as a dead row. Extensions
+   that do their real work in an `OnPreferenceChangeListener` are handled (the
+   listener is called before the value is written), but nothing renders a
+   `Preference` that has no key.
+6. **`CategoryAssignDialog` is orphaned.** Still defined (now in
+   `LibraryScreens.kt`) but nothing calls it. Could be revived as a long-press
+   action on library items.
 7. **One extension is lib 1.6** (`AHottie`, v1.6.4). It's inside the accepted
    version range but built against the newer API; it may fail at runtime.
 8. **`HttpException.kt`** was not present in the vendored network package. Some
    extensions catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
    `NoClassDefFoundError` for it appears at runtime, it's a ~3-line class to add.
-9. **`MainActivity.kt` is 2368 lines.** Splitting the screens into separate files
-   would make future edits far less risky, but every handoff so far has assumed
-   one file — do it deliberately, not incidentally.
+9. **`YomuApp` is still ~550 lines.** The screens are split out, but all state
+   and every handler still lives in one composable. Hoisting it into a state
+   holder / view model is the next structural step, and unlike the file split it
+   is *not* mechanical.
 10. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this app
     has two. Neither is started.
 
@@ -442,6 +482,10 @@ Add extension index filter and cross-source global search e85abbe  verified OK
 Cache loaded extension sources between calls              3e28e81  verified OK
 Remove repo editor from Extensions tab; it lives in More  6728165  verified OK
 Rework Sources and Extensions tabs                        646d959  verified OK
+Update handoff for source cache and Browse tab rework     362b003
+Add per-source settings from ConfigurableSource           03cabb3  verified OK
+Limit global search to pinned sources with a toggle       0023c81  verified OK
+Split MainActivity into per-screen files
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local

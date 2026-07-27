@@ -1,0 +1,342 @@
+package com.mangareader.app
+
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import coil.compose.AsyncImage
+import dalvik.system.PathClassLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+// ---------- prefs: the same store every other object in this package uses ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LibraryScreen(
+    title: String,
+    series: List<Series>?,
+    loading: Boolean,
+    error: String?,
+    supportsSearch: Boolean,
+    query: String,
+    hasNext: Boolean,
+    loadingMore: Boolean,
+    onSearch: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onRescan: () -> Unit,
+    onOpen: (Series) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    val context = LocalContext.current
+    var searchField by remember(query) { mutableStateOf(query) }
+    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+        "small" -> 88.dp
+        "large" -> 140.dp
+        else -> 110.dp
+    }
+
+    val categories = remember { Categories.list(context) }
+    var activeCategory by remember { mutableStateOf<String?>(null) }
+
+    val shown = remember(series, activeCategory) {
+        val all = series ?: emptyList()
+        val cat = activeCategory
+        if (cat == null) all
+        else all.filter { Categories.categoriesFor(context, it.id).contains(cat) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(title) },
+            navigationIcon = { TextButton(onClick = onBack) { Text("←") } },
+            actions = { TextButton(onClick = onRescan) { Text("Rescan") } }
+        )
+        if (supportsSearch) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchField,
+                    onValueChange = { searchField = it },
+                    label = { Text("Search this source") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onSearch(searchField.trim()) }) { Text("Go") }
+            }
+            if (query.isNotBlank()) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Results for \u201c$query\u201d",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(onClick = {
+                        searchField = ""
+                        onSearch("")
+                    }) { Text("Clear") }
+                }
+            }
+        }
+
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
+
+        if (categories.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = activeCategory == null,
+                    onClick = { activeCategory = null },
+                    label = { Text("All") }
+                )
+                categories.forEach { cat ->
+                    FilterChip(
+                        selected = activeCategory == cat.id,
+                        onClick = { activeCategory = cat.id },
+                        label = { Text(cat.name) }
+                    )
+                }
+            }
+        }
+
+        if (shown.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!loading) {
+                    Text(
+                        if (series.isNullOrEmpty()) "Nothing found in this source."
+                        else "No series in this category.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = coverMinDp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(6.dp)
+            ) {
+                items(shown) { s ->
+                    Column(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clickable { onOpen(s) }
+                    ) {
+                        CoverImage(
+                            cover = s.cover,
+                            title = s.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
+                        )
+                        Text(
+                            text = s.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+
+                // Paging is manual rather than infinite-scroll: one tap per page
+                // keeps request volume predictable and visible.
+                if (hasNext && activeCategory == null) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (loadingMore) {
+                                CircularProgressIndicator()
+                            } else {
+                                OutlinedButton(onClick = onLoadMore) { Text("Load more") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------- series ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SeriesScreen(
+    series: Series,
+    chapters: List<Chapter>,
+    sourceId: String,
+    loading: Boolean,
+    error: String?,
+    readTick: Int,
+    onOpen: (Int) -> Unit,
+    onToggleRead: (Chapter) -> Unit,
+    onLibraryChanged: () -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    val context = LocalContext.current
+    var showCategories by remember { mutableStateOf(false) }
+    var showAddToLibrary by remember { mutableStateOf(false) }
+    var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack, modifier = Modifier.padding(end = 8.dp)) { Text("←") }
+            CoverImage(
+                cover = series.cover,
+                title = series.title,
+                modifier = Modifier
+                    .width(64.dp)
+                    .aspectRatio(0.7f)
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(series.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
+                Text(
+                    "${chapters.size} chapters",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (inLibrary) {
+                TextButton(onClick = {
+                    Library.remove(context, series.id)
+                    inLibrary = false
+                    onLibraryChanged()
+                }) { Text("In library \u2713") }
+            } else {
+                TextButton(onClick = { showAddToLibrary = true }) { Text("+ Library") }
+            }
+        }
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
+        HorizontalDivider()
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            itemsIndexed(chapters) { index, ch ->
+                val key = chapterKeyOf(sourceId, ch)
+                val read = remember(key, readTick) { ReadState.isRead(context, key) }
+                val resume = remember(key, readTick) { savedPage(context, key) }
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            ch.name,
+                            color = if (read) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    supportingContent = {
+                        if (read) {
+                            Text("Read")
+                        } else if (resume > 0) {
+                            Text("Page ${resume + 1}", color = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    trailingContent = {
+                        TextButton(onClick = { onToggleRead(ch) }) {
+                            Text(if (read) "Unread" else "Read")
+                        }
+                    },
+                    modifier = Modifier.clickable { onOpen(index) }
+                )
+                HorizontalDivider()
+            }
+        }
+    }
+
+    if (showCategories) {
+        CategoryAssignDialog(seriesId = series.id, onDismiss = { showCategories = false })
+    }
+
+    if (showAddToLibrary) {
+        AddToLibraryDialog(
+            series = series,
+            sourceId = sourceId,
+            onDismiss = { showAddToLibrary = false },
+            onSaved = {
+                showAddToLibrary = false
+                inLibrary = true
+                onLibraryChanged()
+            }
+        )
+    }
+}
