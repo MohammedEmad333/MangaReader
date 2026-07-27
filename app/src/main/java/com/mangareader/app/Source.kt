@@ -77,6 +77,17 @@ interface Source {
      */
     suspend fun getSeries(id: String): Series? =
         listSeries().firstOrNull { it.id == id }
+
+    /**
+     * Rebuild a series we already know the title of — reopening from Library or
+     * History, where both were stored when it was saved.
+     *
+     * Tachiyomi's own contract is that a stored entry is just url + title, with
+     * everything else refilled by a details fetch. Sources that can list chapters
+     * from the url alone therefore don't need that fetch at all, so this exists to
+     * let them skip it. Defaults to [getSeries] for sources that do need it.
+     */
+    suspend fun restoreSeries(id: String, title: String): Series? = getSeries(id)
 }
 
 data class Series(
