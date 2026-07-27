@@ -19,7 +19,15 @@ object SourcePrefs {
     private const val KEY_LAST_USED = "last_used_source"
     private const val KEY_PINNED_ONLY_SEARCH = "global_search_pinned_only"
     private const val KEY_HIDDEN = "hidden_sources"
-    private const val KEY_DISABLED_LANGS = "disabled_langs"
+    private const val KEY_ENABLED_LANGS = "enabled_langs"
+
+    /**
+     * Languages shown before anyone chooses. 95 sources across 30-odd languages
+     * is unusable as a default, and almost none of them are readable by any one
+     * person. "Local" is in here because it isn't really a language — it's the
+     * local folder group, and hiding that by default would be baffling.
+     */
+    val DEFAULT_LANGS = setOf("Local", "Multi", "English")
 
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
@@ -89,17 +97,38 @@ object SourcePrefs {
         return next
     }
 
-    fun disabledLangs(context: Context): Set<String> =
-        prefs(context).getStringSet(KEY_DISABLED_LANGS, emptySet())?.toSet() ?: emptySet()
+    /**
+     * Enabled languages, not disabled ones — that's what makes the default
+     * possible. A missing key means "never chosen" and yields [DEFAULT_LANGS];
+     * an *empty* stored set means the user turned everything off, which is a
+     * different thing and is preserved.
+     *
+     * The cost is that a genuinely new language — installing the first Korean
+     * extension, say — arrives switched off. That's the trade for not showing
+     * thirty languages nobody asked for.
+     */
+    fun enabledLangs(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_ENABLED_LANGS, null)?.toSet() ?: DEFAULT_LANGS
 
-    fun toggleLangDisabled(context: Context, lang: String): Set<String> {
-        val next = disabledLangs(context).toMutableSet()
-        if (!next.add(lang)) next.remove(lang)
-        prefs(context).edit().putStringSet(KEY_DISABLED_LANGS, next).apply()
+    fun setLangEnabled(context: Context, lang: String, enabled: Boolean): Set<String> {
+        val next = enabledLangs(context).toMutableSet()
+        if (enabled) next.add(lang) else next.remove(lang)
+        prefs(context).edit().putStringSet(KEY_ENABLED_LANGS, next).apply()
         return next
     }
 
-    /** A source shows only if neither it nor its language is switched off. */
-    fun isVisible(id: String, lang: String, hidden: Set<String>, disabledLangs: Set<String>): Boolean =
-        id !in hidden && lang !in disabledLangs
+    fun setLangsEnabled(
+        context: Context,
+        langs: Collection<String>,
+        enabled: Boolean
+    ): Set<String> {
+        val next = enabledLangs(context).toMutableSet()
+        if (enabled) next.addAll(langs) else next.removeAll(langs.toSet())
+        prefs(context).edit().putStringSet(KEY_ENABLED_LANGS, next).apply()
+        return next
+    }
+
+    /** A source shows only if its language is on and it isn't individually hidden. */
+    fun isVisible(id: String, lang: String, hidden: Set<String>, enabledLangs: Set<String>): Boolean =
+        id !in hidden && lang in enabledLangs
 }

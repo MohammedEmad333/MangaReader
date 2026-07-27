@@ -291,11 +291,11 @@ fun YomuApp() {
                         runCatching { SourceManager.build(context, it) }.getOrNull()
                     }
                     val hidden = SourcePrefs.hiddenSources(context)
-                    val offLangs = SourcePrefs.disabledLangs(context)
+                    val langs = SourcePrefs.enabledLangs(context)
                     val searchable = (locals + extensionSources)
                         .filter { it.supportsSearch }
                         .filter {
-                            SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hidden, offLangs)
+                            SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hidden, langs)
                         }
                     if (globalPinnedOnly) {
                         val pinned = SourcePrefs.pinned(context)
