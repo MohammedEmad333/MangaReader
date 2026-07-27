@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SChapterImpl
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -140,6 +141,17 @@ class TachiyomiSourceAdapter(
             description = enriched.description ?: series.description,
             genres = enriched.genres.ifEmpty { series.genres },
             status = enriched.status ?: series.status,
+        )
+    }
+
+    override fun rehydrateChapter(chapter: Chapter): Chapter {
+        if (chapter.handle is SChapter) return chapter
+        val url = urlFromId(chapter.id) ?: return chapter
+        return chapter.copy(
+            handle = SChapterImpl().apply {
+                this.url = url
+                this.name = chapter.name
+            }
         )
     }
 

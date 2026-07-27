@@ -74,6 +74,16 @@ interface Source {
      */
     val supportsDownload: Boolean get() = false
 
+    /**
+     * Rebuild the source-side handle on a chapter that came back from the offline
+     * cache, which can only store the fields this app owns.
+     *
+     * Without it a cached chapter can still be *read* when downloaded (the page
+     * store is consulted before the handle is), but couldn't be fetched once back
+     * online. Defaults to returning it unchanged.
+     */
+    fun rehydrateChapter(chapter: Chapter): Chapter = chapter
+
     // ---- optional capabilities ----
 
     /** Whether [searchSeries] does anything useful. */

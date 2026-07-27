@@ -343,6 +343,25 @@ fun YomuApp() {
     }
 
     /**
+     * Chapters for a stored series, falling back to the offline cache.
+     *
+     * A successful fetch refreshes the cache. A failed one is only an error if
+     * there's nothing cached — otherwise the last known list is better than a
+     * dead end, and any chapter already downloaded is fully readable from it.
+     */
+    suspend fun chaptersWithFallback(src: Source, series: Series): List<Chapter> =
+        runCatching { src.listChapters(series) }
+            .onSuccess { ChapterCache.save(context, series.id, it) }
+            .getOrElse { err ->
+                val cached = ChapterCache.load(context, series.id)
+                    .map { src.rehydrateChapter(it) }
+                if (cached.isNotEmpty()) cached
+                else throw IllegalStateException(
+                    "Couldn't load the chapter list \u2014 ${err.message}"
+                )
+            }
+
+    /**
      * Fills in author/description/genres/status in the background.
      *
      * Deliberately fire-and-forget: on most sources this is a second network
@@ -371,7 +390,9 @@ fun YomuApp() {
         scope.launch {
             isLoading = true
             try {
-                chapterList = withContext(Dispatchers.IO) { src.listChapters(series) }
+                chapterList = withContext(Dispatchers.IO) {
+                    src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
+                }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not list chapters"
             }
@@ -515,13 +536,7 @@ fun YomuApp() {
                         title = fetched.title.ifBlank { entry.title },
                         cover = fetched.cover ?: entry.cover.ifBlank { null }
                     )
-                    val chapters = runCatching { src.listChapters(series) }
-                        .getOrElse {
-                            throw IllegalStateException(
-                                "Couldn't load the chapter list \u2014 ${it.message}"
-                            )
-                        }
-                    Triple(src, series, chapters)
+                    Triple(src, series, chaptersWithFallback(src, series))
                 }
                 seriesOrigin = SeriesOrigin.LIBRARY
                 activeSource = result.first
@@ -556,7 +571,7 @@ fun YomuApp() {
                         title = fetched.title.ifBlank { entry.title },
                         cover = fetched.cover ?: entry.coverPath.ifBlank { null }
                     )
-                    val chapters = src.listChapters(series)
+                    val chapters = chaptersWithFallback(src, series)
                     val idx = chapters.indexOfFirst {
                         chapterKeyOf(entry.sourceId, it) == entry.chapterKey
                     }

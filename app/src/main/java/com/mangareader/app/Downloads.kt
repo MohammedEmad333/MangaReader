@@ -1,6 +1,8 @@
 package com.mangareader.app
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 
@@ -73,10 +75,75 @@ object Downloads {
      * (The previous code used `id.hashCode()`, a 32-bit value that collides far
      * too readily to key stored files on.)
      */
-    private fun hashOf(chapterId: String): String =
-        MessageDigest.getInstance("MD5")
-            .digest(chapterId.toByteArray())
-            .joinToString("") { "%02x".format(it) }
+    private fun hashOf(chapterId: String): String = offlineKey(chapterId)
+}
+
+/**
+ * Filesystem-safe, collision-free name for an arbitrary id. Shared by the page
+ * store above and the chapter-list cache below.
+ */
+internal fun offlineKey(id: String): String =
+    MessageDigest.getInstance("MD5")
+        .digest(id.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
+/**
+ * The last known chapter list for a series, so it can be opened without network.
+ *
+ * Downloading a chapter's pages isn't enough to read offline on its own: opening
+ * a series calls `listChapters`, which is a network request, and that failed
+ * before anything got as far as looking at the downloaded pages. This keeps a
+ * copy of whatever the source last returned.
+ *
+ * `Chapter.handle` (the extension's own SChapter) can't be serialised, so only
+ * the fields the app owns are stored. `Source.rehydrateChapter` rebuilds a usable
+ * handle from the id on the way back out.
+ */
+object ChapterCache {
+
+    private fun dir(context: Context): File =
+        File(context.applicationContext.filesDir, "chapterlists").apply { mkdirs() }
+
+    private fun fileFor(context: Context, seriesId: String): File =
+        File(dir(context), "${offlineKey(seriesId)}.json")
+
+    fun save(context: Context, seriesId: String, chapters: List<Chapter>) {
+        if (chapters.isEmpty()) return
+        runCatching {
+            val arr = JSONArray()
+            chapters.forEach { ch ->
+                arr.put(
+                    JSONObject().apply {
+                        put("id", ch.id)
+                        put("name", ch.name)
+                        put("date", ch.dateUploaded)
+                        put("scanlator", ch.scanlator ?: "")
+                    }
+                )
+            }
+            fileFor(context, seriesId).writeText(arr.toString())
+        }
+    }
+
+    fun load(context: Context, seriesId: String): List<Chapter> = runCatching {
+        val file = fileFor(context, seriesId)
+        if (!file.exists()) return emptyList()
+        val arr = JSONArray(file.readText())
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            Chapter(
+                id = o.getString("id"),
+                name = o.optString("name"),
+                handle = null,
+                dateUploaded = o.optLong("date", 0L),
+                scanlator = o.optString("scanlator").takeIf { it.isNotBlank() }
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    fun clearAll(context: Context) {
+        runCatching { dir(context).deleteRecursively() }
+    }
 }
 
 /** "412 KB" / "1.6 GB" — for the storage row in More. */
