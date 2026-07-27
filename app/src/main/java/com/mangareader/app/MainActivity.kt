@@ -170,6 +170,12 @@ fun YomuApp() {
     // when they back out — a screen they never asked for and which has no results
     // behind it. This says where "back" should actually go.
     var seriesOrigin by remember { mutableStateOf(SeriesOrigin.BROWSE) }
+
+    // chapter.id -> percent, for chapters downloading right now. Bumping
+    // downloadTick re-reads what's on disk in the chapter list.
+    var downloadProgress by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var downloadTick by remember { mutableIntStateOf(0) }
+    var downloadJob by remember { mutableStateOf<Job?>(null) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -407,7 +413,7 @@ fun YomuApp() {
         scope.launch {
             isLoading = true
             try {
-                src.loadPagesProgressively(chapter) { partial ->
+                src.loadPagesProgressively(chapter, persist = false) { partial ->
                     // Hop to main: the adapter publishes from its IO context.
                     withContext(Dispatchers.Main) {
                         pages = partial
@@ -422,6 +428,67 @@ fun YomuApp() {
             }
             isLoading = false
         }
+    }
+
+    /**
+     * Downloads one chapter to permanent storage.
+     *
+     * Runs in the app's scope, so it stops if the app is killed — but partial
+     * files survive and `downloadPage` skips what's already there, so starting it
+     * again resumes rather than restarts. A background service would be the
+     * proper fix; see the handoff.
+     */
+    fun downloadChapter(src: Source, chapter: Chapter) {
+        if (downloadProgress.containsKey(chapter.id)) return
+        scope.launch {
+            downloadProgress = downloadProgress + (chapter.id to 0)
+            try {
+                src.loadPagesProgressively(chapter, persist = true) { partial ->
+                    withContext(Dispatchers.Main) {
+                        val total = partial.size
+                        val ready = partial.count { it != null }
+                        downloadProgress = downloadProgress +
+                            (chapter.id to if (total == 0) 0 else ready * 100 / total)
+                    }
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not download that chapter"
+            }
+            downloadProgress = downloadProgress - chapter.id
+            downloadTick++
+        }
+    }
+
+    /** Queues every not-yet-downloaded chapter, oldest first, one at a time. */
+    fun downloadAll(src: Source, chapters: List<Chapter>) {
+        if (downloadJob?.isActive == true) return
+        downloadJob = scope.launch {
+            for (chapter in chapters) {
+                if (Downloads.isComplete(context, chapter.id)) continue
+                downloadProgress = downloadProgress + (chapter.id to 0)
+                try {
+                    src.loadPagesProgressively(chapter, persist = true) { partial ->
+                        withContext(Dispatchers.Main) {
+                            val total = partial.size
+                            val ready = partial.count { it != null }
+                            downloadProgress = downloadProgress +
+                                (chapter.id to if (total == 0) 0 else ready * 100 / total)
+                        }
+                    }
+                } catch (e: Exception) {
+                    errorMessage = e.message ?: "Could not download that chapter"
+                }
+                downloadProgress = downloadProgress - chapter.id
+                downloadTick++
+            }
+        }
+    }
+
+    fun cancelDownloads() {
+        downloadJob?.cancel()
+        downloadJob = null
+        downloadProgress = emptyMap()
+        downloadTick++
     }
 
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
@@ -571,6 +638,17 @@ fun YomuApp() {
             chapters = chapterList,
             sourceId = activeSourceId ?: "",
             sourceName = activeSource?.name ?: "",
+            canDownload = activeSource?.supportsDownload == true,
+            downloadProgress = downloadProgress,
+            downloadTick = downloadTick,
+            downloadingAll = downloadJob?.isActive == true,
+            onDownload = { ch -> activeSource?.let { downloadChapter(it, ch) } },
+            onDownloadAll = { activeSource?.let { downloadAll(it, chapterList) } },
+            onCancelDownloads = { cancelDownloads() },
+            onDeleteDownloads = {
+                chapterList.forEach { Downloads.delete(context, it.id) }
+                downloadTick++
+            },
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,

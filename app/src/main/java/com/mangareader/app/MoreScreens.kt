@@ -196,6 +196,28 @@ internal fun MoreTab() {
         )
         HorizontalDivider()
 
+        var storageTick by remember { mutableIntStateOf(0) }
+        val downloadCount = remember(storageTick) { Downloads.count(context) }
+        val downloadSize = remember(storageTick) { Downloads.sizeBytes(context) }
+        ListItem(
+            headlineContent = { Text("Downloaded chapters") },
+            supportingContent = {
+                Text(
+                    if (downloadCount == 0) "Nothing downloaded"
+                    else "$downloadCount chapters \u00b7 ${formatBytes(downloadSize)}"
+                )
+            },
+            trailingContent = {
+                if (downloadCount > 0) {
+                    TextButton(onClick = {
+                        Downloads.deleteAll(context)
+                        storageTick++
+                    }) { Text("Delete all") }
+                }
+            }
+        )
+        HorizontalDivider()
+
         ListItem(
             headlineContent = { Text("About Yomu") },
             supportingContent = { Text("Native Kotlin manga reader") }

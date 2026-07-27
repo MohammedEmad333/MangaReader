@@ -32,6 +32,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -269,6 +272,14 @@ internal fun SeriesScreen(
     chapters: List<Chapter>,
     sourceId: String,
     sourceName: String,
+    canDownload: Boolean,
+    downloadProgress: Map<String, Int>,
+    downloadTick: Int,
+    downloadingAll: Boolean,
+    onDownload: (Chapter) -> Unit,
+    onDownloadAll: () -> Unit,
+    onCancelDownloads: () -> Unit,
+    onDeleteDownloads: () -> Unit,
     loading: Boolean,
     error: String?,
     readTick: Int,
@@ -288,6 +299,9 @@ internal fun SeriesScreen(
     // so marking something read moves the target without reopening the screen.
     val resumeIndex = remember(chapters, readTick, sourceId) {
         chapters.indexOfFirst { !ReadState.isRead(context, chapterKeyOf(sourceId, it)) }
+    }
+    val downloadedCount = remember(chapters, downloadTick) {
+        chapters.count { Downloads.isComplete(context, it.id) }
     }
     val anyProgress = remember(chapters, readTick, sourceId) {
         chapters.any {
@@ -399,6 +413,26 @@ internal fun SeriesScreen(
                                     onClick = { showCategories = true }
                                 )
                             }
+                            if (canDownload && chapters.isNotEmpty()) {
+                                SeriesAction(
+                                    icon = if (downloadingAll) Icons.Default.Clear
+                                    else Icons.Default.KeyboardArrowDown,
+                                    label = if (downloadingAll) "Stop" else "Download all",
+                                    tint = if (downloadingAll) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = {
+                                        if (downloadingAll) onCancelDownloads() else onDownloadAll()
+                                    }
+                                )
+                                if (downloadedCount > 0) {
+                                    SeriesAction(
+                                        icon = Icons.Default.Delete,
+                                        label = "Delete ($downloadedCount)",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        onClick = { onDeleteDownloads() }
+                                    )
+                                }
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
@@ -489,8 +523,32 @@ internal fun SeriesScreen(
                         }
                     },
                     trailingContent = {
-                        TextButton(onClick = { onToggleRead(ch) }) {
-                            Text(if (read) "Unread" else "Read")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (canDownload) {
+                                val percent = downloadProgress[ch.id]
+                                val downloaded = remember(ch.id, downloadTick) {
+                                    Downloads.isComplete(context, ch.id)
+                                }
+                                when {
+                                    percent != null -> Text(
+                                        "$percent%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    downloaded -> Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Downloaded",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    else -> TextButton(onClick = { onDownload(ch) }) {
+                                        Text("Save")
+                                    }
+                                }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            TextButton(onClick = { onToggleRead(ch) }) {
+                                Text(if (read) "Unread" else "Read")
+                            }
                         }
                     },
                     modifier = Modifier.clickable { onOpen(index) }

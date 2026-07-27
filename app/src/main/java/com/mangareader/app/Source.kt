@@ -52,15 +52,27 @@ interface Source {
      * it needs to open the reader. Later calls fill slots in. A slot that is
      * still null once this returns is a page that failed.
      *
+     * With [persist] set the pages are written to permanent storage and the
+     * chapter is marked downloaded once every page succeeds; otherwise they go to
+     * the evictable cache. Either way a chapter already downloaded is served
+     * from disk without touching the network.
+     *
      * Defaults to the all-at-once [loadPages], which is right for sources that
      * produce every page in one operation, like a local CBZ.
      */
     suspend fun loadPagesProgressively(
         chapter: Chapter,
+        persist: Boolean = false,
         onUpdate: suspend (List<File?>) -> Unit
     ) {
         onUpdate(loadPages(chapter))
     }
+
+    /**
+     * Whether chapters from this source can be downloaded for offline reading.
+     * False for sources that are already local, like a folder of CBZs.
+     */
+    val supportsDownload: Boolean get() = false
 
     // ---- optional capabilities ----
 
