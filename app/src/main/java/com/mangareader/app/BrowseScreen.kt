@@ -456,12 +456,25 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                 }
             }
 
-            val installedExts = shownExtensions.filter { it.isInstalled }
+            val updatableExts = shownExtensions.filter { it.hasUpdate }
+                .sortedBy { it.name.lowercase() }
+            val installedExts = shownExtensions.filter { it.isInstalled && !it.hasUpdate }
                 .sortedBy { it.name.lowercase() }
             val availableExts = shownExtensions.filterNot { it.isInstalled }
                 .sortedBy { it.name.lowercase() }
 
             LazyColumn(modifier = Modifier.fillMaxSize()) {
+                if (updatableExts.isNotEmpty()) {
+                    item { SectionHeader("Update available (${updatableExts.size})") }
+                    items(updatableExts) { ext ->
+                        ExtensionRow(ext) {
+                            scope.launch {
+                                ExtensionManager.install(context, ext)
+                                onInstalled()
+                            }
+                        }
+                    }
+                }
                 if (installedExts.isNotEmpty()) {
                     item { SectionHeader("Installed") }
                     items(installedExts) { ext ->
@@ -523,22 +536,29 @@ internal fun ExtensionRow(ext: Extension, onInstall: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    listOf(ext.lang, ext.versionName)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" ")
+                    listOf(
+                        ext.lang,
+                        // Show what an update would move you from and to.
+                        if (ext.hasUpdate) "${ext.installedVersion} \u2192 ${ext.versionName}"
+                        else ext.versionName
+                    ).filter { it.isNotBlank() }.joinToString(" ")
                 )
                 if (ext.isNsfw) NsfwBadge()
             }
         },
         trailingContent = {
-            if (ext.isInstalled) {
+            if (ext.isInstalled && !ext.hasUpdate) {
                 Text(
                     "Installed",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelMedium
                 )
             } else {
-                TextButton(onClick = onInstall) { Text("Install") }
+                // Updating is the same flow as installing: the system installer
+                // treats a higher versionCode on the same package as an upgrade.
+                TextButton(onClick = onInstall) {
+                    Text(if (ext.hasUpdate) "Update" else "Install")
+                }
             }
         }
     )

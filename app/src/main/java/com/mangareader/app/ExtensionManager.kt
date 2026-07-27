@@ -21,8 +21,32 @@ data class Extension(
     /** Display label, already mapped from the index's language code. */
     val lang: String = "",
     /** From the index's "nsfw" field; drives the 18+ badge. */
-    val isNsfw: Boolean = false
-)
+    val isNsfw: Boolean = false,
+    /** versionName of the APK actually on the device, null when not installed. */
+    val installedVersion: String? = null
+) {
+    /** Installed, but the repo index carries a different (newer) version. */
+    val hasUpdate: Boolean
+        get() = isInstalled &&
+            installedVersion != null &&
+            compareVersions(versionName, installedVersion) > 0
+}
+
+/**
+ * Compares dotted version strings numerically: "1.4.9" is older than "1.4.10",
+ * which a plain string comparison gets backwards. Non-numeric parts compare as 0,
+ * so a malformed version degrades to "equal" rather than claiming a false update.
+ */
+internal fun compareVersions(a: String, b: String): Int {
+    val left = a.split('.')
+    val right = b.split('.')
+    for (i in 0 until maxOf(left.size, right.size)) {
+        val l = left.getOrNull(i)?.trim()?.toIntOrNull() ?: 0
+        val r = right.getOrNull(i)?.trim()?.toIntOrNull() ?: 0
+        if (l != r) return l.compareTo(r)
+    }
+    return 0
+}
 
 object ExtensionManager {
     // The action that extension APKs must broadcast in their manifest
@@ -46,12 +70,14 @@ object ExtensionManager {
                     val obj = arr.getJSONObject(i)
                     val pkg = obj.getString("pkg")
                     
-                    val installed = try {
+                    // Keep the installed versionName, not just the boolean: it's
+                    // what tells an out-of-date extension from an up-to-date one.
+                    val installedInfo = try {
                         pm.getPackageInfo(pkg, 0)
-                        true
                     } catch (e: PackageManager.NameNotFoundException) {
-                        false
+                        null
                     }
+                    val installed = installedInfo != null
 
                     // FIXED: Prepend "apk/" so it points to the correct subdirectory on GitHub
                     val rawApkUrl = obj.getString("apk")
@@ -70,7 +96,8 @@ object ExtensionManager {
                             apkUrl = absoluteApkUrl,
                             isInstalled = installed,
                             lang = langLabel(obj.optString("lang", "")),
-                            isNsfw = obj.optInt("nsfw", 0) == 1
+                            isNsfw = obj.optInt("nsfw", 0) == 1,
+                            installedVersion = installedInfo?.versionName
                         )
                     )
                 }
