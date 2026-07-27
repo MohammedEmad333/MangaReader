@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.network
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
@@ -15,24 +16,20 @@ import rx.Observable
 import rx.Producer
 import rx.Subscription
 import java.io.IOException
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resumeWithException
 
 val jsonMime = "application/json; charset=utf-8".toMediaType()
 
-@OptIn(ExperimentalAtomicApi::class)
-@Deprecated("Use suspend APIs instead")
 fun Call.asObservable(): Observable<Response> {
     return Observable.unsafeCreate { subscriber ->
         // Since Call is a one-shot type, clone it for each new subscriber.
         val call = clone()
 
         // Wrap the call in a helper which handles both unsubscription and backpressure.
-        val requestArbiter = object : Producer, Subscription {
-            val boolean = AtomicBoolean(false)
+        val requestArbiter = object : AtomicBoolean(), Producer, Subscription {
             override fun request(n: Long) {
-                if (n == 0L || !boolean.compareAndSet(expectedValue = false, newValue = true)) return
+                if (n == 0L || !compareAndSet(false, true)) return
 
                 try {
                     val response = call.execute()
@@ -61,9 +58,7 @@ fun Call.asObservable(): Observable<Response> {
     }
 }
 
-@Deprecated("Use suspend APIs instead")
 fun Call.asObservableSuccess(): Observable<Response> {
-    @Suppress("DEPRECATION")
     return asObservable().doOnNext { response ->
         if (!response.isSuccessful) {
             response.close()
@@ -72,31 +67,35 @@ fun Call.asObservableSuccess(): Observable<Response> {
     }
 }
 
-// Based on https://github.com/square/okhttp/blob/master/okhttp-coroutines/src/main/kotlin/okhttp3/coroutines/ExecuteAsync.kt
-// and https://github.com/gildor/kotlin-coroutines-okhttp
+// Based on https://github.com/gildor/kotlin-coroutines-okhttp
+@OptIn(ExperimentalCoroutinesApi::class)
 private suspend fun Call.await(callStack: Array<StackTraceElement>): Response {
     return suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation {
-            try {
-                this.cancel()
-            } catch (_: Throwable) {
-                // ignore
-            }
-        }
+        val callback =
+            object : Callback {
+                override fun onResponse(call: Call, response: Response) {
+                    continuation.resume(response) {
+                        response.body.close()
+                    }
+                }
 
-        this.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isCancelled) return
-                val exception = IOException(e.message, e).apply { stackTrace = callStack }
-                continuation.resumeWithException(exception)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) { _, value, _ ->
-                    value.close()
+                override fun onFailure(call: Call, e: IOException) {
+                    // Don't bother with resuming the continuation if it is already cancelled.
+                    if (continuation.isCancelled) return
+                    val exception = IOException(e.message, e).apply { stackTrace = callStack }
+                    continuation.resumeWithException(exception)
                 }
             }
-        })
+
+        enqueue(callback)
+
+        continuation.invokeOnCancellation {
+            try {
+                cancel()
+            } catch (ex: Throwable) {
+                // Ignore cancel exception
+            }
+        }
     }
 }
 
@@ -106,7 +105,7 @@ suspend fun Call.await(): Response {
 }
 
 /**
- * Similar to [await] but throws [HttpException] if [Response.isSuccessful] returns false
+ * @since extensions-lib 1.5
  */
 suspend fun Call.awaitSuccess(): Response {
     val callStack = Exception().stackTrace.run { copyOfRange(1, size) }
@@ -118,27 +117,13 @@ suspend fun Call.awaitSuccess(): Response {
     return response
 }
 
-fun OkHttpClient.newCachelessCallWithProgress(
-    request: Request,
-    listener: ProgressListener,
-    existingSize: Long = 0L,
-): Call {
+fun OkHttpClient.newCachelessCallWithProgress(request: Request, listener: ProgressListener): Call {
     val progressClient = newBuilder()
         .cache(null)
         .addNetworkInterceptor { chain ->
-            val request = chain.request()
-                .newBuilder()
-                .apply {
-                    if (existingSize > 0 && request.header("Range") == null) {
-                        header("Range", "bytes=$existingSize-")
-                    }
-                }
-                .build()
-
-            val originalResponse = chain.proceed(request)
-            val actualExistingSize = if (originalResponse.code == 206) existingSize else 0L
+            val originalResponse = chain.proceed(chain.request())
             originalResponse.newBuilder()
-                .body(ProgressResponseBody(originalResponse.body, listener, actualExistingSize))
+                .body(ProgressResponseBody(originalResponse.body, listener))
                 .build()
         }
         .build()
@@ -146,17 +131,26 @@ fun OkHttpClient.newCachelessCallWithProgress(
     return progressClient.newCall(request)
 }
 
-context(_: Json)
+context(Json)
 inline fun <reified T> Response.parseAs(): T {
     return decodeFromJsonResponse(serializer(), this)
 }
 
-context(json: Json)
+context(Json)
 fun <T> decodeFromJsonResponse(
     deserializer: DeserializationStrategy<T>,
     response: Response,
 ): T {
     return response.body.source().use {
-        json.decodeFromBufferedSource(deserializer, it)
+        decodeFromBufferedSource(deserializer, it)
     }
 }
+
+/**
+ * Exception that handles HTTP codes considered not successful by OkHttp.
+ * Use it to have a standardized error message in the app across the extensions.
+ *
+ * @since extensions-lib 1.5
+ * @param code [Int] the HTTP status code
+ */
+class HttpException(val code: Int) : IllegalStateException("HTTP error $code")

@@ -1,5 +1,3 @@
-@file:Suppress("FunctionName")
-
 package eu.kanade.tachiyomi.network
 
 import okhttp3.CacheControl

@@ -16,7 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import rx.Observable
-import tachiyomi.core.common.util.lang.awaitSingle
+import tachiyomi.core.util.lang.awaitSingle
 import uy.kohesive.injekt.injectLazy
 import java.net.URI
 import java.net.URISyntaxException
@@ -25,6 +25,7 @@ import java.security.MessageDigest
 /**
  * A simple implementation for sources from a website.
  */
+@Suppress("unused")
 abstract class HttpSource : CatalogueSource {
 
     /**
@@ -38,23 +39,10 @@ abstract class HttpSource : CatalogueSource {
     abstract val baseUrl: String
 
     /**
-     * Returns the base (home) URL of the website as a string.
-     *
-     * This is typically the root address that serves as the main entry point
-     * to the site's content, such as "https://mihon.tech".
-     *
-     * This method is used in the browse screen to determine the URL
-     * opened when tapping "Open in WebView".
-     *
-     * @return The website’s home page URL. Defaults to [baseUrl].
-     */
-    open fun getHomeUrl(): String = baseUrl
-
-    /**
      * Version id used to generate the source id. If the site completely changes and urls are
      * incompatible, you may increase this value and it'll be considered as a new source.
      */
-    open val versionId: Int = 1
+    open val versionId = 1
 
     /**
      * ID of the source. By default it uses a generated id using the first 16 characters (64 bits)
@@ -66,7 +54,7 @@ abstract class HttpSource : CatalogueSource {
      *
      * Note: the generated ID sets the sign bit to `0`.
      */
-    override val id: Long by lazy { generateId(name, lang, versionId) }
+    override val id by lazy { generateId(name, lang, versionId) }
 
     /**
      * Headers used for requests.
@@ -76,7 +64,8 @@ abstract class HttpSource : CatalogueSource {
     /**
      * Default network client for doing requests.
      */
-    open val client: OkHttpClient get() = network.client
+    open val client: OkHttpClient
+        get() = network.client
 
     /**
      * Generates a unique ID for the source based on the provided [name], [lang] and
@@ -104,14 +93,14 @@ abstract class HttpSource : CatalogueSource {
     /**
      * Headers builder for requests. Implementations can override this method for custom headers.
      */
-    protected open fun headersBuilder(): Headers.Builder = Headers.Builder().apply {
+    protected open fun headersBuilder() = Headers.Builder().apply {
         add("User-Agent", network.defaultUserAgentProvider())
     }
 
     /**
      * Visible name of the source.
      */
-    override fun toString(): String = "$name (${lang.uppercase()})"
+    override fun toString() = "$name (${lang.uppercase()})"
 
     /**
      * Returns an observable containing a page with a list of manga. Normally it's not needed to
@@ -119,8 +108,7 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    @Suppress("DEPRECATION")
-    @Deprecated("Use the suspend API instead", ReplaceWith("getPopularManga"))
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPopularManga"))
     override fun fetchPopularManga(page: Int): Observable<MangasPage> {
         return client.newCall(popularMangaRequest(page))
             .asObservableSuccess()
@@ -134,22 +122,14 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun popularMangaRequest(page: Int): Request = throw UnsupportedOperationException()
+    protected abstract fun popularMangaRequest(page: Int): Request
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
+    protected abstract fun popularMangaParse(response: Response): MangasPage
 
     /**
      * Returns an observable containing a page with a list of manga. Normally it's not needed to
@@ -159,11 +139,21 @@ abstract class HttpSource : CatalogueSource {
      * @param query the search query.
      * @param filters the list of filters to apply.
      */
-    @Suppress("DEPRECATION")
-    @Deprecated("Use the suspend API instead", ReplaceWith("getSearchManga"))
-    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        return client.newCall(searchMangaRequest(page, query, filters))
-            .asObservableSuccess()
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getSearchManga"))
+    override fun fetchSearchManga(
+        page: Int,
+        query: String,
+        filters: FilterList,
+    ): Observable<MangasPage> {
+        return Observable.defer {
+            try {
+                client.newCall(searchMangaRequest(page, query, filters)).asObservableSuccess()
+            } catch (e: NoClassDefFoundError) {
+                // RxJava doesn't handle Errors, which tends to happen during global searches
+                // if an old extension using non-existent classes is still around
+                throw RuntimeException(e)
+            }
+        }
             .map { response ->
                 searchMangaParse(response)
             }
@@ -176,34 +166,25 @@ abstract class HttpSource : CatalogueSource {
      * @param query the search query.
      * @param filters the list of filters to apply.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun searchMangaRequest(
+    protected abstract fun searchMangaRequest(
         page: Int,
         query: String,
         filters: FilterList,
-    ): Request = throw UnsupportedOperationException()
+    ): Request
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun searchMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
+    protected abstract fun searchMangaParse(response: Response): MangasPage
 
     /**
      * Returns an observable containing a page with a list of latest manga updates.
      *
      * @param page the page number to retrieve.
      */
-    @Suppress("DEPRECATION")
-    @Deprecated("Use the suspend API instead", ReplaceWith("getLatestUpdates"))
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getLatestUpdates"))
     override fun fetchLatestUpdates(page: Int): Observable<MangasPage> {
         return client.newCall(latestUpdatesRequest(page))
             .asObservableSuccess()
@@ -217,31 +198,28 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    protected abstract fun latestUpdatesRequest(page: Int): Request
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
+    protected abstract fun latestUpdatesParse(response: Response): MangasPage
 
     /**
-     * Returns an observable with the updated details for a manga. Normally it's not needed to
-     * override this method.
+     * Get the updated details for a manga.
+     * Normally it's not needed to override this method.
      *
-     * @param manga the manga to be updated.
+     * @param manga the manga to update.
+     * @return the updated manga.
      */
     @Suppress("DEPRECATION")
-    @Deprecated("Use the combined suspend API instead", replaceWith = ReplaceWith("getMangaUpdate"))
+    override suspend fun getMangaDetails(manga: SManga): SManga {
+        return fetchMangaDetails(manga).awaitSingle()
+    }
+
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getMangaDetails"))
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
         return client.newCall(mangaDetailsRequest(manga))
             .asObservableSuccess()
@@ -256,10 +234,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param manga the manga to be updated.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
     open fun mangaDetailsRequest(manga: SManga): Request {
         return GET(baseUrl + manga.url, headers)
     }
@@ -269,26 +243,36 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun mangaDetailsParse(response: Response): SManga = throw UnsupportedOperationException()
+    protected abstract fun mangaDetailsParse(response: Response): SManga
 
     /**
-     * Returns an observable with the updated chapter list for a manga. Normally it's not needed to
-     * override this method.
+     * Get all the available chapters for a manga.
+     * Normally it's not needed to override this method.
      *
-     * @param manga the manga to look for chapters.
+     * @param manga the manga to update.
+     * @return the chapters for the manga.
+     * @throws LicensedMangaChaptersException if a manga is licensed and therefore no chapters are available.
      */
     @Suppress("DEPRECATION")
-    @Deprecated("Use the combined suspend API instead", replaceWith = ReplaceWith("getMangaUpdate"))
+    override suspend fun getChapterList(manga: SManga): List<SChapter> {
+        if (manga.status == SManga.LICENSED) {
+            throw LicensedMangaChaptersException()
+        }
+
+        return fetchChapterList(manga).awaitSingle()
+    }
+
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getChapterList"))
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> {
-        return client.newCall(chapterListRequest(manga))
-            .asObservableSuccess()
-            .map { response ->
-                chapterListParse(response)
-            }
+        return if (manga.status != SManga.LICENSED) {
+            client.newCall(chapterListRequest(manga))
+                .asObservableSuccess()
+                .map { response ->
+                    chapterListParse(response)
+                }
+        } else {
+            Observable.error(LicensedMangaChaptersException())
+        }
     }
 
     /**
@@ -297,10 +281,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param manga the manga to look for chapters.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
     protected open fun chapterListRequest(manga: SManga): Request {
         return GET(baseUrl + manga.url, headers)
     }
@@ -310,19 +290,28 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun chapterListParse(response: Response): List<SChapter> = throw UnsupportedOperationException()
+    protected abstract fun chapterListParse(response: Response): List<SChapter>
 
     /**
-     * Returns an observable with the page list for a chapter.
+     * Parses the response from the site and returns a SChapter Object.
      *
-     * @param chapter the chapter whose page list has to be fetched.
+     * @param response the response from the site.
+     */
+    protected abstract fun chapterPageParse(response: Response): SChapter
+
+    /**
+     * Get the list of pages a chapter has. Pages should be returned
+     * in the expected order; the index is ignored.
+     *
+     * @param chapter the chapter.
+     * @return the pages for the chapter.
      */
     @Suppress("DEPRECATION")
-    @Deprecated("Use the suspend API instead", ReplaceWith("getPageList"))
+    override suspend fun getPageList(chapter: SChapter): List<Page> {
+        return fetchPageList(chapter).awaitSingle()
+    }
+
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPageList"))
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
         return client.newCall(pageListRequest(chapter))
             .asObservableSuccess()
@@ -337,10 +326,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param chapter the chapter whose page list has to be fetched.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
     protected open fun pageListRequest(chapter: SChapter): Request {
         return GET(baseUrl + chapter.url, headers)
     }
@@ -350,20 +335,21 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun pageListParse(response: Response): List<Page> = throw UnsupportedOperationException()
+    protected abstract fun pageListParse(response: Response): List<Page>
 
     /**
      * Returns an observable with the page containing the source url of the image. If there's any
      * error, it will return null instead of throwing an exception.
      *
+     * @since extensions-lib 1.5
      * @param page the page whose source image has to be fetched.
      */
     @Suppress("DEPRECATION")
-    @Deprecated("Use the suspend API instead", ReplaceWith("getImageUrl"))
+    open suspend fun getImageUrl(page: Page): String {
+        return fetchImageUrl(page).awaitSingle()
+    }
+
+    @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getImageUrl"))
     open fun fetchImageUrl(page: Page): Observable<String> {
         return client.newCall(imageUrlRequest(page))
             .asObservableSuccess()
@@ -371,24 +357,11 @@ abstract class HttpSource : CatalogueSource {
     }
 
     /**
-     * Returns the image url for the provided [page]. The function is only called if [Page.imageUrl] is null.
-     *
-     * @since tachiyomix 1.6
-     * @param page the page whose source image has to be fetched.
-     */
-    @Suppress("DEPRECATION")
-    open suspend fun getImageUrl(page: Page): String = fetchImageUrl(page).awaitSingle()
-
-    /**
      * Returns the request for getting the url to the source image. Override only if it's needed to
      * override the url, send different headers or request method like POST.
      *
      * @param page the chapter whose page list has to be fetched
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
     protected open fun imageUrlRequest(page: Page): Request {
         return GET(page.url, headers)
     }
@@ -398,14 +371,17 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    @Deprecated(
-        message = "The helper functions are inherently limiting and hides the underlying implementation. " +
-            "Source developers should make their own implementation according to their needs.",
-    )
-    protected open fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+    protected abstract fun imageUrlParse(response: Response): String
 
-    suspend fun getImage(page: Page, existingSize: Long = 0L): Response {
-        return client.newCachelessCallWithProgress(imageRequest(page), page, existingSize)
+    /**
+     * Returns the response of the source image.
+     * Typically does not need to be overridden.
+     *
+     * @since extensions-lib 1.5
+     * @param page the page whose source image has to be downloaded.
+     */
+    open suspend fun getImage(page: Page): Response {
+        return client.newCachelessCallWithProgress(imageRequest(page), page)
             .awaitSuccess()
     }
 
@@ -425,7 +401,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param url the full url to the chapter.
      */
-    @Suppress("Unused")
     fun SChapter.setUrlWithoutDomain(url: String) {
         this.url = getUrlWithoutDomain(url)
     }
@@ -436,7 +411,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param url the full url to the manga.
      */
-    @Suppress("Unused")
     fun SManga.setUrlWithoutDomain(url: String) {
         this.url = getUrlWithoutDomain(url)
     }
@@ -457,7 +431,7 @@ abstract class HttpSource : CatalogueSource {
                 out += "#" + uri.fragment
             }
             out
-        } catch (_: URISyntaxException) {
+        } catch (e: URISyntaxException) {
             orig
         }
     }
@@ -469,7 +443,6 @@ abstract class HttpSource : CatalogueSource {
      * @param manga the manga
      * @return url of the manga
      */
-    @Suppress("DEPRECATION")
     open fun getMangaUrl(manga: SManga): String {
         return mangaDetailsRequest(manga).url.toString()
     }
@@ -481,7 +454,6 @@ abstract class HttpSource : CatalogueSource {
      * @param chapter the chapter
      * @return url of the chapter
      */
-    @Suppress("DEPRECATION")
     open fun getChapterUrl(chapter: SChapter): String {
         return pageListRequest(chapter).url.toString()
     }
@@ -493,6 +465,12 @@ abstract class HttpSource : CatalogueSource {
      * @param chapter the chapter to be added.
      * @param manga the manga of the chapter.
      */
-    @Deprecated("All modifications should be done when constructing the chapter")
     open fun prepareNewChapter(chapter: SChapter, manga: SManga) {}
+
+    /**
+     * Returns the list of filters for the source.
+     */
+    override fun getFilterList() = FilterList()
 }
+
+class LicensedMangaChaptersException : RuntimeException()
