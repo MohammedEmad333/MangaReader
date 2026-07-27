@@ -85,6 +85,9 @@ internal const val GLOBAL_SEARCH_CONCURRENCY = 6
 internal const val GLOBAL_SEARCH_PER_SOURCE = 12
 
 /** One source's slice of a global search. Sources that error out are dropped. */
+/** Where the currently open series was reached from; decides where back goes. */
+internal enum class SeriesOrigin { BROWSE, LIBRARY, HISTORY, GLOBAL_SEARCH }
+
 internal class GlobalResult(val source: Source, val series: List<Series>)
 
 /** Everything needed to jump straight back into a chapter from a history row. */
@@ -161,6 +164,13 @@ fun YomuApp() {
     var globalDone by remember { mutableIntStateOf(0) }
     var globalTotal by remember { mutableIntStateOf(0) }
     var globalPinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
+
+    // How the current series was reached. Opening from Library or History has to
+    // adopt its source to load chapters and pages, which would otherwise strand
+    // the user on the per-source browse screen (branch 4 of the routing chain)
+    // when they back out — a screen they never asked for and which has no results
+    // behind it. This says where "back" should actually go.
+    var seriesOrigin by remember { mutableStateOf(SeriesOrigin.BROWSE) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -348,6 +358,7 @@ fun YomuApp() {
 
     fun openSeries(series: Series) {
         val src = activeSource ?: return
+        seriesOrigin = SeriesOrigin.BROWSE
         activeSeries = series
         chapterList = emptyList()
         errorMessage = null
@@ -372,6 +383,8 @@ fun YomuApp() {
         browseHasNext = false
         browseQuery = globalQuery
         openSeries(series)
+        // After openSeries, which sets it to BROWSE unconditionally.
+        seriesOrigin = SeriesOrigin.GLOBAL_SEARCH
     }
 
     /** "See all" on a global search row: leave the results and browse that source. */
@@ -430,6 +443,7 @@ fun YomuApp() {
                         }
                     Triple(src, series, chapters)
                 }
+                seriesOrigin = SeriesOrigin.LIBRARY
                 activeSource = result.first
                 activeSourceId = result.first.id
                 activeSeries = result.second
@@ -469,6 +483,7 @@ fun YomuApp() {
                     if (idx < 0) throw IllegalStateException("That chapter is gone")
                     ResumeTarget(src, series, chapters, idx, src.loadPages(chapters[idx]))
                 }
+                seriesOrigin = SeriesOrigin.HISTORY
                 activeSource = target.source
                 activeSourceId = target.source.id
                 activeSeries = target.series
@@ -554,6 +569,14 @@ fun YomuApp() {
                 activeSeries = null
                 chapterList = emptyList()
                 errorMessage = null
+                // Only a series reached by browsing has a source listing to go
+                // back to. Everything else drops the adopted source so the chain
+                // falls through to the tab the user actually came from.
+                if (seriesOrigin != SeriesOrigin.BROWSE) {
+                    activeSource = null
+                    activeSourceId = null
+                    seriesList = null
+                }
             }
         )
     } else if (globalSearchOpen) {
@@ -574,6 +597,12 @@ fun YomuApp() {
             onBack = {
                 cancelGlobalSearch()
                 globalSearchOpen = false
+                // Opening a result adopted that result's source. Leaving search
+                // has to give it back, or the chain lands on a browse screen with
+                // nothing in it.
+                activeSource = null
+                activeSourceId = null
+                seriesList = null
             }
         )
     } else if (activeSource != null) {
