@@ -1,8 +1,5 @@
 // Flattened from Tachiyomi 0.15.x's KMP source-api module into a plain
-// Android library. commonMain + androidMain were merged into src/main.
-// Coordinates below are taken verbatim from tachiyomi-ref's
-// gradle/libs.versions.toml — do not "modernise" them; the extensions
-// targeting lib 1.4 were built against exactly these.
+// Android library. Coordinates come from tachiyomi-ref's libs.versions.toml.
 
 plugins {
     id("com.android.library")
@@ -26,26 +23,23 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // OkHttpExtensions.kt uses context receivers.
+        freeCompilerArgs += "-Xcontext-receivers"
     }
 
     sourceSets {
         getByName("main") {
-            // The network package was copied from core/src/main/java.
             java.srcDirs("src/main/kotlin", "src/main/java")
         }
     }
 }
 
 dependencies {
-    // `api` not `implementation`: the app module needs to see these to
-    // register Injekt bindings and to talk to sources directly.
-    // Tachiyomi's own build file made the same choice.
+    // `api` so the app module can see these when registering Injekt bindings.
     api("com.github.mihonapp:injekt:91edab2317")
     api("io.reactivex:rxjava:1.3.8")
     api("org.jsoup:jsoup:1.17.2")
 
-    // okhttp 5.0.0-alpha.12 per the catalog. This outranks the app's 4.12.0,
-    // so Gradle will upgrade the whole build to 5.x — expected, not a mistake.
     api(platform("com.squareup.okhttp3:okhttp-bom:5.0.0-alpha.12"))
     api("com.squareup.okhttp3:okhttp")
     api("com.squareup.okhttp3:logging-interceptor")
@@ -54,14 +48,12 @@ dependencies {
     implementation("com.squareup.okio:okio:3.7.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // OkHttpExtensions.kt calls decodeFromBufferedSource, which lives here.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     implementation("androidx.preference:preference-ktx:1.2.1")
-
-    // Used throughout the copied network package.
     implementation("com.squareup.logcat:logcat:0.1")
-
-    // JavaScriptEngine.kt needs this. If you delete that file, drop this too.
-    implementation("app.cash.quickjs:quickjs-android:0.9.2")
+    // quickjs dropped along with JavaScriptEngine.kt
 }
