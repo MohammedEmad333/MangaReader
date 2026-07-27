@@ -14,6 +14,12 @@ import dalvik.system.PathClassLoader
  * contains the `eu.kanade.tachiyomi.source.*` API classes (see notes at the
  * bottom). Discovery alone is not enough — the extension dex links against
  * those classes at load time and will throw NoClassDefFoundError without them.
+ *
+ * CACHING: `loadAll` classloads and instantiates every installed extension on
+ * every call, which is expensive (26 APKs / 95 sources on this device). Callers
+ * that just want the current source list should use [loadAllCached], which does
+ * the cheap PackageManager enumeration, compares it against the last one, and
+ * only re-instantiates when the installed set has actually changed.
  */
 object ExtensionLoader {
 
@@ -36,16 +42,83 @@ object ExtensionLoader {
         val error: Throwable? = null,
     )
 
-    fun loadAll(context: Context): List<LoadResult> {
-        val pm = context.packageManager
+    // ---------- cache ----------
 
-        @Suppress("DEPRECATION")
-        val candidates = pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
-            .filter { pkg -> pkg.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE } }
+    /** Fingerprint of the installed extension set that [cachedResults] was built from. */
+    private var cachedFingerprint: String? = null
+    private var cachedResults: List<LoadResult>? = null
 
-        Log.d(TAG, "Found ${candidates.size} extension packages")
-        return candidates.map { loadOne(context, pm, it) }
+    /**
+     * Same as [loadAll], but reuses the previously loaded sources when the set of
+     * installed extension packages hasn't changed.
+     *
+     * The fingerprint covers package name, versionName and lastUpdateTime, so an
+     * install, an uninstall, an update, and a same-version reinstall all miss the
+     * cache. That keeps the ON_RESUME rescan honest — it still picks up a package
+     * that arrived from the system installer — while costing one PackageManager
+     * query instead of 26 PathClassLoaders.
+     *
+     * Synchronized because Browse, global search and the lifecycle observer can
+     * all reach this concurrently from Dispatchers.IO; without it a cold start
+     * can classload everything two or three times over.
+     */
+    @Synchronized
+    fun loadAllCached(context: Context): List<LoadResult> {
+        val appCtx = context.applicationContext
+        val pm = appCtx.packageManager
+        val candidates = candidatePackages(pm)
+        val fingerprint = candidates.fingerprint()
+
+        val cached = cachedResults
+        if (cached != null && fingerprint == cachedFingerprint) {
+            Log.d(TAG, "Cache hit: ${cached.sumOf { it.sources.size }} sources")
+            return cached
+        }
+
+        Log.d(TAG, "Cache miss — loading ${candidates.size} extension packages")
+        val fresh = candidates.map { loadOne(appCtx, pm, it) }
+        cachedResults = fresh
+        cachedFingerprint = fingerprint
+        return fresh
     }
+
+    /**
+     * Drops the cache so the next [loadAllCached] reloads from scratch. The
+     * fingerprint already catches package changes, so this is only needed to
+     * recover from a load that failed for a reason outside the package set
+     * (e.g. an Injekt binding that wasn't registered yet).
+     */
+    @Synchronized
+    fun invalidate() {
+        cachedResults = null
+        cachedFingerprint = null
+    }
+
+    /** Uncached. Instantiates every extension fresh; prefer [loadAllCached]. */
+    fun loadAll(context: Context): List<LoadResult> {
+        val appCtx = context.applicationContext
+        val pm = appCtx.packageManager
+        val candidates = candidatePackages(pm)
+        Log.d(TAG, "Found ${candidates.size} extension packages")
+        return candidates.map { loadOne(appCtx, pm, it) }
+    }
+
+    /** Every installed package declaring the tachiyomi.extension feature. */
+    @Suppress("DEPRECATION")
+    private fun candidatePackages(pm: PackageManager): List<PackageInfo> {
+        return pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
+            .filter { pkg -> pkg.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE } }
+    }
+
+    /**
+     * Cheap identity for the installed extension set. Sorted, because
+     * getInstalledPackages makes no ordering guarantee and an unsorted join
+     * would report a spurious change.
+     */
+    private fun List<PackageInfo>.fingerprint(): String =
+        map { "${it.packageName}|${it.versionName}|${it.lastUpdateTime}" }
+            .sorted()
+            .joinToString(";")
 
     private fun loadOne(context: Context, pm: PackageManager, pkg: PackageInfo): LoadResult {
         val pkgName = pkg.packageName
@@ -110,24 +183,26 @@ object ExtensionLoader {
     /**
      * Human-readable report of what loadAll() found and why each package failed.
      * Wire this to the existing diagnostic button in ExtensionsScreen.
+     *
+     * Deliberately uncached: the whole point is to see what happens on a real
+     * load attempt right now. It does not disturb the cache either — a
+     * diagnostic run shouldn't swap out the instances Browse is using.
      */
     fun diagnose(context: Context): String {
         val out = StringBuilder()
-        val pm = context.packageManager
+        val appCtx = context.applicationContext
+        val pm = appCtx.packageManager
 
-        @Suppress("DEPRECATION")
-        val candidates = runCatching {
-            pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
-                .filter { pkg -> pkg.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE } }
-        }.getOrElse {
+        val candidates = runCatching { candidatePackages(pm) }.getOrElse {
             return "getInstalledPackages threw: $it"
         }
 
         out.appendLine("Packages declaring $EXTENSION_FEATURE: ${candidates.size}")
         out.appendLine("Supported lib versions: $LIB_VERSION_MIN - $LIB_VERSION_MAX")
+        out.appendLine("Cache: " + (cachedResults?.let { "${it.sumOf { r -> r.sources.size }} sources held" } ?: "empty"))
         out.appendLine()
 
-        val results = candidates.map { loadOne(context, pm, it) }
+        val results = candidates.map { loadOne(appCtx, pm, it) }
         val ok = results.count { it.error == null }
         out.appendLine("Loaded OK: $ok / ${results.size}")
         out.appendLine("Total sources: ${results.sumOf { it.sources.size }}")
