@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -30,6 +31,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +48,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -67,6 +72,17 @@ private fun savePage(context: Context, key: String, page: Int) {
 
 private fun isIncognito(context: Context): Boolean =
     prefs(context).getBoolean("incognito", false)
+
+// ---------- global search tuning ----------
+
+/** How many sources are queried at once. Kept low: every one is a live network call. */
+private const val GLOBAL_SEARCH_CONCURRENCY = 6
+
+/** Per-source cap on the row of results, so one chatty source can't dominate. */
+private const val GLOBAL_SEARCH_PER_SOURCE = 12
+
+/** One source's slice of a global search. Sources that error out are dropped. */
+private class GlobalResult(val source: Source, val series: List<Series>)
 
 /** Everything needed to jump straight back into a chapter from a history row. */
 private class ResumeTarget(
@@ -132,6 +148,16 @@ fun YomuApp() {
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
     var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
     var pages by remember { mutableStateOf<List<File>>(emptyList()) }
+
+    // global search state — hoisted here (not inside the screen) so results survive
+    // navigating into a series and coming back
+    var globalSearchOpen by remember { mutableStateOf(false) }
+    var globalQuery by remember { mutableStateOf("") }
+    var globalResults by remember { mutableStateOf<List<GlobalResult>>(emptyList()) }
+    var globalRunning by remember { mutableStateOf(false) }
+    var globalDone by remember { mutableIntStateOf(0) }
+    var globalTotal by remember { mutableIntStateOf(0) }
+    var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -212,6 +238,61 @@ fun YomuApp() {
         }
     }
 
+    /**
+     * Queries every searchable source for [query], a batch of
+     * GLOBAL_SEARCH_CONCURRENCY at a time, publishing each batch as it lands so
+     * results appear progressively instead of after the slowest source.
+     */
+    fun runGlobalSearch(query: String) {
+        globalJob?.cancel()
+        globalQuery = query
+        globalResults = emptyList()
+        globalDone = 0
+        globalTotal = 0
+        if (query.isBlank()) {
+            globalRunning = false
+            globalJob = null
+            return
+        }
+        globalRunning = true
+        globalJob = scope.launch {
+            try {
+                val targets = withContext(Dispatchers.IO) {
+                    val locals = configs.mapNotNull {
+                        runCatching { SourceManager.build(context, it) }.getOrNull()
+                    }
+                    (locals + extensionSources).filter { it.supportsSearch }
+                }
+                globalTotal = targets.size
+                targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
+                    val batch = withContext(Dispatchers.IO) {
+                        chunk.map { src ->
+                            async {
+                                runCatching {
+                                    src.searchSeries(query, 1).series
+                                        .take(GLOBAL_SEARCH_PER_SOURCE)
+                                }.getOrDefault(emptyList())
+                            }
+                        }.awaitAll()
+                    }
+                    globalResults = globalResults + chunk.mapIndexedNotNull { i, src ->
+                        val hits = batch[i]
+                        if (hits.isEmpty()) null else GlobalResult(src, hits)
+                    }
+                    globalDone += chunk.size
+                }
+            } finally {
+                globalRunning = false
+            }
+        }
+    }
+
+    fun cancelGlobalSearch() {
+        globalJob?.cancel()
+        globalJob = null
+        globalRunning = false
+    }
+
     fun openSourceConfig(config: SourceConfig) {
         val built = SourceManager.build(context, config)
         if (built == null) {
@@ -235,6 +316,24 @@ fun YomuApp() {
             }
             isLoading = false
         }
+    }
+
+    /** Tapping a cover in global search: adopt that source, then open the series. */
+    fun openGlobalResult(source: Source, series: Series) {
+        activeSource = source
+        activeSourceId = source.id
+        seriesList = null
+        browsePage = 1
+        browseHasNext = false
+        browseQuery = globalQuery
+        openSeries(series)
+    }
+
+    /** "See all" on a global search row: leave the results and browse that source. */
+    fun openGlobalSource(source: Source) {
+        cancelGlobalSearch()
+        globalSearchOpen = false
+        openSource(source, globalQuery)
     }
 
     fun openChapter(index: Int) {
@@ -383,6 +482,24 @@ fun YomuApp() {
                 errorMessage = null
             }
         )
+    } else if (globalSearchOpen) {
+        // Sits below SeriesScreen in this chain on purpose: opening a hit shows the
+        // series, and backing out of it lands on the results again.
+        GlobalSearchScreen(
+            query = globalQuery,
+            results = globalResults,
+            running = globalRunning,
+            done = globalDone,
+            total = globalTotal,
+            onSearch = { runGlobalSearch(it) },
+            onCancel = { cancelGlobalSearch() },
+            onOpenSource = { openGlobalSource(it) },
+            onOpenSeries = { src, s -> openGlobalResult(src, s) },
+            onBack = {
+                cancelGlobalSearch()
+                globalSearchOpen = false
+            }
+        )
     } else if (activeSource != null) {
         LibraryScreen(
             title = activeSource!!.name,
@@ -452,6 +569,15 @@ fun YomuApp() {
                     1 -> BrowseTab(
                         configs = configs,
                         extensions = extensionSources,
+                        onGlobalSearch = {
+                            globalSearchOpen = true
+                            if (globalQuery.isNotBlank() &&
+                                globalResults.isEmpty() &&
+                                !globalRunning
+                            ) {
+                                runGlobalSearch(globalQuery)
+                            }
+                        },
                         onAdd = {
                             editingConfig = SourceConfig(SourceManager.newId(), "local", "")
                             showSourceDialog = true
@@ -694,6 +820,7 @@ private fun LibraryTab(
 private fun BrowseTab(
     configs: List<SourceConfig>,
     extensions: List<Source>,
+    onGlobalSearch: () -> Unit,
     onAdd: () -> Unit,
     onOpenConfig: (SourceConfig) -> Unit,
     onOpenExtension: (Source) -> Unit,
@@ -704,7 +831,17 @@ private fun BrowseTab(
     var tab by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Browse") })
+        TopAppBar(
+            title = { Text("Browse") },
+            actions = {
+                // Only on Sources: the Extensions tab has its own filter field.
+                if (tab == 0) {
+                    IconButton(onClick = onGlobalSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Search all sources")
+                    }
+                }
+            }
+        )
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sources") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Extensions") })
@@ -836,6 +973,19 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
     var newRepo by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
+    var filter by remember { mutableStateOf("") }
+    var installedOnly by remember { mutableStateOf(false) }
+
+    // Client-side filter over the already-fetched index: no refetch, no network.
+    val shownExtensions = remember(available, filter, installedOnly) {
+        val q = filter.trim()
+        available.filter { ext ->
+            (!installedOnly || ext.isInstalled) &&
+                (q.isBlank() ||
+                    ext.name.contains(q, ignoreCase = true) ||
+                    ext.pkgName.contains(q, ignoreCase = true))
+        }
+    }
 
     LaunchedEffect(repos) {
         if (repos.isEmpty()) {
@@ -907,8 +1057,55 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
                 )
             }
         } else {
+            OutlinedTextField(
+                value = filter,
+                onValueChange = { filter = it },
+                label = { Text("Search extensions") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (filter.isNotBlank()) {
+                        TextButton(onClick = { filter = "" }) { Text("Clear") }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = installedOnly,
+                    onClick = { installedOnly = !installedOnly },
+                    label = { Text("Installed only") }
+                )
+                Text(
+                    "${shownExtensions.size} of ${available.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (shownExtensions.isEmpty() && !loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (available.isEmpty()) "Nothing in the index yet."
+                        else "No extension matches that.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(available) { ext ->
+                items(shownExtensions) { ext ->
                     ListItem(
                         headlineContent = { Text(ext.name) },
                         supportingContent = { Text("v${ext.versionName} · ${ext.pkgName}") },
@@ -953,6 +1150,145 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
             },
             confirmButton = { Button(onClick = { report = null }) { Text("Close") } }
         )
+    }
+}
+
+// ---------- global search ----------
+
+/**
+ * One query fanned out across every searchable source. Rows appear as their batch
+ * finishes; sources that error out or return nothing are simply absent.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GlobalSearchScreen(
+    query: String,
+    results: List<GlobalResult>,
+    running: Boolean,
+    done: Int,
+    total: Int,
+    onSearch: (String) -> Unit,
+    onCancel: () -> Unit,
+    onOpenSource: (Source) -> Unit,
+    onOpenSeries: (Source, Series) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    var field by remember(query) { mutableStateOf(query) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Search all sources") },
+            navigationIcon = { TextButton(onClick = onBack) { Text("←") } }
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = field,
+                onValueChange = { field = it },
+                label = { Text("Search") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            if (running) {
+                OutlinedButton(onClick = onCancel) { Text("Stop") }
+            } else {
+                Button(
+                    enabled = field.isNotBlank(),
+                    onClick = { onSearch(field.trim()) }
+                ) { Text("Go") }
+            }
+        }
+
+        if (running) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (total > 0) {
+            Text(
+                "Searched $done of $total sources \u00b7 ${results.size} with results",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
+        if (results.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    when {
+                        running -> "Searching\u2026"
+                        query.isBlank() -> "Type something to search every source at once."
+                        else -> "No source returned a match for \u201c$query\u201d."
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                items(results) { result ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 8.dp, top = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            result.source.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { onOpenSource(result.source) }) {
+                            Text("See all")
+                        }
+                    }
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(result.series) { s ->
+                            Column(
+                                modifier = Modifier
+                                    .width(110.dp)
+                                    .clickable { onOpenSeries(result.source, s) }
+                            ) {
+                                CoverImage(
+                                    cover = s.cover,
+                                    title = s.title,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(0.7f)
+                                )
+                                Text(
+                                    text = s.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
+                }
+            }
+        }
     }
 }
 
