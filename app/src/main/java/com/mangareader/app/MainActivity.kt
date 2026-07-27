@@ -1,16 +1,19 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -20,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
@@ -34,48 +38,46 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-// ---- Data Models ----
-
-data class Source(val id: String, val name: String, val type: String)
-data class SourceConfig(
-    val id: String = "",
-    val label: String = "",
-    val type: String = "local",
-    val treeUri: String? = null,
-    val url: String? = null,
-    val username: String? = null,
-    val password: String? = null
-)
-data class Series(val id: String, val title: String, val cover: String?)
-data class Chapter(val id: String, val name: String)
-data class Book(val pages: List<String>)
-data class HistoryEntry(val id: String, val title: String, val page: Int, val total: Int)
-private data class HistoryPayload(
-    val activeSrc: Source,
-    val ser: Series,
-    val chs: List<Chapter>,
-    val idx: Int
-)
-
-// ---- Helper Functions ----
+// ---------- prefs: the same store every other object in this package uses ----------
 
 private fun prefs(context: Context): SharedPreferences =
-    context.getSharedPreferences("yomu_prefs", Context.MODE_PRIVATE)
+    context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
-private fun typeLabel(type: String): String = when (type.lowercase()) {
-    "local" -> "Local Storage"
-    "komga" -> "Komga Server"
-    else -> type.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+/** Stable per-chapter key: source id + chapter id. Drives resume, read flags and history. */
+private fun chapterKeyOf(sourceId: String, chapter: Chapter): String = "$sourceId|${chapter.id}"
+
+private fun savedPage(context: Context, key: String): Int =
+    prefs(context).getInt("pos:$key", 0)
+
+private fun savePage(context: Context, key: String, page: Int) {
+    prefs(context).edit().putInt("pos:$key", page).apply()
 }
 
-// ---- Activity & Root Application ----
+private fun isIncognito(context: Context): Boolean =
+    prefs(context).getBoolean("incognito", false)
+
+/** Everything needed to jump straight back into a chapter from a history row. */
+private class ResumeTarget(
+    val source: Source,
+    val series: Series,
+    val chapters: List<Chapter>,
+    val index: Int,
+    val pages: List<File>
+)
+
+// ---------- activity ----------
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SourceManager.migrateLegacy(this)
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -87,50 +89,200 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ---------- root ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YomuApp() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var currentTab by remember { mutableIntStateOf(0) }
-    var sources by remember { mutableStateOf(listOf<Source>()) }
-    var configs by remember { mutableStateOf(listOf<SourceConfig>()) }
+    var configs by remember { mutableStateOf(SourceManager.list(context)) }
+    var extensionSources by remember { mutableStateOf<List<Source>>(emptyList()) }
+    var history by remember { mutableStateOf(History.list(context)) }
+
     var showSourceDialog by remember { mutableStateOf(false) }
-    var editingConfig by remember { mutableStateOf(SourceConfig()) }
-    
-    // Navigation states
+    var editingConfig by remember { mutableStateOf<SourceConfig?>(null) }
+
+    // navigation state
+    var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSource by remember { mutableStateOf<Source?>(null) }
-    var activeSeries by remember { mutableStateOf<Series?>(null) }
     var seriesList by remember { mutableStateOf<List<Series>?>(null) }
+    var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
     var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
-    var currentBook by remember { mutableStateOf<Book?>(null) }
-    var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
+    var pages by remember { mutableStateOf<List<File>>(emptyList()) }
+
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Root Navigation Layout
-    if (activeChapterIdx != null && currentBook != null) {
-        ReaderScreen(
-            book = currentBook!!,
-            initialPage = 0,
-            hasPrev = activeChapterIdx!! > 0,
-            hasNext = activeChapterIdx!! < chapterList.size - 1,
-            onPrev = { activeChapterIdx = activeChapterIdx!! - 1 },
-            onNext = { activeChapterIdx = activeChapterIdx!! + 1 },
-            onProgress = { page ->
-                // Handle progress tracking
-            },
-            onClose = { activeChapterIdx = null; currentBook = null }
-        )
+    // bumped whenever a read flag / resume position changes, to re-read prefs in lists
+    var readTick by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        extensionSources = withContext(Dispatchers.IO) {
+            runCatching { ExtensionManager.loadInstalledSources(context) }.getOrDefault(emptyList())
+        }
+    }
+
+    fun openSource(source: Source) {
+        activeSourceId = source.id
+        activeSource = source
+        seriesList = null
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                seriesList = withContext(Dispatchers.IO) { source.listSeries() }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not scan this source"
+                seriesList = emptyList()
+            }
+            isLoading = false
+        }
+    }
+
+    fun openSourceConfig(config: SourceConfig) {
+        val built = SourceManager.build(context, config)
+        if (built == null) {
+            errorMessage = "\"${config.label}\" isn't configured yet"
+            return
+        }
+        openSource(built)
+    }
+
+    fun openSeries(series: Series) {
+        val src = activeSource ?: return
+        activeSeries = series
+        chapterList = emptyList()
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                chapterList = withContext(Dispatchers.IO) { src.listChapters(series) }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not list chapters"
+            }
+            isLoading = false
+        }
+    }
+
+    fun openChapter(index: Int) {
+        val src = activeSource ?: return
+        val chapter = chapterList.getOrNull(index) ?: return
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                val loaded = withContext(Dispatchers.IO) { src.loadPages(chapter) }
+                pages = loaded
+                activeChapterIdx = index
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not open this chapter"
+            }
+            isLoading = false
+        }
+    }
+
+    fun openFromHistory(entry: HistoryEntry) {
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                val target = withContext(Dispatchers.IO) {
+                    val src = SourceManager.listAllSources(context)
+                        .firstOrNull { it.id == entry.sourceId }
+                        ?: throw IllegalStateException("That source no longer exists")
+                    val series = src.listSeries().firstOrNull { it.id == entry.seriesId }
+                        ?: throw IllegalStateException("That series is no longer in the library")
+                    val chapters = src.listChapters(series)
+                    val idx = chapters.indexOfFirst {
+                        chapterKeyOf(entry.sourceId, it) == entry.chapterKey
+                    }
+                    if (idx < 0) throw IllegalStateException("That chapter is gone")
+                    ResumeTarget(src, series, chapters, idx, src.loadPages(chapters[idx]))
+                }
+                activeSource = target.source
+                activeSourceId = target.source.id
+                activeSeries = target.series
+                chapterList = target.chapters
+                pages = target.pages
+                activeChapterIdx = target.index
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not resume"
+            }
+            isLoading = false
+        }
+    }
+
+    // ---- routing ----
+
+    val chapterIdx = activeChapterIdx
+    val readerChapter = chapterIdx?.let { chapterList.getOrNull(it) }
+
+    if (chapterIdx != null && readerChapter != null && pages.isNotEmpty()) {
+        val srcId = activeSourceId ?: ""
+        val series = activeSeries
+        val chKey = chapterKeyOf(srcId, readerChapter)
+        val total = pages.size
+
+        // key() rebuilds the pager state when the chapter changes
+        key(chKey) {
+            ReaderScreen(
+                pages = pages,
+                initialPage = savedPage(context, chKey).coerceIn(0, total - 1),
+                hasPrev = chapterIdx > 0,
+                hasNext = chapterIdx < chapterList.size - 1,
+                onPrev = { openChapter(chapterIdx - 1) },
+                onNext = { openChapter(chapterIdx + 1) },
+                onProgress = { page ->
+                    savePage(context, chKey, page)
+                    if (page >= total - 1) ReadState.setRead(context, chKey, true)
+                    if (!isIncognito(context)) {
+                        History.touch(
+                            context,
+                            HistoryEntry(
+                                chapterKey = chKey,
+                                title = listOfNotNull(series?.title, readerChapter.name)
+                                    .joinToString(" · "),
+                                sourceId = srcId,
+                                seriesId = series?.id ?: "",
+                                coverPath = series?.cover?.absolutePath ?: "",
+                                page = page,
+                                total = total,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                },
+                onClose = {
+                    activeChapterIdx = null
+                    pages = emptyList()
+                    history = History.list(context)
+                    readTick++
+                }
+            )
+        }
     } else if (activeSeries != null) {
         SeriesScreen(
             series = activeSeries!!,
             chapters = chapterList,
-            progressFor = { 0 },
-            onOpen = { idx ->
-                activeChapterIdx = idx
-                // Load book placeholder
-                currentBook = Book(pages = listOf("https://via.placeholder.com/600x800"))
+            sourceId = activeSourceId ?: "",
+            loading = isLoading,
+            error = errorMessage,
+            readTick = readTick,
+            onOpen = { openChapter(it) },
+            onToggleRead = { chapter ->
+                val k = chapterKeyOf(activeSourceId ?: "", chapter)
+                ReadState.setRead(context, k, !ReadState.isRead(context, k))
+                readTick++
             },
-            onBack = { activeSeries = null }
+            onBack = {
+                activeSeries = null
+                chapterList = emptyList()
+                errorMessage = null
+            }
         )
     } else if (activeSource != null) {
         LibraryScreen(
@@ -138,12 +290,14 @@ fun YomuApp() {
             series = seriesList,
             loading = isLoading,
             error = errorMessage,
-            onRescan = { /* Trigger rescan */ },
-            onOpen = { ser ->
-                activeSeries = ser
-                chapterList = listOf(Chapter("1", "Chapter 1"), Chapter("2", "Chapter 2"))
-            },
-            onBack = { activeSource = null }
+            onRescan = { activeSource?.let { openSource(it) } },
+            onOpen = { openSeries(it) },
+            onBack = {
+                activeSource = null
+                activeSourceId = null
+                seriesList = null
+                errorMessage = null
+            }
         )
     } else {
         Scaffold(
@@ -157,7 +311,10 @@ fun YomuApp() {
                     )
                     NavigationBarItem(
                         selected = currentTab == 1,
-                        onClick = { currentTab = 1 },
+                        onClick = {
+                            currentTab = 1
+                            history = History.list(context)
+                        },
                         label = { Text("History") },
                         icon = { Text("🕒") }
                     )
@@ -172,27 +329,46 @@ fun YomuApp() {
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
                 when (currentTab) {
-                    0 -> SourcesManagerScreen(
-                        sources = sources,
+                    0 -> SourcesTab(
                         configs = configs,
+                        extensions = extensionSources,
+                        error = errorMessage,
                         onAdd = {
-                            editingConfig = SourceConfig()
+                            editingConfig = SourceConfig(SourceManager.newId(), "local", "")
                             showSourceDialog = true
                         },
-                        onOpen = { src ->
-                            activeSource = src
-                            seriesList = listOf(Series("1", "Sample Manga", null))
-                        },
-                        onEdit = { cfg ->
-                            editingConfig = cfg
+                        onOpenConfig = { openSourceConfig(it) },
+                        onOpenExtension = { openSource(it) },
+                        onEdit = {
+                            editingConfig = it
                             showSourceDialog = true
+                        },
+                        onDelete = {
+                            SourceManager.remove(context, it.id)
+                            configs = SourceManager.list(context)
+                        },
+                        onExtensionsChanged = {
+                            scope.launch {
+                                extensionSources = withContext(Dispatchers.IO) {
+                                    runCatching { ExtensionManager.loadInstalledSources(context) }
+                                        .getOrDefault(emptyList())
+                                }
+                            }
                         }
                     )
                     1 -> HistoryScreen(
                         history = history,
-                        onOpen = { /* Open history item */ },
-                        onDelete = { entry -> history = history.filterNot { it.id == entry.id } },
-                        onClearAll = { history = emptyList() }
+                        loading = isLoading,
+                        error = errorMessage,
+                        onOpen = { openFromHistory(it) },
+                        onDelete = {
+                            History.remove(context, it.chapterKey)
+                            history = History.list(context)
+                        },
+                        onClearAll = {
+                            History.list(context).forEach { History.remove(context, it.chapterKey) }
+                            history = History.list(context)
+                        }
                     )
                     2 -> MoreTab()
                 }
@@ -200,36 +376,35 @@ fun YomuApp() {
         }
     }
 
-    if (showSourceDialog) {
+    val editing = editingConfig
+    if (showSourceDialog && editing != null) {
         SourceDialog(
-            value = editingConfig,
+            value = editing,
             onChange = { editingConfig = it },
-            onPickFolder = { /* Folder picker trigger */ },
-            onDismiss = { showSourceDialog = false },
-            onSave = {
-                val newSource = Source(
-                    id = editingConfig.id.ifBlank { System.currentTimeMillis().toString() },
-                    name = editingConfig.label.ifBlank { "New Source" },
-                    type = editingConfig.type
-                )
-                sources = sources + newSource
-                configs = configs + editingConfig.copy(id = newSource.id)
+            onDismiss = {
                 showSourceDialog = false
+                editingConfig = null
+            },
+            onSave = { saved ->
+                SourceManager.upsert(context, saved)
+                configs = SourceManager.list(context)
+                showSourceDialog = false
+                editingConfig = null
             }
         )
     }
 }
 
-// ---- Shared Composables ----
+// ---------- shared ----------
 
 @Composable
-fun CoverImage(cover: String?, title: String, modifier: Modifier = Modifier) {
+fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small
     ) {
-        if (!cover.isNullOrBlank()) {
+        if (cover != null) {
             AsyncImage(
                 model = cover,
                 contentDescription = title,
@@ -237,10 +412,7 @@ fun CoverImage(cover: String?, title: String, modifier: Modifier = Modifier) {
                 contentScale = ContentScale.Crop
             )
         } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = title.take(2).uppercase(),
                     style = MaterialTheme.typography.titleMedium,
@@ -252,31 +424,43 @@ fun CoverImage(cover: String?, title: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SourcesManagerScreen(
-    sources: List<Source>,
+private fun ErrorBanner(error: String?) {
+    if (error != null) {
+        Text(
+            text = error,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+
+// ---------- sources tab ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SourcesTab(
     configs: List<SourceConfig>,
+    extensions: List<Source>,
+    error: String?,
     onAdd: () -> Unit,
-    onOpen: (Source) -> Unit,
-    onEdit: (SourceConfig) -> Unit
+    onOpenConfig: (SourceConfig) -> Unit,
+    onOpenExtension: (Source) -> Unit,
+    onEdit: (SourceConfig) -> Unit,
+    onDelete: (SourceConfig) -> Unit,
+    onExtensionsChanged: () -> Unit
 ) {
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTabIndex) {
-            Tab(
-                selected = selectedTabIndex == 0,
-                onClick = { selectedTabIndex = 0 },
-                text = { Text("My Sources") }
-            )
-            Tab(
-                selected = selectedTabIndex == 1,
-                onClick = { selectedTabIndex = 1 },
-                text = { Text("Extensions") }
-            )
+        TabRow(selectedTabIndex = tab) {
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("My sources") })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Extensions") })
         }
+        ErrorBanner(error)
 
-        if (selectedTabIndex == 0) {
-            if (sources.isEmpty()) {
+        if (tab == 0) {
+            if (configs.isEmpty() && extensions.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -285,14 +469,12 @@ fun SourcesManagerScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "No sources added yet.",
+                        "No sources yet.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = onAdd) {
-                        Text("Add Source")
-                    }
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onAdd) { Text("Add a source") }
                 }
             } else {
                 LazyColumn(
@@ -300,56 +482,196 @@ fun SourcesManagerScreen(
                         .fillMaxSize()
                         .weight(1f)
                 ) {
-                    items(sources) { src ->
-                        val cfg = configs.find { it.id == src.id }
+                    items(configs) { cfg ->
+                        var menuOpen by remember(cfg.id) { mutableStateOf(false) }
                         ListItem(
-                            headlineContent = { Text(src.name) },
+                            headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
                             supportingContent = {
                                 Text(
-                                    cfg?.label?.ifBlank { typeLabel(cfg.type) }
-                                        ?: typeLabel(src.type)
+                                    if (cfg.isConfigured) typeLabel(cfg.type)
+                                    else typeLabel(cfg.type) + " — not configured"
                                 )
                             },
-                            modifier = Modifier.clickable { onOpen(src) },
+                            modifier = Modifier.clickable { onOpenConfig(cfg) },
                             trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (cfg != null) {
-                                        IconButton(onClick = { onEdit(cfg) }) {
-                                            Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "Edit Source"
-                                            )
-                                        }
+                                Box {
+                                    IconButton(onClick = { menuOpen = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit") },
+                                            onClick = { menuOpen = false; onEdit(cfg) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete") },
+                                            onClick = { menuOpen = false; onDelete(cfg) }
+                                        )
                                     }
                                 }
                             }
                         )
                         HorizontalDivider()
                     }
+
+                    if (extensions.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Installed extensions",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                        items(extensions) { src ->
+                            ListItem(
+                                headlineContent = { Text(src.name) },
+                                supportingContent = { Text("Extension") },
+                                modifier = Modifier.clickable { onOpenExtension(src) }
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onAdd,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Add a source") }
+                        }
+                    }
                 }
             }
         } else {
-            Box(
+            ExtensionsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Extensions Catalog",
-                        style = MaterialTheme.typography.titleMedium
+                onInstalled = onExtensionsChanged
+            )
+        }
+    }
+}
+
+// ---------- extensions ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
+    var available by remember { mutableStateOf<List<Extension>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var newRepo by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(repos) {
+        if (repos.isEmpty()) {
+            available = emptyList()
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        try {
+            available = ExtensionManager.fetchAvailable(context)
+            if (available.isEmpty()) error = "No extensions found in the configured repos."
+        } catch (e: Exception) {
+            error = e.message ?: "Could not reach the repository"
+        }
+        loading = false
+    }
+
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = newRepo,
+                onValueChange = { newRepo = it },
+                label = { Text("Repo index URL") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                enabled = newRepo.isNotBlank(),
+                onClick = {
+                    ExtensionRepos.add(context, newRepo.trim())
+                    repos = ExtensionRepos.list(context)
+                    newRepo = ""
+                }
+            ) { Text("Add") }
+        }
+
+        repos.forEach { url ->
+            ListItem(
+                headlineContent = { Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                trailingContent = {
+                    TextButton(onClick = {
+                        ExtensionRepos.remove(context, url)
+                        repos = ExtensionRepos.list(context)
+                    }) { Text("Remove") }
+                }
+            )
+        }
+
+        HorizontalDivider()
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
+
+        if (repos.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "Add a repository URL to browse extensions.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(available) { ext ->
+                    ListItem(
+                        headlineContent = { Text(ext.name) },
+                        supportingContent = { Text("v${ext.versionName} · ${ext.pkgName}") },
+                        trailingContent = {
+                            if (ext.isInstalled) {
+                                Text(
+                                    "Installed",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            } else {
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        ExtensionManager.install(context, ext)
+                                        onInstalled()
+                                    }
+                                }) { Text("Install") }
+                            }
+                        }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = onAdd) {
-                        Text("Configure New Source")
-                    }
+                    HorizontalDivider()
                 }
             }
         }
     }
 }
 
+// ---------- library ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryScreen(
     title: String,
@@ -368,37 +690,71 @@ private fun LibraryScreen(
         else -> 110.dp
     }
 
+    val categories = remember { Categories.list(context) }
+    var activeCategory by remember { mutableStateOf<String?>(null) }
+
+    val shown = remember(series, activeCategory) {
+        val all = series ?: emptyList()
+        val cat = activeCategory
+        if (cat == null) all
+        else all.filter { Categories.categoriesFor(context, it.id).contains(cat) }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(title) },
-            navigationIcon = {
-                TextButton(onClick = onBack) { Text("←") }
-            },
-            actions = {
-                TextButton(onClick = onRescan) { Text("Refresh") }
-            }
+            navigationIcon = { TextButton(onClick = onBack) { Text("←") } },
+            actions = { TextButton(onClick = onRescan) { Text("Rescan") } }
         )
-        if (loading) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        if (error != null) {
-            Text(
-                text = error,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(16.dp)
-            )
-        }
-        if (series == null && !loading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No series found")
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
+
+        if (categories.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = activeCategory == null,
+                    onClick = { activeCategory = null },
+                    label = { Text("All") }
+                )
+                categories.forEach { cat ->
+                    FilterChip(
+                        selected = activeCategory == cat.id,
+                        onClick = { activeCategory = cat.id },
+                        label = { Text(cat.name) }
+                    )
+                }
             }
-        } else if (series != null) {
+        }
+
+        if (shown.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!loading) {
+                    Text(
+                        if (series.isNullOrEmpty()) "Nothing found in this source."
+                        else "No series in this category.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
                 contentPadding = PaddingValues(6.dp)
             ) {
-                items(series) { s ->
+                items(shown) { s ->
                     Column(
                         modifier = Modifier
                             .padding(6.dp)
@@ -425,15 +781,25 @@ private fun LibraryScreen(
     }
 }
 
+// ---------- series ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeriesScreen(
     series: Series,
     chapters: List<Chapter>,
-    progressFor: (Chapter) -> Int,
+    sourceId: String,
+    loading: Boolean,
+    error: String?,
+    readTick: Int,
     onOpen: (Int) -> Unit,
+    onToggleRead: (Chapter) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
+    var showCategories by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -449,25 +815,44 @@ private fun SeriesScreen(
                     .width(64.dp)
                     .aspectRatio(0.7f)
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(series.title, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(series.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
                 Text(
                     "${chapters.size} chapters",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            TextButton(onClick = { showCategories = true }) { Text("Tags") }
         }
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
         HorizontalDivider()
+
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             itemsIndexed(chapters) { index, ch ->
-                val progress = progressFor(ch)
+                val key = chapterKeyOf(sourceId, ch)
+                val read = remember(key, readTick) { ReadState.isRead(context, key) }
+                val resume = remember(key, readTick) { savedPage(context, key) }
                 ListItem(
-                    headlineContent = { Text(ch.name) },
+                    headlineContent = {
+                        Text(
+                            ch.name,
+                            color = if (read) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
                     supportingContent = {
-                        if (progress > 0) {
-                            Text("Page ${progress + 1}", color = MaterialTheme.colorScheme.primary)
+                        if (read) {
+                            Text("Read")
+                        } else if (resume > 0) {
+                            Text("Page ${resume + 1}", color = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    trailingContent = {
+                        TextButton(onClick = { onToggleRead(ch) }) {
+                            Text(if (read) "Unread" else "Read")
                         }
                     },
                     modifier = Modifier.clickable { onOpen(index) }
@@ -476,12 +861,66 @@ private fun SeriesScreen(
             }
         }
     }
+
+    if (showCategories) {
+        CategoryAssignDialog(seriesId = series.id, onDismiss = { showCategories = false })
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val all = remember { Categories.list(context) }
+    var selected by remember { mutableStateOf(Categories.categoriesFor(context, seriesId)) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Categories") },
+        text = {
+            if (all.isEmpty()) {
+                Text("No categories yet — create some under More → Categories.")
+            } else {
+                Column {
+                    all.forEach { cat ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selected =
+                                        if (selected.contains(cat.id)) selected - cat.id
+                                        else selected + cat.id
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = selected.contains(cat.id),
+                                onCheckedChange = {
+                                    selected = if (it) selected + cat.id else selected - cat.id
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(cat.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                Categories.setCategoriesFor(context, seriesId, selected)
+                onDismiss()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+// ---------- reader ----------
+
 @Composable
 private fun ReaderScreen(
-    book: Book,
+    pages: List<File>,
     initialPage: Int,
     hasPrev: Boolean,
     hasNext: Boolean,
@@ -491,12 +930,10 @@ private fun ReaderScreen(
     onClose: () -> Unit
 ) {
     BackHandler { onClose() }
-    val pagerState = rememberPagerState(initialPage = initialPage) { book.pages.size }
+    val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     var showControls by remember { mutableStateOf(false) }
 
-    LaunchedEffect(pagerState.currentPage) {
-        onProgress(pagerState.currentPage)
-    }
+    LaunchedEffect(pagerState.currentPage) { onProgress(pagerState.currentPage) }
 
     Box(
         modifier = Modifier
@@ -508,13 +945,10 @@ private fun ReaderScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown()
-                        showControls = !showControls
-                    }
+                    detectTapGestures(onTap = { showControls = !showControls })
                 }
         ) { page ->
-            val file = book.pages.getOrNull(page)
+            val file = pages.getOrNull(page)
             if (file != null) {
                 AsyncImage(
                     model = file,
@@ -527,7 +961,9 @@ private fun ReaderScreen(
 
         if (showControls) {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
             ) {
                 Row(
@@ -539,7 +975,7 @@ private fun ReaderScreen(
                 ) {
                     TextButton(onClick = onClose) { Text("Close") }
                     Text(
-                        text = "${pagerState.currentPage + 1} / ${book.pages.size}",
+                        "${pagerState.currentPage + 1} / ${pages.size}",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Row {
@@ -552,9 +988,14 @@ private fun ReaderScreen(
     }
 }
 
+// ---------- history ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HistoryScreen(
     history: List<HistoryEntry>,
+    loading: Boolean,
+    error: String?,
     onOpen: (HistoryEntry) -> Unit,
     onDelete: (HistoryEntry) -> Unit,
     onClearAll: () -> Unit
@@ -569,20 +1010,41 @@ private fun HistoryScreen(
         ) {
             Text("History", style = MaterialTheme.typography.titleLarge)
             if (history.isNotEmpty()) {
-                TextButton(onClick = onClearAll) { Text("Clear All") }
+                TextButton(onClick = onClearAll) { Text("Clear all") }
             }
         }
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        ErrorBanner(error)
         HorizontalDivider()
+
         if (history.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No reading history yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Nothing read yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(history) { entry ->
                     ListItem(
-                        headlineContent = { Text(entry.title) },
-                        supportingContent = { Text("Page ${entry.page + 1} of ${entry.total}") },
+                        leadingContent = {
+                            CoverImage(
+                                cover = entry.coverPath
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { File(it) },
+                                title = entry.title,
+                                modifier = Modifier
+                                    .width(40.dp)
+                                    .aspectRatio(0.7f)
+                            )
+                        },
+                        headlineContent = {
+                            Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        },
+                        supportingContent = {
+                            Text(
+                                if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
+                                else "Page ${entry.page + 1}"
+                            )
+                        },
                         modifier = Modifier.clickable { onOpen(entry) },
                         trailingContent = {
                             TextButton(onClick = { onDelete(entry) }) { Text("Remove") }
@@ -595,11 +1057,17 @@ private fun HistoryScreen(
     }
 }
 
+// ---------- more ----------
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreTab() {
     val context = LocalContext.current
     var incognito by remember { mutableStateOf(prefs(context).getBoolean("incognito", false)) }
+    var coverSize by remember {
+        mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
+    }
+    var showCategories by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -607,10 +1075,11 @@ private fun MoreTab() {
             .padding(16.dp)
     ) {
         Text("More", style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
+
         ListItem(
-            headlineContent = { Text("Incognito Mode") },
-            supportingContent = { Text("Pause reading history logging") },
+            headlineContent = { Text("Incognito mode") },
+            supportingContent = { Text("Pause reading-history logging") },
             trailingContent = {
                 Switch(
                     checked = incognito,
@@ -622,56 +1091,175 @@ private fun MoreTab() {
             }
         )
         HorizontalDivider()
+
+        ListItem(
+            headlineContent = { Text("Cover size") },
+            supportingContent = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("small", "medium", "large").forEach { size ->
+                        FilterChip(
+                            selected = coverSize == size,
+                            onClick = {
+                                coverSize = size
+                                prefs(context).edit().putString("cover_size", size).apply()
+                            },
+                            label = { Text(size.replaceFirstChar { it.uppercase() }) }
+                        )
+                    }
+                }
+            }
+        )
+        HorizontalDivider()
+
+        ListItem(
+            headlineContent = { Text("Categories") },
+            supportingContent = { Text("Create and delete library categories") },
+            modifier = Modifier.clickable { showCategories = true }
+        )
+        HorizontalDivider()
+
         ListItem(
             headlineContent = { Text("About Yomu") },
-            supportingContent = { Text("Version 1.0.0 — Modern Jetpack Compose Reader") }
+            supportingContent = { Text("Native Kotlin manga reader") }
         )
+    }
+
+    if (showCategories) {
+        CategoryManagerDialog(onDismiss = { showCategories = false })
     }
 }
 
 @Composable
+private fun CategoryManagerDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var cats by remember { mutableStateOf(Categories.list(context)) }
+    var newName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Categories") },
+        text = {
+            Column {
+                cats.forEach { cat ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(cat.name, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            Categories.remove(context, cat.id)
+                            cats = Categories.list(context)
+                        }) { Text("Delete") }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("New category") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        enabled = newName.isNotBlank(),
+                        onClick = {
+                            Categories.add(context, newName.trim())
+                            cats = Categories.list(context)
+                            newName = ""
+                        }
+                    ) { Text("Add") }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Done") } }
+    )
+}
+
+// ---------- source dialog ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun SourceDialog(
     value: SourceConfig,
     onChange: (SourceConfig) -> Unit,
-    onPickFolder: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: () -> Unit
+    onSave: (SourceConfig) -> Unit
 ) {
+    val context = LocalContext.current
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            onChange(value.copy(treeUri = uri.toString()))
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (value.type == "local") "Local Source" else "Configure Komga") },
+        title = { Text("Source") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("local", "komga").forEach { t ->
+                        FilterChip(
+                            selected = value.type == t,
+                            onClick = { onChange(value.copy(type = t)) },
+                            label = { Text(typeLabel(t)) }
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = value.label,
                     onValueChange = { onChange(value.copy(label = it)) },
-                    label = { Text("Display Name") },
+                    label = { Text("Display name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (value.type == "local") {
-                    OutlinedButton(onClick = onPickFolder, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (value.treeUri != null) "Change Folder" else "Select Folder")
+                    OutlinedButton(
+                        onClick = { folderPicker.launch(null) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (value.treeUri.isNotBlank()) "Change folder" else "Choose folder")
                     }
-                } else if (value.type == "komga") {
+                    if (value.treeUri.isNotBlank()) {
+                        Text(
+                            Uri.decode(value.treeUri).substringAfterLast(':'),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
                     OutlinedTextField(
-                        value = value.url ?: "",
+                        value = value.url,
                         onValueChange = { onChange(value.copy(url = it)) },
                         label = { Text("Server URL") },
-                        placeholder = { Text("http://192.168.1.X:8080") },
+                        placeholder = { Text("http://192.168.1.10:25600") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = value.username ?: "",
-                        onValueChange = { onChange(value.copy(username = it)) },
-                        label = { Text("Username / Email") },
+                        value = value.user,
+                        onValueChange = { onChange(value.copy(user = it)) },
+                        label = { Text("Username / email") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = value.password ?: "",
-                        onValueChange = { onChange(value.copy(password = it)) },
+                        value = value.pass,
+                        onValueChange = { onChange(value.copy(pass = it)) },
                         label = { Text("Password") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -681,10 +1269,11 @@ private fun SourceDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onSave) { Text("Save") }
+            Button(
+                enabled = value.isConfigured,
+                onClick = { onSave(value.copy(label = value.label.ifBlank { typeLabel(value.type) })) }
+            ) { Text("Save") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
