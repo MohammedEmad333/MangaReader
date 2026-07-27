@@ -388,8 +388,12 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source is no longer installed")
-                    val series = src.getSeries(entry.seriesId)
+                    val fetched = src.getSeries(entry.seriesId)
                         ?: throw IllegalStateException("That series is no longer available from its source")
+                    // A source whose details request failed can come back with no
+                    // title. The library already stores the name it was saved under,
+                    // which beats showing a blank header.
+                    val series = fetched.copy(title = fetched.title.ifBlank { entry.title })
                     Triple(src, series, src.listChapters(series))
                 }
                 activeSource = result.first
@@ -412,8 +416,9 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source no longer exists")
-                    val series = src.getSeries(entry.seriesId)
+                    val fetched = src.getSeries(entry.seriesId)
                         ?: throw IllegalStateException("That series is no longer in the library")
+                    val series = fetched.copy(title = fetched.title.ifBlank { entry.title })
                     val chapters = src.listChapters(series)
                     val idx = chapters.indexOfFirst {
                         chapterKeyOf(entry.sourceId, it) == entry.chapterKey

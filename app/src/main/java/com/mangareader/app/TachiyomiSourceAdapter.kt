@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.Log
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -71,10 +72,18 @@ class TachiyomiSourceAdapter(
         val url = id.removePrefix(prefix)
         if (url.isBlank()) return@withContext null
 
-        val stub: SManga = SMangaImpl().apply { this.url = url }
-        val full = runCatching { delegate.getMangaDetails(stub) }.getOrDefault(stub)
+        // Both fields are lateinit on SMangaImpl, so the stub has to initialise
+        // them up front: if getMangaDetails below fails, this object is what gets
+        // returned, and reading an unset lateinit throws rather than yielding null.
+        val stub: SManga = SMangaImpl().apply {
+            this.url = url
+            this.title = ""
+        }
+        val full = runCatching { delegate.getMangaDetails(stub) }
+            .onFailure { Log.w(TAG, "getMangaDetails failed for $url", it) }
+            .getOrDefault(stub)
         // getMangaDetails often leaves url blank on the returned copy.
-        if (full.url.isBlank()) full.url = url
+        if (full.safeUrl().isBlank()) full.url = url
         full.toSeries()
     }
 
@@ -129,20 +138,39 @@ class TachiyomiSourceAdapter(
     private fun MangasPage.toSeriesPage() =
         SeriesPage(series = mangas.map { it.toSeries() }, hasNext = hasNextPage)
 
+    /**
+     * `url`, `title`, and SChapter's `name` are all lateinit. An extension that
+     * doesn't set one — or a details fetch that failed — makes reading it throw
+     * UninitializedPropertyAccessException, which surfaced as
+     * "lateinit property title has not been initialized" on opening a library
+     * entry. Every read of those three goes through these.
+     */
+    private fun SManga.safeUrl(): String = runCatching { url }.getOrDefault("")
+
+    private fun SManga.safeTitle(): String = runCatching { title }.getOrDefault("")
+
+    private fun SChapter.safeUrl(): String = runCatching { url }.getOrDefault("")
+
+    private fun SChapter.safeName(): String = runCatching { name }.getOrDefault("")
+
     private fun SManga.toSeries() = Series(
-        id = "${delegate.id}:$url",
-        title = title,
+        id = "${delegate.id}:${safeUrl()}",
+        title = safeTitle(),
         cover = thumbnail_url,
         handle = this,
     )
 
-    private fun SChapter.toChapter() = Chapter(
-        id = "${delegate.id}:$url",
-        name = name,
-        handle = this,
-    )
+    private fun SChapter.toChapter(): Chapter {
+        val chapterUrl = safeUrl()
+        return Chapter(
+            id = "${delegate.id}:$chapterUrl",
+            name = safeName().ifBlank { chapterUrl.trimEnd('/').substringAfterLast('/') },
+            handle = this,
+        )
+    }
 
     private companion object {
+        const val TAG = "TachiyomiSourceAdapter"
         val fallbackClient = OkHttpClient()
     }
 }
