@@ -160,6 +160,7 @@ fun YomuApp() {
     var globalRunning by remember { mutableStateOf(false) }
     var globalDone by remember { mutableIntStateOf(0) }
     var globalTotal by remember { mutableIntStateOf(0) }
+    var globalPinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -244,9 +245,14 @@ fun YomuApp() {
     }
 
     /**
-     * Queries every searchable source for [query], a batch of
+     * Queries searchable sources for [query], a batch of
      * GLOBAL_SEARCH_CONCURRENCY at a time, publishing each batch as it lands so
      * results appear progressively instead of after the slowest source.
+     *
+     * With [globalPinnedOnly] set, the fan-out is limited to pinned sources —
+     * the difference between querying 95 sites and querying the handful actually
+     * used. It falls back to everything when no pinned source can search, so the
+     * toggle can never produce a silently empty result.
      */
     fun runGlobalSearch(query: String) {
         globalJob?.cancel()
@@ -266,7 +272,14 @@ fun YomuApp() {
                     val locals = configs.mapNotNull {
                         runCatching { SourceManager.build(context, it) }.getOrNull()
                     }
-                    (locals + extensionSources).filter { it.supportsSearch }
+                    val searchable = (locals + extensionSources).filter { it.supportsSearch }
+                    if (globalPinnedOnly) {
+                        val pinned = SourcePrefs.pinned(context)
+                        val subset = searchable.filter { it.id in pinned }
+                        if (subset.isNotEmpty()) subset else searchable
+                    } else {
+                        searchable
+                    }
                 }
                 globalTotal = targets.size
                 targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
@@ -296,6 +309,13 @@ fun YomuApp() {
         globalJob?.cancel()
         globalJob = null
         globalRunning = false
+    }
+
+    /** Flips the pinned-only filter and re-runs the current query under it. */
+    fun setGlobalPinnedOnly(value: Boolean) {
+        globalPinnedOnly = value
+        SourcePrefs.setPinnedOnlySearch(context, value)
+        if (globalQuery.isNotBlank()) runGlobalSearch(globalQuery)
     }
 
     fun openSourceConfig(config: SourceConfig) {
@@ -496,6 +516,8 @@ fun YomuApp() {
             running = globalRunning,
             done = globalDone,
             total = globalTotal,
+            pinnedOnly = globalPinnedOnly,
+            onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
@@ -1582,8 +1604,9 @@ private fun ExtensionRow(ext: Extension, onInstall: () -> Unit) {
 // ---------- global search ----------
 
 /**
- * One query fanned out across every searchable source. Rows appear as their batch
- * finishes; sources that error out or return nothing are simply absent.
+ * One query fanned out across the searchable sources — every one of them, or just
+ * the pinned ones when that chip is on. Rows appear as their batch finishes;
+ * sources that error out or return nothing are simply absent.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1593,6 +1616,8 @@ private fun GlobalSearchScreen(
     running: Boolean,
     done: Int,
     total: Int,
+    pinnedOnly: Boolean,
+    onTogglePinnedOnly: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
     onCancel: () -> Unit,
     onOpenSource: (Source) -> Unit,
@@ -1600,7 +1625,12 @@ private fun GlobalSearchScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
     var field by remember(query) { mutableStateOf(query) }
+
+    // Read once per entry into the composition: the pin set only changes over in
+    // the Browse tab, which tears this screen down on the way there and back.
+    val hasPinned = remember { SourcePrefs.pinned(context).isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -1629,6 +1659,26 @@ private fun GlobalSearchScreen(
                     enabled = field.isNotBlank(),
                     onClick = { onSearch(field.trim()) }
                 ) { Text("Go") }
+            }
+        }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = pinnedOnly && hasPinned,
+                enabled = hasPinned,
+                onClick = { onTogglePinnedOnly(!pinnedOnly) },
+                label = { Text("Pinned sources only") }
+            )
+            if (!hasPinned) {
+                Text(
+                    "Pin sources in Browse to narrow this",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
