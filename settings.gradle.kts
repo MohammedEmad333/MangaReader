@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "MangaReader"
 include(":app")
+include(":source-api")

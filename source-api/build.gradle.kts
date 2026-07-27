@@ -1,15 +1,12 @@
-// Rewritten from Mihon's version: convention plugins and version-catalog
-// aliases replaced with explicit plugins and coordinates, since this project
-// has no build-logic module and no libs.versions.toml.
-//
-// The `implementation(projects.core.common)` line is deliberately dropped.
-// Compile, see which tachiyomi.core.common.* imports fail, and shim only
-// those rather than vendoring another Mihon module.
+// Flattened from Tachiyomi 0.15.x's KMP source-api module into a plain
+// Android library. commonMain + androidMain were merged into src/main.
+// Coordinates below are taken verbatim from tachiyomi-ref's
+// gradle/libs.versions.toml — do not "modernise" them; the extensions
+// targeting lib 1.4 were built against exactly these.
 
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"
 }
 
@@ -19,12 +16,7 @@ android {
 
     defaultConfig {
         minSdk = 24
-        // Keep only if source-api/consumer-proguard.pro actually exists.
-        consumerProguardFiles("consumer-proguard.pro")
-    }
-
-    buildFeatures {
-        compose = true
+        consumerProguardFile("consumer-proguard.pro")
     }
 
     compileOptions {
@@ -35,30 +27,41 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    sourceSets {
+        getByName("main") {
+            // The network package was copied from core/src/main/java.
+            java.srcDirs("src/main/kotlin", "src/main/java")
+        }
+    }
 }
 
 dependencies {
-    // Versions chosen to match this project's Kotlin 2.0.20 / AGP 8.5.2 /
-    // compileSdk 34, NOT the newest available. Newer OkHttp/jsoup would drag
-    // compileSdk and AGP up with them.
+    // `api` not `implementation`: the app module needs to see these to
+    // register Injekt bindings and to talk to sources directly.
+    // Tachiyomi's own build file made the same choice.
+    api("com.github.inorichi.injekt:injekt-core:65b0440")
+    api("io.reactivex:rxjava:1.3.8")
+    api("org.jsoup:jsoup:1.17.2")
+
+    // okhttp 5.0.0-alpha.12 per the catalog. This outranks the app's 4.12.0,
+    // so Gradle will upgrade the whole build to 5.x — expected, not a mistake.
+    api(platform("com.squareup.okhttp3:okhttp-bom:5.0.0-alpha.12"))
+    api("com.squareup.okhttp3:okhttp")
+    api("com.squareup.okhttp3:logging-interceptor")
+    api("com.squareup.okhttp3:okhttp-brotli")
+    api("com.squareup.okhttp3:okhttp-dnsoverhttps")
+    implementation("com.squareup.okio:okio:3.7.0")
+
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-
-    // Injekt is what extension constructors call for NetworkHelper.
-    // Coordinate per Mihon's own dependency contract; needs jitpack.
-    implementation("com.github.mihonapp:injekt:91edab2317")
-
-    // RxJava 1.x — this is what the 1.4-era Observable methods use.
-    implementation("io.reactivex:rxjava:1.3.8")
-
-    implementation("org.jsoup:jsoup:1.18.1")
-
-    // Not in Mihon's file because it arrived via core:common — but HttpSource
-    // needs it directly, so it has to be declared here.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     implementation("androidx.preference:preference-ktx:1.2.1")
 
-    implementation(platform("androidx.compose:compose-bom:2024.09.03"))
-    implementation("androidx.compose.runtime:runtime")
+    // Used throughout the copied network package.
+    implementation("com.squareup.logcat:logcat:0.1")
+
+    // JavaScriptEngine.kt needs this. If you delete that file, drop this too.
+    implementation("app.cash.quickjs:quickjs-android:0.9.2")
 }
