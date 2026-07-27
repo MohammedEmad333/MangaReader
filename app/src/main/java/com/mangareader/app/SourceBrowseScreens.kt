@@ -31,6 +31,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -38,6 +45,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -233,12 +242,33 @@ internal fun LibraryScreen(
 
 // ---------- series ----------
 
+/** One labelled icon action under the series header. */
+@Composable
+private fun SeriesAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(vertical = 8.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = label, tint = tint)
+        Spacer(Modifier.height(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SeriesScreen(
     series: Series,
     chapters: List<Chapter>,
     sourceId: String,
+    sourceName: String,
     loading: Boolean,
     error: String?,
     readTick: Int,
@@ -251,47 +281,183 @@ internal fun SeriesScreen(
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
+    var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack, modifier = Modifier.padding(end = 8.dp)) { Text("←") }
-            CoverImage(
-                cover = series.cover,
-                title = series.title,
-                modifier = Modifier
-                    .width(64.dp)
-                    .aspectRatio(0.7f)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(series.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
+    // First unread chapter drives the Start/Resume button. Recomputed on readTick
+    // so marking something read moves the target without reopening the screen.
+    val resumeIndex = remember(chapters, readTick, sourceId) {
+        chapters.indexOfFirst { !ReadState.isRead(context, chapterKeyOf(sourceId, it)) }
+    }
+    val anyProgress = remember(chapters, readTick, sourceId) {
+        chapters.any {
+            val k = chapterKeyOf(sourceId, it)
+            ReadState.isRead(context, k) || savedPage(context, k) > 0
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+                Box {
+                    // Cover as a faded backdrop, then a gradient down to the
+                    // background so the text at the bottom stays readable.
+                    if (series.cover != null) {
+                        AsyncImage(
+                            model = series.cover,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .alpha(0.20f)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, MaterialTheme.colorScheme.background)
+                                )
+                            )
+                    )
+
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            }
+                        }
+
+                        Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            CoverImage(
+                                cover = series.cover,
+                                title = series.title,
+                                modifier = Modifier
+                                    .width(108.dp)
+                                    .aspectRatio(0.7f)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    series.title,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!series.author.isNullOrBlank()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        series.author,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    listOfNotNull(series.status, sourceName.ifBlank { null })
+                                        .joinToString(" \u2022 "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            SeriesAction(
+                                icon = if (inLibrary) Icons.Default.Favorite
+                                else Icons.Default.FavoriteBorder,
+                                label = if (inLibrary) "In library" else "Add to library",
+                                tint = if (inLibrary) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = {
+                                    if (inLibrary) {
+                                        Library.remove(context, series.id)
+                                        inLibrary = false
+                                        onLibraryChanged()
+                                    } else {
+                                        showAddToLibrary = true
+                                    }
+                                }
+                            )
+                            if (inLibrary) {
+                                SeriesAction(
+                                    icon = Icons.Default.Edit,
+                                    label = "Categories",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = { showCategories = true }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            if (!series.description.isNullOrBlank()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { descriptionExpanded = !descriptionExpanded }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            series.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = if (descriptionExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            if (descriptionExpanded) Icons.Default.KeyboardArrowUp
+                            else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (descriptionExpanded) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
+                }
+            }
+
+            if (series.genres.isNotEmpty()) {
+                item {
+                    // Scrolling row rather than a wrapping one: FlowRow is still
+                    // an experimental layout API on this Compose version.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        series.genres.forEach { genre ->
+                            SuggestionChip(onClick = { }, label = { Text(genre) })
+                        }
+                    }
+                }
+            }
+
+            item {
+                if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                ErrorBanner(error)
                 Text(
-                    "${chapters.size} chapters",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
-            if (inLibrary) {
-                TextButton(onClick = {
-                    Library.remove(context, series.id)
-                    inLibrary = false
-                    onLibraryChanged()
-                }) { Text("In library \u2713") }
-            } else {
-                TextButton(onClick = { showAddToLibrary = true }) { Text("+ Library") }
-            }
-        }
-        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        ErrorBanner(error)
-        HorizontalDivider()
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
             itemsIndexed(chapters) { index, ch ->
                 val key = chapterKeyOf(sourceId, ch)
                 val read = remember(key, readTick) { ReadState.isRead(context, key) }
@@ -305,10 +471,21 @@ internal fun SeriesScreen(
                         )
                     },
                     supportingContent = {
-                        if (read) {
-                            Text("Read")
-                        } else if (resume > 0) {
-                            Text("Page ${resume + 1}", color = MaterialTheme.colorScheme.primary)
+                        val bits = listOfNotNull(
+                            formatChapterDate(ch.dateUploaded),
+                            ch.scanlator,
+                            when {
+                                read -> "Read"
+                                resume > 0 -> "Page ${resume + 1}"
+                                else -> null
+                            }
+                        )
+                        if (bits.isNotEmpty()) {
+                            Text(
+                                bits.joinToString(" \u2022 "),
+                                color = if (!read && resume > 0) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     },
                     trailingContent = {
@@ -320,6 +497,20 @@ internal fun SeriesScreen(
                 )
                 HorizontalDivider()
             }
+
+            // Clearance so the last row isn't trapped under the button.
+            item { Spacer(Modifier.height(88.dp)) }
+        }
+
+        if (chapters.isNotEmpty()) {
+            ExtendedFloatingActionButton(
+                onClick = { onOpen(if (resumeIndex >= 0) resumeIndex else 0) },
+                icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+                text = { Text(if (anyProgress) "Resume" else "Start") },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+            )
         }
     }
 
@@ -338,5 +529,19 @@ internal fun SeriesScreen(
                 onLibraryChanged()
             }
         )
+    }
+}
+
+/** "Today" / "Yesterday" / a short date, or null when the source gave no date. */
+internal fun formatChapterDate(millis: Long): String? {
+    if (millis <= 0L) return null
+    val now = System.currentTimeMillis()
+    val day = 24L * 60 * 60 * 1000
+    val startOfToday = now - (now % day)
+    return when {
+        millis >= startOfToday -> "Today"
+        millis >= startOfToday - day -> "Yesterday"
+        else -> java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault())
+            .format(java.util.Date(millis))
     }
 }
