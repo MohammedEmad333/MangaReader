@@ -3,7 +3,6 @@ package com.mangareader.app
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -112,36 +111,65 @@ private fun diagnoseExtensions(context: Context): String {
             return out.toString()
         }
 
-        out.appendLine("Nothing resolved. Enumerating what's actually installed:")
+        out.appendLine("Nothing resolved via intent. Probing for Tachiyomi extensions,")
+        out.appendLine("which are discovered by <uses-feature>, not by intent filters.")
         out.appendLine()
 
         val pkgs = runCatching {
-            pm.getInstalledPackages(PackageManager.GET_ACTIVITIES)
+            pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
         }.getOrElse {
             out.appendLine("getInstalledPackages threw: $it")
             emptyList()
         }
-        val userPkgs = pkgs.filter {
-            val flags = it.applicationInfo?.flags ?: 0
-            flags and ApplicationInfo.FLAG_SYSTEM == 0
+        val exts = pkgs.filter { p ->
+            p.reqFeatures.orEmpty().any { it.name == "tachiyomi.extension" }
         }
-        out.appendLine("Visible packages: ${pkgs.size} total, ${userPkgs.size} non-system")
-        out.appendLine()
+        out.appendLine("Packages declaring tachiyomi.extension: ${exts.size}")
 
-        for (p in userPkgs.sortedBy { it.packageName }) {
-            val acts = p.activities
-            val exported = acts?.count { it.exported } ?: 0
-            out.appendLine("  ${p.packageName}")
-            if (acts != null && acts.isNotEmpty()) {
-                out.appendLine("    activities: ${acts.size} ($exported exported)")
+        for (p in exts.take(3)) {
+            out.appendLine()
+            out.appendLine("• ${p.packageName}")
+            val appInfo = runCatching {
+                pm.getApplicationInfo(p.packageName, PackageManager.GET_META_DATA)
+            }.getOrNull()
+            if (appInfo == null) {
+                out.appendLine("  couldn't read ApplicationInfo")
+                continue
+            }
+            val md = appInfo.metaData
+            out.appendLine("  extension.lib.version = ${md?.get("extension.lib.version")}")
+
+            val attr = md?.getString("tachiyomi.extension.class")
+            if (attr == null) {
+                out.appendLine("  ✗ no tachiyomi.extension.class metadata")
+                continue
+            }
+            val loader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
+            for (raw in attr.split(";")) {
+                val name = if (raw.startsWith(".")) p.packageName + raw else raw
+                out.appendLine("  class: $name")
+                try {
+                    val clazz = Class.forName(name, false, loader)
+                    out.appendLine("    found ok")
+                    val obj = clazz.getDeclaredConstructor().newInstance()
+                    out.appendLine("    ✓ instantiated: ${obj.javaClass.name}")
+                } catch (t: Throwable) {
+                    out.appendLine("    ✗ ${t.javaClass.name}")
+                    out.appendLine("      ${t.message}")
+                    var cause = t.cause
+                    var depth = 0
+                    while (cause != null && depth < 3) {
+                        out.appendLine("      caused by ${cause.javaClass.name}: ${cause.message}")
+                        cause = cause.cause
+                        depth++
+                    }
+                }
             }
         }
 
         out.appendLine()
-        out.appendLine("If your extension's package is NOT in that list, it never installed —")
-        out.appendLine("debug the installer, not the manifest. If it IS listed, then either")
-        out.appendLine("its action string doesn't match exactly, or its activity is not")
-        out.appendLine("android:exported=\"true\".")
+        out.appendLine("Every NoClassDefFoundError above names a class your app must")
+        out.appendLine("supply before that extension can load.")
         return out.toString()
     }
 
