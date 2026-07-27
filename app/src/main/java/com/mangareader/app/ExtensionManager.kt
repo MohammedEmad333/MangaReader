@@ -17,7 +17,11 @@ data class Extension(
     val pkgName: String,
     val versionName: String,
     val apkUrl: String,
-    val isInstalled: Boolean = false
+    val isInstalled: Boolean = false,
+    /** Display label, already mapped from the index's language code. */
+    val lang: String = "",
+    /** From the index's "nsfw" field; drives the 18+ badge. */
+    val isNsfw: Boolean = false
 )
 
 object ExtensionManager {
@@ -56,11 +60,17 @@ object ExtensionManager {
 
                     available.add(
                         Extension(
-                            name = obj.getString("name"),
+                            // Index entries are named "Tachiyomi: Foo"; the prefix
+                            // is noise on every single row.
+                            name = obj.getString("name")
+                                .removePrefix("Tachiyomi: ")
+                                .removePrefix("Mihon: "),
                             pkgName = pkg,
                             versionName = obj.getString("version"),
                             apkUrl = absoluteApkUrl,
-                            isInstalled = installed
+                            isInstalled = installed,
+                            lang = langLabel(obj.optString("lang", "")),
+                            isNsfw = obj.optInt("nsfw", 0) == 1
                         )
                     )
                 }

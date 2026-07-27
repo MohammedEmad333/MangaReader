@@ -19,6 +19,21 @@ interface Source {
     val id: String
     val name: String
 
+    /**
+     * Display language for the sources list, e.g. "English" or "Multi".
+     * Blank means "don't show a language line" — that's the local folder.
+     */
+    val lang: String get() = ""
+
+    /**
+     * Package name of the extension APK this source came from, used to pull the
+     * APK's launcher icon. Null for sources that aren't backed by an APK.
+     */
+    val iconPkg: String? get() = null
+
+    /** Whether the extension declared tachiyomi.extension.nsfw. */
+    val isNsfw: Boolean get() = false
+
     /** All series this source offers, or its first page for paged sources. */
     suspend fun listSeries(): List<Series>
 
