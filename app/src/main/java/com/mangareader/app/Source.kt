@@ -2,15 +2,24 @@ package com.mangareader.app
 
 import java.io.File
 
+/** One page of browse/search results, plus whether another page exists. */
+data class SeriesPage(
+    val series: List<Series>,
+    val hasNext: Boolean
+)
+
 /**
- * A source of manga. Today: the local folder. Tomorrow: any implementation
- * of this interface (extension APKs plug in at exactly this seam).
+ * A source of manga. Today: the local folder and Tachiyomi extension APKs.
+ *
+ * Everything below `loadPages` has a default implementation, so a source that
+ * only knows how to list everything at once (LocalSource) stays valid without
+ * changes — it just reports no search and a single page.
  */
 interface Source {
     val id: String
     val name: String
 
-    /** All series this source offers. */
+    /** All series this source offers, or its first page for paged sources. */
     suspend fun listSeries(): List<Series>
 
     /** Chapters of one series, in reading order. */
@@ -18,6 +27,41 @@ interface Source {
 
     /** Extract/download the pages of a chapter, ready to display. */
     suspend fun loadPages(chapter: Chapter): List<File>
+
+    // ---- optional capabilities ----
+
+    /** Whether [searchSeries] does anything useful. */
+    val supportsSearch: Boolean get() = false
+
+    /** Whether [browseSeries] can return more than one page. */
+    val supportsPaging: Boolean get() = false
+
+    /**
+     * One page of the source's catalogue. Page numbers are 1-based.
+     * Defaults to wrapping [listSeries] as a single page.
+     */
+    suspend fun browseSeries(page: Int): SeriesPage =
+        if (page <= 1) SeriesPage(listSeries(), hasNext = false)
+        else SeriesPage(emptyList(), hasNext = false)
+
+    /**
+     * One page of search results. Page numbers are 1-based.
+     * Defaults to filtering [listSeries] by title, so local folders get
+     * a usable search for free.
+     */
+    suspend fun searchSeries(query: String, page: Int): SeriesPage {
+        if (page > 1) return SeriesPage(emptyList(), hasNext = false)
+        val hits = listSeries().filter { it.title.contains(query, ignoreCase = true) }
+        return SeriesPage(hits, hasNext = false)
+    }
+
+    /**
+     * Resolve a single series by its id, without paging the whole catalogue.
+     * Used when reopening from the library. Defaults to scanning page one,
+     * which is why extension sources should override it.
+     */
+    suspend fun getSeries(id: String): Series? =
+        listSeries().firstOrNull { it.id == id }
 }
 
 data class Series(
