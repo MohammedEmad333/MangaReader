@@ -18,6 +18,8 @@ object SourcePrefs {
     private const val KEY_PINNED = "pinned_sources"
     private const val KEY_LAST_USED = "last_used_source"
     private const val KEY_PINNED_ONLY_SEARCH = "global_search_pinned_only"
+    private const val KEY_HIDDEN = "hidden_sources"
+    private const val KEY_DISABLED_LANGS = "disabled_langs"
 
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
@@ -61,4 +63,43 @@ object SourcePrefs {
     fun setPinnedOnlySearch(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_PINNED_ONLY_SEARCH, value).apply()
     }
+
+    // ---- visibility ----
+    //
+    // Both stores hold what's *switched off*, not what's on. Empty therefore
+    // means "everything visible", which is the right behaviour for a fresh
+    // install and for a source that appears after an extension is added — a new
+    // source shows up rather than being invisible until someone enables it.
+
+    fun hiddenSources(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_HIDDEN, emptySet())?.toSet() ?: emptySet()
+
+    fun toggleSourceHidden(context: Context, id: String): Set<String> {
+        val next = hiddenSources(context).toMutableSet()
+        if (!next.add(id)) next.remove(id)
+        prefs(context).edit().putStringSet(KEY_HIDDEN, next).apply()
+        return next
+    }
+
+    /** Hides or shows every id at once — the per-language switch. */
+    fun setSourcesHidden(context: Context, ids: Collection<String>, hidden: Boolean): Set<String> {
+        val next = hiddenSources(context).toMutableSet()
+        if (hidden) next.addAll(ids) else next.removeAll(ids.toSet())
+        prefs(context).edit().putStringSet(KEY_HIDDEN, next).apply()
+        return next
+    }
+
+    fun disabledLangs(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_DISABLED_LANGS, emptySet())?.toSet() ?: emptySet()
+
+    fun toggleLangDisabled(context: Context, lang: String): Set<String> {
+        val next = disabledLangs(context).toMutableSet()
+        if (!next.add(lang)) next.remove(lang)
+        prefs(context).edit().putStringSet(KEY_DISABLED_LANGS, next).apply()
+        return next
+    }
+
+    /** A source shows only if neither it nor its language is switched off. */
+    fun isVisible(id: String, lang: String, hidden: Set<String>, disabledLangs: Set<String>): Boolean =
+        id !in hidden && lang !in disabledLangs
 }

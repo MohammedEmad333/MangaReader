@@ -163,6 +163,9 @@ fun YomuApp() {
     var globalDone by remember { mutableIntStateOf(0) }
     var globalTotal by remember { mutableIntStateOf(0) }
     var globalPinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
+    // Display filter, not a scope: empty sources are kept in globalResults so
+    // this can show or hide them without re-running the search.
+    var globalHasResultsOnly by remember { mutableStateOf(true) }
 
     // How the current series was reached. Opening from Library or History has to
     // adopt its source to load chapters and pages, which would otherwise strand
@@ -287,7 +290,13 @@ fun YomuApp() {
                     val locals = configs.mapNotNull {
                         runCatching { SourceManager.build(context, it) }.getOrNull()
                     }
-                    val searchable = (locals + extensionSources).filter { it.supportsSearch }
+                    val hidden = SourcePrefs.hiddenSources(context)
+                    val offLangs = SourcePrefs.disabledLangs(context)
+                    val searchable = (locals + extensionSources)
+                        .filter { it.supportsSearch }
+                        .filter {
+                            SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hidden, offLangs)
+                        }
                     if (globalPinnedOnly) {
                         val pinned = SourcePrefs.pinned(context)
                         val subset = searchable.filter { it.id in pinned }
@@ -308,9 +317,10 @@ fun YomuApp() {
                             }
                         }.awaitAll()
                     }
-                    globalResults = globalResults + chunk.mapIndexedNotNull { i, src ->
-                        val hits = batch[i]
-                        if (hits.isEmpty()) null else GlobalResult(src, hits)
+                    // Empty ones are kept, not dropped: the "Has results" chip is
+                    // what decides whether they're shown.
+                    globalResults = globalResults + chunk.mapIndexed { i, src ->
+                        GlobalResult(src, batch[i])
                     }
                     globalDone += chunk.size
                 }
@@ -699,6 +709,8 @@ fun YomuApp() {
             total = globalTotal,
             pinnedOnly = globalPinnedOnly,
             onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
+            hasResultsOnly = globalHasResultsOnly,
+            onToggleHasResultsOnly = { globalHasResultsOnly = it },
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
