@@ -1,252 +1,86 @@
-package com.mangareader.app
+package com.example.yomu
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
-import java.io.File
+
+// ---- Data Models ----
+
+data class Source(val id: String, val name: String, val type: String)
+data class SourceConfig(
+    val id: String = "",
+    val label: String = "",
+    val type: String = "local",
+    val treeUri: String? = null,
+    val url: String? = null,
+    val username: String? = null,
+    val password: String? = null
+)
+data class Series(val id: String, val title: String, val cover: String?)
+data class Chapter(val id: String, val name: String)
+data class Book(val pages: List<String>)
+data class HistoryEntry(val id: String, val title: String, val page: Int, val total: Int)
+private data class HistoryPayload(
+    val activeSrc: Source,
+    val ser: Series,
+    val chs: List<Chapter>,
+    val idx: Int
+)
+
+// ---- Helper Functions ----
+
+private fun prefs(context: Context): SharedPreferences =
+    context.getSharedPreferences("yomu_prefs", Context.MODE_PRIVATE)
+
+private fun typeLabel(type: String): String = when (type.lowercase()) {
+    "local" -> "Local Storage"
+    "komga" -> "Komga Server"
+    else -> type.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+}
+
+// ---- Activity & Root Application ----
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    App()
-                }
-            }
-        }
-    }
-}
-
-private data class Book(
-    val fileName: String,
-    val key: String,
-    val pages: List<File>
-)
-
-private enum class Tab { LIBRARY, HISTORY, MORE }
-
-private fun prefs(context: Context) =
-    context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
-
-@Composable
-private fun GlobalSearchScreen(
-    sources: List<SourceConfig>,
-    onOpen: (SourceConfig, Series) -> Unit,
-    onBack: () -> Unit
-) {
-    BackHandler { onBack() }
-    val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Pair<SourceConfig, Series>>>(emptyList()) }
-    var scanning by remember { mutableStateOf(true) }
-    var layout by remember {
-        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
-    }
-
-    LaunchedEffect(Unit) {
-        scanning = true
-        val acc = mutableListOf<Pair<SourceConfig, Series>>()
-        for (cfg in sources) {
-            if (!cfg.isConfigured) continue
-            val src = SourceManager.build(context, cfg) ?: continue
-            val list = withContext(Dispatchers.IO) {
-                runCatching { src.listSeries() }.getOrDefault(emptyList())
-            }
-            list.forEach { acc.add(cfg to it) }
-            results = acc.toList()
-        }
-        scanning = false
-    }
-
-    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
-        "small" -> 88.dp
-        "large" -> 140.dp
-        else -> 110.dp
-    }
-
-    val shown = remember(results, query) {
-        if (query.isBlank()) results
-        else results.filter { it.second.title.contains(query, ignoreCase = true) }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("←") }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search all sources") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(
-                onClick = {
-                    layout = if (layout == "grid") "list" else "grid"
-                    prefs(context).edit().putString("library_layout", layout).apply()
-                },
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text(if (layout == "grid") "List" else "Grid") }
-        }
-        if (scanning) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        if (shown.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) { Text(if (scanning) "Scanning sources…" else "No results") }
-        } else if (layout == "list") {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                items(shown) { pair ->
-                    val cfg = pair.first
-                    val s = pair.second
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpen(cfg, s) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier
-                                .width(48.dp)
-                                .aspectRatio(0.7f)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 12.dp)
-                        ) {
-                            Text(
-                                text = s.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = cfg.label.ifBlank { typeLabel(cfg.type) },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    HorizontalDivider()
-                }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(6.dp)
-            ) {
-                items(shown) { pair ->
-                    val cfg = pair.first
-                    val s = pair.second
-                    Column(
-                        modifier = Modifier
-                            .padding(6.dp)
-                            .clickable { onOpen(cfg, s) }
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
-                        )
-                        Text(
-                            text = s.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = cfg.label.ifBlank { typeLabel(cfg.type) },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    YomuApp()
                 }
             }
         }
@@ -254,1320 +88,268 @@ private fun GlobalSearchScreen(
 }
 
 @Composable
-private fun App() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) { SourceManager.migrateLegacy(context) }
-
-    var sourceConfigs by remember { mutableStateOf(SourceManager.list(context)) }
-    var allSources by remember { mutableStateOf(SourceManager.listAllSources(context)) }
-
-    fun refreshSources() {
-        sourceConfigs = SourceManager.list(context)
-        allSources = SourceManager.listAllSources(context)
-    }
-
-    var activeSourceObj by remember { mutableStateOf<Source?>(null) }
-    var activeConfig by remember { mutableStateOf<SourceConfig?>(null) }
-
-    fun activeSource(): Source? = activeSourceObj ?: activeConfig?.let { SourceManager.build(context, it) }
-
-    var seriesList by remember { mutableStateOf<List<Series>?>(null) }
-    var scanTick by remember { mutableStateOf(0) }
-    var openSeries by remember { mutableStateOf<Series?>(null) }
-    var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
-    var chapterIndex by remember { mutableStateOf(0) }
-    var book by remember { mutableStateOf<Book?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-
-    // continue-reading state
-    var readingSeries by remember { mutableStateOf<Series?>(null) }
-    var readingConfigId by remember { mutableStateOf("") }
-    var currentHistory by remember { mutableStateOf<HistoryEntry?>(null) }
-    var historyState by remember { mutableStateOf(History.list(context)) }
-    var tab by remember { mutableStateOf(Tab.LIBRARY) }
-    var globalSearch by remember { mutableStateOf(false) }
-
-    fun saveHistory(e: HistoryEntry) {
-        if (!prefs(context).getBoolean("incognito", false)) {
-            History.touch(context, e)
-        }
-    }
-
-    // dialog / add-flow state
-    var showTypeChooser by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<SourceConfig?>(null) }
-    var folderPickTarget by remember { mutableStateOf<String?>(null) }
-
-    fun openSingleFile(uri: Uri) {
-        loading = true
-        error = null
-        scope.launch {
-            val name = DocumentFile.fromSingleUri(context, uri)?.name ?: "file"
-            val result = withContext(Dispatchers.IO) { runCatching { extractPages(context, uri) } }
-            loading = false
-            result.onSuccess { pages ->
-                readingSeries = null
-                readingConfigId = ""
-                chapters = emptyList()
-                chapterIndex = 0
-                val key = uri.toString()
-                val title = name.substringBeforeLast('.')
-                val initial = prefs(context).getInt("pos:" + key, 0).coerceIn(0, pages.size - 1)
-                val entry = HistoryEntry(
-                    key, title, "", "", "", initial, pages.size, System.currentTimeMillis()
-                )
-                currentHistory = entry
-                saveHistory(entry)
-                book = Book(fileName = title, key = key, pages = pages)
-            }.onFailure { error = it.message ?: "Failed to open file" }
-        }
-    }
-
-    fun openChapterAt(list: List<Chapter>, index: Int) {
-        loading = true
-        error = null
-        scope.launch {
-            val ch = list[index]
-            val src = activeSource()
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (src != null) src.loadPages(ch)
-                    else throw IllegalStateException("No source selected")
-                }
-            }
-            loading = false
-            result.onSuccess { pages ->
-                chapters = list
-                chapterIndex = index
-                val initial = prefs(context).getInt("pos:" + ch.id, 0).coerceIn(0, pages.size - 1)
-                val title = readingSeries?.let { it.title + " — " + ch.name } ?: ch.name
-                val cover = readingSeries?.cover?.absolutePath ?: ""
-                val entry = HistoryEntry(
-                    ch.id, title, readingConfigId, readingSeries?.id ?: "",
-                    cover, initial, pages.size, System.currentTimeMillis()
-                )
-                currentHistory = entry
-                saveHistory(entry)
-                book = Book(fileName = ch.name, key = ch.id, pages = pages)
-            }.onFailure { error = it.message ?: "Failed to open chapter" }
-        }
-    }
-
-    fun openSeriesAt(s: Series) {
-        val src = activeSource() ?: return
-        loading = true
-        error = null
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
-            loading = false
-            result.onSuccess { list ->
-                if (list.isEmpty()) {
-                    error = "No chapters found in this series"
-                } else {
-                    readingSeries = s
-                    readingConfigId = activeSourceObj?.id ?: activeConfig?.id ?: ""
-                    chapters = list
-                    openSeries = s
-                    if (list.size == 1) openChapterAt(list, 0)
-                }
-            }.onFailure { error = it.message ?: "Failed to load chapters" }
-        }
-    }
-
-    fun openFromHistory(entry: HistoryEntry) {
-        if (entry.sourceId.isBlank()) {
-            openSingleFile(Uri.parse(entry.chapterKey))
-            return
-        }
-        val src = SourceManager.listAllSources(context).find { it.id == entry.sourceId }
-        val cfg = sourceConfigs.find { it.id == entry.sourceId }
-        
-        if (src == null && cfg == null) { error = "That source was removed"; return }
-        
-        loading = true
-        error = null
-        scope.launch {
-            val res = withContext(Dispatchers.IO) {
-                runCatching {
-                    val activeSrc = src ?: SourceManager.build(context, cfg!!)
-                        ?: throw IllegalStateException("Source not configured")
-                    val ser = activeSrc.listSeries().find { it.id == entry.seriesId }
-                        ?: throw IllegalStateException("Series no longer found")
-                    val chs = activeSrc.listChapters(ser)
-                    val idx = chs.indexOfFirst { it.id == entry.chapterKey }
-                    if (idx < 0) throw IllegalStateException("Chapter no longer found")
-                    HistoryPayload(activeSrc, ser, chs, idx)
-                }
-            }
-            loading = false
-            res.onSuccess { (activeSrc, ser, chs, idx) ->
-    activeSourceObj = activeSrc
-    activeConfig = cfg
-    readingSeries = ser
-    readingConfigId = activeSrc.id 
-    openChapterAt(chs, idx)
-}.onFailure { error = it.message ?: "Couldn't reopen" }
-        }
-    }
-
-
+fun YomuApp() {
+    var currentTab by remember { mutableIntStateOf(0) }
+    var sources by remember { mutableStateOf(listOf<Source>()) }
+    var configs by remember { mutableStateOf(listOf<SourceConfig>()) }
+    var showSourceDialog by remember { mutableStateOf(false) }
+    var editingConfig by remember { mutableStateOf(SourceConfig()) }
     
+    // Navigation states
+    var activeSource by remember { mutableStateOf<Source?>(null) }
+    var activeSeries by remember { mutableStateOf<Series?>(null) }
+    var seriesList by remember { mutableStateOf<List<Series>?>(null) }
+    var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
+    var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
+    var currentBook by remember { mutableStateOf<Book?>(null) }
+    var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun openSeriesFromConfig(cfg: SourceConfig, s: Series) {
-        loading = true
-        error = null
-        scope.launch {
-            val src = SourceManager.build(context, cfg)
-            if (src == null) {
-                error = "Failed to build source"
-                loading = false
-                return@launch
-            }
-            val result = withContext(Dispatchers.IO) { runCatching { src.listChapters(s) } }
-            loading = false
-            result.onSuccess { list ->
-                if (list.isEmpty()) {
-                    error = "No chapters found in this series"
-                } else {
-                    globalSearch = false
-                    activeSourceObj = src
-                    activeConfig = cfg
-                    readingSeries = s
-                    readingConfigId = cfg.id
-                    chapters = list
-                    openSeries = s
-                    if (list.size == 1) openChapterAt(list, 0)
-                }
-            }.onFailure { error = it.message ?: "Failed to load chapters" }
-        }
-    }
-
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> if (uri != null) openSingleFile(uri) }
-
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        val target = folderPickTarget
-        folderPickTarget = null
-        if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Local folder"
-            if (target == "new") {
-                SourceManager.upsert(
-                    context,
-                    SourceConfig(SourceManager.newId(), "local", name, treeUri = uri.toString())
-                )
-                refreshSources()
-            } else if (target != null) {
-                editing = editing?.copy(treeUri = uri.toString())
-            }
-        }
-    }
-
-    LaunchedEffect(book, openSeries, activeConfig, activeSourceObj) {
-        if (book == null && openSeries == null && activeConfig == null && activeSourceObj == null) {
-            historyState = History.list(context)
-            refreshSources()
-        }
-    }
-
-    // ---- open library scan ----
-    LaunchedEffect(activeSourceObj?.id, activeConfig?.id, scanTick) {
-        val src = activeSource()
-        if (src != null) {
-            loading = true
-            val result = withContext(Dispatchers.IO) { runCatching { src.listSeries() } }
-            loading = false
-            result.onSuccess { seriesList = it }
-                .onFailure {
-                    seriesList = emptyList()
-                    error = it.message ?: "Failed to load library"
-                }
-        }
-    }
-
-    // ---- config dialog ----
-    val edit = editing
-    if (edit != null) {
-        SourceDialog(
-            value = edit,
-            onChange = { editing = it },
-            onPickFolder = {
-                folderPickTarget = edit.id
-                folderPicker.launch(null)
+    // Root Navigation Layout
+    if (activeChapterIdx != null && currentBook != null) {
+        ReaderScreen(
+            book = currentBook!!,
+            initialPage = 0,
+            hasPrev = activeChapterIdx!! > 0,
+            hasNext = activeChapterIdx!! < chapterList.size - 1,
+            onPrev = { activeChapterIdx = activeChapterIdx!! - 1 },
+            onNext = { activeChapterIdx = activeChapterIdx!! + 1 },
+            onProgress = { page ->
+                // Handle progress tracking
             },
-            onDismiss = { editing = null },
-            onSave = {
-                SourceManager.upsert(context, edit)
-                refreshSources()
-                editing = null
-            }
+            onClose = { activeChapterIdx = null; currentBook = null }
         )
-    }
-
-    if (showTypeChooser) {
-        AlertDialog(
-            onDismissRequest = { showTypeChooser = false },
-            title = { Text("Add a source") },
-            text = { Text("Local folder reads CBZ/ZIP on this device. Komga connects to a self-hosted server.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showTypeChooser = false
-                    folderPickTarget = "new"
-                    folderPicker.launch(null)
-                }) { Text("Local folder") }
+    } else if (activeSeries != null) {
+        SeriesScreen(
+            series = activeSeries!!,
+            chapters = chapterList,
+            progressFor = { 0 },
+            onOpen = { idx ->
+                activeChapterIdx = idx
+                // Load book placeholder
+                currentBook = Book(pages = listOf("https://via.placeholder.com/600x800"))
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTypeChooser = false
-                    editing = SourceConfig(SourceManager.newId(), "komga", "Komga")
-                }) { Text("Komga server") }
-            }
+            onBack = { activeSeries = null }
         )
-    }
-
-    // ---- navigation ----
-    val currentBook = book
-    when {
-        currentBook != null -> {
-            val saved = prefs(context)
-                .getInt("pos:" + currentBook.key, 0)
-                .coerceIn(0, currentBook.pages.size - 1)
-            key(currentBook.key) {
-                ReaderScreen(
-                    book = currentBook,
-                    initialPage = saved,
-                    hasPrev = chapters.isNotEmpty() && chapterIndex > 0,
-                    hasNext = chapters.isNotEmpty() && chapterIndex < chapters.size - 1,
-                    onPrev = { openChapterAt(chapters, chapterIndex - 1) },
-                    onNext = { openChapterAt(chapters, chapterIndex + 1) },
-                    onProgress = { p ->
-                        prefs(context).edit().putInt("pos:" + currentBook.key, p).apply()
-                        if (p >= currentBook.pages.size - 1) {
-                            ReadState.setRead(context, currentBook.key, true)
-                        }
-                        currentHistory?.let {
-                            val e = it.copy(page = p, updatedAt = System.currentTimeMillis())
-                            currentHistory = e
-                            saveHistory(e)
-                        }
-                    },
-                    onClose = {
-                        book = null
-                        if (chapters.size <= 1) openSeries = null
-                    }
-                )
-            }
-        }
-
-        openSeries != null -> {
-            SeriesScreen(
-                series = openSeries!!,
-                chapters = chapters,
-                progressFor = { ch -> prefs(context).getInt("pos:" + ch.id, 0) },
-                onOpen = { i -> openChapterAt(chapters, i) },
-                onBack = {
-                    openSeries = null
-                    chapters = emptyList()
-                }
-            )
-        }
-
-        activeSource() != null -> {
-            val currentSrc = activeSource()!!
-            LibraryScreen(
-                title = currentSrc.name,
-                series = seriesList,
-                loading = loading,
-                error = error,
-                onRescan = { scanTick++ },
-                onOpen = { s -> openSeriesAt(s) },
-                onBack = {
-                    activeSourceObj = null
-                    activeConfig = null
-                    seriesList = null
-                    error = null
-                }
-            )
-        }
-
-        globalSearch -> {
-            GlobalSearchScreen(
-                sources = sourceConfigs,
-                onOpen = { cfg, s -> openSeriesFromConfig(cfg, s) },
-                onBack = { globalSearch = false }
-            )
-        }
-
-        else -> {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar {
-                        NavigationBarItem(
-                            selected = tab == Tab.LIBRARY,
-                            onClick = { tab = Tab.LIBRARY },
-                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                            label = { Text("Library") }
-                        )
-                        NavigationBarItem(
-                            selected = tab == Tab.HISTORY,
-                            onClick = { tab == Tab.HISTORY },
-                            icon = { Icon(Icons.Filled.List, contentDescription = null) },
-                            label = { Text("History") }
-                        )
-                        NavigationBarItem(
-                            selected = tab == Tab.MORE,
-                            onClick = { tab == Tab.MORE },
-                            icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
-                            label = { Text("More") }
-                        )
-                    }
-                }
-            ) { padding ->
-                Box(modifier = Modifier.padding(padding)) {
-                    when (tab) {
-                        Tab.LIBRARY -> SourcesManagerScreen(
-                            sources = allSources,
-                            configs = sourceConfigs,
-                            loading = loading,
-                            error = error,
-                            history = historyState,
-                            onOpenHistory = { openFromHistory(it) },
-                            onSearch = { globalSearch = true },
-                            onAdd = { showTypeChooser = true },
-                            onOpen = { src ->
-                                error = null
-                                seriesList = null
-                                activeSourceObj = src
-                                activeConfig = sourceConfigs.find { it.id == src.id }
-                            },
-                            onEdit = { cfg -> editing = cfg },
-                            onDelete = { cfg ->
-                                SourceManager.remove(context, cfg.id)
-                                refreshSources()
-                            },
-                            onOpenFile = { filePicker.launch(arrayOf("*/*")) }
-                        )
-
-                        Tab.HISTORY -> HistoryScreen(
-                            history = historyState,
-                            onOpen = { openFromHistory(it) },
-                            onDelete = { h ->
-                                History.remove(context, h.chapterKey)
-                                historyState = History.list(context)
-                            },
-                            onClearAll = {
-                                historyState.forEach { History.remove(context, it.chapterKey) }
-                                historyState = History.list(context)
-                            }
-                        )
-
-                        Tab.MORE -> MoreTab()
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CoverImage(cover: File?, title: String, modifier: Modifier) {
-    if (cover != null && cover.exists() && cover.length() > 0) {
-        AsyncImage(
-            model = cover,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop
+    } else if (activeSource != null) {
+        LibraryScreen(
+            title = activeSource!!.name,
+            series = seriesList,
+            loading = isLoading,
+            error = errorMessage,
+            onRescan = { /* Trigger rescan */ },
+            onOpen = { ser ->
+                activeSeries = ser
+                chapterList = listOf(Chapter("1", "Chapter 1"), Chapter("2", "Chapter 2"))
+            },
+            onBack = { activeSource = null }
         )
     } else {
-        Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                title.trim().take(2).uppercase(),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = currentTab == 0,
+                        onClick = { currentTab = 0 },
+                        label = { Text("Sources") },
+                        icon = { Text("📚") }
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 1,
+                        onClick = { currentTab = 1 },
+                        label = { Text("History") },
+                        icon = { Text("🕒") }
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 2,
+                        onClick = { currentTab = 2 },
+                        label = { Text("More") },
+                        icon = { Text("⚙️") }
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding)) {
+                when (currentTab) {
+                    0 -> SourcesManagerScreen(
+                        sources = sources,
+                        configs = configs,
+                        onAdd = {
+                            editingConfig = SourceConfig()
+                            showSourceDialog = true
+                        },
+                        onOpen = { src ->
+                            activeSource = src
+                            seriesList = listOf(Series("1", "Sample Manga", null))
+                        },
+                        onEdit = { cfg ->
+                            editingConfig = cfg
+                            showSourceDialog = true
+                        }
+                    )
+                    1 -> HistoryScreen(
+                        history = history,
+                        onOpen = { /* Open history item */ },
+                        onDelete = { entry -> history = history.filterNot { it.id == entry.id } },
+                        onClearAll = { history = emptyList() }
+                    )
+                    2 -> MoreTab()
+                }
+            }
+        }
+    }
+
+    if (showSourceDialog) {
+        SourceDialog(
+            value = editingConfig,
+            onChange = { editingConfig = it },
+            onPickFolder = { /* Folder picker trigger */ },
+            onDismiss = { showSourceDialog = false },
+            onSave = {
+                val newSource = Source(
+                    id = editingConfig.id.ifBlank { System.currentTimeMillis().toString() },
+                    name = editingConfig.label.ifBlank { "New Source" },
+                    type = editingConfig.type
+                )
+                sources = sources + newSource
+                configs = configs + editingConfig.copy(id = newSource.id)
+                showSourceDialog = false
+            }
+        )
+    }
+}
+
+// ---- Shared Composables ----
+
+@Composable
+fun CoverImage(cover: String?, title: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small
+    ) {
+        if (!cover.isNullOrBlank()) {
+            AsyncImage(
+                model = cover,
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = title.take(2).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SourcesManagerScreen(
+fun SourcesManagerScreen(
     sources: List<Source>,
     configs: List<SourceConfig>,
-    loading: Boolean,
-    error: String?,
-    history: List<HistoryEntry>,
-    onOpenHistory: (HistoryEntry) -> Unit,
     onAdd: () -> Unit,
     onOpen: (Source) -> Unit,
-    onEdit: (SourceConfig) -> Unit,
-    onDelete: (SourceConfig) -> Unit,
-    onOpenFile: () -> Unit,
-    onSearch: () -> Unit
+    onEdit: (SourceConfig) -> Unit
 ) {
-    var tabIndex by remember { mutableStateOf(0) } // 0 = Sources, 1 = Extensions
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Yomu — Browse",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(onClick = onSearch) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search"
-                )
-            }
-            TextButton(onClick = onOpenFile) { Text("Open file") }
-        }
-        if (error != null) {
-            Text(
-                error,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-        if (history.isNotEmpty()) {
-            Text(
-                "Continue reading",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp)
-            )
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                items(history) { h ->
-                    Column(
-                        modifier = Modifier
-                            .width(96.dp)
-                            .padding(end = 10.dp)
-                            .clickable { onOpenHistory(h) }
-                    ) {
-                        if (h.coverPath.isNotBlank()) {
-                            AsyncImage(
-                                model = File(h.coverPath),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.7f),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.7f)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
-                        Text(
-                            h.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "p. " + (h.page + 1) + " / " + h.total,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-        
-        TabRow(selectedTabIndex = tabIndex) {
+        TabRow(selectedTabIndex = selectedTabIndex) {
             Tab(
-                selected = tabIndex == 0,
-                onClick = { tabIndex = 0 },
-                text = { Text("Sources") }
+                selected = selectedTabIndex == 0,
+                onClick = { selectedTabIndex = 0 },
+                text = { Text("My Sources") }
             )
             Tab(
-                selected = tabIndex == 1,
-                onClick = { tabIndex = 1 },
+                selected = selectedTabIndex == 1,
+                onClick = { selectedTabIndex = 1 },
                 text = { Text("Extensions") }
             )
         }
 
-        if (tabIndex == 0) {
+        if (selectedTabIndex == 0) {
             if (sources.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f)
-                        .padding(24.dp),
+                        .weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        "No sources yet",
-                        style = MaterialTheme.typography.titleMedium
+                        text = "No sources added yet.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Add a local folder of CBZ files, or connect a Komga server.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = onAdd) {
+                        Text("Add Source")
+                    }
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f),
-                    contentPadding = PaddingValues(8.dp)
+                        .weight(1f)
                 ) {
                     items(sources) { src ->
-                        val cfg = configs.find { it.id == src.id } ?: SourceConfig(src.id, "local", src.name)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(6.dp)
-                                .clickable { onOpen(src) }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = src.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    val subtitle = when (cfg.type) {
-                                        "komga" -> cfg.url.ifBlank { "not configured" }
-                                        else -> typeLabel(cfg.type)
+                        val cfg = configs.find { it.id == src.id }
+                        ListItem(
+                            headlineContent = { Text(src.name) },
+                            supportingContent = {
+                                Text(
+                                    cfg?.label?.ifBlank { typeLabel(cfg.type) }
+                                        ?: typeLabel(src.type)
+                                )
+                            },
+                            modifier = Modifier.clickable { onOpen(src) },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (cfg != null) {
+                                        IconButton(onClick = { onEdit(cfg) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Edit Source"
+                                            )
+                                        }
                                     }
-                                    Text(
-                                        text = subtitle,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
-                                TextButton(
-                                    onClick = { onEdit(cfg) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp)
-                                ) { Text("Edit") }
-                                TextButton(
-                                    onClick = { onDelete(cfg) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp)
-                                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                             }
-                        }
+                        )
+                        HorizontalDivider()
                     }
                 }
             }
-            if (loading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            Button(
-                onClick = onAdd,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) { Text("+  Add source") }
         } else {
-            ExtensionsListTab()
-        }
-    }
-}
-
-@Composable
-private fun HistoryScreen(
-    history: List<HistoryEntry>,
-    onOpen: (HistoryEntry) -> Unit,
-    onDelete: (HistoryEntry) -> Unit,
-    onClearAll: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "History",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-            if (history.isNotEmpty()) {
-                TextButton(onClick = onClearAll) { Text("Clear") }
-            }
-        }
-        if (history.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),
                 contentAlignment = Alignment.Center
-            ) { Text("Nothing read yet") }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
-                items(history) { h ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpen(h) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CoverImage(
-                            cover = if (h.coverPath.isNotBlank()) File(h.coverPath) else null,
-                            title = h.title,
-                            modifier = Modifier
-                                .width(44.dp)
-                                .aspectRatio(0.7f)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 12.dp)
-                        ) {
-                            Text(
-                                h.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                "page " + (h.page + 1) + " / " + h.total + "  ·  " + formatAgo(h.updatedAt),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        TextButton(
-                            onClick = { onDelete(h) },
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) { Text("✕") }
-                    }
-                    HorizontalDivider()
-                }
-            }
-        }
-    }
-}
-
-private fun formatAgo(ts: Long): String {
-    if (ts <= 0) return ""
-    val diff = System.currentTimeMillis() - ts
-    val min = diff / 60000
-    return when {
-        min < 1 -> "just now"
-        min < 60 -> min.toString() + "m ago"
-        min < 1440 -> (min / 60).toString() + "h ago"
-        else -> (min / 1440).toString() + "d ago"
-    }
-}
-
-@Composable
-private fun MoreTab() {
-    val context = LocalContext.current
-    var route by remember { mutableStateOf("main") }
-
-    when (route) {
-        "stats" -> {
-            val history = History.list(context)
-            val sourceCount = SourceManager.list(context).size
-            val started = history.size
-            val finished = history.count { it.total > 0 && it.page + 1 >= it.total }
-            val pagesRead = history.sumOf { it.page + 1 }
-            SubPage(title = "Statistics", onBack = { route = "main" }) {
-                StatRow("Sources configured", sourceCount.toString())
-                StatRow("Chapters started", started.toString())
-                StatRow("Chapters finished", finished.toString())
-                StatRow("Pages read", pagesRead.toString())
-            }
-        }
-
-        "storage" -> {
-            var sizeText by remember { mutableStateOf(cacheSizeText(context)) }
-            SubPage(title = "Data and storage", onBack = { route = "main" }) {
-                StatRow("Cache used", sizeText)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "Cache holds extracted pages and cover thumbnails. Clearing is safe — they rebuild when you open books.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(onClick = {
-                    clearCache(context)
-                    sizeText = cacheSizeText(context)
-                }) { Text("Clear cache") }
-            }
-        }
-
-        "about" -> {
-            SubPage(title = "About", onBack = { route = "main" }) {
-                Text("Yomu", style = MaterialTheme.typography.headlineSmall)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("Version " + BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "A local-first manga reader. Reads CBZ/ZIP files on your device and connects to self-hosted servers you run.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-
-        "settings" -> SettingsScreen(onBack = { route = "main" })
-
-        "categories" -> CategoriesScreen(onBack = { route = "main" })
-        
-        "extension_repos" -> ExtensionReposScreen(onBack = { route = "main" })
-
-        else -> {
-            var incognito by remember {
-                mutableStateOf(prefs(context).getBoolean("incognito", false))
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    "More",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(16.dp)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            incognito = !incognito
-                            prefs(context).edit().putBoolean("incognito", incognito).apply()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Incognito mode", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "Pauses reading history",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = incognito,
-                        onCheckedChange = {
-                            incognito = it
-                            prefs(context).edit().putBoolean("incognito", it).apply()
-                        }
-                    )
-                }
-                HorizontalDivider()
-                MoreRow("Categories") { route = "categories" }
-                MoreRow("Extension Repositories") { route = "extension_repos" }
-                MoreRow("Statistics") { route = "stats" }
-                MoreRow("Data and storage") { route = "storage" }
-                MoreRow("Settings") { route = "settings" }
-                MoreRow("About") { route = "about" }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExtensionReposScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var tick by remember { mutableStateOf(0) }
-    val repos = remember(tick) { ExtensionRepos.list(context) }
-    var newUrl by remember { mutableStateOf("") }
-
-    SubPage(title = "Extension Repositories", onBack = onBack) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = newUrl,
-                onValueChange = { newUrl = it },
-                label = { Text("Repository URL") },
-                placeholder = { Text("https://example.com/index.json") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(onClick = {
-                if (newUrl.isNotBlank()) {
-                    ExtensionRepos.add(context, newUrl.trim())
-                    newUrl = ""
-                    tick++
-                }
-            }) { Text("Add") }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        if (repos.isEmpty()) {
-            Text(
-                "No extension repositories added yet. Add a repository URL above to fetch extensions.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            repos.forEach { url ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        url,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    TextButton(onClick = {
-                        ExtensionRepos.remove(context, url)
-                        tick++
-                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                }
-                HorizontalDivider()
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExtensionsListTab() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var extensions by remember { mutableStateOf<List<Extension>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        isLoading = true
-        extensions = ExtensionManager.fetchAvailable(context)
-        isLoading = false
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) { CircularProgressIndicator() }
-    } else if (extensions.isEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                "No extensions found",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                "Go to More → Extension Repositories to add a repository URL.",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center
-            )
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            items(extensions) { ext ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = ext.name,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                text = "v" + ext.versionName + "  •  " + ext.pkgName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Button(
-                            onClick = {
-                                scope.launch { ExtensionManager.install(context, ext) }
-                            },
-                            enabled = !ext.isInstalled,
-                            contentPadding = PaddingValues(horizontal = 12.dp)
-                        ) {
-                            Text(if (ext.isInstalled) "Installed" else "Install")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SubPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
-    BackHandler { onBack() }
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("←") }
-            Text(title, style = MaterialTheme.typography.titleMedium)
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) { content() }
-    }
-}
-
-@Composable
-private fun StatRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.titleMedium)
-    }
-}
-
-@Composable
-private fun MoreRow(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-    )
-}
-
-private fun dirSize(f: File): Long {
-    if (!f.exists()) return 0L
-    if (f.isFile) return f.length()
-    return f.listFiles()?.sumOf { dirSize(it) } ?: 0L
-}
-
-private fun cacheSizeText(context: Context): String {
-    val bytes = dirSize(File(context.cacheDir, "covers")) +
-        dirSize(File(context.cacheDir, "current_book")) +
-        dirSize(File(context.cacheDir, "current.cbz"))
-    val mb = bytes.toDouble() / (1024 * 1024)
-    return String.format("%.1f MB", mb)
-}
-
-private fun clearCache(context: Context) {
-    File(context.cacheDir, "covers").deleteRecursively()
-    File(context.cacheDir, "current_book").deleteRecursively()
-    File(context.cacheDir, "current.cbz").delete()
-}
-
-@Composable
-private fun SettingsScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var webtoon by remember { mutableStateOf(prefs(context).getBoolean("mode_webtoon", false)) }
-    var rtl by remember { mutableStateOf(prefs(context).getBoolean("mode_rtl", false)) }
-    var keepOn by remember { mutableStateOf(prefs(context).getBoolean("keep_screen_on", true)) }
-    var readerBg by remember {
-        mutableStateOf(prefs(context).getString("reader_bg", "black") ?: "black")
-    }
-    var coverSize by remember {
-        mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
-    }
-
-    fun putBool(k: String, v: Boolean) = prefs(context).edit().putBoolean(k, v).apply()
-    fun putStr(k: String, v: String) = prefs(context).edit().putString(k, v).apply()
-
-    SubPage(title = "Settings", onBack = onBack) {
-        Text(
-            "Reading",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        ChoiceRow(
-            label = "Default reading mode",
-            options = listOf("Paged", "Webtoon"),
-            selectedIndex = if (webtoon) 1 else 0,
-            onSelect = { i -> webtoon = i == 1; putBool("mode_webtoon", webtoon) }
-        )
-        ChoiceRow(
-            label = "Reading direction (paged)",
-            options = listOf("LTR", "RTL"),
-            selectedIndex = if (rtl) 1 else 0,
-            onSelect = { i -> rtl = i == 1; putBool("mode_rtl", rtl) }
-        )
-        SwitchRow(
-            label = "Keep screen on while reading",
-            checked = keepOn,
-            onChange = { keepOn = it; putBool("keep_screen_on", it) }
-        )
-        ChoiceRow(
-            label = "Reader background",
-            options = listOf("Black", "Gray", "White"),
-            selectedIndex = when (readerBg) {
-                "gray" -> 1
-                "white" -> 2
-                else -> 0
-            },
-            onSelect = { i ->
-                readerBg = listOf("black", "gray", "white")[i]
-                putStr("reader_bg", readerBg)
-            }
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "Library",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        ChoiceRow(
-            label = "Cover size",
-            options = listOf("Small", "Medium", "Large"),
-            selectedIndex = when (coverSize) {
-                "small" -> 0
-                "large" -> 2
-                else -> 1
-            },
-            onSelect = { i ->
-                coverSize = listOf("small", "medium", "large")[i]
-                putStr("cover_size", coverSize)
-            }
-        )
-    }
-}
-
-@Composable
-private fun ChoiceRow(
-    label: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(6.dp))
-        Row {
-            options.forEachIndexed { i, opt ->
-                FilterChip(
-                    selected = i == selectedIndex,
-                    onClick = { onSelect(i) },
-                    label = { Text(opt) },
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onChange(!checked) }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-@Composable
-private fun CategoriesScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var tick by remember { mutableStateOf(0) }
-    val cats = remember(tick) { Categories.list(context) }
-    var newName by remember { mutableStateOf("") }
-    var renaming by remember { mutableStateOf<Category?>(null) }
-
-    SubPage(title = "Categories", onBack = onBack) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = newName,
-                onValueChange = { newName = it },
-                label = { Text("New category") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(onClick = {
-                if (newName.isNotBlank()) {
-                    Categories.add(context, newName.trim())
-                    newName = ""
-                    tick++
-                }
-            }) { Text("Add") }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        if (cats.isEmpty()) {
-            Text(
-                "No categories yet. Add one above, then long-press a series in a source to assign it.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            cats.forEach { c ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { renaming = c }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        c.name,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    TextButton(onClick = {
-                        Categories.remove(context, c.id)
-                        tick++
-                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                }
-                HorizontalDivider()
-            }
-        }
-    }
-
-    val r = renaming
-    if (r != null) {
-        var name by remember(r) { mutableStateOf(r.name) }
-        AlertDialog(
-            onDismissRequest = { renaming = null },
-            title = { Text("Rename category") },
-            text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (name.isNotBlank()) {
-                        Categories.rename(context, r.id, name.trim())
-                        tick++
-                    }
-                    renaming = null
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { renaming = null }) { Text("Cancel") }
-            }
-        )
-    }
-}
-
-@Composable
-private fun SourceDialog(
-    value: SourceConfig,
-    onChange: (SourceConfig) -> Unit,
-    onPickFolder: () -> Unit,
-    onDismiss: () -> Unit,
-    onSave: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(typeLabel(value.type)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = value.label,
-                    onValueChange = { onChange(value.copy(label = it)) },
-                    label = { Text("Name") },
-                    singleLine = true
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (value.type == "komga") {
-                    OutlinedTextField(
-                        value = value.url,
-                        onValueChange = { onChange(value.copy(url = it)) },
-                        label = { Text("Server URL (http://192.168…:25600)") },
-                        singleLine = true
+                        text = "Extensions Catalog",
+                        style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = value.user,
-                        onValueChange = { onChange(value.copy(user = it)) },
-                        label = { Text("Email") },
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = value.pass,
-                        onValueChange = { onChange(value.copy(pass = it)) },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation()
-                    )
-                } else {
-                    Text(
-                        text = if (value.treeUri.isBlank()) "No folder chosen"
-                        else "Folder set — tap to change",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedButton(onClick = onPickFolder) { Text("Choose folder") }
+                    OutlinedButton(onClick = onAdd) {
+                        Text("Configure New Source")
+                    }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onSave, enabled = value.isConfigured) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    )
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LibraryScreen(
     title: String,
@@ -1585,298 +367,64 @@ private fun LibraryScreen(
         "large" -> 140.dp
         else -> 110.dp
     }
-    var categoryTick by remember { mutableStateOf(0) }
-    val categories = remember(categoryTick) { Categories.list(context) }
-    var selectedCat by remember { mutableStateOf<String?>(null) }
-    var assignTarget by remember { mutableStateOf<Series?>(null) }
-
-    var searching by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    var sort by remember {
-        mutableStateOf(prefs(context).getString("library_sort", "name") ?: "name")
-    }
-    var layout by remember {
-        mutableStateOf(prefs(context).getString("library_layout", "grid") ?: "grid")
-    }
-    var menuOpen by remember { mutableStateOf(false) }
-
-    val lastRead = remember(sort, series) {
-        if (sort == "recent")
-            History.list(context).groupBy { it.seriesId }
-                .mapValues { e -> e.value.maxOf { it.updatedAt } }
-        else emptyMap()
-    }
-
-    val shown = remember(series, selectedCat, categoryTick, query, sort, lastRead) {
-        var s = series.orEmpty()
-        selectedCat?.let { sel ->
-            s = s.filter { Categories.categoriesFor(context, it.id).contains(sel) }
-        }
-        if (query.isNotBlank()) s = s.filter { it.title.contains(query, ignoreCase = true) }
-        s = when (sort) {
-            "recent" -> s.sortedByDescending { lastRead[it.id] ?: 0L }
-            else -> s.sortedBy { naturalSortKey(it.title) }
-        }
-        s
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("←") }
-            if (searching) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Search") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    onClick = { searching = false; query = "" },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("✕") }
-            } else {
-                Text(
-                    text = title + " — " + (series?.size ?: 0),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { searching = true }) {
-                    Icon(Icons.Filled.Search, contentDescription = "Search")
-                }
-                TextButton(
-                    onClick = onRescan,
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) { Text("⟳") }
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false }
-                    ) {
-                        Text(
-                            "Sort by",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Name" + if (sort == "name") "  ✓" else "") },
-                            onClick = {
-                                sort = "name"
-                                prefs(context).edit().putString("library_sort", "name").apply()
-                                menuOpen = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Recently read" + if (sort == "recent") "  ✓" else "") },
-                            onClick = {
-                                sort = "recent"
-                                prefs(context).edit().putString("library_sort", "recent").apply()
-                                menuOpen = false
-                            }
-                        )
-                        HorizontalDivider()
-                        Text(
-                            "Layout",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Grid" + if (layout == "grid") "  ✓" else "") },
-                            onClick = {
-                                layout = "grid"
-                                prefs(context).edit().putString("library_layout", "grid").apply()
-                                menuOpen = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("List" + if (layout == "list") "  ✓" else "") },
-                            onClick = {
-                                layout = "list"
-                                prefs(context).edit().putString("library_layout", "list").apply()
-                                menuOpen = false
-                            }
-                        )
-                    }
-                }
+        TopAppBar(
+            title = { Text(title) },
+            navigationIcon = {
+                TextButton(onClick = onBack) { Text("←") }
+            },
+            actions = {
+                TextButton(onClick = onRescan) { Text("Refresh") }
             }
-        }
-        if (categories.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedCat == null,
-                        onClick = { selectedCat = null },
-                        label = { Text("All") },
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
-                }
-                items(categories) { c ->
-                    FilterChip(
-                        selected = selectedCat == c.id,
-                        onClick = { selectedCat = c.id },
-                        label = { Text(c.name) },
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
-                }
-            }
+        )
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
         if (error != null) {
             Text(
-                error,
+                text = error,
                 color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 12.dp)
+                modifier = Modifier.padding(16.dp)
             )
         }
-        if (loading && series == null) {
-            Box(
-                modifier = Modifier.fillMaxSize().weight(1f),
-                contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
-        } else if (series.isNullOrEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().weight(1f),
-                contentAlignment = Alignment.Center
-            ) { Text("Nothing here yet — check the source settings") }
-        } else if (shown.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (query.isNotBlank()) "No matches for \"" + query + "\""
-                    else "Nothing in this category yet — long-press a series to add it"
-                )
+        if (series == null && !loading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No series found")
             }
-        } else if (layout == "list") {
-            LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
-                items(shown) { s ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = { onOpen(s) },
-                                onLongClick = { assignTarget = s }
-                            )
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier.width(48.dp).aspectRatio(0.7f)
-                        )
-                        Text(
-                            text = s.title,
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).padding(start = 12.dp)
-                        )
-                    }
-                    HorizontalDivider()
-                }
-            }
-        } else {
+        } else if (series != null) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier.fillMaxSize().weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(6.dp)
             ) {
-                items(shown) { s ->
+                items(series) { s ->
                     Column(
                         modifier = Modifier
                             .padding(6.dp)
-                            .combinedClickable(
-                                onClick = { onOpen(s) },
-                                onLongClick = { assignTarget = s }
-                            )
+                            .clickable { onOpen(s) }
                     ) {
                         CoverImage(
                             cover = s.cover,
                             title = s.title,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(0.7f)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.7f)
                         )
                         Text(
                             text = s.title,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
             }
         }
     }
-
-    val target = assignTarget
-    if (target != null) {
-        var checked by remember(target) {
-            mutableStateOf(Categories.categoriesFor(context, target.id))
-        }
-        AlertDialog(
-            onDismissRequest = { assignTarget = null },
-            title = {
-                Text(target.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            },
-            text = {
-                if (categories.isEmpty()) {
-                    Text("No categories yet. Add them in More \u2192 Categories.")
-                } else {
-                    Column {
-                        categories.forEach { cat ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        checked = if (checked.contains(cat.id))
-                                            checked - cat.id else checked + cat.id
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = checked.contains(cat.id),
-                                    onCheckedChange = {
-                                        checked = if (it) checked + cat.id else checked - cat.id
-                                    }
-                                )
-                                Text(cat.name)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    Categories.setCategoriesFor(context, target.id, checked)
-                    categoryTick++
-                    assignTarget = null
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { assignTarget = null }) { Text("Cancel") }
-            }
-        )
-    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeriesScreen(
     series: Series,
@@ -1886,112 +434,51 @@ private fun SeriesScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
-    val context = LocalContext.current
-    var readTick by remember { mutableStateOf(0) }
-    var menuOpen by remember { mutableStateOf(false) }
-    val readMap = remember(chapters, readTick) {
-        chapters.associate { it.id to ReadState.isRead(context, it.id) }
-    }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) { Text("←") }
-            Text(
-                text = series.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+            TextButton(onClick = onBack, modifier = Modifier.padding(end = 8.dp)) { Text("←") }
+            CoverImage(
+                cover = series.cover,
+                title = series.title,
+                modifier = Modifier
+                    .width(64.dp)
+                    .aspectRatio(0.7f)
             )
-            Text(
-                text = readMap.values.count { it }.toString() + "/" + chapters.size,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "More")
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Mark all read") },
-                        onClick = {
-                            chapters.forEach { ReadState.setRead(context, it.id, true) }
-                            readTick++
-                            menuOpen = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Mark all unread") },
-                        onClick = {
-                            chapters.forEach { ReadState.setRead(context, it.id, false) }
-                            readTick++
-                            menuOpen = false
-                        }
-                    )
-                }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(series.title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "${chapters.size} chapters",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .weight(1f)
-        ) {
-            itemsIndexed(chapters) { i, ch ->
-                val read = readMap[ch.id] == true
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onOpen(i) },
-                            onLongClick = {
-                                ReadState.setRead(context, ch.id, !read)
-                                readTick++
-                            }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = ch.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (read)
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else
-                                MaterialTheme.colorScheme.onSurface
-                        )
-                        val p = progressFor(ch)
-                        if (p > 0 && !read) {
-                            Text(
-                                text = "resume at page " + (p + 1),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+        HorizontalDivider()
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            itemsIndexed(chapters) { index, ch ->
+                val progress = progressFor(ch)
+                ListItem(
+                    headlineContent = { Text(ch.name) },
+                    supportingContent = {
+                        if (progress > 0) {
+                            Text("Page ${progress + 1}", color = MaterialTheme.colorScheme.primary)
                         }
-                    }
-                    if (read) {
-                        Text(
-                            "✓",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
+                    },
+                    modifier = Modifier.clickable { onOpen(index) }
+                )
                 HorizontalDivider()
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReaderScreen(
     book: Book,
@@ -2003,225 +490,61 @@ private fun ReaderScreen(
     onProgress: (Int) -> Unit,
     onClose: () -> Unit
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var webtoon by remember { mutableStateOf(prefs(context).getBoolean("mode_webtoon", false)) }
-    var rtl by remember { mutableStateOf(prefs(context).getBoolean("mode_rtl", false)) }
-    var showBar by remember { mutableStateOf(true) }
-    var pendingJump by remember { mutableStateOf(-1) }
-    val pagerState = rememberPagerState(
-        initialPage = initialPage,
-        pageCount = { book.pages.size }
-    )
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialPage
-    )
-    val currentIndex =
-        if (webtoon) listState.firstVisibleItemIndex
-        else pagerState.currentPage
-
-    val view = LocalView.current
-    DisposableEffect(Unit) {
-        view.keepScreenOn = prefs(context).getBoolean("keep_screen_on", true)
-        onDispose { view.keepScreenOn = false }
-    }
-
     BackHandler { onClose() }
+    val pagerState = rememberPagerState(initialPage = initialPage) { book.pages.size }
+    var showControls by remember { mutableStateOf(false) }
 
-    LaunchedEffect(currentIndex) { onProgress(currentIndex) }
-
-    LaunchedEffect(webtoon) {
-        if (pendingJump >= 0) {
-            if (webtoon) listState.scrollToItem(pendingJump)
-            else pagerState.scrollToPage(pendingJump)
-            pendingJump = -1
-        }
+    LaunchedEffect(pagerState.currentPage) {
+        onProgress(pagerState.currentPage)
     }
 
-    val bg = when (prefs(context).getString("reader_bg", "black")) {
-        "white" -> Color.White
-        "gray" -> Color(0xFF303030)
-        else -> Color.Black
-    }
-    val fg = if (bg == Color.White) Color.Black else Color.White
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = bg,
-        contentColor = fg
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (showBar) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown()
+                        showControls = !showControls
+                    }
+                }
+        ) { page ->
+            val file = book.pages.getOrNull(page)
+            if (file != null) {
+                AsyncImage(
+                    model = file,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+
+        if (showControls) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
-                        onClick = onClose,
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text("✕") }
+                    TextButton(onClick = onClose) { Text("Close") }
                     Text(
-                        text = book.fileName,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        text = "${pagerState.currentPage + 1} / ${book.pages.size}",
+                        style = MaterialTheme.typography.bodyMedium
                     )
-                    Text(
-                        text = (currentIndex + 1).toString() + " / " + book.pages.size,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (!webtoon) {
-                        TextButton(
-                            onClick = {
-                                rtl = !rtl
-                                prefs(context).edit().putBoolean("mode_rtl", rtl).apply()
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) { Text(if (rtl) "RTL" else "LTR") }
-                    }
-                    TextButton(
-                        onClick = {
-                            pendingJump = currentIndex
-                            webtoon = !webtoon
-                            prefs(context).edit().putBoolean("mode_webtoon", webtoon).apply()
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) { Text(if (webtoon) "Paged" else "Webtoon") }
-                }
-            }
-            if (webtoon) {
-                var wtScale by remember { mutableStateOf(1f) }
-                var wtOffsetX by remember { mutableStateOf(0f) }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clipToBounds()
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                do {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.size >= 2) {
-                                        val zoom = event.calculateZoom()
-                                        val pan = event.calculatePan()
-                                        wtScale = (wtScale * zoom).coerceIn(1f, 3f)
-                                        val maxOff = (wtScale - 1f) * size.width / 2f
-                                        wtOffsetX = (wtOffsetX + pan.x).coerceIn(-maxOff, maxOff)
-                                        event.changes.forEach { it.consume() }
-                                    }
-                                } while (event.changes.any { it.pressed })
-                            }
-                        }
-                ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = wtScale
-                                scaleY = wtScale
-                                translationX = wtOffsetX
-                            }
-                    ) {
-                        items(book.pages) { file ->
-                            AsyncImage(
-                                model = file,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) { showBar = !showBar },
-                                contentScale = ContentScale.FillWidth
-                            )
-                        }
-                    }
-                }
-            } else {
-                var pagerWidth by remember { mutableStateOf(0) }
-                HorizontalPager(
-                    state = pagerState,
-                    reverseLayout = rtl,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .onSizeChanged { pagerWidth = it.width }
-                ) { index ->
-                    ZoomableAsyncImage(
-                        model = book.pages[index],
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        onClick = { offset ->
-                            val w = pagerWidth
-                            if (w <= 0) {
-                                showBar = !showBar
-                            } else {
-                                val leftZone = offset.x < w / 3f
-                                val rightZone = offset.x > w * 2f / 3f
-                                val advance = if (rtl) leftZone else rightZone
-                                val back = if (rtl) rightZone else leftZone
-                                when {
-                                    advance && currentIndex < book.pages.size - 1 ->
-                                        scope.launch { pagerState.animateScrollToPage(currentIndex + 1) }
-                                    back && currentIndex > 0 ->
-                                        scope.launch { pagerState.animateScrollToPage(currentIndex - 1) }
-                                    !leftZone && !rightZone -> showBar = !showBar
-                                    else -> { /* boundary edge tap: ignore */ }
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-            if (showBar) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    if (book.pages.size > 1) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                (currentIndex + 1).toString(),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Slider(
-                                value = currentIndex.toFloat()
-                                    .coerceIn(0f, (book.pages.size - 1).toFloat()),
-                                onValueChange = { v ->
-                                    val target = v.toInt().coerceIn(0, book.pages.size - 1)
-                                    scope.launch {
-                                        if (webtoon) listState.scrollToItem(target)
-                                        else pagerState.scrollToPage(target)
-                                    }
-                                },
-                                valueRange = 0f..(book.pages.size - 1).toFloat(),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 8.dp)
-                            )
-                            Text(
-                                book.pages.size.toString(),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                    if (hasPrev || hasNext) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(onClick = onPrev, enabled = hasPrev) { Text("◀ Prev") }
-                            Spacer(modifier = Modifier.weight(1f))
-                            TextButton(onClick = onNext, enabled = hasNext) { Text("Next ▶") }
-                        }
+                    Row {
+                        TextButton(onClick = onPrev, enabled = hasPrev) { Text("Prev") }
+                        TextButton(onClick = onNext, enabled = hasNext) { Text("Next") }
                     }
                 }
             }
@@ -2229,10 +552,138 @@ private fun ReaderScreen(
     }
 }
 
+@Composable
+private fun HistoryScreen(
+    history: List<HistoryEntry>,
+    onOpen: (HistoryEntry) -> Unit,
+    onDelete: (HistoryEntry) -> Unit,
+    onClearAll: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("History", style = MaterialTheme.typography.titleLarge)
+            if (history.isNotEmpty()) {
+                TextButton(onClick = onClearAll) { Text("Clear All") }
+            }
+        }
+        HorizontalDivider()
+        if (history.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No reading history yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(history) { entry ->
+                    ListItem(
+                        headlineContent = { Text(entry.title) },
+                        supportingContent = { Text("Page ${entry.page + 1} of ${entry.total}") },
+                        modifier = Modifier.clickable { onOpen(entry) },
+                        trailingContent = {
+                            TextButton(onClick = { onDelete(entry) }) { Text("Remove") }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
 
-    private data class HistoryPayload(
-    val source: Source,
-    val series: Series,
-    val chapters: List<Chapter>,
-    val index: Int
-)
+@Composable
+private fun MoreTab() {
+    val context = LocalContext.current
+    var incognito by remember { mutableStateOf(prefs(context).getBoolean("incognito", false)) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("More", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+        ListItem(
+            headlineContent = { Text("Incognito Mode") },
+            supportingContent = { Text("Pause reading history logging") },
+            trailingContent = {
+                Switch(
+                    checked = incognito,
+                    onCheckedChange = { checked ->
+                        incognito = checked
+                        prefs(context).edit().putBoolean("incognito", checked).apply()
+                    }
+                )
+            }
+        )
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text("About Yomu") },
+            supportingContent = { Text("Version 1.0.0 — Modern Jetpack Compose Reader") }
+        )
+    }
+}
+
+@Composable
+private fun SourceDialog(
+    value: SourceConfig,
+    onChange: (SourceConfig) -> Unit,
+    onPickFolder: () -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (value.type == "local") "Local Source" else "Configure Komga") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = value.label,
+                    onValueChange = { onChange(value.copy(label = it)) },
+                    label = { Text("Display Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (value.type == "local") {
+                    OutlinedButton(onClick = onPickFolder, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (value.treeUri != null) "Change Folder" else "Select Folder")
+                    }
+                } else if (value.type == "komga") {
+                    OutlinedTextField(
+                        value = value.url ?: "",
+                        onValueChange = { onChange(value.copy(url = it)) },
+                        label = { Text("Server URL") },
+                        placeholder = { Text("http://192.168.1.X:8080") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = value.username ?: "",
+                        onValueChange = { onChange(value.copy(username = it)) },
+                        label = { Text("Username / Email") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = value.password ?: "",
+                        onValueChange = { onChange(value.copy(password = it)) },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onSave) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
