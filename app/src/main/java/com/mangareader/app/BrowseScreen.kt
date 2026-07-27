@@ -30,6 +30,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -158,6 +160,111 @@ internal fun BrowseSourceRow(
     )
 }
 
+/**
+ * Which sources appear in the Sources list.
+ *
+ * Grouped by language, with a switch per language and a checkbox per source, the
+ * way Mihon does it. Both stores hold what's switched *off*, so a source added by
+ * a new extension shows up without anyone having to enable it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SourceFilterScreen(
+    rows: List<BrowseRow>,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+    val context = LocalContext.current
+    var hidden by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
+    var disabledLangs by remember { mutableStateOf(SourcePrefs.disabledLangs(context)) }
+
+    val groups = remember(rows) {
+        rows.groupBy { it.lang.ifBlank { "Other" } }
+            .toList()
+            .sortedBy { it.first.lowercase() }
+            .sortedBy { langRank(it.first) }
+    }
+    val allIds = remember(rows) { rows.map { it.id } }
+    val allShown = hidden.isEmpty() && disabledLangs.isEmpty()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Sources") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+            }
+        )
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+                ListItem(
+                    headlineContent = { Text("All sources") },
+                    supportingContent = {
+                        Text("${rows.count { it.id !in hidden && it.lang !in disabledLangs }} of ${rows.size} shown")
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = allShown,
+                            onCheckedChange = { on ->
+                                hidden = SourcePrefs.setSourcesHidden(context, allIds, !on)
+                                if (on) {
+                                    disabledLangs.toList().forEach {
+                                        disabledLangs = SourcePrefs.toggleLangDisabled(context, it)
+                                    }
+                                }
+                            }
+                        )
+                    }
+                )
+                HorizontalDivider()
+            }
+
+            groups.forEach { (lang, sources) ->
+                val langOff = lang in disabledLangs
+                item {
+                    ListItem(
+                        headlineContent = {
+                            Text(lang, style = MaterialTheme.typography.titleSmall)
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = !langOff,
+                                onCheckedChange = {
+                                    disabledLangs = SourcePrefs.toggleLangDisabled(context, lang)
+                                }
+                            )
+                        }
+                    )
+                }
+                items(sources.sortedBy { it.name.lowercase() }) { row ->
+                    val on = row.id !in hidden
+                    ListItem(
+                        leadingContent = { SourceIcon(row.iconPkg, row.name) },
+                        headlineContent = { Text(row.name) },
+                        trailingContent = {
+                            Checkbox(
+                                checked = on && !langOff,
+                                // A language switched off greys out its sources
+                                // rather than silently rewriting each checkbox.
+                                enabled = !langOff,
+                                onCheckedChange = {
+                                    hidden = SourcePrefs.toggleSourceHidden(context, row.id)
+                                }
+                            )
+                        },
+                        modifier = Modifier.clickable(enabled = !langOff) {
+                            hidden = SourcePrefs.toggleSourceHidden(context, row.id)
+                        }
+                    )
+                }
+                item { HorizontalDivider() }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowseTab(
@@ -179,6 +286,11 @@ internal fun BrowseTab(
     var pinnedIds by remember { mutableStateOf(SourcePrefs.pinned(context)) }
     val lastUsedId = remember { SourcePrefs.lastUsed(context) }
     var settingsFor by remember { mutableStateOf<Source?>(null) }
+    var showSourceFilter by remember { mutableStateOf(false) }
+    // Re-read on every entry into the composition, same as the pin set: the
+    // filter screen is the only thing that changes them and it lives here.
+    var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
+    var disabledLangs by remember { mutableStateOf(SourcePrefs.disabledLangs(context)) }
 
     val rows = remember(configs, extensions) {
         configs.map { cfg ->
@@ -206,18 +318,37 @@ internal fun BrowseTab(
         }
     }
 
-    val lastUsedRow = rows.firstOrNull { it.id == lastUsedId }
-    val pinnedRows = rows.filter { it.id in pinnedIds }.sortedBy { it.name.lowercase() }
+    // Everything below works off the visible set; `rows` stays whole so the
+    // filter screen can still list what's been switched off.
+    val visibleRows = rows.filter {
+        SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hiddenIds, disabledLangs)
+    }
+
+    val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
+    val pinnedRows = visibleRows.filter { it.id in pinnedIds }.sortedBy { it.name.lowercase() }
 
     // Pinned sources are lifted out of their language group rather than shown in
     // both places, so scrolling the list never shows the same source twice.
     // Two stable sortedBy passes rather than a multi-selector compareBy: same
     // rank-major, name-minor order, without leaning on vararg lambda inference.
-    val groups = rows.filterNot { it.id in pinnedIds }
+    val groups = visibleRows.filterNot { it.id in pinnedIds }
         .groupBy { it.lang.ifBlank { "Other" } }
         .toList()
         .sortedBy { it.first.lowercase() }
         .sortedBy { langRank(it.first) }
+
+    if (showSourceFilter) {
+        SourceFilterScreen(
+            rows = rows,
+            onBack = {
+                showSourceFilter = false
+                // Pick up whatever was changed in there.
+                hiddenIds = SourcePrefs.hiddenSources(context)
+                disabledLangs = SourcePrefs.disabledLangs(context)
+            }
+        )
+        return
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -227,6 +358,9 @@ internal fun BrowseTab(
                 if (tab == 0) {
                     IconButton(onClick = onGlobalSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search all sources")
+                    }
+                    IconButton(onClick = { showSourceFilter = true }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Choose which sources show")
                     }
                 }
             }
@@ -294,7 +428,7 @@ internal fun BrowseTab(
                     }
                 }
 
-                if (rows.isEmpty()) {
+                if (visibleRows.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier

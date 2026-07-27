@@ -75,6 +75,8 @@ internal fun GlobalSearchScreen(
     total: Int,
     pinnedOnly: Boolean,
     onTogglePinnedOnly: (Boolean) -> Unit,
+    hasResultsOnly: Boolean,
+    onToggleHasResultsOnly: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
     onCancel: () -> Unit,
     onOpenSource: (Source) -> Unit,
@@ -88,6 +90,9 @@ internal fun GlobalSearchScreen(
     // Read once per entry into the composition: the pin set only changes over in
     // the Browse tab, which tears this screen down on the way there and back.
     val hasPinned = remember { SourcePrefs.pinned(context).isNotEmpty() }
+
+    val withHits = results.count { it.series.isNotEmpty() }
+    val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -120,23 +125,31 @@ internal fun GlobalSearchScreen(
         }
 
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Pinned and All are one scope choice; Has results filters what's
+            // displayed without re-running anything.
             FilterChip(
                 selected = pinnedOnly && hasPinned,
                 enabled = hasPinned,
-                onClick = { onTogglePinnedOnly(!pinnedOnly) },
-                label = { Text("Pinned sources only") }
+                onClick = { onTogglePinnedOnly(true) },
+                label = { Text("Pinned") }
             )
-            if (!hasPinned) {
-                Text(
-                    "Pin sources in Browse to narrow this",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            FilterChip(
+                selected = !pinnedOnly || !hasPinned,
+                onClick = { onTogglePinnedOnly(false) },
+                label = { Text("All") }
+            )
+            FilterChip(
+                selected = hasResultsOnly,
+                onClick = { onToggleHasResultsOnly(!hasResultsOnly) },
+                label = { Text("Has results") }
+            )
         }
 
         if (running) {
@@ -144,14 +157,14 @@ internal fun GlobalSearchScreen(
         }
         if (total > 0) {
             Text(
-                "Searched $done of $total sources \u00b7 ${results.size} with results",
+                "Searched $done of $total sources \u00b7 $withHits with results",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
         }
 
-        if (results.isEmpty()) {
+        if (shown.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -173,7 +186,7 @@ internal fun GlobalSearchScreen(
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                items(results) { result ->
+                items(shown) { result ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -187,9 +200,19 @@ internal fun GlobalSearchScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { onOpenSource(result.source) }) {
-                            Text("See all")
+                        if (result.series.isNotEmpty()) {
+                            TextButton(onClick = { onOpenSource(result.source) }) {
+                                Text("See all")
+                            }
                         }
+                    }
+                    if (result.series.isEmpty()) {
+                        Text(
+                            "No results",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                        )
                     }
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 12.dp),
