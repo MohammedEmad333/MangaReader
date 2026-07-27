@@ -71,19 +71,71 @@ object SourceManager {
         }
     }
 
-    /** Returns all configured local/komga sources plus any dynamically loaded APK extensions. */
-    fun listAllSources(context: Context): List<Source> {
-        // 1. Build the active local/komga sources from saved configs (Fixed 'const val' to 'val')
-        val activeSources = list(context).mapNotNull { build(context, it) }
-        
-        // 2. Load the dynamic APK extension sources
-        val extensionSources = ExtensionLoader.loadAll(context)
+    // ---------- extension source cache ----------
+
+    /** The adapters handed out last time, and the LoadResult list they wrap. */
+    private var cachedAdapters: List<Source>? = null
+    private var cachedFrom: List<ExtensionLoader.LoadResult>? = null
+
+    /**
+     * The adapter-wrapped extension sources.
+     *
+     * Two layers of caching sit under this call. [ExtensionLoader.loadAllCached]
+     * avoids re-classloading the APKs, and the reference check below avoids
+     * re-wrapping its results — when the loader returns the very same list
+     * instance, the adapters from last time are still valid, so callers keep
+     * getting stable Source identities instead of a fresh object per call.
+     *
+     * The adapters are built with the application context on purpose. They
+     * outlive any one Activity now that they're held in a static cache, and
+     * TachiyomiSourceAdapter only ever uses the context for `cacheDir`.
+     */
+    @Synchronized
+    fun extensionSources(context: Context): List<Source> {
+        val appCtx = context.applicationContext
+        val results = ExtensionLoader.loadAllCached(appCtx)
+
+        val cached = cachedAdapters
+        if (cached != null && cachedFrom === results) return cached
+
+        val adapters = results
             .flatMap { it.sources }
             .filterIsInstance<CatalogueSource>()
-            .map { TachiyomiSourceAdapter(it, context) }
-        
+            .map { TachiyomiSourceAdapter(it, appCtx) }
+
+        cachedAdapters = adapters
+        cachedFrom = results
+        return adapters
+    }
+
+    /** Forces the next [extensionSources] call to reload and re-wrap everything. */
+    @Synchronized
+    fun invalidateExtensions() {
+        cachedAdapters = null
+        cachedFrom = null
+        ExtensionLoader.invalidate()
+    }
+
+    /**
+     * Returns all configured local sources plus any dynamically loaded APK
+     * extensions.
+     *
+     * The local half is rebuilt every call and stays that way: it's a
+     * SharedPreferences read plus a couple of object constructions, and it has
+     * to reflect edits made in the Sources screen immediately. The extension
+     * half is the expensive one, and that's what [extensionSources] caches.
+     */
+    fun listAllSources(context: Context): List<Source> {
+        // 1. Build the active local sources from saved configs — cheap, always fresh.
+        val activeSources = list(context).mapNotNull { build(context, it) }
+
+        // 2. Cached, adapter-wrapped APK extension sources.
+        //    Named extSources, not extensionSources: a local val with the same
+        //    name as the function would be referencing itself in its initializer.
+        val extSources = extensionSources(context)
+
         // 3. Combine them together into a single list
-        return activeSources + extensionSources
+        return activeSources + extSources
     }
 
     fun save(context: Context, items: List<SourceConfig>) {
@@ -107,11 +159,11 @@ object SourceManager {
 
     /** Build the live Source for a config, or null if not usable. */
     fun build(context: Context, config: SourceConfig): Source? = when (config.type) {
-    "local" ->
-        if (config.treeUri.isNotBlank()) LocalSource(config.id, context, Uri.parse(config.treeUri))
-        else null
-    else -> null
-}
+        "local" ->
+            if (config.treeUri.isNotBlank()) LocalSource(config.id, context, Uri.parse(config.treeUri))
+            else null
+        else -> null
+    }
 
     /** One-time import of v0.9's single-source settings into the new list. */
     fun migrateLegacy(context: Context) {
