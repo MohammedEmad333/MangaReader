@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -194,6 +195,8 @@ fun YomuApp() {
     fun openSource(source: Source, query: String = "") {
         activeSourceId = source.id
         activeSource = source
+        // Feeds the "Last used" section at the top of the Sources list.
+        SourcePrefs.setLastUsed(context, source.id)
         seriesList = null
         browsePage = 1
         browseHasNext = false
@@ -671,6 +674,65 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The launcher icon of an extension APK, or the source's initials when there's
+ * no package behind it (local folders) or the package is gone.
+ *
+ * The PackageManager lookup is remembered per package and only runs for rows
+ * the LazyColumn actually composes, so a 95-source list doesn't load 95 icons.
+ */
+@Composable
+private fun SourceIcon(pkgName: String?, fallback: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val icon = remember(pkgName) {
+        pkgName?.let {
+            runCatching { context.packageManager.getApplicationIcon(it) }.getOrNull()
+        }
+    }
+    Surface(
+        modifier = modifier.size(40.dp),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        if (icon != null) {
+            AsyncImage(
+                model = icon,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    fallback.take(2).uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/** Section label above a run of source/extension rows. */
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+    )
+}
+
+/** The 18+ marker shown next to adult sources, matching the extension index flag. */
+@Composable
+private fun NsfwBadge() {
+    Text(
+        "18+",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.error
+    )
+}
+
 @Composable
 private fun ErrorBanner(error: String?) {
     if (error != null) {
@@ -816,6 +878,96 @@ private fun LibraryTab(
 
 // ---------- browse ----------
 
+/**
+ * One row in the Sources list. Local folders and extension sources render the
+ * same way, so they're flattened into this before the list is built; `config`
+ * is non-null only for local folders, which is what gates the Edit/Delete menu.
+ */
+private data class BrowseRow(
+    val id: String,
+    val name: String,
+    val lang: String,
+    val iconPkg: String?,
+    val isNsfw: Boolean,
+    val config: SourceConfig?,
+    val source: Source?
+)
+
+/** Local folders first, multi-language sources next, then languages A-Z. */
+private fun langRank(group: String): Int = when (group) {
+    "Local" -> 0
+    "Multi" -> 1
+    else -> 2
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrowseSourceRow(
+    row: BrowseRow,
+    pinned: Boolean,
+    onOpen: () -> Unit,
+    onTogglePin: () -> Unit,
+    onEditConfig: ((SourceConfig) -> Unit)? = null,
+    onDeleteConfig: ((SourceConfig) -> Unit)? = null
+) {
+    var menuOpen by remember(row.id) { mutableStateOf(false) }
+    // Only local folders carry a config, and only they get the Edit/Delete menu.
+    val cfg = row.config
+    ListItem(
+        leadingContent = { SourceIcon(row.iconPkg, row.name) },
+        headlineContent = { Text(row.name) },
+        supportingContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (row.lang.isNotBlank()) Text(row.lang)
+                if (row.isNsfw) NsfwBadge()
+            }
+        },
+        modifier = Modifier.clickable { onOpen() },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onTogglePin) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = if (pinned) "Unpin" else "Pin",
+                        // Filled vs dimmed rather than filled vs outlined: the
+                        // outlined variants live in material-icons-extended and
+                        // this module only pulls in material-icons-core.
+                        tint = if (pinned) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    )
+                }
+                if (cfg != null) {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                        }
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false }
+                        ) {
+                            if (onEditConfig != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit") },
+                                    onClick = { menuOpen = false; onEditConfig?.invoke(cfg) }
+                                )
+                            }
+                            if (onDeleteConfig != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete") },
+                                    onClick = { menuOpen = false; onDeleteConfig?.invoke(cfg) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BrowseTab(
@@ -829,7 +981,50 @@ private fun BrowseTab(
     onDelete: (SourceConfig) -> Unit,
     onExtensionsChanged: () -> Unit
 ) {
+    val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
+
+    // Both re-read from prefs whenever this tab re-enters the composition, which
+    // a bottom-nav switch or backing out of a source always causes.
+    var pinnedIds by remember { mutableStateOf(SourcePrefs.pinned(context)) }
+    val lastUsedId = remember { SourcePrefs.lastUsed(context) }
+
+    val rows = remember(configs, extensions) {
+        configs.map { cfg ->
+            BrowseRow(
+                id = cfg.id,
+                name = cfg.label.ifBlank { typeLabel(cfg.type) },
+                lang = if (cfg.isConfigured) "Local" else "Local \u2014 not configured",
+                iconPkg = null,
+                isNsfw = false,
+                config = cfg,
+                source = null
+            )
+        } + extensions.map { src ->
+            BrowseRow(
+                id = src.id,
+                name = src.name,
+                lang = src.lang,
+                iconPkg = src.iconPkg,
+                isNsfw = src.isNsfw,
+                config = null,
+                source = src
+            )
+        }
+    }
+
+    val lastUsedRow = rows.firstOrNull { it.id == lastUsedId }
+    val pinnedRows = rows.filter { it.id in pinnedIds }.sortedBy { it.name.lowercase() }
+
+    // Pinned sources are lifted out of their language group rather than shown in
+    // both places, so scrolling the list never shows the same source twice.
+    // Two stable sortedBy passes rather than a multi-selector compareBy: same
+    // rank-major, name-minor order, without leaning on vararg lambda inference.
+    val groups = rows.filterNot { it.id in pinnedIds }
+        .groupBy { it.lang.ifBlank { "Other" } }
+        .toList()
+        .sortedBy { it.first.lowercase() }
+        .sortedBy { langRank(it.first) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -849,76 +1044,61 @@ private fun BrowseTab(
         }
 
         if (tab == 0) {
+            val openRow: (BrowseRow) -> Unit = { row ->
+                row.config?.let { onOpenConfig(it) }
+                row.source?.let { onOpenExtension(it) }
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                if (configs.isNotEmpty()) {
+                if (lastUsedRow != null) {
+                    item { SectionHeader("Last used") }
                     item {
-                        Text(
-                            "Local sources",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                    items(configs) { cfg ->
-                        var menuOpen by remember(cfg.id) { mutableStateOf(false) }
-                        ListItem(
-                            headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
-                            supportingContent = {
-                                Text(
-                                    if (cfg.isConfigured) typeLabel(cfg.type)
-                                    else typeLabel(cfg.type) + " \u2014 not configured"
-                                )
+                        BrowseSourceRow(
+                            row = lastUsedRow,
+                            pinned = lastUsedRow.id in pinnedIds,
+                            onOpen = { openRow(lastUsedRow) },
+                            onTogglePin = {
+                                pinnedIds = SourcePrefs.togglePin(context, lastUsedRow.id)
                             },
-                            modifier = Modifier.clickable { onOpenConfig(cfg) },
-                            trailingContent = {
-                                Box {
-                                    IconButton(onClick = { menuOpen = true }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                                    }
-                                    DropdownMenu(
-                                        expanded = menuOpen,
-                                        onDismissRequest = { menuOpen = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Edit") },
-                                            onClick = { menuOpen = false; onEdit(cfg) }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Delete") },
-                                            onClick = { menuOpen = false; onDelete(cfg) }
-                                        )
-                                    }
-                                }
-                            }
+                            onEditConfig = onEdit,
+                            onDeleteConfig = onDelete
                         )
-                        HorizontalDivider()
                     }
                 }
 
-                if (extensions.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Extension sources",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
+                if (pinnedRows.isNotEmpty()) {
+                    item { SectionHeader("Pinned") }
+                    items(pinnedRows) { row ->
+                        BrowseSourceRow(
+                            row = row,
+                            pinned = true,
+                            onOpen = { openRow(row) },
+                            onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
+                            onEditConfig = onEdit,
+                            onDeleteConfig = onDelete
                         )
-                    }
-                    items(extensions) { src ->
-                        ListItem(
-                            headlineContent = { Text(src.name) },
-                            supportingContent = { Text("Tap to browse") },
-                            modifier = Modifier.clickable { onOpenExtension(src) }
-                        )
-                        HorizontalDivider()
                     }
                 }
 
-                if (configs.isEmpty() && extensions.isEmpty()) {
+                groups.forEach { (lang, rowsInGroup) ->
+                    item { SectionHeader(lang) }
+                    items(rowsInGroup.sortedBy { it.name.lowercase() }) { row ->
+                        BrowseSourceRow(
+                            row = row,
+                            pinned = false,
+                            onOpen = { openRow(row) },
+                            onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
+                            onEditConfig = onEdit,
+                            onDeleteConfig = onDelete
+                        )
+                    }
+                }
+
+                if (rows.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -930,7 +1110,8 @@ private fun BrowseTab(
                                 "No sources yet. Add a local folder, or install " +
                                     "extensions from the Extensions tab.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -1073,29 +1254,28 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
                 }
             }
 
+            val installedExts = shownExtensions.filter { it.isInstalled }
+                .sortedBy { it.name.lowercase() }
+            val availableExts = shownExtensions.filterNot { it.isInstalled }
+                .sortedBy { it.name.lowercase() }
+
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(shownExtensions) { ext ->
-                    ListItem(
-                        headlineContent = { Text(ext.name) },
-                        supportingContent = { Text("v${ext.versionName} · ${ext.pkgName}") },
-                        trailingContent = {
-                            if (ext.isInstalled) {
-                                Text(
-                                    "Installed",
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            } else {
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        ExtensionManager.install(context, ext)
-                                        onInstalled()
-                                    }
-                                }) { Text("Install") }
+                if (installedExts.isNotEmpty()) {
+                    item { SectionHeader("Installed") }
+                    items(installedExts) { ext ->
+                        ExtensionRow(ext) { }
+                    }
+                }
+                if (availableExts.isNotEmpty()) {
+                    item { SectionHeader("Available") }
+                    items(availableExts) { ext ->
+                        ExtensionRow(ext) {
+                            scope.launch {
+                                ExtensionManager.install(context, ext)
+                                onInstalled()
                             }
                         }
-                    )
-                    HorizontalDivider()
+                    }
                 }
             }
         }
@@ -1120,6 +1300,46 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
             confirmButton = { Button(onClick = { report = null }) { Text("Close") } }
         )
     }
+}
+
+/**
+ * One extension in the index. Installed rows pull the real launcher icon from
+ * the installed package; rows that aren't installed yet have no package to read
+ * one from, so they fall back to initials.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionRow(ext: Extension, onInstall: () -> Unit) {
+    ListItem(
+        leadingContent = {
+            SourceIcon(if (ext.isInstalled) ext.pkgName else null, ext.name)
+        },
+        headlineContent = { Text(ext.name) },
+        supportingContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    listOf(ext.lang, ext.versionName)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                )
+                if (ext.isNsfw) NsfwBadge()
+            }
+        },
+        trailingContent = {
+            if (ext.isInstalled) {
+                Text(
+                    "Installed",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            } else {
+                TextButton(onClick = onInstall) { Text("Install") }
+            }
+        }
+    )
 }
 
 // ---------- global search ----------

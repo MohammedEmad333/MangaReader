@@ -99,9 +99,11 @@ object SourceManager {
         if (cached != null && cachedFrom === results) return cached
 
         val adapters = results
-            .flatMap { it.sources }
-            .filterIsInstance<CatalogueSource>()
-            .map { TachiyomiSourceAdapter(it, appCtx) }
+            .flatMap { result ->
+                result.sources
+                    .filterIsInstance<CatalogueSource>()
+                    .map { TachiyomiSourceAdapter(it, appCtx, result.pkgName, result.isNsfw) }
+            }
 
         cachedAdapters = adapters
         cachedFrom = results

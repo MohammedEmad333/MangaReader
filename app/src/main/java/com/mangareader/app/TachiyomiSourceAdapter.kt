@@ -25,11 +25,17 @@ import eu.kanade.tachiyomi.source.model.Page as TachiPage
 class TachiyomiSourceAdapter(
     private val delegate: CatalogueSource,
     private val context: Context,
+    override val iconPkg: String? = null,
+    override val isNsfw: Boolean = false,
 ) : Source {
 
     override val id: String = "tachi:${delegate.id}"
 
-    override val name: String = "${delegate.name} (${delegate.lang})"
+    // Name and language are separate fields now: the sources list shows the
+    // language as its own line under the name, the way Mihon does.
+    override val name: String = delegate.name
+
+    override val lang: String = langLabel(delegate.lang)
 
     override val supportsSearch: Boolean = true
 
@@ -132,4 +138,52 @@ class TachiyomiSourceAdapter(
     private companion object {
         val fallbackClient = OkHttpClient()
     }
+}
+
+/**
+ * Turns an extension's language code into the label shown in the sources list.
+ *
+ * Extensions use ISO codes plus Tachiyomi's own "all" for multi-language
+ * sources. Anything not listed falls back to the uppercased code, so a source
+ * in a language nobody mapped still reads sensibly instead of showing blank.
+ */
+fun langLabel(code: String): String = when (code.lowercase()) {
+    "all" -> "Multi"
+    "other" -> "Other"
+    "en" -> "English"
+    "ja" -> "Japanese"
+    "ko" -> "Korean"
+    "zh" -> "Chinese"
+    "es" -> "Spanish"
+    "es-419" -> "Spanish (LatAm)"
+    "fr" -> "French"
+    "de" -> "German"
+    "it" -> "Italian"
+    "pt" -> "Portuguese"
+    "pt-br" -> "Portuguese (BR)"
+    "ru" -> "Russian"
+    "id" -> "Indonesian"
+    "vi" -> "Vietnamese"
+    "th" -> "Thai"
+    "ar" -> "Arabic"
+    "tr" -> "Turkish"
+    "pl" -> "Polish"
+    "uk" -> "Ukrainian"
+    "fa" -> "Persian"
+    "hi" -> "Hindi"
+    "fil" -> "Filipino"
+    "ms" -> "Malay"
+    "nl" -> "Dutch"
+    "ca" -> "Catalan"
+    "he" -> "Hebrew"
+    "cs" -> "Czech"
+    "hu" -> "Hungarian"
+    "ro" -> "Romanian"
+    "bg" -> "Bulgarian"
+    "el" -> "Greek"
+    "sv" -> "Swedish"
+    "no", "nb" -> "Norwegian"
+    "da" -> "Danish"
+    "fi" -> "Finnish"
+    else -> code.uppercase()
 }

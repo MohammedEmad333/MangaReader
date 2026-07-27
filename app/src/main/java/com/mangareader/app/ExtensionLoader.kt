@@ -40,6 +40,8 @@ object ExtensionLoader {
         val label: String,
         val sources: List<Any>,   // eu.kanade.tachiyomi.source.Source instances
         val error: Throwable? = null,
+        /** From the tachiyomi.extension.nsfw meta-data key; drives the 18+ badge. */
+        val isNsfw: Boolean = false,
     )
 
     // ---------- cache ----------
@@ -172,7 +174,7 @@ object ExtensionLoader {
             }
 
             Log.d(TAG, "$pkgName -> ${sources.size} sources (nsfw=$isNsfw)")
-            LoadResult(pkgName, label, sources)
+            LoadResult(pkgName, label, sources, isNsfw = isNsfw)
         } catch (t: Throwable) {
             // Catch Throwable, not Exception: NoClassDefFoundError is an Error.
             Log.e(TAG, "Failed to load $pkgName", t)
