@@ -144,8 +144,10 @@ fun YomuApp() {
                 scope.launch {
                     extensionSources = withContext(Dispatchers.IO) {
                         runCatching {
-                            SourceManager.listAllSources(context).filter { it.id.startsWith("tachi:") }
+                            SourceManager.listAllSources(context)
+                                .filter { it.id.startsWith("tachi:") }
                         }.getOrDefault(emptyList())
+                    }
                 }
             }
         }
@@ -392,7 +394,8 @@ fun YomuApp() {
                             scope.launch {
                                 extensionSources = withContext(Dispatchers.IO) {
                                     runCatching {
-                                        SourceManager.listAllSources(context).filter { it.id.startsWith("tachi:") }
+                                        SourceManager.listAllSources(context)
+                                            .filter { it.id.startsWith("tachi:") }
                                     }.getOrDefault(emptyList())
                                 }
                             }
