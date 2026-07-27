@@ -34,7 +34,6 @@ data class SourceConfig(
     val isConfigured: Boolean
         get() = when (type) {
             "local" -> treeUri.isNotBlank()
-            "komga" -> url.isNotBlank()
             else -> false
         }
 
@@ -53,7 +52,6 @@ data class SourceConfig(
 
 fun typeLabel(type: String): String = when (type) {
     "local" -> "Local folder"
-    "komga" -> "Komga server"
     else -> type
 }
 
@@ -112,10 +110,6 @@ object SourceManager {
     "local" ->
         if (config.treeUri.isNotBlank()) LocalSource(config.id, context, Uri.parse(config.treeUri))
         else null
-    "komga" ->
-        if (config.url.isNotBlank())
-            KomgaSource(config.id, config.url, config.user, config.pass, context.cacheDir)
-        else null
     else -> null
 }
 
@@ -126,17 +120,6 @@ object SourceManager {
         val seed = mutableListOf<SourceConfig>()
         p.getString("library_uri", null)?.let {
             seed.add(SourceConfig(newId(), "local", "Local folder", treeUri = it))
-        }
-        val ku = p.getString("komga_url", "") ?: ""
-        if (ku.isNotBlank()) {
-            seed.add(
-                SourceConfig(
-                    newId(), "komga", "Komga",
-                    url = ku,
-                    user = p.getString("komga_user", "") ?: "",
-                    pass = p.getString("komga_pass", "") ?: ""
-                )
-            )
         }
         if (seed.isNotEmpty()) save(context, seed)
     }

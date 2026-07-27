@@ -342,16 +342,22 @@ fun YomuApp() {
                     )
                     NavigationBarItem(
                         selected = currentTab == 1,
+                        onClick = { currentTab = 1 },
+                        label = { Text("Browse") },
+                        icon = { Text("🧭") }
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 2,
                         onClick = {
-                            currentTab = 1
+                            currentTab = 2
                             history = History.list(context)
                         },
                         label = { Text("History") },
                         icon = { Text("🕒") }
                     )
                     NavigationBarItem(
-                        selected = currentTab == 2,
-                        onClick = { currentTab = 2 },
+                        selected = currentTab == 3,
+                        onClick = { currentTab = 3 },
                         label = { Text("More") },
                         icon = { Text("⚙️") }
                     )
@@ -377,7 +383,11 @@ fun YomuApp() {
                         onDelete = {
                             SourceManager.remove(context, it.id)
                             configs = SourceManager.list(context)
-                        },
+                        }
+                    )
+                    1 -> BrowseTab(
+                        extensions = extensionSources,
+                        onOpenExtension = { openSource(it) },
                         onExtensionsChanged = {
                             scope.launch {
                                 extensionSources = withContext(Dispatchers.IO) {
@@ -387,7 +397,7 @@ fun YomuApp() {
                             }
                         }
                     )
-                    1 -> HistoryScreen(
+                    2 -> HistoryScreen(
                         history = history,
                         loading = isLoading,
                         error = errorMessage,
@@ -401,7 +411,7 @@ fun YomuApp() {
                             history = History.list(context)
                         }
                     )
-                    2 -> MoreTab()
+                    3 -> MoreTab()
                 }
             }
         }
@@ -478,34 +488,143 @@ private fun SourcesTab(
     onOpenConfig: (SourceConfig) -> Unit,
     onOpenExtension: (Source) -> Unit,
     onEdit: (SourceConfig) -> Unit,
-    onDelete: (SourceConfig) -> Unit,
+    onDelete: (SourceConfig) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(title = { Text("My sources") })
+        ErrorBanner(error)
+
+        if (configs.isEmpty() && extensions.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    "No sources yet.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Add a local folder below, or install extensions from Browse.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onAdd) { Text("Add a source") }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                items(configs) { cfg ->
+                    var menuOpen by remember(cfg.id) { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
+                        supportingContent = {
+                            Text(
+                                if (cfg.isConfigured) typeLabel(cfg.type)
+                                else typeLabel(cfg.type) + " \u2014 not configured"
+                            )
+                        },
+                        modifier = Modifier.clickable { onOpenConfig(cfg) },
+                        trailingContent = {
+                            Box {
+                                IconButton(onClick = { menuOpen = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                }
+                                DropdownMenu(
+                                    expanded = menuOpen,
+                                    onDismissRequest = { menuOpen = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit") },
+                                        onClick = { menuOpen = false; onEdit(cfg) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete") },
+                                        onClick = { menuOpen = false; onDelete(cfg) }
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+
+                if (extensions.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Installed extensions",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                    items(extensions) { src ->
+                        ListItem(
+                            headlineContent = { Text(src.name) },
+                            supportingContent = { Text("Extension") },
+                            modifier = Modifier.clickable { onOpenExtension(src) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onAdd,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Add a source") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------- browse ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrowseTab(
+    extensions: List<Source>,
+    onOpenExtension: (Source) -> Unit,
     onExtensionsChanged: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(title = { Text("Browse") })
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("My sources") })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sources") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Extensions") })
         }
-        ErrorBanner(error)
 
         if (tab == 0) {
-            if (configs.isEmpty() && extensions.isEmpty()) {
-                Column(
+            if (extensions.isEmpty()) {
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "No sources yet.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "No extension sources yet. Install some from the Extensions tab.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(24.dp)
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = onAdd) { Text("Add a source") }
                 }
             } else {
                 LazyColumn(
@@ -513,71 +632,13 @@ private fun SourcesTab(
                         .fillMaxSize()
                         .weight(1f)
                 ) {
-                    items(configs) { cfg ->
-                        var menuOpen by remember(cfg.id) { mutableStateOf(false) }
+                    items(extensions) { src ->
                         ListItem(
-                            headlineContent = { Text(cfg.label.ifBlank { typeLabel(cfg.type) }) },
-                            supportingContent = {
-                                Text(
-                                    if (cfg.isConfigured) typeLabel(cfg.type)
-                                    else typeLabel(cfg.type) + " — not configured"
-                                )
-                            },
-                            modifier = Modifier.clickable { onOpenConfig(cfg) },
-                            trailingContent = {
-                                Box {
-                                    IconButton(onClick = { menuOpen = true }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                                    }
-                                    DropdownMenu(
-                                        expanded = menuOpen,
-                                        onDismissRequest = { menuOpen = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Edit") },
-                                            onClick = { menuOpen = false; onEdit(cfg) }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Delete") },
-                                            onClick = { menuOpen = false; onDelete(cfg) }
-                                        )
-                                    }
-                                }
-                            }
+                            headlineContent = { Text(src.name) },
+                            supportingContent = { Text("Tap to browse") },
+                            modifier = Modifier.clickable { onOpenExtension(src) }
                         )
                         HorizontalDivider()
-                    }
-
-                    if (extensions.isNotEmpty()) {
-                        item {
-                            Text(
-                                "Installed extensions",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
-                        items(extensions) { src ->
-                            ListItem(
-                                headlineContent = { Text(src.name) },
-                                supportingContent = { Text("Extension") },
-                                modifier = Modifier.clickable { onOpenExtension(src) }
-                            )
-                            HorizontalDivider()
-                        }
-                    }
-
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onAdd,
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Add a source") }
-                        }
                     }
                 }
             }
@@ -1125,6 +1186,7 @@ private fun MoreTab() {
         mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
     }
     var showCategories by remember { mutableStateOf(false) }
+    var showBrowseSettings by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1176,6 +1238,13 @@ private fun MoreTab() {
         HorizontalDivider()
 
         ListItem(
+            headlineContent = { Text("Browse") },
+            supportingContent = { Text("Extension repositories") },
+            modifier = Modifier.clickable { showBrowseSettings = true }
+        )
+        HorizontalDivider()
+
+        ListItem(
             headlineContent = { Text("About Yomu") },
             supportingContent = { Text("Native Kotlin manga reader") }
         )
@@ -1184,6 +1253,82 @@ private fun MoreTab() {
     if (showCategories) {
         CategoryManagerDialog(onDismiss = { showCategories = false })
     }
+
+    if (showBrowseSettings) {
+        ExtensionReposDialog(onDismiss = { showBrowseSettings = false })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionReposDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
+    var newRepo by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Extension repositories") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Paste a repo index URL (the raw index.min.json). Extensions from " +
+                        "added repos appear under Browse \u2192 Extensions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newRepo,
+                        onValueChange = { newRepo = it },
+                        label = { Text("Repo index URL") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        enabled = newRepo.isNotBlank(),
+                        onClick = {
+                            ExtensionRepos.add(context, newRepo.trim())
+                            repos = ExtensionRepos.list(context)
+                            newRepo = ""
+                        }
+                    ) { Text("Add") }
+                }
+
+                if (repos.isEmpty()) {
+                    Text(
+                        "No repositories yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        repos.forEach { url ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                },
+                                trailingContent = {
+                                    TextButton(onClick = {
+                                        ExtensionRepos.remove(context, url)
+                                        repos = ExtensionRepos.list(context)
+                                    }) { Text("Remove") }
+                                }
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Done") } }
+    )
 }
 
 @Composable
@@ -1267,7 +1412,7 @@ private fun SourceDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("local", "komga").forEach { t ->
+                    listOf("local").forEach { t ->
                         FilterChip(
                             selected = value.type == t,
                             onClick = { onChange(value.copy(type = t)) },
