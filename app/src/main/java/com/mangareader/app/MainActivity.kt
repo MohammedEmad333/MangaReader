@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -967,10 +968,13 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
+    // repos is read-only on this screen now — the editor lives in
+    // More → Browse → Extension repos. It's still state because the fetch below
+    // keys on it, and it re-reads from prefs whenever this screen re-enters the
+    // composition (which a bottom-nav tab switch always causes).
+    val repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
     var available by remember { mutableStateOf<List<Extension>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
-    var newRepo by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
     var filter by remember { mutableStateOf("") }
@@ -1004,43 +1008,6 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
     }
 
     Column(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = newRepo,
-                onValueChange = { newRepo = it },
-                label = { Text("Repo index URL") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                enabled = newRepo.isNotBlank(),
-                onClick = {
-                    ExtensionRepos.add(context, newRepo.trim())
-                    repos = ExtensionRepos.list(context)
-                    newRepo = ""
-                }
-            ) { Text("Add") }
-        }
-
-        repos.forEach { url ->
-            ListItem(
-                headlineContent = { Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                trailingContent = {
-                    TextButton(onClick = {
-                        ExtensionRepos.remove(context, url)
-                        repos = ExtensionRepos.list(context)
-                    }) { Text("Remove") }
-                }
-            )
-        }
-
-        HorizontalDivider()
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         ErrorBanner(error)
 
@@ -1052,8 +1019,10 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
         if (repos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Add a repository URL to browse extensions.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "No repositories configured.\nAdd one in More → Browse → Extension repositories.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 )
             }
         } else {
