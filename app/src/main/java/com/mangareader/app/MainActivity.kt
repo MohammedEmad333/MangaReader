@@ -275,7 +275,11 @@ fun YomuApp() {
                                     .joinToString(" · "),
                                 sourceId = srcId,
                                 seriesId = series?.id ?: "",
-                                coverPath = series?.cover?.absolutePath ?: "",
+                                coverPath = when (val c = series?.cover) {
+                                    is java.io.File -> c.absolutePath
+                                    is String -> c
+                                    else -> ""
+                                },
                                 page = page,
                                 total = total,
                                 updatedAt = System.currentTimeMillis()

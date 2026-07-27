@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import eu.kanade.tachiyomi.source.CatalogueSource
 
 /**
  * One saved connection to a backend. Multiple can exist at once
