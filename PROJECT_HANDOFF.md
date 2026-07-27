@@ -32,14 +32,20 @@ Windows:
 cd /d E:\MangaReader && git add -A && git commit -m "message" && git push
 ```
 
-Termux (files arrive in `~/storage/downloads` when saved from chat):
+Termux — **files download as `.kt.txt`, so strip the suffix in the copy** (see
+§5). This loop handles any number of files at once:
 ```
-cd ~/MangaReader && cp ~/storage/downloads/FILE.kt app/src/main/java/com/mangareader/app/FILE.kt && git diff --stat && git add -A && git commit -m "message" && git push
+cd ~/MangaReader && for f in ~/storage/downloads/*.kt.txt; do cp -v "$f" "app/src/main/java/com/mangareader/app/$(basename "$f" .txt)"; done && git diff --stat && git add -A && git commit -m "message" && git push
 ```
 
-The `git diff --stat` in the middle is deliberate: it prints the expected
-insertion count before committing, and if the copy silently failed the `&&`
-chain aborts at the empty commit instead of pushing nothing.
+`cp -v` prints each copy so the count can be eyeballed before committing, and
+the `git diff --stat` in the middle prints the expected insertion count; if a
+copy silently failed the `&&` chain aborts at the empty commit instead of
+pushing nothing.
+
+**Careful with the glob**: `*.kt.txt` takes *everything* in Downloads, including
+stale files from an earlier session, which would quietly revert them. Check the
+`cp -v` list.
 
 **Whichever copy wasn't used last is now behind — `git pull` before editing there.**
 
@@ -56,16 +62,18 @@ They generally prefer receiving **complete files to drop in** rather than
 
 ## 2. Current state — it works
 
-As of commit `e85abbe`, verified on device:
+As of commit `646d959`, verified on device:
 
 - **26/26 extensions load, 95 sources total.**
 - Browsing, chapter lists, and page rendering work end to end.
 - Library with categories works.
-- **Per-source search + pagination + `getSeries`** work (this was the
-  previously-unverified commit `602b212` — it was fine).
-- **Extension index filter** and **cross-source global search** work (`e85abbe`).
+- Per-source search + pagination + `getSeries` work.
+- Extension index filter and cross-source global search work.
+- **Extension sources are cached** between calls (`3e28e81`).
+- **Sources and Extensions tabs reworked** to match Mihon's layout: icons,
+  pinning, Last used, language groups, 18+ badges (`646d959`).
 
-`MainActivity.kt` is now **~2179 lines**.
+`MainActivity.kt` is now **2368 lines**.
 
 ---
 
@@ -90,6 +98,10 @@ maven(url = "https://www.jitpack.io")
 CI is `.github/workflows/build.yml`: builds **debug only** on push; release APK
 is behind a `workflow_dispatch` input to keep builds fast (~2–4 min warm).
 `gradle.properties` sets `-Xmx4g` and `org.gradle.caching=true`.
+
+### `:app` dependencies that constrain UI work
+Compose BOM `2024.09.03`, material3, **`material-icons-core` only** (see §5),
+coil `2.7.0`, telephoto zoomable-image, okhttp 4.12, documentfile.
 
 ---
 
@@ -137,15 +149,58 @@ implementation("com.squareup.logcat:logcat:0.1")
 ### `:app` — key files
 | File | Role |
 |---|---|
-| `ExtensionLoader.kt` | Discovers + loads extension APKs. Also has `diagnose()`. |
+| `ExtensionLoader.kt` | Discovers + loads extension APKs. `loadAllCached()`, `invalidate()`, `diagnose()`. |
 | `ExtensionManager.kt` | Repo index fetch + APK install. `loadInstalledSources()` in it is **dead code** — do not use. |
-| `TachiyomiSourceAdapter.kt` | Wraps `CatalogueSource` → app's `Source`. |
+| `TachiyomiSourceAdapter.kt` | Wraps `CatalogueSource` → app's `Source`. Also holds `langLabel()`. |
 | `Source.kt` | App's own `Source` interface + `Series`/`Chapter`/`SeriesPage`. |
-| `SourceManager.kt` | `listAllSources()` = local configs + adapter-wrapped extensions. |
+| `SourceManager.kt` | `listAllSources()` = local configs + cached adapter-wrapped extensions. |
+| `SourcePrefs.kt` | Pinned source ids + last-used source id. |
 | `App.kt` | `Application` subclass; registers Injekt bindings. |
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
 | `Categories.kt` | Categories + series→category assignments. |
-| `MainActivity.kt` | **~2179 lines**, all Compose UI in one file. |
+| `MainActivity.kt` | **2368 lines**, all Compose UI in one file. |
+
+### The app's `Source` interface
+Beyond `id`/`name` and the browse/chapter/page methods, it carries three
+display-only properties, all defaulted so `LocalSource` needs no changes:
+
+```kotlin
+val lang: String get() = ""        // "English", "Multi" — blank hides the line
+val iconPkg: String? get() = null  // extension package, for the launcher icon
+val isNsfw: Boolean get() = false  // drives the 18+ badge
+```
+
+`TachiyomiSourceAdapter` sets `name = delegate.name` and
+`lang = langLabel(delegate.lang)` — **the language is no longer baked into the
+name string**. `langLabel()` maps ISO codes plus Tachiyomi's `all` → "Multi",
+falling back to the uppercased code.
+
+### Source caching (added `3e28e81`)
+`listAllSources()` used to classload all 26 APKs on **every call**, including
+from a lifecycle observer on every `ON_RESUME`. Two layers now sit under it:
+
+1. `ExtensionLoader.loadAllCached()` — runs the cheap
+   `getInstalledPackages(GET_CONFIGURATIONS)` query, fingerprints the result as
+   sorted `pkg|versionName|lastUpdateTime`, and only re-instantiates when that
+   string changes. Install, uninstall, update and same-version reinstall all
+   miss the cache, so the `ON_RESUME` rescan still picks up new packages.
+2. `SourceManager.extensionSources()` — reference-compares the `LoadResult` list
+   against last time and reuses the existing adapters when it's unchanged, so
+   `Source` identities are stable instead of fresh objects per call.
+
+Both are `@Synchronized`; Browse, global search and the lifecycle observer all
+reach them concurrently from `Dispatchers.IO`.
+
+**Adapters are built with `applicationContext`** — they're in a static cache now
+and outlive any Activity. `SourceManager.invalidateExtensions()` exists but is
+unwired; the fingerprint covers package changes on its own.
+
+The **local** half of `listAllSources()` is deliberately *not* cached: it's a
+SharedPreferences read plus a couple of constructions, and it has to reflect
+edits from the Sources screen immediately.
+
+`diagnose()` stays uncached and does not populate the cache — a diagnostic run
+shouldn't swap out the instances Browse is holding.
 
 ### Extension loading contract (this is the part that was wrong originally)
 Extensions are **not** found by intent filter. They are found by:
@@ -159,6 +214,7 @@ Extensions are **not** found by intent filter. They are found by:
   any metadata key. Supported range in `ExtensionLoader`: 1.4–1.6.
 - `PathClassLoader(appInfo.sourceDir, null, context.classLoader)` — parent must
   be the app classloader so extensions see the vendored API.
+- `tachiyomi.extension.nsfw` (int, 1 = adult) rides along on `LoadResult.isNsfw`.
 - Manifest needs `QUERY_ALL_PACKAGES`.
 
 ### Injekt bindings (in `App.kt`)
@@ -172,16 +228,44 @@ addSingletonFactory { Json { ignoreUnknownKeys = true; explicitNulls = false } }
 ### UI structure
 Bottom nav, 4 tabs:
 0. **Library** — saved series grid, category filter chips
-1. **Browse** — sub-tabs: *Sources* (local folders + extension sources, with
-   add/edit/delete for local; **search icon in the top bar → global search**)
-   and *Extensions* (repo index, install, **filter field**)
+1. **Browse** — sub-tabs *Sources* and *Extensions* (below)
 2. **History**
 3. **More** — incognito, cover size, Categories, **Browse → Extension repos**
 
-Saving to library: `SeriesScreen` has a `+ Library` button → `AddToLibraryDialog`
-(checkbox list of categories, "Default" pre-ticked, inline new-category field).
-`Categories.ensureDefault()` guarantees a "Default" category exists and
-`Categories.remove()` refuses to delete it.
+Repo add/remove lives **only** in More → Browse → Extension repos
+(`ExtensionReposDialog`). The Extensions tab used to have its own copy of that
+editor; it was removed in `6728165`.
+
+#### Sources sub-tab (reworked `646d959`)
+Sections in order: **Last used** → **Pinned** → one per language. Language
+groups sort Local first, Multi second, then A–Z (`langRank()`).
+
+Local folder configs and extension sources are flattened into a private
+`BrowseRow` before the list is built; `config != null` is what gates the
+Edit/Delete overflow menu, so only local folders get one.
+
+- Rows show the APK launcher icon (`SourceIcon`, `PackageManager.getApplicationIcon`
+  remembered per package, rendered through Coil which accepts a `Drawable`
+  model), name, language, and an 18+ badge.
+- Pin toggle writes through `SourcePrefs.togglePin()`.
+- **Pinned sources are lifted out of their language group**, not shown twice.
+  Mihon duplicates them; this deliberately doesn't.
+- `SourcePrefs.setLastUsed()` is called from `openSource()` in `YomuApp`, which
+  covers local folders too (`openSourceConfig` → `openSource`).
+- `pinnedIds` / `lastUsedId` are `remember`ed and re-read from prefs whenever the
+  tab re-enters the composition — a bottom-nav switch always disposes it, so no
+  explicit invalidation is needed.
+
+#### Extensions sub-tab
+**Installed** and **Available** sections, each row showing icon, name,
+`<lang> <version>` and an 18+ badge. Not-yet-installed rows have no package to
+read an icon from, so they fall back to initials.
+
+`ExtensionManager.fetchAvailable()` parses `lang` and `nsfw` out of the repo
+index (they were always in the JSON, just unused) and strips the
+`Tachiyomi: ` / `Mihon: ` name prefix.
+
+The client-side filter field and "Installed only" chip are unchanged.
 
 ### Routing chain in `YomuApp` — order is load-bearing
 A single `if / else if` chain, in this order:
@@ -197,33 +281,16 @@ Global search sits **below** `SeriesScreen` on purpose: tapping a result opens
 the series (branch 2 wins), and backing out of it falls through to branch 3, so
 the results are still there.
 
-### Global search (added `e85abbe`)
+### Global search
 - State is **hoisted into `YomuApp`**, not held inside `GlobalSearchScreen` —
-  otherwise results are destroyed when branch 2 takes over the composition:
-  `globalSearchOpen`, `globalQuery`, `globalResults`, `globalRunning`,
-  `globalDone`, `globalTotal`, `globalJob`.
-- `runGlobalSearch(query)` builds the target list (local configs via
-  `SourceManager.build` + `extensionSources`, filtered on `supportsSearch`),
-  then walks it in `chunked(GLOBAL_SEARCH_CONCURRENCY)` batches of `async` calls,
-  publishing each batch as it lands so rows appear progressively.
-  Per-source failures are swallowed via `runCatching`; empty results are dropped.
+  otherwise results are destroyed when branch 2 takes over the composition.
+- `runGlobalSearch(query)` walks the target list in
+  `chunked(GLOBAL_SEARCH_CONCURRENCY)` batches of `async` calls, publishing each
+  batch as it lands. Per-source failures are swallowed via `runCatching`.
 - Constants at the top of the file: `GLOBAL_SEARCH_CONCURRENCY = 6`,
-  `GLOBAL_SEARCH_PER_SOURCE = 12`. Private holder class `GlobalResult`.
-- `cancelGlobalSearch()` cancels `globalJob` ("Stop" button, and on back).
-- `openGlobalResult(source, series)` adopts the source then opens the series;
-  `openGlobalSource(source)` leaves the results and browses that source with the
-  same query.
+  `GLOBAL_SEARCH_PER_SOURCE = 12`.
 - It reuses the already-loaded `extensionSources`, so it does **not** re-classload
   the 26 APKs.
-
-### Extension index filter (added `e85abbe`)
-`ExtensionsScreen` holds `filter` + `installedOnly` and derives `shownExtensions`
-in a `remember(available, filter, installedOnly)`. Pure client-side filter over
-the already-fetched index — no refetch, no network. Matches `name` and `pkgName`,
-case-insensitive, and shows an "N of M" counter.
-
-`Icons.Default.Search` comes from `material-icons-core`, the same artifact that
-already supplies `MoreVert` — no new dependency.
 
 ---
 
@@ -248,21 +315,34 @@ would silently return empty results even if it compiled.
 interface) and `eu.kanade.tachiyomi.source.Source` (vendored). Always specify the
 full path when discussing one.
 
+**Only `material-icons-core` is on the classpath.** Its set is roughly 40 icons
+(Search, MoreVert, Star, Settings, Delete, …). `Icons.Default.PushPin` and the
+other extended icons **do not exist here** — the pin affordance is a filled vs
+dimmed `Star` for exactly this reason. Adding `material-icons-extended` is a
+large artifact; decide deliberately.
+
 **"Feature X is missing" may just be placement.** Search *was* shipped and
 working; it lives on the per-source browse screen, and the Browse top bar simply
 had no `actions`. Check where a feature is wired before assuming the build failed.
-
-**When handing over a file to download, watch the filename.** Files delivered as
-e.g. `source-api-build.gradle.kts` must be **renamed** to `build.gradle.kts` —
-this caused a broken build once.
-
-**CRLF warnings on every push are benign** (LF in repo, CRLF in working copy).
 
 **Watch for missing braces when editing `MainActivity.kt`.** A dropped `}` in a
 `DisposableEffect` produced ~40 cascading errors ("Modifier 'private' is not
 applicable to 'local function'"). That signature = unclosed lambda earlier.
 
-### Termux-specific (learned 2026-07-27)
+**When replacing a whole function in `MainActivity.kt`, check the line above it.**
+Replacing `@Composable` + `private fun BrowseTab(` left the function's
+`@OptIn(ExperimentalMaterial3Api::class)` stranded on top of the next
+declaration. Annotations sit above the `@Composable`, outside the obvious
+boundary.
+
+**CRLF warnings on every push are benign** (LF in repo, CRLF in working copy).
+
+### Termux-specific
+
+**Downloads arrive as `.kt.txt`.** Android's download manager renames by MIME
+type; the files are served as `text/plain` and `.kt` isn't in its table, so it
+appends `.txt`. Contents are untouched. Strip it during the copy — see the loop
+in §1. This bites on *every* handoff of a `.kt` file.
 
 **Never keep the git repo on `/sdcard`.** A clone at
 `~/storage/shared/MangaReader` (i.e. `/storage/emulated/0/...`) gives
@@ -279,6 +359,11 @@ repo fails with `fatal: not in a git directory` and will abort a `&&` chain.
 Saved-from-chat files land in `~/storage/downloads` (= `/sdcard/Download`) — just
 `cp` that path directly.
 
+**A new file won't show in `git diff --stat`** because it's untracked. `git add -A`
+still picks it up and the *commit* line will show the higher count. Seven files
+copied showed as "6 files changed" in the diff and "7 files changed" in the
+commit — that's correct, not a failed copy.
+
 **Confirm what a "modified" file actually is before `git checkout --`.** A file
 showing as modified right after a copy is probably the *new* content, not
 corruption — `git diff --stat` first. Discarding it costs a re-download.
@@ -292,9 +377,12 @@ Browse → Extensions → **"Why isn't my extension showing?"** runs
 class, versionName, and either the source count or the full exception cause
 chain. This is the fastest way to triage extension problems.
 
+It also prints a **`Cache:`** line showing how many sources the loader is
+currently holding — a quick read on whether the cache is working or silently
+missing on every call.
+
 For search coverage, the global search screen prints
-"Searched X of Y sources · N with results" — a quick read on how many of the 95
-sources actually honor `searchSeries`.
+"Searched X of Y sources · N with results".
 
 ---
 
@@ -302,33 +390,36 @@ sources actually honor `searchSeries`.
 
 Roughly in order of value:
 
-1. **Cache loaded sources.** `SourceManager.listAllSources()` classloads all 26
-   APKs on **every call**, and it's called from several places (including a
-   lifecycle observer on every `ON_RESUME`). A `by lazy` or invalidatable cache
-   would noticeably improve responsiveness. *Still the top pick.*
-2. **Per-source settings.** Extensions implementing `ConfigurableSource` expose
+1. **Per-source settings.** Extensions implementing `ConfigurableSource` expose
    preferences (language, mirror, image quality). No UI reaches them yet; some
-   sources won't behave correctly until they're set.
-3. **Global search polish.** Page 1 only (no paging within a row), results are
-   lost on app restart, and every searchable source is queried with no way to pin
-   or exclude a subset. A "pinned sources" list would cut a 95-source fan-out to
-   the handful actually used.
-4. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
+   sources won't behave correctly until they're set. Mihon puts this behind the
+   gear icon on each installed extension row — that row already exists
+   (`ExtensionRow`), it just has no gear. *Top pick.*
+2. **Global search polish.** Page 1 only (no paging within a row), results are
+   lost on app restart, and every searchable source is queried. Now that pinning
+   exists (`SourcePrefs.pinned()`), restricting the fan-out to pinned sources is
+   a small change that would cut a 95-source query to a handful.
+3. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
    will fail. Restoring needs a WebView flow + the interceptor.
-5. **Sort/filter for search.** `getFilterList()` is available on every
+4. **Sort/filter for search.** `getFilterList()` is available on every
    `CatalogueSource` and is currently unused — `searchSeries` passes an empty
    `FilterList()`.
+5. **`OBSOLETE` badge.** Mihon marks installed extensions that no longer appear
+   in the repo index. The Extensions list is built from the index only, so
+   installed-but-absent packages aren't visible at all; they'd have to be merged
+   in from `ExtensionLoader` first.
 6. **`CategoryAssignDialog` is orphaned.** Still defined in `MainActivity.kt` but
-   nothing calls it (the old "Tags" button was replaced). Could be revived as a
-   long-press action on library items.
+   nothing calls it. Could be revived as a long-press action on library items.
 7. **One extension is lib 1.6** (`AHottie`, v1.6.4). It's inside the accepted
    version range but built against the newer API; it may fail at runtime.
 8. **`HttpException.kt`** was not present in the vendored network package. Some
    extensions catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
    `NoClassDefFoundError` for it appears at runtime, it's a ~3-line class to add.
-9. **`MainActivity.kt` is 2179 lines.** Splitting the screens into separate files
+9. **`MainActivity.kt` is 2368 lines.** Splitting the screens into separate files
    would make future edits far less risky, but every handoff so far has assumed
    one file — do it deliberately, not incidentally.
+10. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this app
+    has two. Neither is started.
 
 ---
 
@@ -348,6 +439,9 @@ Fix brace in DisposableEffect
 Add Library tab with category-on-save
 Add search, pagination, and direct series lookup          602b212  verified OK
 Add extension index filter and cross-source global search e85abbe  verified OK
+Cache loaded extension sources between calls              3e28e81  verified OK
+Remove repo editor from Extensions tab; it lives in More  6728165  verified OK
+Rework Sources and Extensions tabs                        646d959  verified OK
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
