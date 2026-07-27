@@ -176,7 +176,7 @@ internal fun SourceFilterScreen(
     BackHandler { onBack() }
     val context = LocalContext.current
     var hidden by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
-    var disabledLangs by remember { mutableStateOf(SourcePrefs.disabledLangs(context)) }
+    var enabledLangs by remember { mutableStateOf(SourcePrefs.enabledLangs(context)) }
 
     val groups = remember(rows) {
         rows.groupBy { it.lang.ifBlank { "Other" } }
@@ -185,7 +185,8 @@ internal fun SourceFilterScreen(
             .sortedBy { langRank(it.first) }
     }
     val allIds = remember(rows) { rows.map { it.id } }
-    val allShown = hidden.isEmpty() && disabledLangs.isEmpty()
+    val allLangs = remember(rows) { rows.map { it.lang.ifBlank { "Other" } }.distinct() }
+    val allShown = hidden.isEmpty() && allLangs.all { it in enabledLangs }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -202,17 +203,22 @@ internal fun SourceFilterScreen(
                 ListItem(
                     headlineContent = { Text("All sources") },
                     supportingContent = {
-                        Text("${rows.count { it.id !in hidden && it.lang !in disabledLangs }} of ${rows.size} shown")
+                        val shown = rows.count {
+                            SourcePrefs.isVisible(
+                                it.id, it.lang.ifBlank { "Other" }, hidden, enabledLangs
+                            )
+                        }
+                        Text("$shown of ${rows.size} shown")
                     },
                     trailingContent = {
                         Switch(
                             checked = allShown,
                             onCheckedChange = { on ->
-                                hidden = SourcePrefs.setSourcesHidden(context, allIds, !on)
+                                enabledLangs = SourcePrefs.setLangsEnabled(context, allLangs, on)
+                                // Turning everything on also clears individual
+                                // hides, or the switch would lie about the count.
                                 if (on) {
-                                    disabledLangs.toList().forEach {
-                                        disabledLangs = SourcePrefs.toggleLangDisabled(context, it)
-                                    }
+                                    hidden = SourcePrefs.setSourcesHidden(context, allIds, false)
                                 }
                             }
                         )
@@ -222,7 +228,7 @@ internal fun SourceFilterScreen(
             }
 
             groups.forEach { (lang, sources) ->
-                val langOff = lang in disabledLangs
+                val langOff = lang !in enabledLangs
                 item {
                     ListItem(
                         headlineContent = {
@@ -231,8 +237,8 @@ internal fun SourceFilterScreen(
                         trailingContent = {
                             Switch(
                                 checked = !langOff,
-                                onCheckedChange = {
-                                    disabledLangs = SourcePrefs.toggleLangDisabled(context, lang)
+                                onCheckedChange = { on ->
+                                    enabledLangs = SourcePrefs.setLangEnabled(context, lang, on)
                                 }
                             )
                         }
@@ -290,7 +296,7 @@ internal fun BrowseTab(
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
-    var disabledLangs by remember { mutableStateOf(SourcePrefs.disabledLangs(context)) }
+    var enabledLangs by remember { mutableStateOf(SourcePrefs.enabledLangs(context)) }
 
     val rows = remember(configs, extensions) {
         configs.map { cfg ->
@@ -321,7 +327,7 @@ internal fun BrowseTab(
     // Everything below works off the visible set; `rows` stays whole so the
     // filter screen can still list what's been switched off.
     val visibleRows = rows.filter {
-        SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hiddenIds, disabledLangs)
+        SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hiddenIds, enabledLangs)
     }
 
     val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
@@ -344,7 +350,7 @@ internal fun BrowseTab(
                 showSourceFilter = false
                 // Pick up whatever was changed in there.
                 hiddenIds = SourcePrefs.hiddenSources(context)
-                disabledLangs = SourcePrefs.disabledLangs(context)
+                enabledLangs = SourcePrefs.enabledLangs(context)
             }
         )
         return

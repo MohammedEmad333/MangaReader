@@ -62,7 +62,7 @@ They generally prefer receiving **complete files to drop in** rather than
 
 ## 2. Current state — it works
 
-As of commit `7ff563f`, verified on device:
+As of the source-visibility commit, verified on device:
 
 - **26/26 extensions load, 95 sources total.**
 - Browsing, chapter lists, and page rendering work end to end.
@@ -70,16 +70,19 @@ As of commit `7ff563f`, verified on device:
 - Per-source search + pagination work.
 - Extension index filter and cross-source global search work.
 - Extension sources are cached between calls (`3e28e81`).
-- Sources and Extensions tabs match Mihon's layout: icons, pinning, Last used,
-  language groups, 18+ badges (`646d959`).
+- Sources and Extensions tabs match Mihon's layout (`646d959`).
 - Per-source settings from `ConfigurableSource` (`03cabb3`).
 - Global search limited to pinned sources, with a toggle (`0023c81`).
 - The Compose UI is split across nine files (`4fc763e`) — see §4.
 - Extension **updates** are detected and offered (`e1913c2`).
-- Series screen reworked: cover backdrop, author/status/description/genres,
-  chapter dates, Start/Resume button (`364d1ce`).
+- Series screen: cover backdrop, metadata, chapter dates, Start/Resume (`364d1ce`).
+- Back from a series returns where you came from (`7ff563f`).
+- The reader opens before the chapter finishes downloading.
+- **Chapter downloads** (`44ae521`) and **offline reading** (`eca6caa`) work —
+  download a chapter, go into airplane mode, read it.
+- **Source visibility** screen + global search scope chips (`1f60936`).
 
-`MainActivity.kt` is **750 lines** — the Activity, `YomuApp`, and the shared
+`MainActivity.kt` is **859 lines** — the Activity, `YomuApp`, and the shared
 prefs helpers.
 
 ## 3. Build environment
@@ -164,6 +167,7 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
 | `Categories.kt` | Categories + series→category assignments. |
 | `SourceSettings.kt` | Reads `ConfigurableSource` preferences into a Compose-renderable model. |
+| `Downloads.kt` | Page store on disk (cache vs download) + `ChapterCache` + `formatBytes()`. |
 | `MainActivity.kt` | Activity, `YomuApp` (all shared screen state), prefs helpers. |
 
 ### Compose UI file layout
@@ -198,6 +202,15 @@ val isNsfw: Boolean get() = false  // drives the 18+ badge
 suspend fun getSeries(id: String): Series?
 suspend fun restoreSeries(id: String, title: String): Series? = getSeries(id)
 suspend fun loadDetails(series: Series): Series = series
+
+suspend fun loadPages(chapter: Chapter): List<File>
+suspend fun loadPagesProgressively(
+    chapter: Chapter,
+    persist: Boolean = false,
+    onUpdate: suspend (List<File?>) -> Unit
+)
+val supportsDownload: Boolean get() = false
+fun rehydrateChapter(chapter: Chapter): Chapter = chapter
 ```
 
 Everything is defaulted so `LocalSource` needs no changes.
@@ -237,6 +250,51 @@ data class Chapter(id, name, handle, dateUploaded: Long, scanlator: String?)
 The metadata fields are populated by `loadDetails`, so they're empty on a series
 that has only been restored, and fill in a moment later. `handle` carries the
 real `SManga`/`SChapter` through, which is what extensions actually need.
+
+### Reading, downloads, and offline
+
+Three separate mechanisms, easy to confuse:
+
+**1. Progressive page loading.** `loadPagesProgressively` publishes a list of
+empty slots first — one per page, all null — which is everything the reader needs
+to open. Pages then download **4 at a time in source order**, republishing after
+each batch. Before this the reader waited for the last byte of the last page,
+which on a 30MB chapter is a long stare at nothing.
+
+`pages` is therefore `List<File?>`, and the reader distinguishes three states:
+present, pending, failed. `stillLoading` is what tells pending from failed — a
+blank page mid-download shows a spinner, the same blank after loading finishes
+says the page couldn't be loaded.
+
+**2. Cache vs download** (`Downloads.kt`). Reading writes pages under `cacheDir`,
+which Android evicts when it wants space. Downloading writes them under
+`filesDir`, which only the user reclaims. `loadPagesProgressively(persist = ...)`
+picks. A chapter that is fully downloaded is served **straight off disk** — no
+page-list request, no image requests.
+
+A download counts as complete only when every page succeeded and a `.complete`
+marker is written. A partial download stays unmarked on purpose, so it's never
+trusted; since `downloadPage` skips files already present, restarting resumes.
+
+Directories are named by an MD5 of the chapter id. The earlier code used
+`chapter.id.hashCode()` — 32 bits, which collides far too readily to key stored
+files on once they're permanent.
+
+**3. `ChapterCache`.** Downloading pages is *not* enough to read offline: opening
+a series calls `listChapters`, a network request that fails first. `ChapterCache`
+keeps the last chapter list a source returned, as JSON under
+`filesDir/chapterlists/`. `YomuApp.chaptersWithFallback()` wraps all three open
+paths and only errors when the fetch fails *and* nothing is cached.
+
+`Chapter.handle` (the extension's `SChapter`) can't be serialised, so only
+app-owned fields are stored and `Source.rehydrateChapter()` rebuilds a handle from
+the chapter id — the same trick `restoreSeries` uses for `SManga`. Without it a
+cached chapter still *reads* when downloaded (the page store is checked before
+the handle is) but couldn't be fetched once back online.
+
+**Downloads run in the app's coroutine scope**, so they stop if the app is
+killed. Partial files survive and resume. A foreground service or WorkManager is
+the proper fix — see §7.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -351,6 +409,39 @@ index (they were always in the JSON, just unused) and strips the
 
 The client-side filter field and "Installed only" chip are unchanged.
 
+### Source visibility
+
+Two stores in `SourcePrefs`, and they work in **opposite directions** — which is
+the thing to get right before editing either:
+
+| Store | Holds | Empty means |
+|---|---|---|
+| `hiddenSources` | ids switched **off** | nothing hidden |
+| `enabledLangs` | languages switched **on** | everything hidden |
+
+`hiddenSources` is negative so a source added by a new extension appears without
+anyone enabling it. `enabledLangs` is positive because it needs a *default*:
+`DEFAULT_LANGS = {Local, Multi, English}`. 95 sources across thirty-odd languages
+is unusable out of the box, and almost none of them are readable by one person.
+"Local" is in the set because it isn't really a language — it's the local-folder
+group, and hiding that by default would be baffling.
+
+The unset-vs-empty distinction carries real meaning: `getStringSet(key, null)`
+returning null means "never chosen" and yields the default, while a stored empty
+set means the user switched everything off and is preserved. Don't collapse those.
+
+The cost of the positive store: a genuinely new language — installing the first
+Korean extension, say — arrives switched off.
+
+`SourcePrefs.isVisible(id, lang, hidden, enabledLangs)` is the single predicate.
+It gates the Sources list **and** the global search fan-out — hiding a source
+should stop it being queried, not just stop it being listed.
+
+`SourceFilterScreen` (in `BrowseScreen.kt`) is the UI: an "All sources" master
+switch with an *N of M shown* count, a switch per language, a checkbox per
+source. It renders inside `BrowseTab` behind a flag rather than as a branch of
+the routing chain — that chain is delicate enough already.
+
 ### Routing chain in `YomuApp` — order is load-bearing
 
 A single `if / else if` chain, in this order:
@@ -387,6 +478,10 @@ unconditionally — so its own origin assignment has to come *after* that call.
   `GLOBAL_SEARCH_PER_SOURCE = 12`.
 - It reuses the already-loaded `extensionSources`, so it does **not** re-classload
   the 26 APKs.
+- Three chips: **Pinned** / **All** are one scope choice; **Has results** is a
+  display filter. Sources returning nothing are *kept* in `globalResults` and
+  shown as a "No results" row when that chip is off — that's what distinguishes
+  "found nothing" from "wasn't searched". The counter reads *N with results*.
 
 ---
 
@@ -410,6 +505,19 @@ would silently return empty results even if it compiled.
 **There are two `Source.kt` files.** `com.mangareader.app.Source` (the app's own
 interface) and `eu.kanade.tachiyomi.source.Source` (vendored). Always specify the
 full path when discussing one.
+
+**Offline needs more than the pages.** Downloading a chapter's images looked
+like it was enough; it wasn't, because opening the series calls `listChapters`
+first and that's a network request. Anything that should work offline has to have
+*every* step on its path checked, not just the obvious one.
+
+**Don't key persistent files on `hashCode()`.** It's 32 bits. Fine for a
+throwaway cache directory, not for something the user is told they have
+downloaded. `Downloads` uses an MD5 hex of the id.
+
+**Compose state must be written from the main thread.** The page loader publishes
+from its IO context, so `openChapter` hops with `withContext(Dispatchers.Main)`
+before touching `pages`. A callback that crosses dispatchers is easy to miss.
 
 **The vendored model classes use `lateinit`.** `SMangaImpl.url`, `.title` and
 `SChapterImpl.url`, `.name` are all `lateinit var`. Reading one that was never
@@ -531,45 +639,47 @@ For search coverage, the global search screen prints
 
 Roughly in order of value:
 
-1. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
+1. **Downloads stop when the app is killed.** They run in `YomuApp`'s coroutine
+   scope. Partial files survive and resume, so nothing is lost, but a real
+   downloader needs a foreground service or WorkManager. A Worker would need the
+   same Injekt bindings `App.onCreate` sets up — which it gets for free, since
+   that runs for any process entry point. This is the main gap versus Mihon's
+   downloader, along with a queue UI.
+2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
    will fail. Restoring needs a WebView flow + the interceptor that was stripped
-   out of the vendored API — the biggest single item left.
-2. **Global search paging and persistence.** Restricting the fan-out to pinned
-   sources is done (`0023c81`). Still open: each row shows page 1 only, with no
-   way to load more within a source, and the whole result set is lost on app
-   restart.
-3. **Sort/filter for search.** `getFilterList()` is available on every
-   `CatalogueSource` and is currently unused — `searchSeries` passes an empty
-   `FilterList()`. This is also what the Browse top bar's missing filter icon
-   would drive.
-4. **`OBSOLETE` badge.** Mihon marks installed extensions that no longer appear
-   in the repo index. The Extensions list is built from the index only, so
-   installed-but-absent packages aren't visible at all; they'd have to be merged
-   in from `ExtensionLoader` first. Update detection (`e1913c2`) already does the
-   version half of this.
-5. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
-   single- and multi-select lists and text fields are rendered; any other
-   `Preference` subclass is skipped rather than shown as a dead row. Extensions
-   that do their real work in an `OnPreferenceChangeListener` are handled (the
-   listener runs before the value is written), but nothing renders a
-   `Preference` with no key.
-6. **Covers can 403.** Some sources reject hotlinked thumbnails because Coil
-   fetches them without the source's headers (Referer / User-Agent). The reader
-   already downloads pages through the source's own OkHttp client
-   (`TachiyomiSourceAdapter.downloadPage`); covers don't. A Coil `Fetcher` backed
-   by the same client would fix it.
-7. **One extension is lib 1.6** (`AHottie`, v1.6.4). It's inside the accepted
-   version range but built against the newer API; it may fail at runtime.
-8. **`HttpException.kt`** was not present in the vendored network package. Some
-   extensions catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
-   `NoClassDefFoundError` for it appears at runtime, it's a ~3-line class to add.
-9. **`YomuApp` is ~600 lines.** The screens are split out, but all state and
-   every handler still lives in one composable, and the routing chain plus
-   `SeriesOrigin` now encode real navigation rules in `if / else if`. Hoisting
-   this into a state holder — or adopting a real nav library — is the next
-   structural step, and unlike the file split it is *not* mechanical.
-10. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this app
-    has two. Neither is started.
+   out of the vendored API.
+3. **Covers 403 offline and on some sources.** Coil fetches thumbnails without
+   the source's headers (Referer / User-Agent), and nothing caches them, so a
+   library entry shows a grey box offline. The reader already downloads pages
+   through the source's own OkHttp client — a Coil `Fetcher` backed by the same
+   client would fix both.
+4. **Global search paging and persistence.** Pinned-only fan-out is done
+   (`0023c81`). Each row still shows page 1 only, and results are lost on restart.
+5. **Sort/filter for search.** `getFilterList()` is available on every
+   `CatalogueSource` and unused — `searchSeries` passes an empty `FilterList()`.
+6. **`OBSOLETE` badge.** Mihon marks installed extensions absent from the index.
+   The list is built from the index only, so those packages aren't visible at
+   all. Update detection (`e1913c2`) already does the version half.
+7. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
+   lists, multi-select and text are rendered; other `Preference` subclasses are
+   skipped rather than shown as dead rows.
+8. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
+   but built against the newer API; may fail at runtime.
+9. **`HttpException.kt`** isn't in the vendored network package. Some extensions
+   catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
+   `NoClassDefFoundError` for it appears, it's a ~3-line class to add.
+10. **`YomuApp` is ~700 lines.** Screens are split out, but all state and every
+    handler still lives in one composable, and the routing chain plus
+    `SeriesOrigin` encode real navigation rules in `if / else if`. Hoisting into a
+    state holder, or adopting a nav library, is the next structural step — and
+    unlike the file split it is *not* mechanical.
+11. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
+12. **Icon debt from `material-icons-core`.** Three places now use an
+    approximate glyph because the core set is ~40 icons: a filled/dimmed `Star`
+    for pinning (no `PushPin`), `KeyboardArrowDown` for download, and `Menu` for
+    source visibility. Adding `material-icons-extended` fixes all three at once —
+    it's a chunky artifact, so decide it deliberately rather than working around
+    it a fourth time.
 
 ---
 
@@ -600,7 +710,13 @@ Fix lateinit crash when a source's details fetch fails    ddaed36  verified OK
 Detect and offer extension updates                        e1913c2  verified OK
 Reopen library entries without a details fetch            c5887f3  verified OK
 Rework series screen with backdrop, metadata, resume      364d1ce  verified OK
-Return to the right screen when backing out of a series   7ff563f
+Return to the right screen when backing out of a series   7ff563f  verified OK
+Update handoff through the series screen rework
+Open the reader before the chapter finishes downloading            verified OK
+Add chapter downloads for offline reading                 44ae521  verified OK
+Cache chapter lists so downloaded chapters open offline   eca6caa  verified OK
+Add source visibility screen and global search scope chips 1f60936  verified OK
+Default to Multi and English only
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
