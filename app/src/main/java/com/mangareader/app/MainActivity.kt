@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -24,6 +25,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
+import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,6 +75,91 @@ private class ResumeTarget(
     val index: Int,
     val pages: List<File>
 )
+
+/**
+ * Walks the exact same path ExtensionManager.loadInstalledSources takes, but reports
+ * every step instead of swallowing failures into printStackTrace(). Diagnostic only.
+ */
+private fun diagnoseExtensions(context: Context): String {
+    val out = StringBuilder()
+    val pm = context.packageManager
+    val action = "com.mangareader.app.EXTENSION"
+    val intent = Intent(action)
+
+    val activities = runCatching {
+        pm.queryIntentActivities(intent, PackageManager.GET_META_DATA)
+    }.getOrElse {
+        out.appendLine("queryIntentActivities threw: $it")
+        emptyList()
+    }
+
+    out.appendLine("Action: $action")
+    out.appendLine("Matching <activity> filters: ${activities.size}")
+
+    if (activities.isEmpty()) {
+        val services = runCatching { pm.queryIntentServices(intent, 0) }
+            .getOrDefault(emptyList())
+        val receivers = runCatching { pm.queryBroadcastReceivers(intent, 0) }
+            .getOrDefault(emptyList())
+        out.appendLine("Matching <service> filters:  ${services.size}")
+        out.appendLine("Matching <receiver> filters: ${receivers.size}")
+        out.appendLine()
+        if (services.isNotEmpty() || receivers.isNotEmpty()) {
+            out.appendLine("FOUND IT: the intent-filter is on the wrong component type.")
+            out.appendLine("loadInstalledSources calls queryIntentActivities, so the filter")
+            out.appendLine("must sit on an <activity>.")
+        } else {
+            out.appendLine("Nothing resolved at all. Likely causes:")
+            out.appendLine(" - no extension actually installed")
+            out.appendLine(" - the action string in its manifest doesn't match exactly")
+            out.appendLine(" - <queries> visibility is blocking it on Android 11+")
+            out.appendLine(" - the filter lacks <category android:name=\"android.intent.category.DEFAULT\"/>")
+        }
+        return out.toString()
+    }
+
+    for (info in activities) {
+        val ai = info.activityInfo
+        out.appendLine()
+        out.appendLine("• ${ai.packageName}")
+        out.appendLine("  activity: ${ai.name}")
+
+        val meta = ai.metaData
+        if (meta == null) {
+            out.appendLine("  ✗ no meta-data on this activity.")
+            out.appendLine("    Is <meta-data> inside the <activity>, not <application>?")
+            continue
+        }
+        val className = meta.getString("source_class")
+        if (className == null) {
+            out.appendLine("  ✗ no 'source_class' key.")
+            out.appendLine("    keys present: ${meta.keySet().joinToString()}")
+            continue
+        }
+        out.appendLine("  source_class: $className")
+
+        try {
+            val appInfo = pm.getApplicationInfo(ai.packageName, 0)
+            val loader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
+            val clazz = Class.forName(className, false, loader)
+            out.appendLine("  class loaded ok")
+            val instance = clazz.getDeclaredConstructor().newInstance()
+            out.appendLine("  instantiated ok")
+            if (instance is Source) {
+                out.appendLine("  ✓ implements Source (id=${instance.id}, name=${instance.name})")
+            } else {
+                out.appendLine("  ✗ does NOT implement com.mangareader.app.Source")
+                out.appendLine("    interfaces: ${clazz.interfaces.joinToString { it.name }}")
+                out.appendLine("    superclass: ${clazz.superclass?.name}")
+            }
+        } catch (e: Throwable) {
+            out.appendLine("  ✗ ${e.javaClass.name}")
+            out.appendLine("    ${e.message}")
+            e.cause?.let { out.appendLine("    cause: ${it.javaClass.name}: ${it.message}") }
+        }
+    }
+    return out.toString()
+}
 
 // ---------- activity ----------
 
@@ -589,6 +678,7 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
     var loading by remember { mutableStateOf(false) }
     var newRepo by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var report by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(repos) {
         if (repos.isEmpty()) {
@@ -647,6 +737,11 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         ErrorBanner(error)
 
+        TextButton(
+            onClick = { report = diagnoseExtensions(context) },
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) { Text("Why isn't my extension showing?") }
+
         if (repos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -681,6 +776,26 @@ private fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> U
                 }
             }
         }
+    }
+
+    val shownReport = report
+    if (shownReport != null) {
+        AlertDialog(
+            onDismissRequest = { report = null },
+            title = { Text("Extension diagnostics") },
+            text = {
+                SelectionContainer {
+                    Text(
+                        shownReport,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            },
+            confirmButton = { Button(onClick = { report = null }) { Text("Close") } }
+        )
     }
 }
 
