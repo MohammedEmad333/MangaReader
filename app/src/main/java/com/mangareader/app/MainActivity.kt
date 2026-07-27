@@ -143,9 +143,9 @@ fun YomuApp() {
             if (event == Lifecycle.Event.ON_RESUME) {
                 scope.launch {
                     extensionSources = withContext(Dispatchers.IO) {
-                        runCatching { ExtensionManager.loadInstalledSources(context) }
-                            .getOrDefault(emptyList())
-                    }
+                        runCatching {
+                            SourceManager.listAllSources(context).filter { it.id.startsWith("tachi:") }
+                        }.getOrDefault(emptyList())
                 }
             }
         }
@@ -391,8 +391,9 @@ fun YomuApp() {
                         onExtensionsChanged = {
                             scope.launch {
                                 extensionSources = withContext(Dispatchers.IO) {
-                                    runCatching { ExtensionManager.loadInstalledSources(context) }
-                                        .getOrDefault(emptyList())
+                                    runCatching {
+                                        SourceManager.listAllSources(context).filter { it.id.startsWith("tachi:") }
+                                    }.getOrDefault(emptyList())
                                 }
                             }
                         }
