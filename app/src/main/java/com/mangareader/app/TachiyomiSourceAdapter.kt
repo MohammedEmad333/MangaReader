@@ -51,6 +51,8 @@ class TachiyomiSourceAdapter(
 
     override val supportsPaging: Boolean = true
 
+    override val supportsDownload: Boolean = true
+
     /** First page of popular, for callers that just want a quick look. */
     override suspend fun listSeries(): List<Series> = browseSeries(1).series
 
@@ -161,15 +163,25 @@ class TachiyomiSourceAdapter(
      */
     override suspend fun loadPagesProgressively(
         chapter: Chapter,
+        persist: Boolean,
         onUpdate: suspend (List<File?>) -> Unit
     ) = withContext(Dispatchers.IO) {
+        // Already downloaded: serve straight off disk, no page list request, no
+        // image requests. This is what makes offline reading work.
+        if (Downloads.isComplete(context, chapter.id)) {
+            onUpdate(Downloads.pages(context, chapter.id))
+            return@withContext
+        }
+
         val sChapter = chapter.handle as? SChapter
         if (sChapter == null) {
             onUpdate(emptyList())
             return@withContext
         }
         val pages = delegate.getPageList(sChapter)
-        val dir = File(context.cacheDir, "pages/${chapter.id.hashCode()}").apply { mkdirs() }
+        val dir = if (persist) Downloads.dirFor(context, chapter.id)
+        else Downloads.cacheDirFor(context, chapter.id)
+        dir.mkdirs()
 
         val done = arrayOfNulls<File>(pages.size)
         onUpdate(done.toList())
@@ -183,13 +195,22 @@ class TachiyomiSourceAdapter(
             }
             onUpdate(done.toList())
         }
+
+        // Only a chapter with every page present counts as downloaded; a partial
+        // one stays unmarked so it can be resumed rather than trusted.
+        if (persist && pages.isNotEmpty() && done.all { it != null }) {
+            Downloads.markComplete(context, chapter.id, pages.size)
+        }
     }
 
     override suspend fun loadPages(chapter: Chapter): List<File> = withContext(Dispatchers.IO) {
         val sChapter = chapter.handle as? SChapter ?: return@withContext emptyList()
         val pages = delegate.getPageList(sChapter)
 
-        val dir = File(context.cacheDir, "pages/${chapter.id.hashCode()}").apply { mkdirs() }
+        if (Downloads.isComplete(context, chapter.id)) {
+            return@withContext Downloads.pages(context, chapter.id)
+        }
+        val dir = Downloads.cacheDirFor(context, chapter.id).apply { mkdirs() }
 
         pages.mapIndexedNotNull { index, page ->
             runCatching { downloadPage(page, dir, index) }.getOrNull()
