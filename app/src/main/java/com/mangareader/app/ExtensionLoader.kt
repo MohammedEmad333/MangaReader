@@ -22,7 +22,6 @@ object ExtensionLoader {
     // Tachiyomi's real discovery contract — NOT an intent filter.
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
-    private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
     private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
 
     // Which extensions-lib versions your host implements. Widen only once
@@ -78,22 +77,24 @@ object ExtensionLoader {
             // the eu.kanade.tachiyomi.source classes you supply.
             val loader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
 
-            val singles = metaData.getString(METADATA_SOURCE_CLASS).orEmpty()
-            val factories = metaData.getString(METADATA_SOURCE_FACTORY).orEmpty()
+            // Only ONE key matters. A single extension APK may name several
+            // classes here, separated by ';'. Each may turn out to be either a
+            // Source or a SourceFactory — you find out by instantiating it.
+            val declared = metaData.getString(METADATA_SOURCE_CLASS).orEmpty()
 
-            val sources = buildList {
-                singles.splitClassNames(pkgName).forEach { fqcn ->
-                    add(loader.loadClass(fqcn).getDeclaredConstructor().newInstance())
-                }
-                factories.splitClassNames(pkgName).forEach { fqcn ->
-                    val factory = loader.loadClass(fqcn).getDeclaredConstructor().newInstance()
-                    // A factory implements eu.kanade.tachiyomi.source.SourceFactory.
-                    // Once source-api is on your classpath, replace this reflective
-                    // call with: addAll((factory as SourceFactory).createSources())
-                    val created = factory.javaClass
-                        .getMethod("createSources")
-                        .invoke(factory) as List<*>
-                    addAll(created.filterNotNull())
+            val sources = buildList<Any> {
+                declared.splitClassNames(pkgName).forEach { fqcn ->
+                    val obj = loader.loadClass(fqcn).getDeclaredConstructor().newInstance()
+                    if (obj.isSourceFactory()) {
+                        // Once source-api is on your classpath, replace this whole
+                        // branch with: addAll((obj as SourceFactory).createSources())
+                        val created = obj.javaClass
+                            .getMethod("createSources")
+                            .invoke(obj) as List<*>
+                        addAll(created.filterNotNull())
+                    } else {
+                        add(obj)
+                    }
                 }
             }
 
@@ -140,7 +141,7 @@ object ExtensionLoader {
                 pm.getApplicationInfo(r.pkgName, PackageManager.GET_META_DATA).metaData
             }.getOrNull()
             out.appendLine("  class:   ${md?.getString(METADATA_SOURCE_CLASS) ?: "-"}")
-            out.appendLine("  factory: ${md?.getString(METADATA_SOURCE_FACTORY) ?: "-"}")
+            out.appendLine("  (factory status is only knowable after instantiation)")
             out.appendLine("  version: ${runCatching { pm.getPackageInfo(r.pkgName, 0).versionName }.getOrNull()}")
 
             if (r.error == null) {
@@ -153,6 +154,21 @@ object ExtensionLoader {
 
         if (results.size > 5) out.appendLine("(${results.size - 5} more not shown)")
         return out.toString()
+    }
+
+    /**
+     * True if this object implements eu.kanade.tachiyomi.source.SourceFactory,
+     * checked by name so it works before source-api is on the classpath.
+     */
+    private fun Any.isSourceFactory(): Boolean {
+        var c: Class<*>? = javaClass
+        while (c != null) {
+            if (c.interfaces.any { it.name == "eu.kanade.tachiyomi.source.SourceFactory" }) {
+                return true
+            }
+            c = c.superclass
+        }
+        return false
     }
 
     /** Flattens the cause chain — the last entry is the thing actually missing. */
