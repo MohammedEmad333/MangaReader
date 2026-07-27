@@ -18,6 +18,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -123,6 +124,10 @@ fun YomuApp() {
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSource by remember { mutableStateOf<Source?>(null) }
     var seriesList by remember { mutableStateOf<List<Series>?>(null) }
+    var browsePage by remember { mutableIntStateOf(1) }
+    var browseHasNext by remember { mutableStateOf(false) }
+    var browseQuery by remember { mutableStateOf("") }
+    var loadingMore by remember { mutableStateOf(false) }
     var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
     var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
@@ -158,20 +163,52 @@ fun YomuApp() {
         onDispose { hostActivity?.lifecycle?.removeObserver(observer) }
     }
 
-    fun openSource(source: Source) {
+    /** Loads page 1 of a source, either the catalogue or a search. */
+    fun openSource(source: Source, query: String = "") {
         activeSourceId = source.id
         activeSource = source
         seriesList = null
+        browsePage = 1
+        browseHasNext = false
+        browseQuery = query
         errorMessage = null
         scope.launch {
             isLoading = true
             try {
-                seriesList = withContext(Dispatchers.IO) { source.listSeries() }
+                val page = withContext(Dispatchers.IO) {
+                    if (query.isBlank()) source.browseSeries(1)
+                    else source.searchSeries(query, 1)
+                }
+                seriesList = page.series
+                browseHasNext = page.hasNext
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not scan this source"
                 seriesList = emptyList()
             }
             isLoading = false
+        }
+    }
+
+    /** Appends the next page to the current browse/search results. */
+    fun loadMoreSeries() {
+        val source = activeSource ?: return
+        if (loadingMore || !browseHasNext) return
+        scope.launch {
+            loadingMore = true
+            val next = browsePage + 1
+            try {
+                val page = withContext(Dispatchers.IO) {
+                    if (browseQuery.isBlank()) source.browseSeries(next)
+                    else source.searchSeries(browseQuery, next)
+                }
+                seriesList = (seriesList ?: emptyList()) + page.series
+                browsePage = next
+                browseHasNext = page.hasNext
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not load more"
+                browseHasNext = false
+            }
+            loadingMore = false
         }
     }
 
@@ -227,8 +264,8 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source is no longer installed")
-                    val series = src.listSeries().firstOrNull { it.id == entry.seriesId }
-                        ?: throw IllegalStateException("That series is no longer listed by its source")
+                    val series = src.getSeries(entry.seriesId)
+                        ?: throw IllegalStateException("That series is no longer available from its source")
                     Triple(src, series, src.listChapters(series))
                 }
                 activeSource = result.first
@@ -251,7 +288,7 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source no longer exists")
-                    val series = src.listSeries().firstOrNull { it.id == entry.seriesId }
+                    val series = src.getSeries(entry.seriesId)
                         ?: throw IllegalStateException("That series is no longer in the library")
                     val chapters = src.listChapters(series)
                     val idx = chapters.indexOfFirst {
@@ -352,7 +389,13 @@ fun YomuApp() {
             series = seriesList,
             loading = isLoading,
             error = errorMessage,
-            onRescan = { activeSource?.let { openSource(it) } },
+            supportsSearch = activeSource!!.supportsSearch,
+            query = browseQuery,
+            hasNext = browseHasNext,
+            loadingMore = loadingMore,
+            onSearch = { q -> activeSource?.let { openSource(it, q) } },
+            onLoadMore = { loadMoreSeries() },
+            onRescan = { activeSource?.let { openSource(it, browseQuery) } },
             onOpen = { openSeries(it) },
             onBack = {
                 activeSource = null
@@ -922,12 +965,19 @@ private fun LibraryScreen(
     series: List<Series>?,
     loading: Boolean,
     error: String?,
+    supportsSearch: Boolean,
+    query: String,
+    hasNext: Boolean,
+    loadingMore: Boolean,
+    onSearch: (String) -> Unit,
+    onLoadMore: () -> Unit,
     onRescan: () -> Unit,
     onOpen: (Series) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
     val context = LocalContext.current
+    var searchField by remember(query) { mutableStateOf(query) }
     val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
         "small" -> 88.dp
         "large" -> 140.dp
@@ -950,6 +1000,41 @@ private fun LibraryScreen(
             navigationIcon = { TextButton(onClick = onBack) { Text("←") } },
             actions = { TextButton(onClick = onRescan) { Text("Rescan") } }
         )
+        if (supportsSearch) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchField,
+                    onValueChange = { searchField = it },
+                    label = { Text("Search this source") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onSearch(searchField.trim()) }) { Text("Go") }
+            }
+            if (query.isNotBlank()) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Results for \u201c$query\u201d",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(onClick = {
+                        searchField = ""
+                        onSearch("")
+                    }) { Text("Clear") }
+                }
+            }
+        }
+
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         ErrorBanner(error)
 
@@ -1018,6 +1103,25 @@ private fun LibraryScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 4.dp)
                         )
+                    }
+                }
+
+                // Paging is manual rather than infinite-scroll: one tap per page
+                // keeps request volume predictable and visible.
+                if (hasNext && activeCategory == null) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (loadingMore) {
+                                CircularProgressIndicator()
+                            } else {
+                                OutlinedButton(onClick = onLoadMore) { Text("Load more") }
+                            }
+                        }
                     }
                 }
             }

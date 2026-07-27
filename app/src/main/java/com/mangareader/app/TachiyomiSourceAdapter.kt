@@ -2,8 +2,11 @@ package com.mangareader.app
 
 import android.content.Context
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,13 +31,38 @@ class TachiyomiSourceAdapter(
 
     override val name: String = "${delegate.name} (${delegate.lang})"
 
+    override val supportsSearch: Boolean = true
+
+    override val supportsPaging: Boolean = true
+
+    /** First page of popular, for callers that just want a quick look. */
+    override suspend fun listSeries(): List<Series> = browseSeries(1).series
+
+    override suspend fun browseSeries(page: Int): SeriesPage = withContext(Dispatchers.IO) {
+        delegate.getPopularManga(page).toSeriesPage()
+    }
+
+    override suspend fun searchSeries(query: String, page: Int): SeriesPage =
+        withContext(Dispatchers.IO) {
+            delegate.getSearchManga(page, query, FilterList()).toSeriesPage()
+        }
+
     /**
-     * Only the first page of popular manga. The Source interface has no
-     * pagination or search parameter, so that is as far as this can go
-     * without widening the interface.
+     * Rebuilds the SManga from the id instead of paging the catalogue, so a
+     * library entry reopens even when the series has dropped off page one.
+     * The id format is "<sourceId>:<url>", and url is all HttpSource needs.
      */
-    override suspend fun listSeries(): List<Series> = withContext(Dispatchers.IO) {
-        delegate.getPopularManga(1).mangas.map { it.toSeries() }
+    override suspend fun getSeries(id: String): Series? = withContext(Dispatchers.IO) {
+        val prefix = "${delegate.id}:"
+        if (!id.startsWith(prefix)) return@withContext null
+        val url = id.removePrefix(prefix)
+        if (url.isBlank()) return@withContext null
+
+        val stub: SManga = SMangaImpl().apply { this.url = url }
+        val full = runCatching { delegate.getMangaDetails(stub) }.getOrDefault(stub)
+        // getMangaDetails often leaves url blank on the returned copy.
+        if (full.url.isBlank()) full.url = url
+        full.toSeries()
     }
 
     override suspend fun listChapters(series: Series): List<Chapter> = withContext(Dispatchers.IO) {
@@ -84,6 +112,9 @@ class TachiyomiSourceAdapter(
         partial.renameTo(target)
         return target
     }
+
+    private fun MangasPage.toSeriesPage() =
+        SeriesPage(series = mangas.map { it.toSeries() }, hasNext = hasNextPage)
 
     private fun SManga.toSeries() = Series(
         id = "${delegate.id}:$url",
