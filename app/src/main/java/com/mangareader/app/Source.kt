@@ -43,6 +43,25 @@ interface Source {
     /** Extract/download the pages of a chapter, ready to display. */
     suspend fun loadPages(chapter: Chapter): List<File>
 
+    /**
+     * Same, but publishing partial results so the reader can open before the
+     * whole chapter has downloaded.
+     *
+     * The first call to [onUpdate] is expected to carry one slot per page, all
+     * null — that tells the caller how many pages there are, which is everything
+     * it needs to open the reader. Later calls fill slots in. A slot that is
+     * still null once this returns is a page that failed.
+     *
+     * Defaults to the all-at-once [loadPages], which is right for sources that
+     * produce every page in one operation, like a local CBZ.
+     */
+    suspend fun loadPagesProgressively(
+        chapter: Chapter,
+        onUpdate: suspend (List<File?>) -> Unit
+    ) {
+        onUpdate(loadPages(chapter))
+    }
+
     // ---- optional capabilities ----
 
     /** Whether [searchSeries] does anything useful. */

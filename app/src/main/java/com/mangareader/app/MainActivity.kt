@@ -95,8 +95,7 @@ internal class ResumeTarget(
     val source: Source,
     val series: Series,
     val chapters: List<Chapter>,
-    val index: Int,
-    val pages: List<File>
+    val index: Int
 )
 
 /**
@@ -153,7 +152,7 @@ fun YomuApp() {
     var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
     var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
-    var pages by remember { mutableStateOf<List<File>>(emptyList()) }
+    var pages by remember { mutableStateOf<List<File?>>(emptyList()) }
 
     // global search state — hoisted here (not inside the screen) so results survive
     // navigating into a series and coming back
@@ -394,16 +393,30 @@ fun YomuApp() {
         openSource(source, globalQuery)
     }
 
+    /**
+     * Opens the reader as soon as the page count is known, then fills pages in as
+     * they download, rather than holding the screen until the whole chapter is on
+     * disk. `isLoading` stays true for the duration, which is what tells the
+     * reader that a still-blank page is pending rather than broken.
+     */
     fun openChapter(index: Int) {
         val src = activeSource ?: return
         val chapter = chapterList.getOrNull(index) ?: return
         errorMessage = null
+        pages = emptyList()
         scope.launch {
             isLoading = true
             try {
-                val loaded = withContext(Dispatchers.IO) { src.loadPages(chapter) }
-                pages = loaded
-                activeChapterIdx = index
+                src.loadPagesProgressively(chapter) { partial ->
+                    // Hop to main: the adapter publishes from its IO context.
+                    withContext(Dispatchers.Main) {
+                        pages = partial
+                        if (partial.isNotEmpty() && activeChapterIdx != index) {
+                            activeChapterIdx = index
+                        }
+                    }
+                }
+                if (pages.isEmpty()) errorMessage = "This chapter has no pages"
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not open this chapter"
             }
@@ -481,15 +494,17 @@ fun YomuApp() {
                         chapterKeyOf(entry.sourceId, it) == entry.chapterKey
                     }
                     if (idx < 0) throw IllegalStateException("That chapter is gone")
-                    ResumeTarget(src, series, chapters, idx, src.loadPages(chapters[idx]))
+                    ResumeTarget(src, series, chapters, idx)
                 }
                 seriesOrigin = SeriesOrigin.HISTORY
                 activeSource = target.source
                 activeSourceId = target.source.id
                 activeSeries = target.series
                 chapterList = target.chapters
-                pages = target.pages
-                activeChapterIdx = target.index
+                enrichSeries(target.source, target.series)
+                // Hands off to openChapter so resuming streams its pages the same
+                // way opening one does, instead of blocking on the whole chapter.
+                openChapter(target.index)
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not resume"
             }
@@ -512,6 +527,7 @@ fun YomuApp() {
         key(chKey) {
             ReaderScreen(
                 pages = pages,
+                stillLoading = isLoading,
                 initialPage = savedPage(context, chKey).coerceIn(0, total - 1),
                 hasPrev = chapterIdx > 0,
                 hasNext = chapterIdx < chapterList.size - 1,

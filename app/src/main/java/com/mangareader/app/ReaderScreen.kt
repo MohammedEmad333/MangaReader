@@ -62,7 +62,8 @@ import java.io.File
 
 @Composable
 internal fun ReaderScreen(
-    pages: List<File>,
+    pages: List<File?>,
+    stillLoading: Boolean,
     initialPage: Int,
     hasPrev: Boolean,
     hasNext: Boolean,
@@ -91,13 +92,31 @@ internal fun ReaderScreen(
                 }
         ) { page ->
             val file = pages.getOrNull(page)
-            if (file != null) {
-                AsyncImage(
+            when {
+                file != null -> AsyncImage(
                     model = file,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
+                // Null while the chapter is still downloading means "not here
+                // yet"; null once it has finished means that page failed.
+                stillLoading -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                else -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Page ${page + 1} couldn't be loaded",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
 
