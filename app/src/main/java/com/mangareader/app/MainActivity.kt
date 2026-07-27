@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -108,13 +109,39 @@ private fun diagnoseExtensions(context: Context): String {
             out.appendLine("FOUND IT: the intent-filter is on the wrong component type.")
             out.appendLine("loadInstalledSources calls queryIntentActivities, so the filter")
             out.appendLine("must sit on an <activity>.")
-        } else {
-            out.appendLine("Nothing resolved at all. Likely causes:")
-            out.appendLine(" - no extension actually installed")
-            out.appendLine(" - the action string in its manifest doesn't match exactly")
-            out.appendLine(" - <queries> visibility is blocking it on Android 11+")
-            out.appendLine(" - the filter lacks <category android:name=\"android.intent.category.DEFAULT\"/>")
+            return out.toString()
         }
+
+        out.appendLine("Nothing resolved. Enumerating what's actually installed:")
+        out.appendLine()
+
+        val pkgs = runCatching {
+            pm.getInstalledPackages(PackageManager.GET_ACTIVITIES)
+        }.getOrElse {
+            out.appendLine("getInstalledPackages threw: $it")
+            emptyList()
+        }
+        val userPkgs = pkgs.filter {
+            val flags = it.applicationInfo?.flags ?: 0
+            flags and ApplicationInfo.FLAG_SYSTEM == 0
+        }
+        out.appendLine("Visible packages: ${pkgs.size} total, ${userPkgs.size} non-system")
+        out.appendLine()
+
+        for (p in userPkgs.sortedBy { it.packageName }) {
+            val acts = p.activities
+            val exported = acts?.count { it.exported } ?: 0
+            out.appendLine("  ${p.packageName}")
+            if (acts != null && acts.isNotEmpty()) {
+                out.appendLine("    activities: ${acts.size} ($exported exported)")
+            }
+        }
+
+        out.appendLine()
+        out.appendLine("If your extension's package is NOT in that list, it never installed —")
+        out.appendLine("debug the installer, not the manifest. If it IS listed, then either")
+        out.appendLine("its action string doesn't match exactly, or its activity is not")
+        out.appendLine("android:exported=\"true\".")
         return out.toString()
     }
 
