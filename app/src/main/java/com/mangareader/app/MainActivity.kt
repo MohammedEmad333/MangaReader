@@ -388,13 +388,27 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source is no longer installed")
-                    val fetched = src.getSeries(entry.seriesId)
+                    // Each stage names itself in the error: "details" and
+                    // "chapters" are separate requests in most extensions, and
+                    // knowing which one failed is the whole diagnosis.
+                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
+                        .getOrElse {
+                            throw IllegalStateException(
+                                "Couldn't load series details \u2014 ${it.message}"
+                            )
+                        }
                         ?: throw IllegalStateException("That series is no longer available from its source")
-                    // A source whose details request failed can come back with no
-                    // title. The library already stores the name it was saved under,
-                    // which beats showing a blank header.
-                    val series = fetched.copy(title = fetched.title.ifBlank { entry.title })
-                    Triple(src, series, src.listChapters(series))
+                    val series = fetched.copy(
+                        title = fetched.title.ifBlank { entry.title },
+                        cover = fetched.cover ?: entry.cover.ifBlank { null }
+                    )
+                    val chapters = runCatching { src.listChapters(series) }
+                        .getOrElse {
+                            throw IllegalStateException(
+                                "Couldn't load the chapter list \u2014 ${it.message}"
+                            )
+                        }
+                    Triple(src, series, chapters)
                 }
                 activeSource = result.first
                 activeSourceId = result.first.id
@@ -416,9 +430,17 @@ fun YomuApp() {
                     val src = SourceManager.listAllSources(context)
                         .firstOrNull { it.id == entry.sourceId }
                         ?: throw IllegalStateException("That source no longer exists")
-                    val fetched = src.getSeries(entry.seriesId)
+                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
+                        .getOrElse {
+                            throw IllegalStateException(
+                                "Couldn't load series details \u2014 ${it.message}"
+                            )
+                        }
                         ?: throw IllegalStateException("That series is no longer in the library")
-                    val series = fetched.copy(title = fetched.title.ifBlank { entry.title })
+                    val series = fetched.copy(
+                        title = fetched.title.ifBlank { entry.title },
+                        cover = fetched.cover ?: entry.coverPath.ifBlank { null }
+                    )
                     val chapters = src.listChapters(series)
                     val idx = chapters.indexOfFirst {
                         chapterKeyOf(entry.sourceId, it) == entry.chapterKey

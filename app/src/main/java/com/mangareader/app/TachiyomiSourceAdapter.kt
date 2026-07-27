@@ -61,16 +61,44 @@ class TachiyomiSourceAdapter(
             delegate.getSearchManga(page, query, FilterList()).toSeriesPage()
         }
 
+    /** Pulls the source-relative url back out of an id built by [toSeries]. */
+    private fun urlFromId(id: String): String? {
+        val prefix = "${delegate.id}:"
+        if (!id.startsWith(prefix)) return null
+        return id.removePrefix(prefix).takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Reopen a stored entry without a details round-trip.
+     *
+     * Browsing hands `getChapterList` the fully-parsed SManga from the catalogue
+     * page and never calls `getMangaDetails`; reopening from the library used to
+     * synthesise a bare stub and call it. That extra request is the only
+     * difference between the two paths, and on a source whose details endpoint is
+     * broken it was the thing failing — the chapters themselves were fine.
+     *
+     * So this builds the url + title pair that Tachiyomi says a stored entry is,
+     * marks it initialized, and goes straight to the chapter list.
+     */
+    override suspend fun restoreSeries(id: String, title: String): Series? =
+        withContext(Dispatchers.IO) {
+            val url = urlFromId(id) ?: return@withContext null
+            SMangaImpl().apply {
+                this.url = url
+                this.title = title
+                // Tells any extension that checks it that details are already in
+                // hand and it needn't fetch them.
+                this.initialized = true
+            }.toSeries()
+        }
+
     /**
      * Rebuilds the SManga from the id instead of paging the catalogue, so a
      * library entry reopens even when the series has dropped off page one.
      * The id format is "<sourceId>:<url>", and url is all HttpSource needs.
      */
     override suspend fun getSeries(id: String): Series? = withContext(Dispatchers.IO) {
-        val prefix = "${delegate.id}:"
-        if (!id.startsWith(prefix)) return@withContext null
-        val url = id.removePrefix(prefix)
-        if (url.isBlank()) return@withContext null
+        val url = urlFromId(id) ?: return@withContext null
 
         // Both fields are lateinit on SMangaImpl, so the stub has to initialise
         // them up front: if getMangaDetails below fails, this object is what gets
