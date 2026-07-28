@@ -158,6 +158,14 @@ class DownloadService : Service() {
                 .firstOrNull { it.id == item.sourceId }
                 ?: throw IllegalStateException("\"${item.seriesTitle}\" — source is no longer installed")
 
+            // Claims <Source>/<Series>/<Chapter> before the first page is
+            // fetched, because the download needs somewhere to go. It has to
+            // happen here specifically: the queue stores ids, and this line is
+            // the only point at which the source's display name is known. By
+            // the time anything else asks for the folder — the Downloads tab,
+            // a delete, a size — the extension may have been uninstalled.
+            DownloadPaths.register(this, item, src.name)
+
             // The queue only stores ids, so the extension's own SChapter has to
             // be rebuilt before the source can fetch anything.
             val chapter = src.rehydrateChapter(

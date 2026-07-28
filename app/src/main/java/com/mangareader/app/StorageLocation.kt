@@ -38,7 +38,29 @@ internal object StorageLocation {
 
     private const val KEY = "storage_dir"
 
-    /** Chapter pages. Kept as `chapters` so an unset install doesn't orphan them. */
+    /**
+     * Everything lives under a folder of this name inside whatever the user
+     * picked, rather than directly in it.
+     *
+     * The picker hands back real folders — Documents, the SD card root, an
+     * existing manga folder with other things in it — and scattering `downloads`
+     * and `backups` loose among their contents makes the app impossible to
+     * uninstall tidily and easy to break by tidying. One named folder is also
+     * what makes "delete everything Yomu wrote" a single gesture in a file
+     * manager.
+     */
+    const val APP_FOLDER = "Yomu"
+
+    /** `<base>/downloads/<Source>/<Series>/<Chapter>` — see [DownloadPaths]. */
+    const val DOWNLOADS = "downloads"
+
+    /**
+     * The flat `<md5>` layout that predates [DOWNLOADS].
+     *
+     * Still read, never written to. Chapters downloaded before the readable tree
+     * existed stay here and keep working; [Downloads.dirFor] checks it whenever
+     * the path index has nothing.
+     */
     const val CHAPTERS = "chapters"
 
     /** Automatic backups. */
@@ -83,14 +105,29 @@ internal object StorageLocation {
         val fallback = context.applicationContext.filesDir
         if (want.isNullOrBlank()) return fallback
         if (!hasAccess(context)) return fallback
-        val dir = File(want)
+        val dir = appFolderIn(File(want))
         return if (ensureWritable(dir)) dir else fallback
     }
+
+    /**
+     * `<picked>/Yomu`, unless they picked a folder already called that.
+     *
+     * Without the second half, choosing the folder the app made last time would
+     * nest a `Yomu` inside a `Yomu` — which is exactly what someone re-picking
+     * their existing location does, and it would silently orphan everything in
+     * the outer one.
+     */
+    fun appFolderIn(picked: File): File =
+        if (picked.name.equals(APP_FOLDER, ignoreCase = true)) picked
+        else File(picked, APP_FOLDER)
 
     /** True when the chosen folder is the one actually being used. */
     fun active(context: Context): Boolean {
         val want = chosen(context) ?: return false
-        return base(context).absolutePath == want.absolutePath
+        // Against the app folder inside the choice, not the choice itself —
+        // base() nests one level down, so comparing to the raw pick would say
+        // "not active" every time and permanently show the fallback warning.
+        return base(context).absolutePath == appFolderIn(want).absolutePath
     }
 
     fun set(context: Context, dir: File) {
@@ -187,6 +224,21 @@ internal object StorageLocation {
         if (relative.isBlank()) root else File(root, relative)
     }.getOrNull()
 
+    /**
+     * Everywhere a chapter downloaded by an older build might be sitting.
+     *
+     * Three eras: the current base's own legacy folder, the folder chosen before
+     * the `Yomu` subfolder existed, and app storage from before the location was
+     * settable at all. Checked in that order and only when the path index comes
+     * up empty, so this costs nothing for chapters downloaded since.
+     */
+    fun legacyRoots(context: Context): List<File> {
+        val out = mutableListOf(File(base(context), CHAPTERS))
+        chosen(context)?.let { out += File(it, CHAPTERS) }
+        out += File(context.applicationContext.filesDir, CHAPTERS)
+        return out.distinctBy { it.absolutePath }
+    }
+
     /** For the settings row: `/storage/emulated/0/Manga` reads better than the raw path. */
     fun label(context: Context): String {
         val dir = base(context)
@@ -233,7 +285,32 @@ internal object StorageLocation {
         moved
     }
 
-    /** How many chapter folders are sitting under a given base, for the move prompt. */
-    fun chapterCount(base: File): Int =
-        runCatching { File(base, CHAPTERS).listFiles()?.size ?: 0 }.getOrDefault(0)
+    /** The subfolders this app owns. Everything else in a base is someone else's. */
+    private val OWNED = listOf(DOWNLOADS, CHAPTERS, BACKUPS)
+
+    /** Whether a base has anything worth moving, for the move prompt. */
+    fun hasStore(base: File): Boolean = runCatching {
+        OWNED.any {
+            val dir = File(base, it)
+            dir.isDirectory && (dir.listFiles()?.isNotEmpty() == true)
+        }
+    }.getOrDefault(false)
+
+    /**
+     * Moves only the folders this app owns from one base to another.
+     *
+     * Not the whole base: when the old one is `filesDir` it also holds the
+     * chapter-list cache, the download queue and the path index, none of which
+     * belong in the user's folder — and moving `download_queue.json` out from
+     * under a running service is a good way to lose a queue.
+     */
+    fun moveStore(from: File, to: File): Result<Int> = runCatching {
+        if (from.absolutePath == to.absolutePath) return@runCatching 0
+        var moved = 0
+        OWNED.forEach { name ->
+            val source = File(from, name)
+            if (source.isDirectory) moved += move(source, File(to, name)).getOrDefault(0)
+        }
+        moved
+    }
 }
