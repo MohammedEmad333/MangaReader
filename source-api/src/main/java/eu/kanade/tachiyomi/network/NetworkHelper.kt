@@ -109,7 +109,8 @@ class NetworkHelper(context: Context) {
                 "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
         /**
-         * Deliberately `*/*` rather than a browser's document Accept.
+         * Deliberately &#42;&#47;&#42; (a wildcard) rather than a browser's
+         * document Accept.
          *
          * This header goes on every request the app makes, and most of them are
          * images. Announcing `text/html,application/xhtml+xml,…` while asking for
