@@ -31,8 +31,13 @@ object Downloads {
 
     private const val MARKER = ".complete"
 
-    /** The readable tree: `<base>/downloads/<Source>/<Series>/<Chapter>`. */
-    private fun downloadsRoot(context: Context): File =
+    /**
+     * The readable tree: `<base>/downloads/<Source>/<Series>/<Chapter>`.
+     *
+     * Not private only because [reorganiseDownloads] has to build target paths
+     * against it. Nothing else should be resolving download paths itself.
+     */
+    fun downloadsRoot(context: Context): File =
         File(StorageLocation.base(context), StorageLocation.DOWNLOADS)
 
     /**
