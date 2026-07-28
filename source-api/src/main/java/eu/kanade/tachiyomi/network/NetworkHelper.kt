@@ -56,7 +56,17 @@ class NetworkHelper(context: Context) {
             val patched = request.newBuilder()
             var changed = false
 
-            if (request.header("User-Agent").isNullOrEmpty()) {
+            // A host we hold Cloudflare clearance for gets the UA that earned
+            // it, overriding even a UA the extension set itself. That looks
+            // rude, and is nevertheless right: cf_clearance is rejected under
+            // any other string, so honouring the extension's preference here
+            // would throw away the challenge the user just solved by hand and
+            // put the source straight back to 403.
+            val clearanceUserAgent = ClearanceUserAgents.get(context, request.url.host)
+            if (clearanceUserAgent != null) {
+                patched.header("User-Agent", clearanceUserAgent)
+                changed = true
+            } else if (request.header("User-Agent").isNullOrEmpty()) {
                 patched.header("User-Agent", defaultUserAgentProvider())
                 changed = true
             }

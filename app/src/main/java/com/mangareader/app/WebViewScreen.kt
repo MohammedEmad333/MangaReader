@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import kotlinx.coroutines.delay
 
 /**
@@ -46,19 +47,22 @@ import kotlinx.coroutines.delay
  * which is the store this WebView writes to. Solving the challenge is the whole
  * job; OkHttp picks up `cf_clearance` by itself on the next request.
  *
- * **The User-Agent must match the one OkHttp sends.** `cf_clearance` is bound to
- * the UA that earned it and is rejected when a later request presents a
- * different one — so the caller passes in the source's actual UA rather than
- * letting the WebView use the system default, which would produce a cookie that
- * looks valid here and 403s everywhere else. That failure mode is silent and
- * confusing, so it's worth not causing.
+ * **The WebView keeps its own User-Agent, and OkHttp follows it.** `cf_clearance`
+ * is bound to the UA that earned it, so the two have to agree — but the first
+ * attempt made them agree by forcing this WebView to claim the app's desktop
+ * Chrome default, and that is a challenge nobody can pass: the checkbox exists
+ * to catch a client whose UA and runtime disagree, and inside an Android WebView
+ * a Windows UA disagrees with everything. It looped on the checkbox forever.
+ *
+ * So the agreement runs the other way. The WebView presents what it honestly is,
+ * and whatever string passes gets recorded in [ClearanceUserAgents] for OkHttp to
+ * reuse against that host.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChallengeWebViewScreen(
     url: String,
-    userAgent: String,
     onSolved: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -72,13 +76,17 @@ internal fun ChallengeWebViewScreen(
     // the same error. In that case the screen waits for the Done button instead.
     val hadClearance = remember(url) { hasClearanceCookie(url) }
 
+    // The UA this WebView presents. Read rather than set — see the note above —
+    // and held so it can be recorded against the host once a challenge passes.
+    var nativeUserAgent by remember(url) { mutableStateOf<String?>(null) }
+
     val webView = remember(url) {
         val view = WebView(context)
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = true
-        view.settings.userAgentString = userAgent
         view.settings.useWideViewPort = true
         view.settings.loadWithOverviewMode = true
+        nativeUserAgent = view.settings.userAgentString
         CookieManager.getInstance().let { cookies ->
             cookies.setAcceptCookie(true)
             cookies.setAcceptThirdPartyCookies(view, true)
@@ -107,6 +115,11 @@ internal fun ChallengeWebViewScreen(
         // Flush before handing back: the cookie store is written asynchronously,
         // and the retry is about to read it from another process-level store.
         runCatching { CookieManager.getInstance().flush() }
+        // Record the UA that passed, or the retry goes out under the app default
+        // and the clearance just earned is rejected on arrival.
+        nativeUserAgent?.let { ua ->
+            runCatching { ClearanceUserAgents.set(context, hostOf(url), ua) }
+        }
         solved = true
         // A beat so the user sees the challenge complete rather than the screen
         // vanishing out from under the tap.
@@ -141,8 +154,17 @@ internal fun ChallengeWebViewScreen(
             actions = {
                 // Manual escape hatch: the poll only fires on a cookie that
                 // appears while the screen is open, and some sources hand out
-                // clearance in ways this can't see. Done retries regardless.
-                TextButton(onClick = onSolved) { Text("Done") }
+                // clearance in ways this can't see. Done retries regardless —
+                // recording the UA first, because if clearance *was* obtained
+                // it belongs to this WebView's UA and not the app's.
+                TextButton(
+                    onClick = {
+                        nativeUserAgent?.let { ua ->
+                            runCatching { ClearanceUserAgents.set(context, hostOf(url), ua) }
+                        }
+                        onSolved()
+                    }
+                ) { Text("Done") }
             }
         )
 
