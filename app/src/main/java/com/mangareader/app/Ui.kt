@@ -145,15 +145,35 @@ internal fun NsfwBadge() {
     )
 }
 
+/**
+ * The error line under a screen's top bar.
+ *
+ * [actionLabel] and [onAction] are optional and default to nothing, so the call
+ * sites that only want text are unchanged. They exist because some errors are
+ * things the user can actually do something about — a Cloudflare challenge being
+ * the first — and an error message with no way to act on it is a dead end.
+ */
 @Composable
-internal fun ErrorBanner(error: String?) {
-    if (error != null) {
+internal fun ErrorBanner(
+    error: String?,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    if (error == null) return
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = error,
             color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            style = MaterialTheme.typography.bodySmall
         )
+        if (actionLabel != null && onAction != null) {
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+            ) {
+                Text(actionLabel)
+            }
+        }
     }
 }
 

@@ -51,6 +51,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
+import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -209,6 +211,12 @@ fun YomuApp() {
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Non-null while the user is answering a Cloudflare challenge by hand. The
+    // UA is carried alongside the URL because clearance is bound to it, and the
+    // source that needs it can be released before the WebView is done with it.
+    var challengeUrl by remember { mutableStateOf<String?>(null) }
+    var challengeUserAgent by remember { mutableStateOf(NetworkHelper.DEFAULT_USER_AGENT) }
 
     // bumped whenever a read flag / resume position changes, to re-read prefs in lists
     var readTick by remember { mutableIntStateOf(0) }
@@ -693,7 +701,25 @@ fun YomuApp() {
     val chapterIdx = activeChapterIdx
     val readerChapter = chapterIdx?.let { chapterList.getOrNull(it) }
 
-    if (chapterIdx != null && readerChapter != null && pages.isNotEmpty()) {
+    val challenge = challengeUrl
+    if (challenge != null) {
+        // Sits above every other branch, and safely so: it's gated on state that
+        // is null in every other flow, and clearing that state drops back onto
+        // whatever was underneath with nothing else touched. No branch below has
+        // to know this one exists — which is the only reason it was safe to put
+        // anything at the top of this chain.
+        ChallengeWebViewScreen(
+            url = challenge,
+            userAgent = challengeUserAgent,
+            onSolved = {
+                challengeUrl = null
+                // Re-run whatever was on screen. The clearance cookie is in the
+                // store OkHttp already reads, so this is an ordinary retry.
+                activeSource?.let { openSource(it, browseQuery) }
+            },
+            onBack = { challengeUrl = null }
+        )
+    } else if (chapterIdx != null && readerChapter != null && pages.isNotEmpty()) {
         val srcId = activeSourceId ?: ""
         val series = activeSeries
         val chKey = chapterKeyOf(srcId, readerChapter)
@@ -813,6 +839,17 @@ fun YomuApp() {
             }
         )
     } else if (activeSource != null) {
+        // Only extension sources backed by an HttpSource have a site to open;
+        // for anything else the button is absent rather than broken.
+        val site = activeSource?.siteUrl()
+        // `fun()` rather than a lambda: a brace directly after `else` opens a
+        // block, so a lambda there has to be wrapped in a second pair and reads
+        // like a typo. An anonymous function is the same value with no ambiguity.
+        val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
+            challengeUserAgent = activeSource?.siteUserAgent()
+                ?: NetworkHelper.DEFAULT_USER_AGENT
+            challengeUrl = site
+        }
         LibraryScreen(
             title = activeSource!!.name,
             series = seriesList,
@@ -831,7 +868,8 @@ fun YomuApp() {
                 activeSourceId = null
                 seriesList = null
                 errorMessage = null
-            }
+            },
+            onSolveChallenge = startChallenge
         )
     } else if (downloadsOpen) {
         // Last branch before the tabs: it's only ever opened from More, which is
@@ -971,3 +1009,31 @@ fun YomuApp() {
 }
 
 // ---------- shared ----------
+
+/**
+ * The source's website, for opening in a WebView. Null when there isn't one:
+ * local folder sources, and any extension that isn't an `HttpSource`.
+ *
+ * Reached through `catalogueSource` rather than added to this app's [Source]
+ * interface, because it's an implementation detail of exactly one source type
+ * and nothing else in the app has any use for it.
+ */
+private fun Source.siteUrl(): String? =
+    ((this as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource)
+        ?.baseUrl
+        ?.takeIf { it.isNotBlank() }
+
+/**
+ * The User-Agent this source's requests actually carry.
+ *
+ * Extensions are free to set their own in `headersBuilder()`, and a good few do.
+ * Clearance earned under a different UA is rejected, so the WebView has to be
+ * told the source's, not the app's — falling back to the app default only when
+ * the extension didn't set one, which is the case where OkHttp fills in the same
+ * value anyway.
+ */
+private fun Source.siteUserAgent(): String =
+    ((this as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource)
+        ?.headers?.get("User-Agent")
+        ?.takeIf { it.isNotBlank() }
+        ?: NetworkHelper.DEFAULT_USER_AGENT

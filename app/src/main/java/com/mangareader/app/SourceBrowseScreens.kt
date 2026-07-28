@@ -87,7 +87,13 @@ internal fun LibraryScreen(
     onLoadMore: () -> Unit,
     onRescan: () -> Unit,
     onOpen: (Series) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /**
+     * Opens a visible WebView at this source's site so the user can answer a
+     * Cloudflare challenge by hand. Null for sources with no site to open —
+     * local folders, and any extension that isn't an `HttpSource`.
+     */
+    onSolveChallenge: (() -> Unit)? = null
 ) {
     BackHandler { onBack() }
     val context = LocalContext.current
@@ -150,7 +156,17 @@ internal fun LibraryScreen(
         }
 
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        ErrorBanner(error)
+        // Matched on the message rather than a status code because that's all
+        // that survives: the failure arrives here as an already-formatted string
+        // from `Response.failureMessage()`, which is the one place that can see
+        // the Cloudflare headers.
+        val challengeable = onSolveChallenge != null &&
+            error?.contains("Cloudflare", ignoreCase = true) == true
+        ErrorBanner(
+            error = error,
+            actionLabel = if (challengeable) "Open in WebView" else null,
+            onAction = if (challengeable) onSolveChallenge else null
+        )
 
         if (categories.isNotEmpty()) {
             Row(

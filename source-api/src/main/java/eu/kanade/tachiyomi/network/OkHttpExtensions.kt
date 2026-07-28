@@ -123,10 +123,16 @@ suspend fun Call.awaitSuccess(): Response {
  * Turns a status code into something the app can act on.
  *
  * A bare "HTTP error 403" is indistinguishable between a source that wants a
- * header we're not sending and one sitting behind a challenge this build has no
- * way to answer — and those need completely different responses from whoever
- * reads the message. Cloudflare identifies itself in the response headers, so
- * when it's the latter, say so.
+ * header we're not sending and one sitting behind a Cloudflare challenge — and
+ * those need completely different responses from whoever reads the message.
+ * Cloudflare identifies itself in the response headers, so when it's the latter,
+ * say so.
+ *
+ * Reaching here at all means `CloudflareInterceptor` already tried and failed,
+ * which in practice means an interactive challenge. The browse screen turns this
+ * message into an "Open in WebView" button, so the wording points at the thing
+ * the user is about to be offered rather than declaring it impossible — which is
+ * what it used to do, and stopped being true when the interceptor landed.
  */
 private fun Response.failureMessage(): String {
     val base = "HTTP error $code"
@@ -134,7 +140,7 @@ private fun Response.failureMessage(): String {
         header("cf-ray") != null ||
         header("server")?.contains("cloudflare", ignoreCase = true) == true
     return if (cloudflare && (code == 403 || code == 503)) {
-        "$base \u2014 blocked by Cloudflare (no WebView bypass in this build)"
+        "$base \u2014 blocked by Cloudflare (the challenge needs solving by hand)"
     } else {
         base
     }
