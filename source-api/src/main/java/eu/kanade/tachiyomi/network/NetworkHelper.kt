@@ -31,17 +31,30 @@ class NetworkHelper(context: Context) {
         .callTimeout(2, TimeUnit.MINUTES)
         // Inlined rather than using UserAgentInterceptor, so this file doesn't
         // depend on that class's exact constructor signature.
+        //
+        // Accept and Accept-Language ride along because a request carrying a
+        // browser's User-Agent and nothing else a browser sends is a fairly
+        // obvious tell. Both are only filled in when the extension hasn't set
+        // them itself — a source that knows what it wants always wins.
         .addInterceptor { chain ->
             val request = chain.request()
+            val patched = request.newBuilder()
+            var changed = false
+
             if (request.header("User-Agent").isNullOrEmpty()) {
-                chain.proceed(
-                    request.newBuilder()
-                        .header("User-Agent", defaultUserAgentProvider())
-                        .build(),
-                )
-            } else {
-                chain.proceed(request)
+                patched.header("User-Agent", defaultUserAgentProvider())
+                changed = true
             }
+            if (request.header("Accept").isNullOrEmpty()) {
+                patched.header("Accept", DEFAULT_ACCEPT)
+                changed = true
+            }
+            if (request.header("Accept-Language").isNullOrEmpty()) {
+                patched.header("Accept-Language", DEFAULT_ACCEPT_LANGUAGE)
+                changed = true
+            }
+
+            chain.proceed(if (changed) patched.build() else request)
         }
         .build()
 
@@ -55,8 +68,22 @@ class NetworkHelper(context: Context) {
     fun defaultUserAgentProvider(): String = DEFAULT_USER_AGENT
 
     companion object {
+        /**
+         * Kept roughly current on purpose.
+         *
+         * This previously claimed Chrome 120, which shipped in late 2023 — a
+         * version that old is not a neutral default, it's a signal, and some
+         * WAFs reject it outright. Worth bumping the major version every so
+         * often; the exact number matters much less than not being years stale.
+         */
         const val DEFAULT_USER_AGENT: String =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+
+        const val DEFAULT_ACCEPT: String =
+            "text/html,application/xhtml+xml,application/xml;q=0.9," +
+                "image/avif,image/webp,*/*;q=0.8"
+
+        const val DEFAULT_ACCEPT_LANGUAGE: String = "en-US,en;q=0.9"
     }
 }

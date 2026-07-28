@@ -61,8 +61,9 @@ fun Call.asObservable(): Observable<Response> {
 fun Call.asObservableSuccess(): Observable<Response> {
     return asObservable().doOnNext { response ->
         if (!response.isSuccessful) {
+            val message = response.failureMessage()
             response.close()
-            throw HttpException(response.code)
+            throw HttpException(response.code, message)
         }
     }
 }
@@ -111,10 +112,32 @@ suspend fun Call.awaitSuccess(): Response {
     val callStack = Exception().stackTrace.run { copyOfRange(1, size) }
     val response = await(callStack)
     if (!response.isSuccessful) {
+        val message = response.failureMessage()
         response.close()
-        throw HttpException(response.code).apply { stackTrace = callStack }
+        throw HttpException(response.code, message).apply { stackTrace = callStack }
     }
     return response
+}
+
+/**
+ * Turns a status code into something the app can act on.
+ *
+ * A bare "HTTP error 403" is indistinguishable between a source that wants a
+ * header we're not sending and one sitting behind a challenge this build has no
+ * way to answer — and those need completely different responses from whoever
+ * reads the message. Cloudflare identifies itself in the response headers, so
+ * when it's the latter, say so.
+ */
+private fun Response.failureMessage(): String {
+    val base = "HTTP error $code"
+    val cloudflare = header("cf-mitigated") != null ||
+        header("cf-ray") != null ||
+        header("server")?.contains("cloudflare", ignoreCase = true) == true
+    return if (cloudflare && (code == 403 || code == 503)) {
+        "$base \u2014 blocked by Cloudflare (no WebView bypass in this build)"
+    } else {
+        base
+    }
 }
 
 fun OkHttpClient.newCachelessCallWithProgress(request: Request, listener: ProgressListener): Call {
@@ -153,4 +176,16 @@ fun <T> decodeFromJsonResponse(
  * @since extensions-lib 1.5
  * @param code [Int] the HTTP status code
  */
-class HttpException(val code: Int) : IllegalStateException("HTTP error $code")
+/**
+ * A non-2xx response.
+ *
+ * The [message] parameter is optional and defaults to what this class has always
+ * produced, so `HttpException(code)` — the form extensions construct and catch by
+ * name — behaves exactly as before. It exists so [awaitSuccess] can say *why* a
+ * 403 happened when the response identifies itself as a bot block, rather than
+ * leaving the app to report a bare status code it can't act on.
+ */
+class HttpException(
+    val code: Int,
+    message: String = "HTTP error $code"
+) : IllegalStateException(message)

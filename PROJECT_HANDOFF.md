@@ -737,7 +737,12 @@ Roughly in order of value:
    lock but not the service.
 2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
    will fail. Restoring needs a WebView flow + the interceptor that was stripped
-   out of the vendored API.
+   out of the vendored API. `awaitSuccess()` now *identifies* the case — a 403 or
+   503 carrying `cf-ray` / `cf-mitigated` / `Server: cloudflare` reports "blocked
+   by Cloudflare (no WebView bypass in this build)" instead of a bare status code
+   — so it's at least distinguishable from a source that just wants a header.
+   `NetworkHelper` also sends `Accept` and `Accept-Language` alongside the UA;
+   that's enough for naive UA-only checks, not for a real challenge.
 3. **Covers 403 offline and on some sources.** Coil fetches thumbnails without
    the source's headers (Referer / User-Agent), and nothing caches them, so a
    library entry shows a grey box offline. The reader already downloads pages
