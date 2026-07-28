@@ -26,9 +26,31 @@
          this the device can suspend mid-transfer with the screen off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Storage location. Downloads default to the app's own filesDir and need
+         none of these; they're what lets the user put downloads in a folder a
+         file manager can see, which survives uninstalling.
+
+         Three eras, because minSdk is 24:
+         - API 30+ uses MANAGE_EXTERNAL_STORAGE, granted on a system settings
+           page rather than a dialog. Google restricts it on Play; this app is
+           sideloaded from GitHub Releases, so that restriction doesn't apply.
+         - API 29 has scoped storage but honours requestLegacyExternalStorage
+           below, so the old runtime permission still works there.
+         - API 24-28 is the plain runtime permission.
+         The maxSdkVersion caps stop the older two being requested on versions
+         where they do nothing but sit in the app's permission list. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
         android:name=".App"
         android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Yomu"

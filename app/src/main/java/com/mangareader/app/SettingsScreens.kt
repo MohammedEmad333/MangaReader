@@ -1,6 +1,6 @@
 package com.mangareader.app
 
-import android.content.Intent
+import android.Manifest
 import android.net.Uri
 import android.os.Environment
 import android.os.StatFs
@@ -471,27 +471,66 @@ private fun DataSettings() {
     var message by remember { mutableStateOf<String?>(null) }
     val use = rememberStorageUse(tick)
 
-    var storageDir by remember { mutableStateOf(Backup.storageDir(context)) }
     var frequency by remember { mutableStateOf(Backup.frequency(context)) }
     var lastBackup by remember { mutableStateOf(Backup.lastBackupAt(context)) }
 
-    val dirPicker = rememberLauncherForActivityResult(
+    // Re-read on every entry rather than held: All files access is granted on a
+    // system screen this app doesn't own, and can be taken away on the same one
+    // while the app sits in the background.
+    var hasAccess by remember { mutableStateOf(StorageLocation.hasAccess(context)) }
+    var customDir by remember { mutableStateOf(StorageLocation.chosen(context)) }
+    var locationLabel by remember { mutableStateOf(StorageLocation.label(context)) }
+    var askAccess by remember { mutableStateOf(false) }
+    var pendingMove by remember { mutableStateOf<Pair<File, File>?>(null) }
+    var moving by remember { mutableStateOf(false) }
+
+    fun refreshLocation() {
+        StorageLocation.invalidate()
+        hasAccess = StorageLocation.hasAccess(context)
+        customDir = StorageLocation.chosen(context)
+        locationLabel = StorageLocation.label(context)
+    }
+
+    // API 30+: a system settings page, which returns no result — the answer is
+    // read back out of Environment when it closes, not from the result code.
+    val accessLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { refreshLocation() }
+
+    // API 29 and below, where it's still an ordinary runtime permission.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { refreshLocation() }
+
+    val treePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
-            // Both flags, and persistable: the worker writes into this folder
-            // hours from now, in a different process lifetime, with no Activity
-            // around to re-ask. Read alone would let it list and never write.
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
+            val target = StorageLocation.pathFromTreeUri(uri)
+            when {
+                target == null -> message =
+                    "That folder isn't on this device's storage. Pick one under " +
+                        "internal storage or an SD card \u2014 Drive and similar " +
+                        "providers have no path behind them."
+                !StorageLocation.ensureWritable(target) -> message =
+                    "Couldn't write to ${target.absolutePath}."
+                else -> {
+                    // Read before the switch: after set() the old base is gone,
+                    // and with it any way to find what needs moving.
+                    val previous = File(StorageLocation.base(context), StorageLocation.CHAPTERS)
+                    val existing = StorageLocation.chapterCount(StorageLocation.base(context))
+                    StorageLocation.set(context, target)
+                    refreshLocation()
+                    if (existing > 0) {
+                        pendingMove = previous to File(target, StorageLocation.CHAPTERS)
+                    }
+                }
             }
-            Backup.setStorageDir(context, uri)
-            storageDir = uri
         }
+    }
+
+    val chooseLocation: () -> Unit = {
+        if (StorageLocation.hasAccess(context)) treePicker.launch(null) else askAccess = true
     }
 
     val createPicker = rememberLauncherForActivityResult(
@@ -520,26 +559,55 @@ private fun DataSettings() {
     SettingsColumn {
         SectionHeader("Storage location")
         ListItem(
-            headlineContent = {
+            headlineContent = { Text(locationLabel) },
+            supportingContent = {
                 Text(
-                    storageDir?.let { Uri.decode(it.toString()).substringAfterLast(':') }
-                        ?: "Not set"
+                    if (moving) "Moving chapters\u2026"
+                    else "Chapter downloads and automatic backups"
                 )
             },
-            supportingContent = { Text("Where automatic backups are written") },
             trailingContent = {
-                TextButton(onClick = { dirPicker.launch(null) }) {
-                    Text(if (storageDir == null) "Choose" else "Change")
-                }
+                TextButton(enabled = !moving, onClick = chooseLocation) { Text("Change") }
             },
-            modifier = Modifier.clickable { dirPicker.launch(null) }
+            modifier = Modifier.clickable(enabled = !moving) { chooseLocation() }
         )
         HorizontalDivider()
+        if (customDir != null && !StorageLocation.active(context)) {
+            PrefNote(
+                "\u26a0 ${customDir?.absolutePath} can't be written to right now, so " +
+                    "downloads are going to app storage instead. Storage permission " +
+                    "revoked, or the card it's on isn't mounted."
+            )
+        }
+        if (customDir != null) {
+            ListItem(
+                headlineContent = { Text("Use app storage") },
+                supportingContent = { Text("Back to the default, inside the app") },
+                trailingContent = {
+                    TextButton(
+                        enabled = !moving,
+                        onClick = {
+                            val previous = File(
+                                StorageLocation.base(context),
+                                StorageLocation.CHAPTERS
+                            )
+                            val existing = StorageLocation.chapterCount(StorageLocation.base(context))
+                            StorageLocation.clear(context)
+                            refreshLocation()
+                            if (existing > 0) {
+                                pendingMove = previous to
+                                    File(StorageLocation.base(context), StorageLocation.CHAPTERS)
+                            }
+                        }
+                    ) { Text("Reset") }
+                }
+            )
+            HorizontalDivider()
+        }
         PrefNote(
-            "Backups only. Downloaded chapters stay in the app's own storage \u2014 " +
-                "moving those to a folder you pick is a larger change than it " +
-                "looks, because every read and write of a page would have to go " +
-                "through the document API instead of a file path."
+            "A folder outside the app is readable by a file manager and survives " +
+                "uninstalling. Anything inside app storage doesn't \u2014 uninstalling " +
+                "takes the downloads with it."
         )
 
         SectionHeader("Backup and restore")
@@ -576,8 +644,10 @@ private fun DataSettings() {
             )
         }
         PrefNote(
-            if (frequency != BackupFrequency.OFF && storageDir == null)
-                "Nothing will be written until a storage location is set above."
+            if (frequency != BackupFrequency.OFF && customDir == null)
+                "With the default location these land inside app storage, where a " +
+                    "file manager can't reach them \u2014 fine as a safety net, no use " +
+                    "for moving to another phone. Set a folder above for that."
             else
                 "Keeps the five most recent, then deletes the oldest. A backup " +
                     "holds the library, categories, history, read marks, resume " +
@@ -664,6 +734,72 @@ private fun DataSettings() {
         PrefNote(
             "The chapter cache is the only one the system can reclaim on its own. " +
                 "Clearing the cover cache just means covers are fetched again."
+        )
+    }
+
+    if (askAccess) {
+        AlertDialog(
+            onDismissRequest = { askAccess = false },
+            title = { Text("Allow access to storage?") },
+            text = {
+                Text(
+                    "To keep downloads in a folder you choose, Yomu needs " +
+                        "permission to manage files. Android grants this on its own " +
+                        "settings screen rather than in a dialog, so this opens that " +
+                        "screen \u2014 come back here afterwards and pick the folder."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    askAccess = false
+                    val intent = StorageLocation.accessIntent(context)
+                    if (intent != null) accessLauncher.launch(intent)
+                    else permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }) { Text("Open settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { askAccess = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    val move = pendingMove
+    if (move != null) {
+        AlertDialog(
+            onDismissRequest = { pendingMove = null },
+            title = { Text("Move existing downloads?") },
+            text = {
+                Text(
+                    "Chapters already downloaded are still in the old folder. Moving " +
+                        "them keeps them readable; leaving them means they stay on " +
+                        "disk taking up space but stop appearing in Downloads. On a " +
+                        "large library this takes a while, and moving to an SD card " +
+                        "is a copy rather than a rename, so give it time."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingMove = null
+                    moving = true
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            StorageLocation.move(move.first, move.second)
+                        }
+                        moving = false
+                        tick++
+                        message = result.fold(
+                            { moved ->
+                                if (moved == 0) "Nothing needed moving"
+                                else "Moved $moved chapter folders"
+                            },
+                            { "Move failed: ${it.message ?: it::class.java.simpleName}" }
+                        )
+                    }
+                }) { Text("Move") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingMove = null }) { Text("Leave them") }
+            }
         )
     }
 
