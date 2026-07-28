@@ -8,6 +8,7 @@ import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import eu.kanade.tachiyomi.network.AndroidCookieJar
+import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Request
@@ -28,17 +29,20 @@ import java.util.concurrent.atomic.AtomicReference
  * because it was already reading from there. All this class has to do is notice
  * the challenge, drive a WebView at it, and wait.
  *
- * **The User-Agent has to match.** `cf_clearance` is issued against the UA that
- * solved the challenge and is rejected if a later request presents a different
- * one. The WebView is therefore set to whatever UA the outgoing request carries,
- * which is why this interceptor must be added *after* the one in `NetworkHelper`
- * that fills the UA in.
+ * **The User-Agent has to match, and the WebView picks it.** `cf_clearance` is
+ * issued against the UA that solved the challenge and rejected if a later
+ * request presents a different one. This used to force the WebView to claim the
+ * app's default UA so they agreed; that default is a desktop Chrome string, and
+ * a challenge run inside an Android WebView weighs platform, touch and renderer
+ * alongside it. They contradicted each other and the challenge was unpassable.
+ * So the WebView now keeps its own UA and the winning string is recorded in
+ * [ClearanceUserAgents], which the UA interceptor consults per host.
  *
  * **What this does not do.** Cloudflare's interactive challenges — the ones with
  * a checkbox — cannot be solved by a WebView nobody can see. Those still fail,
- * and fail with the original 403 so the error message stays honest. Handling
- * them needs a visible WebView the user can tap, which is a UI change rather
- * than a networking one.
+ * and fail with the original 403 so the error message stays honest; the browse
+ * screen turns that into an "Open in WebView" button, which is where a human
+ * answers it.
  */
 class CloudflareInterceptor(
     private val context: Context,
@@ -62,7 +66,17 @@ class CloudflareInterceptor(
         if (!solved) return response
 
         response.close()
-        return chain.proceed(request)
+        // The UA interceptor ran *before* this one, so `request` still carries
+        // whatever UA was current when clearance didn't exist. Retrying with it
+        // would present a different string than the one that just passed and be
+        // rejected — the retry has to be rebuilt, not reused.
+        val earned = ClearanceUserAgents.get(context, request.url.host)
+        val retry = if (earned != null) {
+            request.newBuilder().header("User-Agent", earned).build()
+        } else {
+            request
+        }
+        return chain.proceed(retry)
     }
 
     private fun Response.isCloudflareChallenge(): Boolean =
@@ -94,10 +108,17 @@ class CloudflareInterceptor(
 
         if (hasClearance(origin)) return true
 
-        val userAgent = request.header("User-Agent") ?: userAgentProvider()
-        // The WebView is created on the main thread and torn down from this one,
-        // so the reference crosses threads and needs to actually be published.
+        // Deliberately *not* set to the outgoing request's UA any more.
+        //
+        // Doing that was the bug: the app's default claims desktop Windows
+        // Chrome, and a challenge evaluated inside an Android WebView reads
+        // platform, touch support and renderer as well as the UA string. Those
+        // contradict it, which is exactly what a challenge is for, so it was
+        // never passable — the visible version of this looped on the checkbox
+        // indefinitely. The WebView's own UA is the one it can defend, and
+        // whatever passes gets recorded so OkHttp presents the same thing.
         val webView = AtomicReference<WebView?>(null)
+        val solvedWith = AtomicReference<String?>(null)
 
         handler.post {
             runCatching {
@@ -106,8 +127,8 @@ class CloudflareInterceptor(
                 view.settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
-                    userAgentString = userAgent
                 }
+                solvedWith.set(view.settings.userAgentString ?: userAgentProvider())
                 CookieManager.getInstance().apply {
                     setAcceptCookie(true)
                     setAcceptThirdPartyCookies(view, true)
@@ -144,6 +165,14 @@ class CloudflareInterceptor(
             }
         }
         runCatching { CookieManager.getInstance().flush() }
+
+        if (solved) {
+            // Recorded before returning, because the retry in intercept() reads
+            // it back immediately.
+            solvedWith.get()?.let { ua ->
+                runCatching { ClearanceUserAgents.set(context, origin.host, ua) }
+            }
+        }
 
         return solved
     }

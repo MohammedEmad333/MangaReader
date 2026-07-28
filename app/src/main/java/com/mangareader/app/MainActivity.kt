@@ -51,7 +51,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
-import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -212,11 +211,10 @@ fun YomuApp() {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Non-null while the user is answering a Cloudflare challenge by hand. The
-    // UA is carried alongside the URL because clearance is bound to it, and the
-    // source that needs it can be released before the WebView is done with it.
+    // Non-null while the user is answering a Cloudflare challenge by hand. No UA
+    // travels with it: the WebView presents its own and records what passed, so
+    // the caller has nothing to decide.
     var challengeUrl by remember { mutableStateOf<String?>(null) }
-    var challengeUserAgent by remember { mutableStateOf(NetworkHelper.DEFAULT_USER_AGENT) }
 
     // bumped whenever a read flag / resume position changes, to re-read prefs in lists
     var readTick by remember { mutableIntStateOf(0) }
@@ -710,7 +708,6 @@ fun YomuApp() {
         // anything at the top of this chain.
         ChallengeWebViewScreen(
             url = challenge,
-            userAgent = challengeUserAgent,
             onSolved = {
                 challengeUrl = null
                 // Re-run whatever was on screen. The clearance cookie is in the
@@ -846,8 +843,6 @@ fun YomuApp() {
         // block, so a lambda there has to be wrapped in a second pair and reads
         // like a typo. An anonymous function is the same value with no ambiguity.
         val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
-            challengeUserAgent = activeSource?.siteUserAgent()
-                ?: NetworkHelper.DEFAULT_USER_AGENT
             challengeUrl = site
         }
         LibraryScreen(
@@ -1022,18 +1017,3 @@ private fun Source.siteUrl(): String? =
     ((this as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource)
         ?.baseUrl
         ?.takeIf { it.isNotBlank() }
-
-/**
- * The User-Agent this source's requests actually carry.
- *
- * Extensions are free to set their own in `headersBuilder()`, and a good few do.
- * Clearance earned under a different UA is rejected, so the WebView has to be
- * told the source's, not the app's — falling back to the app default only when
- * the extension didn't set one, which is the case where OkHttp fills in the same
- * value anyway.
- */
-private fun Source.siteUserAgent(): String =
-    ((this as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource)
-        ?.headers?.get("User-Agent")
-        ?.takeIf { it.isNotBlank() }
-        ?: NetworkHelper.DEFAULT_USER_AGENT
