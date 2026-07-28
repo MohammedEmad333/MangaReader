@@ -874,6 +874,16 @@ fun YomuApp() {
                 Downloads.delete(context, ch.id)
                 downloadTick++
             },
+            // Explicit value rather than a toggle: a bulk "mark read" over a
+            // mixed selection has to end with everything read, and toggling each
+            // would flip half of them the wrong way. One readTick bump for the
+            // whole batch, not one per chapter.
+            onSetRead = { list, value ->
+                list.forEach {
+                    ReadState.setRead(context, chapterKeyOf(activeSourceId ?: "", it), value)
+                }
+                readTick++
+            },
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,
