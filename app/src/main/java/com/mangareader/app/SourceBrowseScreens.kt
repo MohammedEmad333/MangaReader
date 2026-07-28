@@ -82,6 +82,8 @@ internal fun LibraryScreen(
     error: String?,
     supportsSearch: Boolean,
     supportsLatest: Boolean,
+    supportsFilters: Boolean,
+    onOpenFilters: () -> Unit,
     mode: BrowseMode,
     onModeChange: (BrowseMode) -> Unit,
     query: String,
@@ -185,24 +187,37 @@ internal fun LibraryScreen(
 
         // Only where there's a choice to make. A source declaring supportsLatest
         // false would show two chips that fetch the same listing.
-        if (supportsLatest) {
+        if (supportsLatest || supportsFilters) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Neither reads as selected while a search is showing: the grid
-                // is neither listing at that point, and claiming otherwise is the
-                // kind of small lie that makes a screen feel broken.
-                FilterChip(
-                    selected = query.isBlank() && mode == BrowseMode.POPULAR,
-                    onClick = { onModeChange(BrowseMode.POPULAR) },
-                    label = { Text("Popular") }
-                )
-                FilterChip(
-                    selected = query.isBlank() && mode == BrowseMode.LATEST,
-                    onClick = { onModeChange(BrowseMode.LATEST) },
-                    label = { Text("Latest") }
-                )
+                if (supportsLatest) {
+                    // Neither reads as selected while a search is showing: the
+                    // grid is neither listing at that point, and claiming
+                    // otherwise is the kind of small lie that makes a screen
+                    // feel broken.
+                    FilterChip(
+                        selected = query.isBlank() && mode == BrowseMode.POPULAR,
+                        onClick = { onModeChange(BrowseMode.POPULAR) },
+                        label = { Text("Popular") }
+                    )
+                    FilterChip(
+                        selected = query.isBlank() && mode == BrowseMode.LATEST,
+                        onClick = { onModeChange(BrowseMode.LATEST) },
+                        label = { Text("Latest") }
+                    )
+                }
+                if (supportsFilters) {
+                    // Opens the sheet rather than switching listing directly:
+                    // it only becomes the active listing once something is
+                    // applied, so it reads as selected but isn't a mode toggle.
+                    FilterChip(
+                        selected = query.isBlank() && mode == BrowseMode.FILTER,
+                        onClick = { onOpenFilters() },
+                        label = { Text("Filter") }
+                    )
+                }
             }
         }
 

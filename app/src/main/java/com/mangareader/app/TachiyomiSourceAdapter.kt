@@ -65,6 +65,35 @@ class TachiyomiSourceAdapter(
     override val supportsLatest: Boolean =
         runCatching { delegate.supportsLatest }.getOrDefault(false)
 
+    override val supportsFilters: Boolean get() = filterList.isNotEmpty()
+
+    // ---- filters ----
+    //
+    // Held as ONE live instance, and that is the whole subtlety. Tachiyomi's
+    // `Filter` keeps its value in a mutable `state` property, so the list the
+    // dialog edits has to be the same list the search reads. Calling
+    // getFilterList() again returns a fresh set of defaults and would silently
+    // throw away everything the user picked, which looks like filters that
+    // simply don't work.
+    //
+    // Built lazily because it's a call into extension code and there are 95
+    // sources; nothing should pay for it until someone opens the filter sheet.
+
+    @Volatile
+    private var cachedFilters: FilterList? = null
+
+    val filterList: FilterList
+        get() = cachedFilters ?: synchronized(this) {
+            cachedFilters ?: runCatching { delegate.getFilterList() }
+                .getOrDefault(FilterList())
+                .also { cachedFilters = it }
+        }
+
+    /** Drops the instance; the next read rebuilds it at the source's defaults. */
+    fun resetFilters() {
+        cachedFilters = null
+    }
+
     override val supportsDownload: Boolean = true
 
     /** First page of popular, for callers that just want a quick look. */
@@ -80,7 +109,10 @@ class TachiyomiSourceAdapter(
 
     override suspend fun searchSeries(query: String, page: Int): SeriesPage =
         withContext(Dispatchers.IO) {
-            delegate.getSearchManga(page, query, FilterList()).toSeriesPage()
+            // The live list, not a fresh FilterList(): a typed query and the
+            // filter sheet compose rather than replace each other, which is what
+            // Tachiyomi's own UI does.
+            delegate.getSearchManga(page, query, filterList).toSeriesPage()
         }
 
     /** Pulls the source-relative url back out of an id built by [toSeries]. */
