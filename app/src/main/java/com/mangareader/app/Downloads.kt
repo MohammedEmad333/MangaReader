@@ -83,12 +83,35 @@ object Downloads {
     fun cacheDirFor(context: Context, chapterId: String): File =
         File(context.applicationContext.cacheDir, "pages/${hashOf(chapterId)}")
 
+    // Answered from memory after the first look.
+    //
+    // This is called once per chapter row, and rows are re-composed every time
+    // they scroll back into view, so it runs constantly while a long chapter
+    // list moves. Each call is several filesystem stats — dirFor() probes the
+    // tree path and then every legacy root — against external storage, where
+    // every stat crosses the FUSE layer. A 171-chapter list scrolls past
+    // hundreds of them a second, on the main thread.
+    //
+    // Every path that changes a chapter's files invalidates this, and it's
+    // deliberately a whole-map drop rather than per-key removal: deleteAll and a
+    // reorganise move everything, and being wrong about a download's existence
+    // is worse than re-statting.
+    private val completion = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** Drops the memo. For anything that moves or removes files in bulk. */
+    fun invalidateCompletion() {
+        completion.clear()
+    }
+
     fun isComplete(context: Context, chapterId: String): Boolean =
-        File(dirFor(context, chapterId), MARKER).exists()
+        completion.getOrPut(chapterId) {
+            File(dirFor(context, chapterId), MARKER).exists()
+        }
 
     fun markComplete(context: Context, chapterId: String, pageCount: Int) {
         val dir = dirFor(context, chapterId)
         if (!dir.exists()) return
+        completion.remove(chapterId)
         runCatching { File(dir, MARKER).writeText(pageCount.toString()) }
         // Makes the tree self-describing. The folder name is for the user; this
         // is what lets DownloadPaths.rebuild recover the mapping by scanning,
@@ -109,6 +132,7 @@ object Downloads {
 
     fun delete(context: Context, chapterId: String) {
         val dir = dirFor(context, chapterId)
+        completion.remove(chapterId)
         runCatching { dir.deleteRecursively() }
         pruneEmptyParents(context, dir)
         DownloadPaths.forget(context, chapterId)
@@ -136,6 +160,7 @@ object Downloads {
     }
 
     fun deleteAll(context: Context) {
+        invalidateCompletion()
         roots(context).forEach { runCatching { it.deleteRecursively() } }
         DownloadPaths.clear(context)
     }

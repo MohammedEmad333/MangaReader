@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -131,13 +132,32 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
  * the LazyColumn actually composes, so a 95-source list doesn't load 95 icons.
  */
 @Composable
+/** Cached miss, so a package without an icon isn't looked up again either. */
+private object NoIcon
+
+private val iconCache = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+/**
+ * An extension's launcher icon, loaded once per process.
+ *
+ * `remember(pkgName)` only holds it for as long as the row is composed, and a
+ * `LazyColumn` throws rows away the moment they leave the screen — so scrolling
+ * the sources list re-ran `getApplicationIcon` continuously. That call is an IPC
+ * to the package manager plus opening another APK's resources, on the main
+ * thread, and there are over a thousand extensions in that list.
+ */
+private fun extensionIcon(context: Context, pkgName: String): Drawable? {
+    iconCache[pkgName]?.let { return if (it === NoIcon) null else it as Drawable }
+    val loaded = runCatching {
+        context.applicationContext.packageManager.getApplicationIcon(pkgName)
+    }.getOrNull()
+    iconCache[pkgName] = loaded ?: NoIcon
+    return loaded
+}
+
 internal fun SourceIcon(pkgName: String?, fallback: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val icon = remember(pkgName) {
-        pkgName?.let {
-            runCatching { context.packageManager.getApplicationIcon(it) }.getOrNull()
-        }
-    }
+    val icon = remember(pkgName) { pkgName?.let { extensionIcon(context, it) } }
     Surface(
         modifier = modifier.size(40.dp),
         shape = MaterialTheme.shapes.small,

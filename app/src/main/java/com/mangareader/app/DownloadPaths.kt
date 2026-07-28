@@ -283,6 +283,9 @@ internal data class ReorganiseReport(
  * Not suspend, but it walks and copies directories: call it off the main thread.
  */
 internal fun reorganiseDownloads(context: Context): Result<ReorganiseReport> = runCatching {
+    // Every chapter folder is about to move, so anything remembered about where
+    // they were is now wrong.
+    Downloads.invalidateCompletion()
     // Resolved once. Classloading 26 extension APKs per chapter would dominate
     // the run, and the cache behind this returns the same list anyway.
     val sourceNames = runCatching {
