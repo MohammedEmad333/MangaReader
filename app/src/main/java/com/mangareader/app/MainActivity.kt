@@ -182,6 +182,7 @@ fun YomuApp() {
     var browseQuery by remember { mutableStateOf("") }
     var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
     var filtersOpen by remember { mutableStateOf(false) }
+    var probeOpen by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
@@ -945,6 +946,7 @@ fun YomuApp() {
             supportsLatest = activeSource!!.supportsLatest,
             supportsFilters = activeSource!!.supportsFilters,
             onOpenFilters = { filtersOpen = true },
+            onDiagnose = { probeOpen = true },
             mode = browseMode,
             onModeChange = { m -> activeSource?.let { openSource(it, "", m) } },
             query = browseQuery,
@@ -1088,6 +1090,11 @@ fun YomuApp() {
                 }
             }
         }
+    }
+
+    val probeSourceRef = activeSource
+    if (probeOpen && probeSourceRef != null) {
+        NetworkProbeDialog(source = probeSourceRef, onDismiss = { probeOpen = false })
     }
 
     val filterSource = activeSource

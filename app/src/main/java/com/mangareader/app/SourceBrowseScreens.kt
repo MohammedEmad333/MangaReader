@@ -84,6 +84,7 @@ internal fun LibraryScreen(
     supportsLatest: Boolean,
     supportsFilters: Boolean,
     onOpenFilters: () -> Unit,
+    onDiagnose: () -> Unit,
     mode: BrowseMode,
     onModeChange: (BrowseMode) -> Unit,
     query: String,
@@ -180,6 +181,18 @@ internal fun LibraryScreen(
                                 }
                             )
                         }
+                        HorizontalDivider()
+                        // Lives here rather than on the error banner because the
+                        // question it answers \u2014 what is this source actually
+                        // returning \u2014 is worth asking when nothing looks wrong
+                        // too. An empty grid and a 403 are the same mystery.
+                        DropdownMenuItem(
+                            text = { Text("Connection probe") },
+                            onClick = {
+                                viewMenuOpen = false
+                                onDiagnose()
+                            }
+                        )
                     }
                 }
             }
