@@ -113,14 +113,20 @@ object Library {
      * pointing at a loopback address, which an import from another device's
      * self-hosted source leaves behind and which can never load here.
      */
-    fun healCover(context: Context, seriesId: String, cover: String) {
-        if (cover.isBlank() || isLoopback(cover)) return
+    fun healCover(context: Context, seriesId: String, cover: Any?) {
+        // Series.cover is Any? — a URL string from an extension, a File from the
+        // local folder — while an entry stores a String. This is the same
+        // narrowing LibraryScreens does where it builds one.
+        val text = (cover as? String)
+            ?: (cover as? java.io.File)?.absolutePath
+            ?: return
+        if (text.isBlank() || isLoopback(text)) return
         val items = list(context)
         val index = items.indexOfFirst { it.seriesId == seriesId }
         if (index < 0) return
         val current = items[index].cover
         if (current.isNotBlank() && !isLoopback(current)) return
-        save(context, items.toMutableList().also { it[index] = it[index].copy(cover = cover) })
+        save(context, items.toMutableList().also { it[index] = it[index].copy(cover = text) })
     }
 
     /** Removes the series and clears its category assignments. */
