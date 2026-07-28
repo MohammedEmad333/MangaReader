@@ -84,7 +84,13 @@ internal fun LibraryTab(
     val shown = remember(entries, activeCategory, libraryTick) {
         val cat = activeCategory
         if (cat == null) entries
-        else entries.filter { Categories.categoriesFor(context, it.seriesId).contains(cat) }
+        else {
+            // One lookup of the category's members, then a set test per entry.
+            // The obvious spelling — categoriesFor(entry) for each entry — is a
+            // full JSON parse per series and locks the app up on a large library.
+            val ids = Categories.seriesIn(context, cat)
+            entries.filter { it.seriesId in ids }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {

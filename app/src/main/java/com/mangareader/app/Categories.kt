@@ -84,15 +84,65 @@ object Categories {
             if (kept.length() > 0) cleaned.put(key, kept)
         }
         prefs(context).edit().putString(KEY_ASSIGN, cleaned.toString()).apply()
+        invalidateAssignments()
+    }
+
+    // Parsing this map is cheap once and ruinous several thousand times.
+    // Filtering the library by category called categoriesFor() per entry, and
+    // each of those re-parsed the whole assignment object — fine at forty
+    // series, an unresponsive app at four thousand.
+    //
+    // Keyed on the raw string rather than a dirty flag, so a write from
+    // anywhere invalidates it, including a restore that replaces the prefs
+    // wholesale. SharedPreferences hands back the same String instance for
+    // repeated reads, so the comparison is a reference check in practice.
+    @Volatile
+    private var assignRaw: String? = null
+
+    @Volatile
+    private var assignCache: JSONObject? = null
+
+    private fun invalidateAssignments() {
+        assignRaw = null
+        assignCache = null
     }
 
     private fun assignments(context: Context): JSONObject {
         val raw = prefs(context).getString(KEY_ASSIGN, null) ?: return JSONObject()
+        val hit = assignCache
+        if (hit != null && assignRaw == raw) return hit
         return try {
-            JSONObject(raw)
+            JSONObject(raw).also {
+                assignCache = it
+                assignRaw = raw
+            }
         } catch (e: Exception) {
             JSONObject()
         }
+    }
+
+    /**
+     * Every series id in [catId], in one parse.
+     *
+     * The filter this replaces asked the question the other way round — for each
+     * series, which categories is it in — which is the same answer and O(n)
+     * parses to get it.
+     */
+    fun seriesIn(context: Context, catId: String): Set<String> {
+        val map = assignments(context)
+        val out = HashSet<String>()
+        val keys = map.keys()
+        while (keys.hasNext()) {
+            val seriesId = keys.next()
+            val arr = map.optJSONArray(seriesId) ?: continue
+            for (i in 0 until arr.length()) {
+                if (arr.optString(i) == catId) {
+                    out.add(seriesId)
+                    break
+                }
+            }
+        }
+        return out
     }
 
     fun categoriesFor(context: Context, seriesId: String): Set<String> {
@@ -112,5 +162,6 @@ object Categories {
             map.put(seriesId, arr)
         }
         prefs(context).edit().putString(KEY_ASSIGN, map.toString()).apply()
+        invalidateAssignments()
     }
 }

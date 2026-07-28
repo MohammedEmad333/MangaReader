@@ -458,6 +458,12 @@ fun YomuApp() {
             }.getOrNull()
             if (enriched != null && activeSeries?.id == series.id) {
                 activeSeries = enriched
+                // An imported entry can arrive without a cover, because the
+                // backup's was unusable here. This is the first moment the real
+                // one is known. No-op once a cover is stored.
+                withContext(Dispatchers.IO) {
+                    Library.healCover(context, series.id, enriched.cover)
+                }
             }
         }
     }
