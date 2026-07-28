@@ -9,7 +9,7 @@ data class SeriesPage(
 )
 
 /** Which listing the per-source browse screen is showing. */
-enum class BrowseMode { POPULAR, LATEST }
+enum class BrowseMode { POPULAR, LATEST, FILTER }
 
 /**
  * A source of manga. Today: the local folder and Tachiyomi extension APKs.
@@ -101,6 +101,9 @@ interface Source {
      */
     val supportsLatest: Boolean get() = false
 
+    /** Whether this source declares any filters worth showing. */
+    val supportsFilters: Boolean get() = false
+
     /** Whether [browseSeries] can return more than one page. */
     val supportsPaging: Boolean get() = false
 
@@ -125,6 +128,15 @@ interface Source {
      * catalogue, not nothing.
      */
     suspend fun latestSeries(page: Int): SeriesPage = browseSeries(page)
+
+    /**
+     * Browse using whatever filters are currently set on the source.
+     *
+     * An empty query rather than a separate call, because Tachiyomi's
+     * `getSearchManga(page, query, filters)` is the one entry point that takes
+     * filters at all \u2014 a filtered browse *is* a search with nothing typed.
+     */
+    suspend fun filteredSeries(page: Int): SeriesPage = searchSeries("", page)
 
     suspend fun searchSeries(query: String, page: Int): SeriesPage {
         if (page > 1) return SeriesPage(emptyList(), hasNext = false)

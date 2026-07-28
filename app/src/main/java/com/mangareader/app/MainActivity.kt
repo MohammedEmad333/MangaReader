@@ -181,6 +181,7 @@ fun YomuApp() {
     var browseHasNext by remember { mutableStateOf(false) }
     var browseQuery by remember { mutableStateOf("") }
     var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
+    var filtersOpen by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
@@ -283,6 +284,7 @@ fun YomuApp() {
                     when {
                         query.isNotBlank() -> source.searchSeries(query, 1)
                         mode == BrowseMode.LATEST -> source.latestSeries(1)
+                        mode == BrowseMode.FILTER -> source.filteredSeries(1)
                         else -> source.browseSeries(1)
                     }
                 }
@@ -308,6 +310,7 @@ fun YomuApp() {
                     when {
                         browseQuery.isNotBlank() -> source.searchSeries(browseQuery, next)
                         browseMode == BrowseMode.LATEST -> source.latestSeries(next)
+                        browseMode == BrowseMode.FILTER -> source.filteredSeries(next)
                         else -> source.browseSeries(next)
                     }
                 }
@@ -940,6 +943,8 @@ fun YomuApp() {
             error = errorMessage,
             supportsSearch = activeSource!!.supportsSearch,
             supportsLatest = activeSource!!.supportsLatest,
+            supportsFilters = activeSource!!.supportsFilters,
+            onOpenFilters = { filtersOpen = true },
             mode = browseMode,
             onModeChange = { m -> activeSource?.let { openSource(it, "", m) } },
             query = browseQuery,
@@ -1083,6 +1088,21 @@ fun YomuApp() {
                 }
             }
         }
+    }
+
+    val filterSource = activeSource
+    if (filtersOpen && filterSource != null) {
+        SourceFilterDialog(
+            source = filterSource,
+            onApply = {
+                filtersOpen = false
+                // Re-runs the listing as a filtered search from page 1. The
+                // filters themselves live on the adapter, so nothing about them
+                // has to be carried through here.
+                openSource(filterSource, "", BrowseMode.FILTER)
+            },
+            onDismiss = { filtersOpen = false }
+        )
     }
 
     val editing = editingConfig

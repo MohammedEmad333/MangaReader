@@ -192,6 +192,33 @@ internal fun SectionHeader(text: String) {
     )
 }
 
+/**
+ * Plain-language gloss for the HTTP codes that mean something specific.
+ *
+ * `HttpException` renders as \u201cHTTP error 522\u201d, which is accurate and tells
+ * nobody anything. The 52x family in particular is worth naming: those are
+ * Cloudflare saying it couldn\u2019t reach the site\u2019s own server, so the source is
+ * down and no amount of retrying, clearing cookies or reinstalling the extension
+ * will change it. Without that, a dead site looks exactly like a broken app.
+ *
+ * Matched on the message because that\u2019s all that survives \u2014 the code is
+ * formatted into a string in `:source-api` and the exception type is gone by the
+ * time an error reaches a screen.
+ */
+private fun httpHint(error: String): String? {
+    val code = Regex("""HTTP error (\d{3})""")
+        .find(error)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: return null
+    return when (code) {
+        429 -> "Too many requests \u2014 the source is rate-limiting. Wait a minute, then retry."
+        500, 502, 503 ->
+            "The source\u2019s server is erroring or overloaded. Nothing to fix here; try later."
+        504, 520, 521, 522, 523, 524 ->
+            "Cloudflare couldn\u2019t reach the source\u2019s own server. The site is down, not " +
+                "the app \u2014 wait, or use another source."
+        else -> null
+    }
+}
+
 /** The 18+ marker shown next to adult sources, matching the extension index flag. */
 @Composable
 internal fun NsfwBadge() {
@@ -223,6 +250,15 @@ internal fun ErrorBanner(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall
         )
+        val hint = httpHint(error)
+        if (hint != null) {
+            Text(
+                text = hint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
         if (actionLabel != null && onAction != null) {
             TextButton(
                 onClick = onAction,
