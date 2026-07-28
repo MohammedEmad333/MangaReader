@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
-import okhttp3.Protocol
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -22,19 +21,36 @@ class NetworkHelper(context: Context) {
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
-        // HTTP/1.1 only, deliberately.
+        // HTTP/1.1 was forced here, globally, and has been removed. The history
+        // is worth keeping because both halves of it are instructive.
         //
-        // Under HTTP/2 okhttp multiplexes several requests onto one connection,
-        // and at least one CDN in use (cdn.manhwatoon.me) rejects a share of
-        // those streams with a bare 400 — a minority of pages of any chapter,
-        // well-formed URLs, and the very same URL succeeding later on a fresh
-        // connection. Retrying in place doesn't help because the retry lands on
-        // the same connection; dropping to 1.1 gives each concurrent request its
-        // own connection and the failures go away.
+        // It went in for cdn.manhwatoon.me, which rejects a share of multiplexed
+        // HTTP/2 streams with a bare 400. Dropping to 1.1 gave each concurrent
+        // request its own connection and took that source's failure rate from
+        // 33% to 18% — a real improvement, and never a fix. Three more attempts
+        // followed. The handoff's §0 has said for a while that the next move is
+        // to read the 400 response body rather than tune this further; the
+        // connection probe added in 0.38 can now do exactly that.
         //
-        // The cost is losing multiplexing. At this app's request volume that's
-        // not measurable, and it's a one-line revert if a future source needs it.
-        .protocols(listOf(Protocol.HTTP_1_1))
+        // What it cost, meanwhile, was invisible until something measured it.
+        // The client announces itself as Chrome on Android — via
+        // ClearanceUserAgents, deliberately, so that Cloudflare clearance earned
+        // in a WebView is honoured — and then could not negotiate h2, which real
+        // Chrome always does. A client whose claimed identity contradicts its
+        // observed behaviour is precisely what bot detection exists to catch,
+        // and §5 already has a section about this app making that exact mistake
+        // with User-Agents. Same error, one layer down.
+        //
+        // The symptom: allporncomic.com answered 200 to one phone and
+        // `cf-mitigated: challenge` to another, where the only difference was
+        // that the second is a tablet whose WebView UA omits the `Mobile` token
+        // — so it claimed desktop Chrome over HTTP/1.1, a sharper contradiction
+        // than mobile Chrome over HTTP/1.1. Neither phone could solve it, because
+        // the WebView was never challenged and so no clearance was ever issued.
+        //
+        // If manhwatoon regresses, do NOT put this line back without first
+        // probing it. Restoring it re-breaks the challenge path for every other
+        // source to buy back a fix that never worked.
         .cache(
             Cache(
                 directory = File(context.cacheDir, "network_cache"),
