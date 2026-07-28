@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -80,6 +81,9 @@ internal fun LibraryScreen(
     loading: Boolean,
     error: String?,
     supportsSearch: Boolean,
+    supportsLatest: Boolean,
+    mode: BrowseMode,
+    onModeChange: (BrowseMode) -> Unit,
     query: String,
     hasNext: Boolean,
     loadingMore: Boolean,
@@ -98,6 +102,13 @@ internal fun LibraryScreen(
     BackHandler { onBack() }
     val context = LocalContext.current
     var searchField by remember(query) { mutableStateOf(query) }
+    // Opens itself when a search is already running, so returning to a screen
+    // showing results doesn't hide the field that produced them.
+    var searchOpen by remember(title) { mutableStateOf(query.isNotBlank()) }
+    var viewMenuOpen by remember { mutableStateOf(false) }
+    var view by remember {
+        mutableStateOf(BrowseView.from(prefs(context).getString(KEY_BROWSE_VIEW, null)))
+    }
     val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
         "small" -> 88.dp
         "large" -> 140.dp
@@ -118,9 +129,84 @@ internal fun LibraryScreen(
         TopAppBar(
             title = { Text(title) },
             navigationIcon = { BackButton(onBack) },
-            actions = { TextButton(onClick = onRescan) { Text("Rescan") } }
+            actions = {
+                if (supportsSearch) {
+                    IconButton(onClick = {
+                        // Closing while a search is live clears it, because the
+                        // grid underneath is showing results and hiding the field
+                        // would leave no way to tell that from the catalogue.
+                        if (searchOpen && query.isNotBlank()) {
+                            searchField = ""
+                            onSearch("")
+                        }
+                        searchOpen = !searchOpen
+                    }) {
+                        Icon(
+                            if (searchOpen) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = if (searchOpen) "Close search" else "Search"
+                        )
+                    }
+                }
+                IconButton(onClick = onRescan) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                }
+                Box {
+                    IconButton(onClick = { viewMenuOpen = true }) {
+                        // MoreVert, not a grid glyph: `material-icons-core` has no
+                        // grid_view, and `Icons.Filled.List` is the one icon this
+                        // repo refuses to import because it puts a property named
+                        // `List` in file scope next to `List<Foo>` type usages.
+                        Icon(Icons.Default.MoreVert, contentDescription = "View options")
+                    }
+                    DropdownMenu(
+                        expanded = viewMenuOpen,
+                        onDismissRequest = { viewMenuOpen = false }
+                    ) {
+                        BrowseView.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                trailingIcon = {
+                                    if (option == view) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    view = option
+                                    prefs(context).edit()
+                                        .putString(KEY_BROWSE_VIEW, option.key).apply()
+                                    viewMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         )
-        if (supportsSearch) {
+
+        // Only where there's a choice to make. A source declaring supportsLatest
+        // false would show two chips that fetch the same listing.
+        if (supportsLatest) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Neither reads as selected while a search is showing: the grid
+                // is neither listing at that point, and claiming otherwise is the
+                // kind of small lie that makes a screen feel broken.
+                FilterChip(
+                    selected = query.isBlank() && mode == BrowseMode.POPULAR,
+                    onClick = { onModeChange(BrowseMode.POPULAR) },
+                    label = { Text("Popular") }
+                )
+                FilterChip(
+                    selected = query.isBlank() && mode == BrowseMode.LATEST,
+                    onClick = { onModeChange(BrowseMode.LATEST) },
+                    label = { Text("Latest") }
+                )
+            }
+        }
+
+        if (supportsSearch && searchOpen) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,32 +293,20 @@ internal fun LibraryScreen(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = coverMinDp),
+                // List is the same grid with one column, so paging, the empty
+                // state and "Load more" stay on one code path instead of two.
+                columns = if (view == BrowseView.LIST) GridCells.Fixed(1)
+                else GridCells.Adaptive(minSize = coverMinDp),
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),
                 contentPadding = PaddingValues(6.dp)
             ) {
                 items(shown) { s ->
-                    Column(
-                        modifier = Modifier
-                            .padding(6.dp)
-                            .clickable { onOpen(s) }
-                    ) {
-                        CoverImage(
-                            cover = s.cover,
-                            title = s.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
-                        )
-                        Text(
-                            text = s.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
+                    when (view) {
+                        BrowseView.COMFORTABLE -> ComfortableCell(s, onOpen)
+                        BrowseView.COMPACT -> CompactCell(s, onOpen)
+                        BrowseView.LIST -> ListRow(s, onOpen)
                     }
                 }
 
@@ -666,6 +740,116 @@ internal fun SeriesScreen(
                 inLibrary = true
                 onLibraryChanged()
             }
+        )
+    }
+}
+
+private const val KEY_BROWSE_VIEW = "browse_view"
+
+/**
+ * How the browse grid draws a result.
+ *
+ * Mihon's three, and they answer different questions: Comfortable is for
+ * reading titles you don't know, Compact fits roughly a third more covers on
+ * screen for a library you recognise by art, and List is the only one that shows
+ * a long title in full. The choice is global rather than per-source \u2014 it's
+ * about the screen and the eyes in front of it, not about the catalogue.
+ */
+internal enum class BrowseView(val key: String, val label: String) {
+    COMFORTABLE("comfortable", "Comfortable grid"),
+    COMPACT("compact", "Compact grid"),
+    LIST("list", "List");
+
+    companion object {
+        fun from(key: String?) = entries.firstOrNull { it.key == key } ?: COMFORTABLE
+    }
+}
+
+/** Cover with the title underneath it. */
+@Composable
+private fun ComfortableCell(series: Series, onOpen: (Series) -> Unit) {
+    Column(
+        modifier = Modifier
+            .padding(6.dp)
+            .clickable { onOpen(series) }
+    ) {
+        CoverImage(
+            cover = series.cover,
+            title = series.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f)
+        )
+        Text(
+            text = series.title,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+/** Cover with the title over it, under a scrim. */
+@Composable
+private fun CompactCell(series: Series, onOpen: (Series) -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(6.dp)
+            .clickable { onOpen(series) }
+    ) {
+        CoverImage(
+            cover = series.cover,
+            title = series.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f)
+        )
+        // The scrim isn't decoration. Covers are arbitrary artwork and a title
+        // drawn straight onto a pale one is unreadable; the gradient is what
+        // makes white text safe over anything.
+        Text(
+            text = series.title,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                    )
+                )
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/** One row: small cover, full title. */
+@Composable
+private fun ListRow(series: Series, onOpen: (Series) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen(series) }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CoverImage(
+            cover = series.cover,
+            title = series.title,
+            modifier = Modifier
+                .width(44.dp)
+                .aspectRatio(0.7f)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = series.title,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

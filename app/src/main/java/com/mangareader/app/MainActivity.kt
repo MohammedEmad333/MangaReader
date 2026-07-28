@@ -180,6 +180,7 @@ fun YomuApp() {
     var browsePage by remember { mutableIntStateOf(1) }
     var browseHasNext by remember { mutableStateOf(false) }
     var browseQuery by remember { mutableStateOf("") }
+    var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
     var loadingMore by remember { mutableStateOf(false) }
     var activeSeries by remember { mutableStateOf<Series?>(null) }
     var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
@@ -258,7 +259,13 @@ fun YomuApp() {
     }
 
     /** Loads page 1 of a source, either the catalogue or a search. */
-    fun openSource(source: Source, query: String = "") {
+    // `mode` defaults to POPULAR rather than to the current value on purpose:
+    // opening a different source should start at its catalogue, and a stale
+    // LATEST carried over from the last source would land on a listing the new
+    // one may not even have. Callers that are *re-running* the same screen —
+    // rescan, clearing a search, retrying after a solved challenge — pass the
+    // current mode explicitly.
+    fun openSource(source: Source, query: String = "", mode: BrowseMode = BrowseMode.POPULAR) {
         activeSourceId = source.id
         activeSource = source
         // Feeds the "Last used" section at the top of the Sources list.
@@ -267,13 +274,17 @@ fun YomuApp() {
         browsePage = 1
         browseHasNext = false
         browseQuery = query
+        browseMode = mode
         errorMessage = null
         scope.launch {
             isLoading = true
             try {
                 val page = withContext(Dispatchers.IO) {
-                    if (query.isBlank()) source.browseSeries(1)
-                    else source.searchSeries(query, 1)
+                    when {
+                        query.isNotBlank() -> source.searchSeries(query, 1)
+                        mode == BrowseMode.LATEST -> source.latestSeries(1)
+                        else -> source.browseSeries(1)
+                    }
                 }
                 seriesList = page.series
                 browseHasNext = page.hasNext
@@ -294,8 +305,11 @@ fun YomuApp() {
             val next = browsePage + 1
             try {
                 val page = withContext(Dispatchers.IO) {
-                    if (browseQuery.isBlank()) source.browseSeries(next)
-                    else source.searchSeries(browseQuery, next)
+                    when {
+                        browseQuery.isNotBlank() -> source.searchSeries(browseQuery, next)
+                        browseMode == BrowseMode.LATEST -> source.latestSeries(next)
+                        else -> source.browseSeries(next)
+                    }
                 }
                 seriesList = (seriesList ?: emptyList()) + page.series
                 browsePage = next
@@ -760,7 +774,7 @@ fun YomuApp() {
                     openSeries(openSeriesAgain)
                     seriesOrigin = origin
                 } else {
-                    activeSource?.let { openSource(it, browseQuery) }
+                    activeSource?.let { openSource(it, browseQuery, browseMode) }
                 }
             },
             onBack = { challengeUrl = null }
@@ -925,12 +939,15 @@ fun YomuApp() {
             loading = isLoading,
             error = errorMessage,
             supportsSearch = activeSource!!.supportsSearch,
+            supportsLatest = activeSource!!.supportsLatest,
+            mode = browseMode,
+            onModeChange = { m -> activeSource?.let { openSource(it, "", m) } },
             query = browseQuery,
             hasNext = browseHasNext,
             loadingMore = loadingMore,
-            onSearch = { q -> activeSource?.let { openSource(it, q) } },
+            onSearch = { q -> activeSource?.let { openSource(it, q, browseMode) } },
             onLoadMore = { loadMoreSeries() },
-            onRescan = { activeSource?.let { openSource(it, browseQuery) } },
+            onRescan = { activeSource?.let { openSource(it, browseQuery, browseMode) } },
             onOpen = { openSeries(it) },
             onBack = {
                 activeSource = null

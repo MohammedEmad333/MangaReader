@@ -8,6 +8,9 @@ data class SeriesPage(
     val hasNext: Boolean
 )
 
+/** Which listing the per-source browse screen is showing. */
+enum class BrowseMode { POPULAR, LATEST }
+
 /**
  * A source of manga. Today: the local folder and Tachiyomi extension APKs.
  *
@@ -89,6 +92,15 @@ interface Source {
     /** Whether [searchSeries] does anything useful. */
     val supportsSearch: Boolean get() = false
 
+    /**
+     * Whether [latestSeries] shows anything [browseSeries] doesn't.
+     *
+     * Tachiyomi's `CatalogueSource` declares this per source and a good number
+     * of them answer false, so the browse screen only offers the Popular/Latest
+     * choice where there is actually a choice to make.
+     */
+    val supportsLatest: Boolean get() = false
+
     /** Whether [browseSeries] can return more than one page. */
     val supportsPaging: Boolean get() = false
 
@@ -105,6 +117,15 @@ interface Source {
      * Defaults to filtering [listSeries] by title, so local folders get
      * a usable search for free.
      */
+    /**
+     * Newest additions, page by page.
+     *
+     * Falls back to [browseSeries] rather than to an empty page: a caller that
+     * asks for it on a source declaring [supportsLatest] false should get the
+     * catalogue, not nothing.
+     */
+    suspend fun latestSeries(page: Int): SeriesPage = browseSeries(page)
+
     suspend fun searchSeries(query: String, page: Int): SeriesPage {
         if (page > 1) return SeriesPage(emptyList(), hasNext = false)
         val hits = listSeries().filter { it.title.contains(query, ignoreCase = true) }

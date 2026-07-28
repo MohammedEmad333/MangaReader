@@ -59,6 +59,12 @@ class TachiyomiSourceAdapter(
 
     override val supportsPaging: Boolean = true
 
+    // Read once at construction. It's a property on extension code, and this
+    // file assumes nothing about what extension code does — see the safe*()
+    // guards below for the same reasoning applied to lateinit fields.
+    override val supportsLatest: Boolean =
+        runCatching { delegate.supportsLatest }.getOrDefault(false)
+
     override val supportsDownload: Boolean = true
 
     /** First page of popular, for callers that just want a quick look. */
@@ -66,6 +72,10 @@ class TachiyomiSourceAdapter(
 
     override suspend fun browseSeries(page: Int): SeriesPage = withContext(Dispatchers.IO) {
         delegate.getPopularManga(page).toSeriesPage()
+    }
+
+    override suspend fun latestSeries(page: Int): SeriesPage = withContext(Dispatchers.IO) {
+        delegate.getLatestUpdates(page).toSeriesPage()
     }
 
     override suspend fun searchSeries(query: String, page: Int): SeriesPage =
