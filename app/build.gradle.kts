@@ -16,8 +16,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 28
-        versionName = "0.28"
+        versionCode = 29
+        versionName = "0.29"
     }
 
     signingConfigs {
@@ -68,6 +68,11 @@ dependencies {
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // Automatic backups. Self-initialises through androidx.startup, so there is
+    // no Configuration.Provider or manifest entry to add - the only reason it's
+    // here rather than a check on app start is that a schedule which only fires
+    // when the app is opened isn't a schedule.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     // :source-api has this as `implementation`, so it isn't on this module's
     // compile classpath. Needed here to build the PreferenceScreen that
     // ConfigurableSource.setupPreferenceScreen() populates.
