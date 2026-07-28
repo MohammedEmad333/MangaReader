@@ -1,6 +1,6 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-27
+Context document for continuing work in a fresh chat. Last updated 2026-07-28
 (supersedes the earlier version of this file).
 
 ---
@@ -32,10 +32,11 @@ Windows:
 cd /d E:\MangaReader && git add -A && git commit -m "message" && git push
 ```
 
-Termux — **files download as `.kt.txt`, so strip the suffix in the copy** (see
-§5). This loop handles any number of files at once:
+Termux — **the user strips any `.txt` suffix themselves before running this**, so
+the loop copies `*.kt` as-is. Don't put `basename ... .txt` in it. This handles
+any number of files at once:
 ```
-cd ~/MangaReader && for f in ~/storage/downloads/*.kt.txt; do cp -v "$f" "app/src/main/java/com/mangareader/app/$(basename "$f" .txt)"; done && git diff --stat && git add -A && git commit -m "message" && git push
+cd ~/MangaReader && for f in ~/storage/downloads/*.kt; do cp -v "$f" app/src/main/java/com/mangareader/app/; done && git diff --stat && git add -A && git commit -m "message" && git push
 ```
 
 `cp -v` prints each copy so the count can be eyeballed before committing, and
@@ -43,7 +44,7 @@ the `git diff --stat` in the middle prints the expected insertion count; if a
 copy silently failed the `&&` chain aborts at the empty commit instead of
 pushing nothing.
 
-**Careful with the glob**: `*.kt.txt` takes *everything* in Downloads, including
+**Careful with the glob**: `*.kt` takes *everything* in Downloads, including
 stale files from an earlier session, which would quietly revert them. Check the
 `cp -v` list.
 
@@ -81,8 +82,10 @@ As of the source-visibility commit, verified on device:
 - **Chapter downloads** (`44ae521`) and **offline reading** (`eca6caa`) work —
   download a chapter, go into airplane mode, read it.
 - **Source visibility** screen + global search scope chips (`1f60936`).
+- **Downloads run in a foreground service** with a persistent queue, so they
+  survive the app being backgrounded or swiped away.
 
-`MainActivity.kt` is **859 lines** — the Activity, `YomuApp`, and the shared
+`MainActivity.kt` is **891 lines** — the Activity, `YomuApp`, and the shared
 prefs helpers.
 
 ## 3. Build environment
@@ -168,6 +171,8 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `Categories.kt` | Categories + series→category assignments. |
 | `SourceSettings.kt` | Reads `ConfigurableSource` preferences into a Compose-renderable model. |
 | `Downloads.kt` | Page store on disk (cache vs download) + `ChapterCache` + `formatBytes()`. |
+| `DownloadQueue.kt` | Process-wide download queue: Compose state + JSON persistence. |
+| `DownloadService.kt` | Foreground service that drains the queue. Actions: pause / resume / skip / cancel-all. |
 | `MainActivity.kt` | Activity, `YomuApp` (all shared screen state), prefs helpers. |
 
 ### Compose UI file layout
@@ -186,6 +191,7 @@ things between them needs no imports — only visibility changes (see §5).
 | `LibraryScreens.kt` | `LibraryTab`, `AddToLibraryDialog`, `CategoryAssignDialog` |
 | `ReaderScreen.kt` | `ReaderScreen` |
 | `MoreScreens.kt` | `MoreTab`, `HistoryScreen`, `ExtensionReposDialog`, `CategoryManagerDialog`, `SourceDialog` |
+| `DownloadQueueScreen.kt` | `DownloadQueueScreen` — reads `DownloadQueue` directly rather than taking it as parameters |
 
 `YomuApp` still owns all cross-screen state and passes it down as parameters, so
 the screens stay dumb. That's why the split was safe to do mechanically.
@@ -292,9 +298,32 @@ the chapter id — the same trick `restoreSeries` uses for `SManga`. Without it 
 cached chapter still *reads* when downloaded (the page store is checked before
 the handle is) but couldn't be fetched once back online.
 
-**Downloads run in the app's coroutine scope**, so they stop if the app is
-killed. Partial files survive and resume. A foreground service or WorkManager is
-the proper fix — see §7.
+**4. The download queue and service** (`DownloadQueue.kt`, `DownloadService.kt`).
+Downloads used to run in `YomuApp`'s coroutine scope and died with the Activity;
+they now run in a foreground service that outlives it.
+
+`DownloadQueue` is a process-wide singleton holding Compose snapshot state —
+`items`, `progress`, `activeId`, `paused`, `tick`. The service writes to it from a
+background thread and any composable reading it recomposes; both are in the same
+process, so there is no flow, binder or broadcast anywhere in this path. The queue
+is mirrored to `filesDir/download_queue.json` on every change and reloaded by
+`App.onCreate`, which runs for *any* process entry point — including the system
+restarting the service on its own (it's `START_STICKY`).
+
+A `DownloadItem` stores only ids: `Source` and `SChapter` don't serialise, so the
+service resolves the source via `SourceManager.listAllSources` and rebuilds the
+handle with `Source.rehydrateChapter`, exactly as `ChapterCache` does.
+
+Two details worth keeping:
+- **Failures leave the queue.** A chapter whose source was uninstalled would
+  otherwise sit at the head blocking everything behind it. Its partial pages stay
+  on disk, so re-queuing resumes.
+- **A wake lock is held while fetching.** A foreground service keeps the *process*
+  alive but not the CPU; without it the device suspends mid-transfer with the
+  screen off. It's released while paused and on a 4-hour timeout as a backstop.
+
+`DownloadService.start()` is only ever called from a visible Activity on a user
+action, which is what keeps the foreground-service start legal on Android 12+.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -639,12 +668,13 @@ For search coverage, the global search screen prints
 
 Roughly in order of value:
 
-1. **Downloads stop when the app is killed.** They run in `YomuApp`'s coroutine
-   scope. Partial files survive and resume, so nothing is lost, but a real
-   downloader needs a foreground service or WorkManager. A Worker would need the
-   same Injekt bindings `App.onCreate` sets up — which it gets for free, since
-   that runs for any process entry point. This is the main gap versus Mihon's
-   downloader, along with a queue UI.
+1. **Downloader gaps.** The foreground service and queue are done (§4). What's
+   left versus Mihon: no reordering in the queue screen (it's strictly FIFO), no
+   per-series grouping, no retry button for a chapter that failed — it has to be
+   re-queued from the series screen — and no auto-download of new chapters.
+   Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
+   queue left paused indefinitely would burn through; pausing releases the wake
+   lock but not the service.
 2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
    will fail. Restoring needs a WebView flow + the interceptor that was stripped
    out of the vendored API.
@@ -717,6 +747,7 @@ Add chapter downloads for offline reading                 44ae521  verified OK
 Cache chapter lists so downloaded chapters open offline   eca6caa  verified OK
 Add source visibility screen and global search scope chips 1f60936  verified OK
 Default to Multi and English only
+Move downloads into a foreground service with a persistent queue
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local

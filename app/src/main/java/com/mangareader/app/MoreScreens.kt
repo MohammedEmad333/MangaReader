@@ -131,7 +131,7 @@ internal fun HistoryScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MoreTab() {
+internal fun MoreTab(onOpenDownloads: () -> Unit) {
     val context = LocalContext.current
     var incognito by remember { mutableStateOf(prefs(context).getBoolean("incognito", false)) }
     var coverSize by remember {
@@ -196,9 +196,27 @@ internal fun MoreTab() {
         )
         HorizontalDivider()
 
+        // Reads the queue directly, so it stays live while the service drains it.
+        val queued = DownloadQueue.items.size
+        ListItem(
+            headlineContent = { Text("Download queue") },
+            supportingContent = {
+                Text(
+                    when {
+                        queued == 0 -> "Nothing queued"
+                        DownloadQueue.paused -> "$queued waiting \u00b7 paused"
+                        queued == 1 -> "1 chapter downloading"
+                        else -> "$queued chapters \u00b7 downloading"
+                    }
+                )
+            },
+            modifier = Modifier.clickable { onOpenDownloads() }
+        )
+        HorizontalDivider()
+
         var storageTick by remember { mutableIntStateOf(0) }
-        val downloadCount = remember(storageTick) { Downloads.count(context) }
-        val downloadSize = remember(storageTick) { Downloads.sizeBytes(context) }
+        val downloadCount = remember(storageTick, DownloadQueue.tick) { Downloads.count(context) }
+        val downloadSize = remember(storageTick, DownloadQueue.tick) { Downloads.sizeBytes(context) }
         ListItem(
             headlineContent = { Text("Downloaded chapters") },
             supportingContent = {

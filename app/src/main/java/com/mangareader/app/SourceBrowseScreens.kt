@@ -529,11 +529,22 @@ internal fun SeriesScreen(
                                 val downloaded = remember(ch.id, downloadTick) {
                                     Downloads.isComplete(context, ch.id)
                                 }
+                                // Queued and downloading are different states now
+                                // that a queue exists, and read straight off it:
+                                // a chapter can sit waiting behind twenty others.
+                                val active = DownloadQueue.activeId == ch.id
+                                val queued = DownloadQueue.isQueued(ch.id)
                                 when {
-                                    percent != null -> Text(
-                                        "$percent%",
+                                    active -> Text(
+                                        if (percent != null && percent > 0) "$percent%"
+                                        else "\u2026",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary
+                                    )
+                                    queued -> Text(
+                                        "Queued",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     downloaded -> Icon(
                                         Icons.Default.Check,

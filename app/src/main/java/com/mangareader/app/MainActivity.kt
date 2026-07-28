@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -112,6 +113,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SourceManager.migrateLegacy(this)
+        ensureNotificationPermission()
+        // A queue left behind by a killed process resumes here rather than
+        // waiting for the user to press anything. Doing it from a starting
+        // Activity is also what keeps the foreground-service start legal on
+        // Android 12+, where a background start would throw.
+        if (DownloadQueue.items.isNotEmpty() && !DownloadQueue.paused) {
+            DownloadService.start(this)
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(
@@ -122,6 +131,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Asks for POST_NOTIFICATIONS on Android 13+.
+     *
+     * The download service runs either way — a foreground service is still
+     * allowed to start without it, the notification just never appears. So this
+     * is asked for once and never insisted on: refusing costs the progress bar
+     * and the pause/cancel actions, not the downloads.
+     */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val permission = android.Manifest.permission.POST_NOTIFICATIONS
+        if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return
+        runCatching { requestPermissions(arrayOf(permission), 1) }
     }
 }
 
@@ -174,11 +198,13 @@ fun YomuApp() {
     // behind it. This says where "back" should actually go.
     var seriesOrigin by remember { mutableStateOf(SeriesOrigin.BROWSE) }
 
-    // chapter.id -> percent, for chapters downloading right now. Bumping
-    // downloadTick re-reads what's on disk in the chapter list.
-    var downloadProgress by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    // Live download state now lives in DownloadQueue, which the service writes to
+    // from its own process-scoped worker — the whole point being that a download
+    // outlives this composable. What stays here is the local tick for filesystem
+    // reads this screen causes itself, like deleting a series' downloads; it's
+    // added to DownloadQueue.tick so either can invalidate a `remember`.
     var downloadTick by remember { mutableIntStateOf(0) }
-    var downloadJob by remember { mutableStateOf<Job?>(null) }
+    var downloadsOpen by remember { mutableStateOf(false) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -462,63 +488,50 @@ fun YomuApp() {
     }
 
     /**
-     * Downloads one chapter to permanent storage.
+     * Hands chapters to the download service.
      *
-     * Runs in the app's scope, so it stops if the app is killed — but partial
-     * files survive and `downloadPage` skips what's already there, so starting it
-     * again resumes rather than restarts. A background service would be the
-     * proper fix; see the handoff.
+     * Nothing is fetched here any more. This used to run in `scope`, the
+     * composable's coroutine scope, which meant a download died with the Activity
+     * — swiping the app away mid-chapter stopped it. Now the work is queued and
+     * [DownloadService] drains it from a process-scoped worker behind a
+     * foreground notification, so it survives leaving the app entirely.
+     *
+     * Called from a visible screen on a user tap, which is what makes the
+     * foreground-service start legal on Android 12+.
      */
-    fun downloadChapter(src: Source, chapter: Chapter) {
-        if (downloadProgress.containsKey(chapter.id)) return
-        scope.launch {
-            downloadProgress = downloadProgress + (chapter.id to 0)
-            try {
-                src.loadPagesProgressively(chapter, persist = true) { partial ->
-                    withContext(Dispatchers.Main) {
-                        val total = partial.size
-                        val ready = partial.count { it != null }
-                        downloadProgress = downloadProgress +
-                            (chapter.id to if (total == 0) 0 else ready * 100 / total)
-                    }
-                }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not download that chapter"
+    fun queueDownloads(src: Source, chapters: List<Chapter>) {
+        val seriesTitle = activeSeries?.title ?: ""
+        val added = DownloadQueue.enqueue(
+            context,
+            chapters.map { chapter ->
+                DownloadItem(
+                    sourceId = src.id,
+                    chapterId = chapter.id,
+                    chapterName = chapter.name,
+                    seriesTitle = seriesTitle
+                )
             }
-            downloadProgress = downloadProgress - chapter.id
-            downloadTick++
+        )
+        // enqueue skips what's already downloaded or already queued; if it
+        // skipped everything there's no reason to poke the service.
+        if (added > 0) {
+            if (DownloadQueue.paused) DownloadQueue.setPaused(context, false)
+            DownloadService.start(context)
         }
     }
 
-    /** Queues every not-yet-downloaded chapter, oldest first, one at a time. */
-    fun downloadAll(src: Source, chapters: List<Chapter>) {
-        if (downloadJob?.isActive == true) return
-        downloadJob = scope.launch {
-            for (chapter in chapters) {
-                if (Downloads.isComplete(context, chapter.id)) continue
-                downloadProgress = downloadProgress + (chapter.id to 0)
-                try {
-                    src.loadPagesProgressively(chapter, persist = true) { partial ->
-                        withContext(Dispatchers.Main) {
-                            val total = partial.size
-                            val ready = partial.count { it != null }
-                            downloadProgress = downloadProgress +
-                                (chapter.id to if (total == 0) 0 else ready * 100 / total)
-                        }
-                    }
-                } catch (e: Exception) {
-                    errorMessage = e.message ?: "Could not download that chapter"
-                }
-                downloadProgress = downloadProgress - chapter.id
-                downloadTick++
-            }
-        }
-    }
+    fun downloadChapter(src: Source, chapter: Chapter) = queueDownloads(src, listOf(chapter))
+
+    /** Queues every not-yet-downloaded chapter, oldest first. */
+    fun downloadAll(src: Source, chapters: List<Chapter>) = queueDownloads(src, chapters)
 
     fun cancelDownloads() {
-        downloadJob?.cancel()
-        downloadJob = null
-        downloadProgress = emptyMap()
+        // Clearing the queue isn't enough on its own: the chapter already in
+        // flight is held by the service, so it has to be told. Checked first so
+        // an empty queue doesn't start the service purely to stop it again.
+        val wasRunning = DownloadQueue.items.isNotEmpty()
+        DownloadQueue.clear(context)
+        if (wasRunning) DownloadService.start(context, DownloadService.ACTION_CANCEL_ALL)
         downloadTick++
     }
 
@@ -664,9 +677,11 @@ fun YomuApp() {
             sourceId = activeSourceId ?: "",
             sourceName = activeSource?.name ?: "",
             canDownload = activeSource?.supportsDownload == true,
-            downloadProgress = downloadProgress,
-            downloadTick = downloadTick,
-            downloadingAll = downloadJob?.isActive == true,
+            downloadProgress = DownloadQueue.progress,
+            // Either side can invalidate the on-disk reads in the chapter list:
+            // the service finishing a chapter, or this screen deleting them.
+            downloadTick = downloadTick + DownloadQueue.tick,
+            downloadingAll = DownloadQueue.items.isNotEmpty(),
             onDownload = { ch -> activeSource?.let { downloadChapter(it, ch) } },
             onDownloadAll = { activeSource?.let { downloadAll(it, chapterList) } },
             onCancelDownloads = { cancelDownloads() },
@@ -747,6 +762,11 @@ fun YomuApp() {
                 errorMessage = null
             }
         )
+    } else if (downloadsOpen) {
+        // Last branch before the tabs: it's only ever opened from More, which is
+        // itself a tab, so nothing deeper can be underneath it. Backing out lands
+        // on the tab bar, which is where it was reached from.
+        DownloadQueueScreen(onBack = { downloadsOpen = false })
     } else {
         Scaffold(
             bottomBar = {
@@ -843,7 +863,7 @@ fun YomuApp() {
                             history = History.list(context)
                         }
                     )
-                    3 -> MoreTab()
+                    3 -> MoreTab(onOpenDownloads = { downloadsOpen = true })
                 }
             }
         }
