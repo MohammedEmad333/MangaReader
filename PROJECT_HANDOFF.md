@@ -551,29 +551,38 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
-### A 400 can mean "slow down"
+### A 400 from `cdn.manhwatoon.me` is an HTTP/2 problem, not throttling
 
-`cdn.manhwatoon.me` (WP-manga / Madara) answers **HTTP 400** — not 429 — when it
-doesn't like the request rate. The symptom is a minority of pages of any chapter
-failing (1 of 21, 9 of 45, 10 of 34), perfectly well-formed URLs, and the same URL
-succeeding on a later attempt. Retrying by hand walked a chapter to completion a
-few pages at a time.
+`cdn.manhwatoon.me` (WP-manga / Madara) answers **HTTP 400** on a minority of
+page requests. Symptoms: well-formed URLs, a scattered subset of any chapter
+failing (1 of 21, 9 of 45, 12 of 36), and the same URL succeeding later.
 
-Two things this cost, both avoidable:
+**This was misdiagnosed twice before it was solved — both dead ends are worth
+knowing.**
 
-- **The error was being swallowed.** `runCatching { downloadPage() }.getOrNull()`
-  made 400, 403, 404 and a timeout look identical, so the first guess was rate
-  limiting and the second was malformed URLs — neither checkable. Carrying the
-  exception *and the URL* up settled it in one retry.
-- **400 is in `TRANSIENT_HTTP_CODES`** in `TachiyomiSourceAdapter` because of
-  this. It's normally a permanent "your request is wrong", and treating it as
-  retryable is a deliberate trade: a server using it as a throttle signal is
-  indistinguishable from one that means it, and 4 attempts at a genuinely bad
-  request costs a few seconds.
+1. *"It's rate limiting."* Plausible, because retrying by hand minutes later
+   walked a chapter to completion a few pages at a time. So page fetches got 4
+   attempts with exponential backoff. It made downloads dramatically slower and
+   failed anyway — 12 of 36 pages after every retry.
+2. *"The URLs are malformed."* Ruled out by carrying the URL up in
+   `PageDownloadException`: plain ASCII, nothing to encode.
 
-Page fetches now retry 4 times with 500ms/1s/2s backoff plus jitter, with a 150ms
-gap between batches. If another source needs different numbers, that's the point
-at which these constants should become per-source rather than global.
+The actual cause is **HTTP/2 multiplexing**. OkHttp puts several concurrent image
+requests on one connection and this CDN rejects a share of those streams with a
+bare 400. That explains every observation, including the one that killed the
+throttling theory: an *immediate* retry lands on the same connection and fails,
+while a manual retry later gets a fresh one and works.
+
+The fix is `.protocols(listOf(Protocol.HTTP_1_1))` in `NetworkHelper`, plus
+`PAGE_CONCURRENCY` down from 4 to 2. Retries stayed but were dialled back to 3
+attempts — they cover genuinely transient failures, not this.
+
+Two general lessons:
+
+- **An immediate retry that fails where a later one succeeds is telling you about
+  connection state**, not about rate.
+- **400 is still in `TRANSIENT_HTTP_CODES`**, which is now defensible for a
+  different reason than it was added: it's cheap insurance, not the fix.
 
 **`tachiyomiorg` org was deleted.** Any JitPack coordinate under
 `com.github.tachiyomiorg:*` will fail to resolve. Same for

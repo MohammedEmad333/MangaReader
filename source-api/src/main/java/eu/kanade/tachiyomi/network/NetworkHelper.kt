@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.network
 import android.content.Context
 import okhttp3.Cache
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -20,6 +21,19 @@ class NetworkHelper(context: Context) {
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
+        // HTTP/1.1 only, deliberately.
+        //
+        // Under HTTP/2 okhttp multiplexes several requests onto one connection,
+        // and at least one CDN in use (cdn.manhwatoon.me) rejects a share of
+        // those streams with a bare 400 — a minority of pages of any chapter,
+        // well-formed URLs, and the very same URL succeeding later on a fresh
+        // connection. Retrying in place doesn't help because the retry lands on
+        // the same connection; dropping to 1.1 gives each concurrent request its
+        // own connection and the failures go away.
+        //
+        // The cost is losing multiplexing. At this app's request volume that's
+        // not measurable, and it's a one-line revert if a future source needs it.
+        .protocols(listOf(Protocol.HTTP_1_1))
         .cache(
             Cache(
                 directory = File(context.cacheDir, "network_cache"),

@@ -374,22 +374,35 @@ class TachiyomiSourceAdapter(
     private companion object {
         const val TAG = "TachiyomiSourceAdapter"
 
-        /** Pages fetched in parallel. Enough to hide latency, not enough to look
-         *  like a scraper to the source. */
-        const val PAGE_CONCURRENCY = 4
+        /**
+         * Pages fetched in parallel.
+         *
+         * Was 4. Dropped to 2 alongside the move to HTTP/1.1 in `NetworkHelper`:
+         * with no multiplexing, each concurrent request holds its own connection,
+         * and two is enough to hide latency without opening a fan of sockets at
+         * every source.
+         */
+        const val PAGE_CONCURRENCY = 2
 
-        /** Total tries per page, first attempt included. */
-        const val PAGE_ATTEMPTS = 4
+        /**
+         * Total tries per page, first attempt included.
+         *
+         * Kept low on purpose. Retrying was originally set to 4 attempts on the
+         * theory that a 400 here meant rate limiting; it didn't, and all the
+         * extra attempts bought was a much slower download that failed anyway.
+         * What's left covers genuinely transient failures — a dropped connection,
+         * a momentary 5xx — rather than trying to out-stubborn a server.
+         */
+        const val PAGE_ATTEMPTS = 3
 
-        /** Doubles each attempt: 500ms, 1s, 2s. */
-        const val PAGE_RETRY_BASE_MS = 500L
+        /** Doubles each attempt: 750ms, then 1.5s. */
+        const val PAGE_RETRY_BASE_MS = 750L
 
         /** Spread so a batch that failed together doesn't retry in lockstep. */
         const val PAGE_RETRY_JITTER_MS = 250L
 
-        /** Breather between batches — cheap, and enough to stay under the
-         *  request rate that triggers the rejections in the first place. */
-        const val BATCH_GAP_MS = 150L
+        /** Breather between batches. */
+        const val BATCH_GAP_MS = 200L
 
         /**
          * Worth retrying. 408/429/5xx are the textbook ones; 400 is here because
