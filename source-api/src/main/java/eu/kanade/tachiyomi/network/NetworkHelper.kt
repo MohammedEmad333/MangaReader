@@ -108,9 +108,16 @@ class NetworkHelper(context: Context) {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
-        const val DEFAULT_ACCEPT: String =
-            "text/html,application/xhtml+xml,application/xml;q=0.9," +
-                "image/avif,image/webp,*/*;q=0.8"
+        /**
+         * Deliberately `*/*` rather than a browser's document Accept.
+         *
+         * This header goes on every request the app makes, and most of them are
+         * images. Announcing `text/html,application/xhtml+xml,…` while asking for
+         * a JPEG is wrong, and a strict WAF is entitled to call that a bad
+         * request. A browser sends a different Accept per request type; we can't
+         * tell them apart here, so the honest answer is "anything".
+         */
+        const val DEFAULT_ACCEPT: String = "*/*"
 
         const val DEFAULT_ACCEPT_LANGUAGE: String = "en-US,en;q=0.9"
     }

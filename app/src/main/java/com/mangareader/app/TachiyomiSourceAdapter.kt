@@ -222,7 +222,14 @@ class TachiyomiSourceAdapter(
                 done[base + offset] = file
             }
             onUpdate(done.toList())
-            if (base + PAGE_CONCURRENCY < pages.size) delay(BATCH_GAP_MS)
+            if (base + PAGE_CONCURRENCY < pages.size) {
+                // Cap how many requests any one connection carries. This is the
+                // preventative half of recycleConnections() — retrying on a fresh
+                // socket fixes a failure after the fact, this stops the pooled
+                // connection getting old enough to cause one.
+                if ((batch + 1) % CONNECTION_RECYCLE_BATCHES == 0) recycleConnections()
+                delay(BATCH_GAP_MS)
+            }
         }
 
         if (!persist) return@withContext
@@ -263,6 +270,35 @@ class TachiyomiSourceAdapter(
      * the sake of two pages, and the jitter keeps the four in-flight requests of
      * a batch from re-colliding on the same schedule after they fail together.
      */
+    /**
+     * The source's own OkHttp client, when it has one.
+     *
+     * Only used to reach its connection pool — every actual request still goes
+     * through the source's own methods, so extensions that override
+     * `imageRequest` to sign URLs or send a POST keep working.
+     */
+    private val httpClient: OkHttpClient?
+        get() = (delegate as? HttpSource)?.client
+
+    /**
+     * Drops pooled connections so the next request opens a fresh one.
+     *
+     * `cdn.manhwatoon.me` starts answering 400 once a connection has carried
+     * enough requests. The evidence is that the failure rate tracks
+     * requests-per-connection and nothing else: 4 concurrent requests over HTTP/2
+     * share one connection and 12 of 36 pages failed; 2 over HTTP/1.1 use two
+     * connections and 7 of 39 failed. It also explains the observation that ruled
+     * out every other theory — an immediate retry fails because it lands on the
+     * same pooled socket, while a manual retry minutes later gets a fresh one.
+     *
+     * This is global to that client, so it can disturb a request in flight on
+     * another coroutine. At PAGE_CONCURRENCY of 2 that's at most one, and that
+     * one would be retried anyway.
+     */
+    private fun recycleConnections() {
+        runCatching { httpClient?.connectionPool?.evictAll() }
+    }
+
     private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {
         var attempt = 0
         while (true) {
@@ -278,6 +314,9 @@ class TachiyomiSourceAdapter(
                 if (attempt >= PAGE_ATTEMPTS || !isTransient(e)) {
                     throw PageDownloadException(index, page.imageUrl, e)
                 }
+                // Before the backoff, not after: the retry has to land on a new
+                // connection or it reproduces the failure exactly.
+                recycleConnections()
                 delay(
                     PAGE_RETRY_BASE_MS * (1L shl (attempt - 1)) +
                         Random.nextLong(PAGE_RETRY_JITTER_MS)
@@ -403,6 +442,16 @@ class TachiyomiSourceAdapter(
 
         /** Breather between batches. */
         const val BATCH_GAP_MS = 200L
+
+        /**
+         * Recycle pooled connections every this many batches.
+         *
+         * At PAGE_CONCURRENCY of 2 that caps a connection at roughly 8 requests
+         * before it's replaced, which is the point of the exercise — see
+         * `recycleConnections`. Lower it if 400s persist; raise it if downloads
+         * feel slow, since each recycle costs a TCP and TLS handshake.
+         */
+        const val CONNECTION_RECYCLE_BATCHES = 4
 
         /**
          * Worth retrying. 408/429/5xx are the textbook ones; 400 is here because
