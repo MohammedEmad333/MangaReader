@@ -13,6 +13,7 @@ import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -51,6 +52,9 @@ class CloudflareInterceptor(
 ) : Interceptor {
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /** One solve at a time per host — see [solveChallenge]. */
+    private val locks = ConcurrentHashMap<String, Any>()
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -96,7 +100,6 @@ class CloudflareInterceptor(
      * `onPageFinished`, because a challenge involves several navigations and the
      * only signal that actually matters is the cookie appearing.
      */
-    @SuppressLint("SetJavaScriptEnabled")
     private fun solveChallenge(request: Request): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) return false
 
@@ -106,7 +109,21 @@ class CloudflareInterceptor(
             .fragment(null)
             .build()
 
-        if (hasClearance(origin)) return true
+        // Serialised per host, and the clearance check repeated inside the lock.
+        //
+        // Image loading runs through this client too, so a browse grid can 403
+        // twenty times at once. Unsynchronised, that is twenty WebViews and
+        // twenty separate thirty-second waits for one challenge. Queued behind
+        // the lock, the first solves it and the rest find the cookie already
+        // there and return immediately.
+        return synchronized(locks.getOrPut(origin.host) { Any() }) {
+            if (hasClearance(origin)) true else runChallenge(request, origin)
+        }
+    }
+
+    /** The actual WebView solve. Only ever called holding the host's lock. */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun runChallenge(request: Request, origin: HttpUrl): Boolean {
 
         // Deliberately *not* set to the outgoing request's UA any more.
         //
