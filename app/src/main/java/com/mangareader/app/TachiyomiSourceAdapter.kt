@@ -17,6 +17,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -343,6 +344,11 @@ class TachiyomiSourceAdapter(
         if (page.imageUrl.isNullOrEmpty() && http != null) {
             page.imageUrl = http.getImageUrl(page)
         }
+        // Done here rather than only on covers: the same server hands out the
+        // same broken host for page images, and `imageRequest(page)` builds the
+        // request from this field, so fixing it here covers both the default
+        // path and a source that overrides the request.
+        page.imageUrl = page.imageUrl?.repointFromLoopback()
 
         val target = File(dir, "%04d".format(index))
         if (target.exists() && target.length() > 0L) return target
@@ -366,6 +372,40 @@ class TachiyomiSourceAdapter(
         return target
     }
 
+    /**
+     * Repoints an image URL that came back aimed at loopback.
+     *
+     * SpyFakku's mirrors return covers and pages as
+     * `http://127.0.0.1/image/<hash>/<n>`, which resolves to the phone itself
+     * and fails to connect. The cause is upstream — the site's application
+     * builds absolute URLs from its own bind address instead of the public host
+     * it's proxied behind — and it is not fixable from here or by choosing a
+     * different mirror, because every mirror runs the same software. The path
+     * and query are correct; only the origin is wrong, so swapping in the
+     * source's own base URL produces exactly the URL the server meant to send.
+     *
+     * Applied to every source rather than special-casing one, which is safe
+     * because a legitimate source can never mean loopback: that address is this
+     * phone. A genuinely self-hosted source would have a loopback `baseUrl` too,
+     * and the guard below leaves those alone rather than rewriting a correct
+     * port into a wrong one.
+     */
+    private fun String.repointFromLoopback(): String {
+        val url = toHttpUrlOrNull() ?: return this
+        if (!url.host.isLoopback()) return this
+        val base = (delegate as? HttpSource)?.baseUrl?.toHttpUrlOrNull() ?: return this
+        if (base.host.isLoopback()) return this
+        return url.newBuilder()
+            .scheme(base.scheme)
+            .host(base.host)
+            .port(base.port)
+            .build()
+            .toString()
+    }
+
+    private fun String.isLoopback(): Boolean =
+        this == "localhost" || this == "::1" || this == "0.0.0.0" || startsWith("127.")
+
     private fun MangasPage.toSeriesPage() =
         SeriesPage(series = mangas.map { it.toSeries() }, hasNext = hasNextPage)
 
@@ -387,7 +427,7 @@ class TachiyomiSourceAdapter(
     private fun SManga.toSeries() = Series(
         id = "${delegate.id}:${safeUrl()}",
         title = safeTitle(),
-        cover = thumbnail_url,
+        cover = thumbnail_url?.repointFromLoopback(),
         handle = this,
         author = listOfNotNull(author, artist)
             .filter { it.isNotBlank() }
