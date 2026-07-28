@@ -406,7 +406,6 @@ internal fun SeriesScreen(
     error: String?,
     readTick: Int,
     onOpen: (Int) -> Unit,
-    onToggleRead: (Chapter) -> Unit,
     onLibraryChanged: () -> Unit,
     onSolveChallenge: (() -> Unit)?,
     onBack: () -> Unit
@@ -416,6 +415,7 @@ internal fun SeriesScreen(
     var showAddToLibrary by remember { mutableStateOf(false) }
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
     var confirmDeleteChapter by remember(series.id) { mutableStateOf<Chapter?>(null) }
+    var confirmDeleteSelection by remember(series.id) { mutableStateOf(false) }
     // Chapter ids, not indices: the list is re-fetched on rescan and after a
     // solved challenge, and indices would silently point at different chapters.
     var selectedIds by remember(series.id) { mutableStateOf(emptySet<String>()) }
@@ -705,19 +705,19 @@ internal fun SeriesScreen(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    // One glyph per column, tint carries the
-                                    // state, tap toggles it. The download arrow
-                                    // stays an arrow whether or not the chapter
-                                    // is on disk — it used to become a check,
-                                    // which collided with the read check now
-                                    // sitting next to it, and two check marks a
-                                    // thumb apart meaning different things is
-                                    // worse than no icon at all.
+                                    // The bin says what the tap does. State is
+                                    // still legible — an arrow means not on
+                                    // disk, a bin means it is — but the glyph
+                                    // now names the action rather than leaving
+                                    // it to be discovered. Primary rather than
+                                    // error: on a 171-chapter list every saved
+                                    // row would otherwise be a red mark, and the
+                                    // confirmation below is the real guard.
                                     downloaded -> IconButton(
                                         onClick = { confirmDeleteChapter = ch }
                                     ) {
                                         Icon(
-                                            Icons.Default.KeyboardArrowDown,
+                                            Icons.Default.Delete,
                                             contentDescription = "Downloaded \u2014 delete",
                                             tint = MaterialTheme.colorScheme.primary
                                         )
@@ -727,21 +727,17 @@ internal fun SeriesScreen(
                                             Icons.Default.KeyboardArrowDown,
                                             contentDescription = "Download",
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                .copy(alpha = IDLE_ICON)
                                         )
                                     }
                                 }
                                 Spacer(Modifier.width(4.dp))
                             }
-                            IconButton(onClick = { onToggleRead(ch) }) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = if (read) "Mark unread" else "Mark read",
-                                    tint = if (read) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                        .copy(alpha = IDLE_ICON)
-                                )
-                            }
+                            // No read control on the row. The dimming already
+                            // says whether a chapter is read, and a second mark
+                            // beside it was the same fact twice — on a long list
+                            // that's a column of icons carrying no information.
+                            // Changing it is a long-press away, where the batch
+                            // actions live.
                         }
                     },
                     // Tinted rather than checkboxed: adding a checkbox column
@@ -788,10 +784,10 @@ internal fun SeriesScreen(
                     onSetRead(selectedChapters, false)
                     selectedIds = emptySet()
                 },
-                onDelete = {
-                    selectedChapters.forEach { onDeleteChapter(it) }
-                    selectedIds = emptySet()
-                },
+                // Asks first, and the selection is kept until it's answered —
+                // the dialog needs it, and cancelling should leave the bar
+                // exactly as it was.
+                onDelete = { confirmDeleteSelection = true },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -834,6 +830,45 @@ internal fun SeriesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmDeleteChapter = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (confirmDeleteSelection) {
+        // Counted, not just "the selected ones". Selecting forty and deleting is
+        // one tap further than selecting one, so the number is the thing worth
+        // reading back — and it's the count of chapters actually on disk, since
+        // the rest of a selection is a no-op and shouldn't inflate it.
+        val onDisk = selectedChapters.count { ch ->
+            remember(ch.id, downloadTick) { Downloads.isComplete(context, ch.id) }
+        }
+        AlertDialog(
+            onDismissRequest = { confirmDeleteSelection = false },
+            title = { Text(if (onDisk == 1) "Delete 1 download?" else "Delete $onDisk downloads?") },
+            text = {
+                Text(
+                    if (onDisk == 0) {
+                        "None of the selected chapters are downloaded, so there's " +
+                            "nothing to remove."
+                    } else {
+                        "Removed from storage. The chapters stay in the list and can " +
+                            "be saved again, and your read marks and places in them " +
+                            "are untouched."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = onDisk > 0,
+                    onClick = {
+                        selectedChapters.forEach { onDeleteChapter(it) }
+                        selectedIds = emptySet()
+                        confirmDeleteSelection = false
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteSelection = false }) { Text("Cancel") }
             }
         )
     }
@@ -956,13 +991,6 @@ private fun ChapterSelectionBar(
  */
 private const val READ_DIM = 0.45f
 
-/**
- * Tint for an icon whose state is "not yet".
- *
- * Dim enough that the row reads at a glance as done or not done, solid enough
- * that it still looks like a button rather than a disabled one.
- */
-private const val IDLE_ICON = 0.35f
 
 private const val KEY_BROWSE_VIEW = "browse_view"
 

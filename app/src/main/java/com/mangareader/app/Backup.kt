@@ -205,9 +205,27 @@ internal object Backup {
      * series in the library that the backup had deleted.
      */
     fun restoreFrom(context: Context, uri: Uri): Result<Int> = runCatching {
-        val text = context.contentResolver.openInputStream(uri)
-            ?.use { it.readBytes().toString(Charsets.UTF_8) }
+        val bytes = context.contentResolver.openInputStream(uri)
+            ?.use { it.readBytes() }
             ?: error("Couldn't open the file")
+
+        // What the file actually is, checked before anything tries to parse it.
+        //
+        // "Restore backup" is the phrase people reach for, so a Tachiyomi
+        // backup gets picked here rather than at the import row — and the JSON
+        // parser's reply is to quote the first byte it can't print, which tells
+        // nobody anything. These two checks turn the two likely wrong files into
+        // sentences.
+        if (bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
+            error(
+                "That's a Tachiyomi backup (.tachibk), not a Yomu one. " +
+                    "Use \u201cImport Tachiyomi backup\u201d further up this screen."
+            )
+        }
+        val text = bytes.toString(Charsets.UTF_8)
+        if (!text.trimStart().startsWith("{")) {
+            error("That isn't a Yomu backup \u2014 it should be a .json file this app wrote.")
+        }
 
         val root = JSONObject(text)
         val version = root.optInt("version", -1)
