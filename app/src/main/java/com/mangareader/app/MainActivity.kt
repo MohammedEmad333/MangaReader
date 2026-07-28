@@ -52,6 +52,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -204,6 +205,9 @@ fun YomuApp() {
     // outlives this composable. What stays here is the local tick for filesystem
     // reads this screen causes itself, like deleting a series' downloads; it's
     // added to DownloadQueue.tick so either can invalidate a `remember`.
+    // The in-flight page load. Held so closing the reader can stop it — see
+    // openChapter for why leaving it running reopened the chapter.
+    var pageJob by remember { mutableStateOf<Job?>(null) }
     var downloadTick by remember { mutableIntStateOf(0) }
     var downloadsOpen by remember { mutableStateOf(false) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
@@ -473,23 +477,43 @@ fun YomuApp() {
         val chapter = chapterList.getOrNull(index) ?: return
         errorMessage = null
         pages = emptyList()
-        scope.launch {
+        // Whichever chapter was loading, it isn't wanted any more: this is
+        // either a different chapter or a reopen of the same one.
+        pageJob?.cancel()
+        // Local to this load, so a stale job can't touch the reader after the
+        // user has left it.
+        var opened = false
+        pageJob = scope.launch {
             isLoading = true
             try {
                 src.loadPagesProgressively(chapter, persist = false) { partial ->
                     // Hop to main: the adapter publishes from its IO context.
                     withContext(Dispatchers.Main) {
                         pages = partial
-                        if (partial.isNotEmpty() && activeChapterIdx != index) {
+                        // Only the *first* publish opens the reader. This used to
+                        // re-assert activeChapterIdx whenever it didn't match,
+                        // which reads as "make sure the reader is showing" and
+                        // behaves as "put it back if the user closed it" — so
+                        // backing out of a chapter mid-download reopened it, over
+                        // and over, and only felt fixed once loading had finished.
+                        if (!opened && partial.isNotEmpty()) {
+                            opened = true
                             activeChapterIdx = index
                         }
                     }
                 }
                 if (pages.isEmpty()) errorMessage = "This chapter has no pages"
+            } catch (e: CancellationException) {
+                // Closing the reader cancels this. Rethrow so the coroutine ends
+                // as cancelled rather than being reported as a failed chapter.
+                throw e
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not open this chapter"
+            } finally {
+                // finally, not a trailing statement: cancellation skips the tail
+                // of the block and would otherwise leave the spinner up forever.
+                isLoading = false
             }
-            isLoading = false
         }
     }
 
@@ -757,6 +781,10 @@ fun YomuApp() {
                     }
                 },
                 onClose = {
+                    // Stop the loader before clearing state. Without this the
+                    // job outlives the screen and keeps publishing into it.
+                    pageJob?.cancel()
+                    pageJob = null
                     activeChapterIdx = null
                     pages = emptyList()
                     history = History.list(context)

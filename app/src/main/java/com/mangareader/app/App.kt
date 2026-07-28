@@ -1,6 +1,8 @@
 package com.mangareader.app
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.Injekt
@@ -17,7 +19,7 @@ import uy.kohesive.injekt.api.get
  * for these three types. Without the bindings the classes still load, but the
  * first real call fails — so this must run before ExtensionLoader.loadAll().
  */
-class App : Application() {
+class App : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
@@ -27,6 +29,27 @@ class App : Application() {
         // that makes a queue survive being killed.
         DownloadQueue.restore(this)
     }
+
+    /**
+     * Makes Coil load images through the same client the extensions use.
+     *
+     * Coil builds its own OkHttpClient by default, which is a plain one: no
+     * cookie jar, no User-Agent, no Cloudflare interceptor. So covers went out
+     * as bare requests while the catalogue that named them went out
+     * authenticated — a protected source would list its series correctly and
+     * then show a grid of empty placeholders, because every image 403'd.
+     *
+     * Returning the shared client fixes that for covers, thumbnails and
+     * anything else Coil fetches, and it costs nothing: the connection pool and
+     * cache are shared rather than duplicated.
+     *
+     * The lambda form defers building [NetworkHelper] until the first image is
+     * actually requested, so this doesn't drag network setup into onCreate.
+     */
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .okHttpClient { Injekt.get<NetworkHelper>().client }
+            .build()
 }
 
 class AppModule(private val app: Application) : InjektModule {
