@@ -12,7 +12,14 @@ import java.security.MessageDigest
  * The distinction that matters is **cache vs download**. Reading a chapter writes
  * its pages under `cacheDir`, which Android is free to evict whenever it wants
  * space — that's the right home for something you looked at once. Downloading
- * writes the same pages under `filesDir`, which nothing reclaims but the user.
+ * writes the same pages under [StorageLocation.base], which nothing reclaims
+ * but the user — internal storage by default, or whatever folder they picked.
+ *
+ * **[root] is the only thing in this file that knows where that is.** Everything
+ * below it — `dirFor`, `pages`, `count`, `sizeOf`, `deleteAll` — is derived, and
+ * a page is still a `java.io.File` wherever it lives, which is what let the
+ * storage-location setting land without touching the page pipeline. Keep it that
+ * way: anything that resolves a download path itself is a second place to fix.
  *
  * Both live in a directory named after a hash of the chapter id, and a download
  * is only considered complete once every page succeeded and [markComplete] has
@@ -25,7 +32,7 @@ object Downloads {
     private const val MARKER = ".complete"
 
     private fun root(context: Context): File =
-        File(context.applicationContext.filesDir, "chapters")
+        File(StorageLocation.base(context), StorageLocation.CHAPTERS)
 
     /** Permanent directory for a chapter. Not created here. */
     fun dirFor(context: Context, chapterId: String): File =

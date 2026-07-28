@@ -3,7 +3,6 @@ package com.mangareader.app
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -54,20 +53,18 @@ internal object Backup {
     private const val APP_PREFS = "manga_reader"
 
     /**
-     * The one key deliberately left out of the payload.
+     * The one key deliberately left out of the payload — [StorageLocation]'s.
      *
-     * It holds a SAF tree URI, which is a grant issued to this install by this
-     * device's document provider. Carrying it to another phone would restore a
-     * path that resolves to nothing and silently break automatic backups there,
-     * with a settings screen still claiming a folder is set. Restore keeps
-     * whatever the local install already had.
+     * It holds a filesystem path, and a path is device-local even when it looks
+     * portable: `/storage/1A2B-3C4D/Manga` is a card that exists in one phone.
+     * Carrying it across would point a restored install at a folder that isn't
+     * there and silently strand its downloads in internal storage, with a
+     * settings row still naming the card. Restore keeps whatever the local
+     * install already had.
      */
-    private const val KEY_DIR = "backup_dir_uri"
+    private const val KEY_DIR = "storage_dir"
     private const val KEY_FREQUENCY = "backup_frequency_hours"
     private const val KEY_LAST = "backup_last_at"
-
-    /** Subfolder created inside the chosen storage location. */
-    private const val FOLDER = "backups"
 
     /** How many automatic backups are kept in the folder before the oldest go. */
     private const val KEEP = 5
@@ -76,16 +73,18 @@ internal object Backup {
 
     // ---------- settings ----------
 
-    fun storageDir(context: Context): Uri? =
-        prefs(context).getString(KEY_DIR, null)?.let { runCatching { Uri.parse(it) }.getOrNull() }
-
-    fun setStorageDir(context: Context, uri: Uri) {
-        prefs(context).edit().putString(KEY_DIR, uri.toString()).apply()
-    }
-
-    fun clearStorageDir(context: Context) {
-        prefs(context).edit().remove(KEY_DIR).apply()
-    }
+    /**
+     * Where automatic backups land: a `backups` folder beside the chapters,
+     * inside whatever [StorageLocation] resolves to.
+     *
+     * This used to be its own SAF tree with its own picker, which meant two
+     * "storage location" settings that could disagree. One folder holding both
+     * is what the user was asking for and one less thing to keep in sync — and
+     * with the location now a real path, a backup is an ordinary file write
+     * rather than a document-provider transaction.
+     */
+    fun backupsDir(context: Context): File =
+        File(StorageLocation.base(context), StorageLocation.BACKUPS)
 
     fun frequency(context: Context): BackupFrequency =
         BackupFrequency.from(prefs(context).getInt(KEY_FREQUENCY, 0))
@@ -165,18 +164,19 @@ internal object Backup {
      * on, because no amount of retrying fixes them.
      */
     fun runAutomatic(context: Context): Boolean = runCatching {
-        val dirUri = storageDir(context) ?: return false
-        val tree = DocumentFile.fromTreeUri(context.applicationContext, dirUri) ?: return false
-        if (!tree.canWrite()) return false
-
-        val folder = tree.findFile(FOLDER)?.takeIf { it.isDirectory }
-            ?: tree.createDirectory(FOLDER)
-            ?: return false
+        val folder = backupsDir(context)
+        if (!StorageLocation.ensureWritable(folder)) return false
 
         val name = "yomu_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date()) + ".json"
-        val doc = folder.createFile("application/json", name) ?: return false
-        val bytes = payload(context).toByteArray()
-        context.contentResolver.openOutputStream(doc.uri)?.use { it.write(bytes) } ?: return false
+        // Written to a temp name and renamed, so a backup killed halfway through
+        // isn't left looking like a complete one for the next restore to trust.
+        val temp = File(folder, "$name.part")
+        temp.writeText(payload(context))
+        val target = File(folder, name)
+        if (!temp.renameTo(target)) {
+            temp.delete()
+            return false
+        }
 
         prune(folder)
         prefs(context).edit().putLong(KEY_LAST, System.currentTimeMillis()).apply()
@@ -184,13 +184,13 @@ internal object Backup {
     }.getOrDefault(false)
 
     /** Names carry a sortable timestamp, so lexicographic order is age order. */
-    private fun prune(folder: DocumentFile) {
+    private fun prune(folder: File) {
         runCatching {
             folder.listFiles()
-                .filter { it.isFile && (it.name ?: "").startsWith("yomu_") }
-                .sortedBy { it.name ?: "" }
-                .dropLast(KEEP)
-                .forEach { it.delete() }
+                ?.filter { it.isFile && it.name.startsWith("yomu_") && it.name.endsWith(".json") }
+                ?.sortedBy { it.name }
+                ?.dropLast(KEEP)
+                ?.forEach { it.delete() }
         }
     }
 
@@ -233,7 +233,7 @@ internal object Backup {
         }
         if (incoming == 0) error("Backup was readable but empty")
 
-        // Held across the wipe: a grant belonging to this device, not the backup.
+        // Held across the wipe: a path belonging to this device, not the backup.
         val localDir = prefs(context).getString(KEY_DIR, null)
 
         var restored = 0
