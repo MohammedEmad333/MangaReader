@@ -517,13 +517,11 @@ private fun DataSettings() {
                 else -> {
                     // Read before the switch: after set() the old base is gone,
                     // and with it any way to find what needs moving.
-                    val previous = File(StorageLocation.base(context), StorageLocation.CHAPTERS)
-                    val existing = StorageLocation.chapterCount(StorageLocation.base(context))
+                    val previous = StorageLocation.base(context)
+                    val worthMoving = StorageLocation.hasStore(previous)
                     StorageLocation.set(context, target)
                     refreshLocation()
-                    if (existing > 0) {
-                        pendingMove = previous to File(target, StorageLocation.CHAPTERS)
-                    }
+                    if (worthMoving) pendingMove = previous to StorageLocation.base(context)
                 }
             }
         }
@@ -587,16 +585,12 @@ private fun DataSettings() {
                     TextButton(
                         enabled = !moving,
                         onClick = {
-                            val previous = File(
-                                StorageLocation.base(context),
-                                StorageLocation.CHAPTERS
-                            )
-                            val existing = StorageLocation.chapterCount(StorageLocation.base(context))
+                            val previous = StorageLocation.base(context)
+                            val worthMoving = StorageLocation.hasStore(previous)
                             StorageLocation.clear(context)
                             refreshLocation()
-                            if (existing > 0) {
-                                pendingMove = previous to
-                                    File(StorageLocation.base(context), StorageLocation.CHAPTERS)
+                            if (worthMoving) {
+                                pendingMove = previous to StorageLocation.base(context)
                             }
                         }
                     ) { Text("Reset") }
@@ -605,9 +599,11 @@ private fun DataSettings() {
             HorizontalDivider()
         }
         PrefNote(
-            "A folder outside the app is readable by a file manager and survives " +
-                "uninstalling. Anything inside app storage doesn't \u2014 uninstalling " +
-                "takes the downloads with it."
+            "A \u201cYomu\u201d folder is created inside whatever you pick, holding " +
+                "\u201cdownloads\u201d and \u201cbackups\u201d. Chapters are filed under " +
+                "source, then series, then chapter, so the tree reads the same in a " +
+                "file manager as it does in the app. Anything left in app storage " +
+                "doesn\u2019t survive uninstalling; a folder you picked does."
         )
 
         SectionHeader("Backup and restore")
@@ -770,11 +766,11 @@ private fun DataSettings() {
             title = { Text("Move existing downloads?") },
             text = {
                 Text(
-                    "Chapters already downloaded are still in the old folder. Moving " +
-                        "them keeps them readable; leaving them means they stay on " +
-                        "disk taking up space but stop appearing in Downloads. On a " +
-                        "large library this takes a while, and moving to an SD card " +
-                        "is a copy rather than a rename, so give it time."
+                    "Downloads and backups already written are still in the old " +
+                        "folder. Moving them keeps them readable; leaving them means " +
+                        "they stay on disk taking up space but stop appearing in " +
+                        "Downloads. On a large library this takes a while, and moving " +
+                        "to an SD card is a copy rather than a rename, so give it time."
                 )
             },
             confirmButton = {
@@ -783,14 +779,14 @@ private fun DataSettings() {
                     moving = true
                     scope.launch {
                         val result = withContext(Dispatchers.IO) {
-                            StorageLocation.move(move.first, move.second)
+                            StorageLocation.moveStore(move.first, move.second)
                         }
                         moving = false
                         tick++
                         message = result.fold(
                             { moved ->
                                 if (moved == 0) "Nothing needed moving"
-                                else "Moved $moved chapter folders"
+                                else "Moved $moved folders"
                             },
                             { "Move failed: ${it.message ?: it::class.java.simpleName}" }
                         )

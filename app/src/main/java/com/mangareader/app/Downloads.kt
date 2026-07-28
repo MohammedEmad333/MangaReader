@@ -31,14 +31,50 @@ object Downloads {
 
     private const val MARKER = ".complete"
 
-    private fun root(context: Context): File =
-        File(StorageLocation.base(context), StorageLocation.CHAPTERS)
+    /** The readable tree: `<base>/downloads/<Source>/<Series>/<Chapter>`. */
+    private fun downloadsRoot(context: Context): File =
+        File(StorageLocation.base(context), StorageLocation.DOWNLOADS)
 
-    /** Permanent directory for a chapter. Not created here. */
-    fun dirFor(context: Context, chapterId: String): File =
-        File(root(context), hashOf(chapterId))
+    /**
+     * Where a chapter's pages are.
+     *
+     * Two layouts, and the order between them is the whole safety story. A
+     * chapter [DownloadPaths] knows about uses its readable folder. Anything
+     * else falls back to the flat `<md5>` directory, which is where every
+     * chapter downloaded before the tree existed still lives — and still reads,
+     * indefinitely, with nothing needing to be migrated for the app to keep
+     * working. A half-finished reorganisation is therefore a valid state rather
+     * than a broken one, because both halves are found.
+     *
+     * The `exists()` check on the assigned path matters: the path is registered
+     * *before* the first page is fetched, so between enqueueing a chapter and
+     * writing it the folder is a promise rather than a fact. Returning it
+     * anyway would make a re-download of something already in the old layout
+     * fetch every page again.
+     */
+    fun dirFor(context: Context, chapterId: String): File {
+        val assigned = DownloadPaths.pathFor(context, chapterId)
+        if (assigned != null) {
+            val dir = File(downloadsRoot(context), assigned)
+            if (dir.exists()) return dir
+            legacyDir(context, chapterId)?.let { return it }
+            return dir
+        }
+        return legacyDir(context, chapterId)
+            ?: File(downloadsRoot(context), hashOf(chapterId))
+    }
 
-    /** Cache directory for a chapter — same layout, evictable location. */
+    /** The old flat directory, if one is actually there. */
+    private fun legacyDir(context: Context, chapterId: String): File? {
+        val name = hashOf(chapterId)
+        StorageLocation.legacyRoots(context).forEach { root ->
+            val dir = File(root, name)
+            if (dir.exists()) return dir
+        }
+        return null
+    }
+
+    /** Cache directory for a chapter — same idea, evictable location, still flat. */
     fun cacheDirFor(context: Context, chapterId: String): File =
         File(context.applicationContext.cacheDir, "pages/${hashOf(chapterId)}")
 
@@ -49,6 +85,10 @@ object Downloads {
         val dir = dirFor(context, chapterId)
         if (!dir.exists()) return
         runCatching { File(dir, MARKER).writeText(pageCount.toString()) }
+        // Makes the tree self-describing. The folder name is for the user; this
+        // is what lets DownloadPaths.rebuild recover the mapping by scanning,
+        // which is the difference between losing an index and losing a library.
+        runCatching { File(dir, DownloadPaths.ID_MARKER).writeText(chapterId) }
     }
 
     /** The downloaded pages in reading order, or empty if not downloaded. */
@@ -56,29 +96,82 @@ object Downloads {
         val dir = dirFor(context, chapterId)
         val files = dir.listFiles() ?: return emptyList()
         // Page files are zero-padded indices, so name order is page order.
+        // Dotfiles are the two markers; `.part` is a page still being written.
         return files
-            .filter { it.isFile && it.name != MARKER && !it.name.endsWith(".part") }
+            .filter { it.isFile && !it.name.startsWith(".") && !it.name.endsWith(".part") }
             .sortedBy { it.name }
     }
 
     fun delete(context: Context, chapterId: String) {
-        runCatching { dirFor(context, chapterId).deleteRecursively() }
+        val dir = dirFor(context, chapterId)
+        runCatching { dir.deleteRecursively() }
+        pruneEmptyParents(context, dir)
+        DownloadPaths.forget(context, chapterId)
+    }
+
+    /**
+     * Removes the series and source folders once their last chapter goes.
+     *
+     * An empty `Solo Leveling` folder sitting in the user's storage reads as a
+     * download that's still there. Stops at the downloads root and after two
+     * levels, so it can never walk up into the folder they picked.
+     */
+    private fun pruneEmptyParents(context: Context, from: File) {
+        runCatching {
+            val stop = downloadsRoot(context).absolutePath
+            var parent = from.parentFile
+            var levels = 0
+            while (parent != null && levels < 2 && parent.absolutePath != stop) {
+                if (parent.listFiles()?.isEmpty() != true) return
+                parent.delete()
+                parent = parent.parentFile
+                levels++
+            }
+        }
     }
 
     fun deleteAll(context: Context) {
-        runCatching { root(context).deleteRecursively() }
+        roots(context).forEach { runCatching { it.deleteRecursively() } }
+        DownloadPaths.clear(context)
     }
+
+    /** Both layouts, deduplicated — they can resolve to the same folder. */
+    private fun roots(context: Context): List<File> =
+        (listOf(downloadsRoot(context)) + StorageLocation.legacyRoots(context))
+            .distinctBy { it.absolutePath }
+
+    /**
+     * Every directory holding a finished chapter.
+     *
+     * Depth 3 is exactly `downloads/<Source>/<Series>/<Chapter>`; the legacy
+     * root's chapters sit at depth 1 and are found by the same walk. Capping it
+     * keeps the walk out of the page files themselves, which is the difference
+     * between reading a few thousand directory entries and a few hundred
+     * thousand.
+     */
+    private fun completeDirs(context: Context): Sequence<File> =
+        roots(context).asSequence().flatMap { root ->
+            if (!root.isDirectory) emptySequence()
+            else root.walkTopDown()
+                .maxDepth(3)
+                .filter { it.isDirectory && File(it, MARKER).exists() }
+        }
 
     /** How many chapters are fully downloaded. */
     fun count(context: Context): Int =
-        root(context).listFiles()?.count { File(it, MARKER).exists() } ?: 0
+        runCatching { completeDirs(context).count() }.getOrDefault(0)
 
     /** On-disk size of one chapter, for the per-series totals in the Downloads tab. */
     fun sizeOf(context: Context, chapterId: String): Long =
-        dirFor(context, chapterId).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+        runCatching {
+            dirFor(context, chapterId).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+        }.getOrDefault(0L)
 
     fun sizeBytes(context: Context): Long =
-        root(context).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+        roots(context).sumOf { root ->
+            runCatching { root.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }
+                .getOrDefault(0L)
+        }
 
     /**
      * Chapter ids are `"<sourceId>:<url>"` — too long and full of characters a
