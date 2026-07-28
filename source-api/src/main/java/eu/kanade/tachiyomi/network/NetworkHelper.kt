@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
+import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -70,12 +71,25 @@ class NetworkHelper(context: Context) {
 
             chain.proceed(if (changed) patched.build() else request)
         }
+        // After the UA interceptor, not before: the challenge is solved in a
+        // WebView set to the same User-Agent the request carries, and cf_clearance
+        // is rejected if a later request presents a different one.
+        .addInterceptor(
+            CloudflareInterceptor(
+                context.applicationContext,
+                cookieJar,
+                // A lambda rather than the string, so this reads the companion
+                // constant at call time instead of during construction.
+                { defaultUserAgentProvider() }
+            )
+        )
         .build()
 
     /**
-     * Many extensions reference this expecting Cloudflare bypass. There is no
-     * bypass here — it is the same client. Sources behind Cloudflare will fail;
-     * that is a known, accepted limitation of dropping the WebView stack.
+     * Historically the client with the Cloudflare bypass, as opposed to [client]
+     * without it. Both now carry the interceptor, because most extensions reach
+     * for [client] and would otherwise still hit a wall — the split only ever
+     * made sense when the bypass was expensive.
      */
     val cloudflareClient: OkHttpClient = client
 

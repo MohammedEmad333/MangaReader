@@ -88,6 +88,8 @@ As of the source-visibility commit, verified on device:
   swallowed — and can be retried from the queue screen.
 - **Downloads tab** lists series with chapters saved on device, and opens them
   offline.
+- **Cloudflare JS challenges are solved** in a headless WebView; interactive
+  challenges still fail.
 
 `MainActivity.kt` is **973 lines** — the Activity, `YomuApp`, and the shared
 prefs helpers.
@@ -337,6 +339,29 @@ Two details worth keeping:
 
 `DownloadService.start()` is only ever called from a visible Activity on a user
 action, which is what keeps the foreground-service start legal on Android 12+.
+
+### `CloudflareInterceptor` (in `:source-api`)
+
+Answers Cloudflare's JavaScript challenge in a headless WebView and retries the
+request. It is much shorter than it sounds, for one reason: **`AndroidCookieJar`
+is backed by `android.webkit.CookieManager`**, the same store a WebView writes to.
+There is no cookie plumbing — the WebView solves the challenge, `cf_clearance`
+lands in the browser cookie store, and OkHttp picks it up because it was already
+reading from there.
+
+Three things not to break:
+
+- **It must be added after the UA interceptor.** `cf_clearance` is issued against
+  the User-Agent that solved the challenge and rejected if a later request
+  presents a different one, so the WebView is set to whatever UA the outgoing
+  request already carries. Registered before it, that header wouldn't exist yet.
+- **On failure it returns the original 403** rather than throwing. That response
+  still carries the headers `awaitSuccess()` reads to say "blocked by Cloudflare",
+  which is more use than anything the interceptor could invent.
+- **It blocks an OkHttp thread and polls the cookie store.** A challenge involves
+  several navigations, so `onPageFinished` is not the signal — the cookie
+  appearing is. There's a main-thread guard so this can never deadlock if it's
+  ever called from somewhere unexpected.
 
 **5. `DownloadIndex`** is what the Downloads tab is built on. `Downloads` names
 each chapter directory after an MD5 of the chapter id, and that hash is one-way —
@@ -744,14 +769,14 @@ Roughly in order of value:
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
-2. **Cloudflare.** Deliberately removed. Sources behind Cloudflare's challenge
-   will fail. Restoring needs a WebView flow + the interceptor that was stripped
-   out of the vendored API. `awaitSuccess()` now *identifies* the case — a 403 or
-   503 carrying `cf-ray` / `cf-mitigated` / `Server: cloudflare` reports "blocked
-   by Cloudflare (no WebView bypass in this build)" instead of a bare status code
-   — so it's at least distinguishable from a source that just wants a header.
-   `NetworkHelper` also sends `Accept` and `Accept-Language` alongside the UA;
-   that's enough for naive UA-only checks, not for a real challenge.
+2. **Cloudflare — JS challenges now solved, interactive ones not.**
+   `CloudflareInterceptor` (see §4) handles the automatic JavaScript challenge.
+   What remains is the *interactive* kind — the checkbox — which a WebView nobody
+   can see cannot answer. Those still fail, with the original 403 and the
+   "blocked by Cloudflare" message. Fixing them means a visible WebView screen the
+   user can tap through, launched from the error on the browse screen; the
+   networking half is already done, so it's a UI job. That screen would also be
+   the natural home for logging in to sources that need an account.
 3. **Covers 403 offline and on some sources.** Coil fetches thumbnails without
    the source's headers (Referer / User-Agent), and nothing caches them, so a
    library entry shows a grey box offline. The reader already downloads pages
