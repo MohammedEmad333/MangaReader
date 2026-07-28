@@ -45,8 +45,27 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Handle configuration changes rather than being recreated by them.
+
+             Every piece of YomuApp's state lives in `remember`, not
+             `rememberSaveable` — the active source, series, chapter list and
+             loaded pages include objects that can't be put in a Bundle at all.
+             So an Activity recreation isn't a blip, it's a full reset to the
+             Library tab, and anything that provokes one throws away what the
+             user was reading.
+
+             The reader's rotation setting provoked one every time it opened:
+             setting requestedOrientation *is* a configuration change, so the
+             reader recreated the Activity, lost itself, and dropped back to the
+             Library — repeatedly, with no way to reach the setting and turn it
+             off. Declaring these makes the change something Compose absorbs by
+             recomposing, which it does natively through LocalConfiguration.
+
+             This also fixes the older, quieter version of the same bug: simply
+             rotating the phone mid-chapter used to lose your place. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
