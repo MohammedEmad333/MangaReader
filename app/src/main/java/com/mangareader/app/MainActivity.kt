@@ -76,6 +76,14 @@ internal fun savePage(context: Context, key: String, page: Int) {
     prefs(context).edit().putInt("pos:$key", page).apply()
 }
 
+/** [savePage] for a whole batch, in one edit. Used by the Tachiyomi import. */
+internal fun savePageBulk(context: Context, pages: Map<String, Int>) {
+    if (pages.isEmpty()) return
+    val editor = prefs(context).edit()
+    pages.forEach { (key, page) -> editor.putInt("pos:$key", page) }
+    editor.apply()
+}
+
 internal fun isIncognito(context: Context): Boolean =
     prefs(context).getBoolean("incognito", false)
 

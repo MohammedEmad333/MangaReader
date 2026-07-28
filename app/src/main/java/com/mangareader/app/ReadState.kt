@@ -16,4 +16,17 @@ object ReadState {
     fun setRead(context: Context, chapterKey: String, read: Boolean) {
         prefs(context).edit().putBoolean("read:" + chapterKey, read).apply()
     }
+
+    /**
+     * Marks a batch read in a single edit.
+     *
+     * One `apply()` per chapter is fine for a tap and not for an import, where
+     * it's thousands of separate writes to the same file.
+     */
+    fun setReadBulk(context: Context, chapterKeys: Collection<String>) {
+        if (chapterKeys.isEmpty()) return
+        val editor = prefs(context).edit()
+        chapterKeys.forEach { editor.putBoolean("read:" + it, true) }
+        editor.apply()
+    }
 }

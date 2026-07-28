@@ -705,28 +705,42 @@ internal fun SeriesScreen(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    // The check mark is the delete affordance.
-                                    // A separate bin icon would be a third
-                                    // control on a row that already has two, and
-                                    // the state and the action on it are the same
-                                    // thing: it's there because it's downloaded.
+                                    // One glyph per column, tint carries the
+                                    // state, tap toggles it. The download arrow
+                                    // stays an arrow whether or not the chapter
+                                    // is on disk — it used to become a check,
+                                    // which collided with the read check now
+                                    // sitting next to it, and two check marks a
+                                    // thumb apart meaning different things is
+                                    // worse than no icon at all.
                                     downloaded -> IconButton(
                                         onClick = { confirmDeleteChapter = ch }
                                     ) {
                                         Icon(
-                                            Icons.Default.Check,
+                                            Icons.Default.KeyboardArrowDown,
                                             contentDescription = "Downloaded \u2014 delete",
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
-                                    else -> TextButton(onClick = { onDownload(ch) }) {
-                                        Text("Save")
+                                    else -> IconButton(onClick = { onDownload(ch) }) {
+                                        Icon(
+                                            Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Download",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                .copy(alpha = IDLE_ICON)
+                                        )
                                     }
                                 }
                                 Spacer(Modifier.width(4.dp))
                             }
-                            TextButton(onClick = { onToggleRead(ch) }) {
-                                Text(if (read) "Unread" else "Read")
+                            IconButton(onClick = { onToggleRead(ch) }) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = if (read) "Mark unread" else "Mark read",
+                                    tint = if (read) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                        .copy(alpha = IDLE_ICON)
+                                )
                             }
                         }
                     },
@@ -893,10 +907,15 @@ private fun ChapterSelectionBar(
                 )
                 TextButton(onClick = onSelectAll) { Text("All") }
             }
+            // Spread, not scrolled. Four actions fit a phone width comfortably
+            // and the header row directly above this one is already distributed
+            // — bunching these at the left made the bar read as an overflow that
+            // had more to show.
             Row(
                 modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 if (canDownload) {
                     SeriesAction(
@@ -936,6 +955,14 @@ private fun ChapterSelectionBar(
  * a chapter has been read, and it has to survive a bright phone outdoors.
  */
 private const val READ_DIM = 0.45f
+
+/**
+ * Tint for an icon whose state is "not yet".
+ *
+ * Dim enough that the row reads at a glance as done or not done, solid enough
+ * that it still looks like a button rather than a disabled one.
+ */
+private const val IDLE_ICON = 0.35f
 
 private const val KEY_BROWSE_VIEW = "browse_view"
 

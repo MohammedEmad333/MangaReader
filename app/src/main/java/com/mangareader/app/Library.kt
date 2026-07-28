@@ -67,6 +67,21 @@ object Library {
         save(context, items)
     }
 
+    /**
+     * Upserts a batch in one write.
+     *
+     * [add] rewrites the entire library JSON per call, which is fine for one tap
+     * and quadratic for an import: 4645 entries would be 4645 growing
+     * serialisations. New entries keep their own order and land in front of
+     * whatever was already there.
+     */
+    fun mergeAll(context: Context, entries: List<LibraryEntry>) {
+        if (entries.isEmpty()) return
+        val incoming = entries.map { it.seriesId }.toHashSet()
+        val kept = list(context).filterNot { it.seriesId in incoming }
+        save(context, entries + kept)
+    }
+
     /** Removes the series and clears its category assignments. */
     fun remove(context: Context, seriesId: String) {
         save(context, list(context).filterNot { it.seriesId == seriesId })

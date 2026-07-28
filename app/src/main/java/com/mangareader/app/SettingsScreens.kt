@@ -484,6 +484,7 @@ private fun DataSettings() {
     var pendingMove by remember { mutableStateOf<Pair<File, File>?>(null) }
     var moving by remember { mutableStateOf(false) }
     var confirmReorganise by remember { mutableStateOf(false) }
+    var importOpen by remember { mutableStateOf(false) }
     var reorganising by remember { mutableStateOf(false) }
 
     fun refreshLocation() {
@@ -600,6 +601,19 @@ private fun DataSettings() {
             )
             HorizontalDivider()
         }
+        ListItem(
+            headlineContent = { Text("Import Tachiyomi backup") },
+            supportingContent = {
+                Text("Library, categories, read state and history from a .tachibk file")
+            },
+            trailingContent = {
+                TextButton(
+                    enabled = !reorganising && !moving,
+                    onClick = { importOpen = true }
+                ) { Text("Scan") }
+            }
+        )
+        HorizontalDivider()
         ListItem(
             headlineContent = { Text("Reorganise downloads") },
             supportingContent = {
@@ -775,6 +789,10 @@ private fun DataSettings() {
                 TextButton(onClick = { askAccess = false }) { Text("Cancel") }
             }
         )
+    }
+
+    if (importOpen) {
+        TachiyomiImportDialog(onDismiss = { importOpen = false })
     }
 
     if (confirmReorganise) {
