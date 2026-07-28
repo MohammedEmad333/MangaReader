@@ -188,7 +188,7 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("Back") }
+            BackButton(onBack)
             Text(
                 "Download queue",
                 style = MaterialTheme.typography.titleLarge,

@@ -97,7 +97,7 @@ internal fun GlobalSearchScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Search all sources") },
-            navigationIcon = { TextButton(onClick = onBack) { Text("←") } }
+            navigationIcon = { BackButton(onBack) }
         )
 
         Row(
