@@ -650,25 +650,34 @@ internal fun SeriesScreen(
                     headlineContent = {
                         Text(
                             ch.name,
-                            color = if (read) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.onSurface
+                            color = if (read) {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = READ_DIM)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
                         )
                     },
                     supportingContent = {
                         val bits = listOfNotNull(
                             formatChapterDate(ch.dateUploaded),
                             ch.scanlator,
-                            when {
-                                read -> "Read"
-                                resume > 0 -> "Page ${resume + 1}"
-                                else -> null
-                            }
+                            // No "Read" label: the whole row dims instead. A
+                            // word costs a line of subtitle on every finished
+                            // chapter to say what the colour already says, and on
+                            // a 171-chapter series that's most of the screen.
+                            // The saved page goes with it — a chapter that's
+                            // been read doesn't need a bookmark.
+                            if (!read && resume > 0) "Page ${resume + 1}" else null
                         )
                         if (bits.isNotEmpty()) {
                             Text(
                                 bits.joinToString(" \u2022 "),
-                                color = if (!read && resume > 0) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = when {
+                                    read -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        .copy(alpha = READ_DIM)
+                                    resume > 0 -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
                     },
@@ -840,11 +849,15 @@ private fun Set<String>.toggle(id: String): Set<String> =
 /**
  * The contextual bar shown while chapters are selected.
  *
- * Words rather than icons, and scrollable. `material-icons-core` has nothing for
- * mark-as-read or mark-as-unread — the fifth time that has come up in this repo
- * — and four ambiguous glyphs on a destructive bar is worse than four labels the
- * user has to scroll. Delete is last and coloured, so the one action that can't
- * be undone isn't adjacent to the one that's hit most.
+ * Icon over label, via the same [SeriesAction] the series header uses, so the
+ * two rows of actions on this screen look like the same app.
+ *
+ * The labels stay because the icons can't carry it alone. `material-icons-core`
+ * has nothing for mark-as-read or mark-as-unread — §7's icon debt, again — so
+ * read borrows `Check` and unread borrows `Clear`, and `Check` already means
+ * "downloaded" three columns to the left. Bare glyphs would be a guess; with a
+ * word under them they're just a target. Delete is last and coloured, so the one
+ * action that can't be undone isn't adjacent to the one hit most.
  */
 @Composable
 private fun ChapterSelectionBar(
@@ -886,17 +899,43 @@ private fun ChapterSelectionBar(
                     .padding(horizontal = 4.dp)
             ) {
                 if (canDownload) {
-                    TextButton(onClick = onDownload) { Text("Download") }
+                    SeriesAction(
+                        icon = Icons.Default.KeyboardArrowDown,
+                        label = "Download",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onDownload
+                    )
                 }
-                TextButton(onClick = onRead) { Text("Mark read") }
-                TextButton(onClick = onUnread) { Text("Mark unread") }
-                TextButton(onClick = onDelete) {
-                    Text("Delete downloads", color = MaterialTheme.colorScheme.error)
-                }
+                SeriesAction(
+                    icon = Icons.Default.Check,
+                    label = "Read",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onRead
+                )
+                SeriesAction(
+                    icon = Icons.Default.Clear,
+                    label = "Unread",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onUnread
+                )
+                SeriesAction(
+                    icon = Icons.Default.Delete,
+                    label = "Delete",
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete
+                )
             }
         }
     }
 }
+
+/**
+ * How far a read chapter's text fades.
+ *
+ * 0.45 rather than something subtler because this is now the *only* signal that
+ * a chapter has been read, and it has to survive a bright phone outdoors.
+ */
+private const val READ_DIM = 0.45f
 
 private const val KEY_BROWSE_VIEW = "browse_view"
 
