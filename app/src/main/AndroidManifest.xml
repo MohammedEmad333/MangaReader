@@ -12,6 +12,20 @@
          the tachiyomi.extension feature. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- Chapter downloads run in a foreground service so they survive the app
+         being backgrounded or swiped away. DATA_SYNC is the type Android 14
+         requires to be declared for this kind of work. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Android 13+ needs this granted before the progress notification shows.
+         Downloads still run if it's refused; only the notification is lost. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A foreground service keeps the process alive but not the CPU: without
+         this the device can suspend mid-transfer with the screen off. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name=".App"
         android:usesCleartextTraffic="true"
@@ -39,6 +53,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 
