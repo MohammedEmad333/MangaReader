@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 import android.util.Log
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -14,11 +15,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.random.Random
 import eu.kanade.tachiyomi.source.model.Page as TachiPage
 
 /**
@@ -218,6 +222,7 @@ class TachiyomiSourceAdapter(
                 done[base + offset] = file
             }
             onUpdate(done.toList())
+            if (base + PAGE_CONCURRENCY < pages.size) delay(BATCH_GAP_MS)
         }
 
         if (!persist) return@withContext
@@ -246,45 +251,80 @@ class TachiyomiSourceAdapter(
         }
     }
 
+    /**
+     * Fetches one page, retrying transient rejections.
+     *
+     * This exists because of a source that answers **400** under parallel load
+     * rather than 429: a minority of pages of any given chapter fail, the URLs
+     * are perfectly well-formed, and the very same URL succeeds moments later.
+     * Retrying by hand was working, so the loop belongs here.
+     *
+     * The backoff is per page, not per chapter, so a chapter isn't restarted for
+     * the sake of two pages, and the jitter keeps the four in-flight requests of
+     * a batch from re-colliding on the same schedule after they fail together.
+     */
     private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {
+        var attempt = 0
+        while (true) {
+            try {
+                return fetchPage(page, dir, index)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                attempt++
+                // A 403 or 404 means the same thing however many times it's
+                // asked, so those fail immediately rather than burning three
+                // more requests and eleven seconds on a foregone conclusion.
+                if (attempt >= PAGE_ATTEMPTS || !isTransient(e)) {
+                    throw PageDownloadException(index, page.imageUrl, e)
+                }
+                delay(
+                    PAGE_RETRY_BASE_MS * (1L shl (attempt - 1)) +
+                        Random.nextLong(PAGE_RETRY_JITTER_MS)
+                )
+            }
+        }
+    }
+
+    private fun isTransient(e: Throwable): Boolean = when (e) {
+        // 400 is in here because of the source described above. It's normally a
+        // permanent "your request is wrong", but a server using it as a throttle
+        // signal is indistinguishable from one that means it — and retrying a
+        // genuinely malformed request a few times costs little.
+        is HttpException -> e.code in TRANSIENT_HTTP_CODES
+        is IOException -> true
+        else -> false
+    }
+
+    private suspend fun fetchPage(page: TachiPage, dir: File, index: Int): File {
         val http = delegate as? HttpSource
 
-        // Wrapped as a whole so the URL travels with the failure. Which URL that
-        // is depends on how far this got: before resolution it's whatever the
-        // page list carried, after it's what getImageUrl returned — and the
-        // difference between those two is itself diagnostic.
-        try {
-            // Some sources return pages without a direct image URL; it has to be
-            // resolved with a second request first.
-            if (page.imageUrl.isNullOrEmpty() && http != null) {
-                page.imageUrl = http.getImageUrl(page)
-            }
-
-            val target = File(dir, "%04d".format(index))
-            if (target.exists() && target.length() > 0L) return target
-
-            // Going through the source's own client matters: it carries the
-            // source's headers (Referer, User-Agent). A bare GET 403s on most sites.
-            val body = if (http != null) {
-                http.getImage(page).body!!
-            } else {
-                val url = page.imageUrl ?: error("No image url for page $index")
-                fallbackClient.newCall(Request.Builder().url(url).build()).execute().body!!
-            }
-
-            val partial = File(dir, "%04d.part".format(index))
-            body.byteStream().use { input ->
-                partial.outputStream().use { output -> input.copyTo(output) }
-            }
-            // Write-then-rename, so an interrupted download can't leave a truncated
-            // file that the exists() check above would later treat as complete.
-            partial.renameTo(target)
-            return target
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw PageDownloadException(index, page.imageUrl, e)
+        // Some sources return pages without a direct image URL; it has to be
+        // resolved with a second request first.
+        if (page.imageUrl.isNullOrEmpty() && http != null) {
+            page.imageUrl = http.getImageUrl(page)
         }
+
+        val target = File(dir, "%04d".format(index))
+        if (target.exists() && target.length() > 0L) return target
+
+        // Going through the source's own client matters: it carries the
+        // source's headers (Referer, User-Agent). A bare GET 403s on most sites.
+        val body = if (http != null) {
+            http.getImage(page).body!!
+        } else {
+            val url = page.imageUrl ?: error("No image url for page $index")
+            fallbackClient.newCall(Request.Builder().url(url).build()).execute().body!!
+        }
+
+        val partial = File(dir, "%04d.part".format(index))
+        body.byteStream().use { input ->
+            partial.outputStream().use { output -> input.copyTo(output) }
+        }
+        // Write-then-rename, so an interrupted download can't leave a truncated
+        // file that the exists() check above would later treat as complete.
+        partial.renameTo(target)
+        return target
     }
 
     private fun MangasPage.toSeriesPage() =
@@ -337,6 +377,26 @@ class TachiyomiSourceAdapter(
         /** Pages fetched in parallel. Enough to hide latency, not enough to look
          *  like a scraper to the source. */
         const val PAGE_CONCURRENCY = 4
+
+        /** Total tries per page, first attempt included. */
+        const val PAGE_ATTEMPTS = 4
+
+        /** Doubles each attempt: 500ms, 1s, 2s. */
+        const val PAGE_RETRY_BASE_MS = 500L
+
+        /** Spread so a batch that failed together doesn't retry in lockstep. */
+        const val PAGE_RETRY_JITTER_MS = 250L
+
+        /** Breather between batches — cheap, and enough to stay under the
+         *  request rate that triggers the rejections in the first place. */
+        const val BATCH_GAP_MS = 150L
+
+        /**
+         * Worth retrying. 408/429/5xx are the textbook ones; 400 is here because
+         * at least one source uses it as its throttle response.
+         */
+        val TRANSIENT_HTTP_CODES = setOf(400, 408, 425, 429, 500, 502, 503, 504)
+
         val fallbackClient = OkHttpClient()
     }
 }

@@ -551,6 +551,30 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
+### A 400 can mean "slow down"
+
+`cdn.manhwatoon.me` (WP-manga / Madara) answers **HTTP 400** — not 429 — when it
+doesn't like the request rate. The symptom is a minority of pages of any chapter
+failing (1 of 21, 9 of 45, 10 of 34), perfectly well-formed URLs, and the same URL
+succeeding on a later attempt. Retrying by hand walked a chapter to completion a
+few pages at a time.
+
+Two things this cost, both avoidable:
+
+- **The error was being swallowed.** `runCatching { downloadPage() }.getOrNull()`
+  made 400, 403, 404 and a timeout look identical, so the first guess was rate
+  limiting and the second was malformed URLs — neither checkable. Carrying the
+  exception *and the URL* up settled it in one retry.
+- **400 is in `TRANSIENT_HTTP_CODES`** in `TachiyomiSourceAdapter` because of
+  this. It's normally a permanent "your request is wrong", and treating it as
+  retryable is a deliberate trade: a server using it as a throttle signal is
+  indistinguishable from one that means it, and 4 attempts at a genuinely bad
+  request costs a few seconds.
+
+Page fetches now retry 4 times with 500ms/1s/2s backoff plus jitter, with a 150ms
+gap between batches. If another source needs different numbers, that's the point
+at which these constants should become per-source rather than global.
+
 **`tachiyomiorg` org was deleted.** Any JitPack coordinate under
 `com.github.tachiyomiorg:*` will fail to resolve. Same for
 `com.github.inorichi.injekt`. Use `com.github.mihonapp:*`.
@@ -705,10 +729,9 @@ Roughly in order of value:
 
 1. **Downloader gaps.** The foreground service, queue, retry and Downloads tab
    are done (§4). What's left versus Mihon: no reordering in the queue (strictly
-   FIFO), no per-series grouping in the queue screen, no auto-download of new
-   chapters, and no per-source concurrency or delay — `PAGE_CONCURRENCY` is a
-   flat 4 with no gap between batches, which is the first thing to try if a
-   source starts failing partway through a series.
+   FIFO), no per-series grouping in the queue screen, and no auto-download of
+   new chapters. Retry/backoff settings are global, not per-source — see the
+   note on manhwatoon in §5 for why that might eventually need to change.
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
