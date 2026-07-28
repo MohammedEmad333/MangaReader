@@ -1,18 +1,21 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-28,
-after the Cloudflare, image-pipeline and reader session (supersedes the earlier
-version of this file).
+Context document for continuing work in a fresh chat. Last updated 2026-07-28
+(late), after the settings / backup / storage-location session (supersedes the
+earlier version of this file).
 
 ---
 
 ## 0. Where this was left — read this first
 
-The last session closed the Cloudflare thread — HentaiSco browses, covers load,
-chapters open — fixed two bugs found while testing it, and then rebuilt the
-reader. **The reader work is the least tested thing in this repo**; see the
-thread below before assuming any of it works. The older manhwatoon thread is
-still open.
+The last session built the Settings screen and everything under it: a real
+backup and restore, a user-chosen storage location, and a readable download
+tree. **All of that is verified on device** (builds #121–#125), which makes it
+the first stretch of work in several sessions that isn't carrying an untested
+tail. Two older threads are still open and neither was touched.
+
+One thing the new work quietly created: the app now has a **light theme**, and
+the reader was written against dark only. See thread 3.
 
 ### Open thread 1 — the reader rewrite is barely tested
 
@@ -53,6 +56,22 @@ three of the four were wrong in instructive ways.
   *rates*; the server has been trying to say what's wrong the whole time.
 - The user deferred this deliberately. It is the oldest thread here and the only
   one that is a genuine unknown rather than untested work.
+
+### Open thread 3 — the light theme meets the untested reader
+
+`AppTheme` added Light and Follow-system alongside Dark, and `ReaderScreen` has
+two hardcoded `Color.White` text draws — the page-number overlay (~line 163) and
+the failed-page message (~line 317). With `ReaderBackground.THEME` on a light
+scheme both are white on white. The bug already existed for
+`ReaderBackground.WHITE`; the theme setting is what makes it reachable by
+default. Trivial to fix — take the colour from the resolved background — but it
+sits inside the file thread 1 says nobody has exercised, so fix it in the same
+pass as the paged-RTL and grayscale+invert checks rather than on its own.
+
+Also unaddressed: `AndroidManifest.xml` still declares
+`@android:style/Theme.Material.NoActionBar`, which is the *dark* variant. In
+light mode that means a dark flash on cold start before Compose paints, and a
+permanently dark status bar over a light app.
 
 ### Closed last session — Cloudflare, covers, and two bugs
 
@@ -186,8 +205,20 @@ As of the source-visibility commit, verified on device:
 - **The reader has overlay bars, a chapter picker and a settings sheet** — but
   see §0 before trusting any of it.
 
-`MainActivity.kt` is **1076 lines** — the Activity, `YomuApp`, and the shared
-prefs helpers. `ReaderScreen.kt` is **634**.
+Added this session, all verified on device:
+
+- **A Settings screen** reached from More, with eight sections (§4).
+- **Backup and restore** — every SharedPreferences store, as JSON.
+- **Automatic backups** on a WorkManager schedule.
+- **A user-chosen storage location** for downloads and backups, via
+  `MANAGE_EXTERNAL_STORAGE` rather than SAF (§5 — this is the load-bearing
+  decision of the session).
+- **A readable download tree**: `<picked>/Yomu/downloads/<Source>/<Series>/<Chapter>`,
+  with a reorganise action for chapters in the old flat layout.
+- **One back button.** `Ui.BackButton` replaced three different affordances.
+
+`MainActivity.kt` is **1096 lines** — the Activity, `YomuApp`, and the shared
+prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**.
 
 ## 3. Build environment
 
@@ -213,7 +244,14 @@ is behind a `workflow_dispatch` input to keep builds fast (~2–4 min warm).
 
 ### `:app` dependencies that constrain UI work
 Compose BOM `2024.09.03`, material3, **`material-icons-core` only** (see §5),
-coil `2.7.0`, telephoto zoomable-image, okhttp 4.12, documentfile.
+coil `2.7.0`, telephoto zoomable-image, okhttp 4.12, documentfile,
+**`androidx.work:work-runtime-ktx:2.9.1`**.
+
+WorkManager self-initialises through `androidx.startup` — there is no
+`Configuration.Provider` and no manifest entry. It exists solely so automatic
+backups fire on a schedule rather than when the app happens to be opened. It
+does drag Room and `androidx.sqlite` in transitively, which is worth knowing
+given that the backup design rests on this app *not* having a database.
 
 ---
 
@@ -282,6 +320,10 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `DownloadService.kt` | Foreground service that drains the queue. Actions: pause / resume / skip / cancel-all. |
 | `DownloadIndex.kt` | Maps downloaded chapters back to their series, so the Downloads tab can exist. |
 | `MainActivity.kt` | Activity, `YomuApp` (all shared screen state), prefs helpers. |
+| `AppPrefs.kt` | `ThemeMode`, `AppTheme` (theme + FLAG_SECURE), `yomuColorScheme()`. |
+| `Backup.kt` | Whole-prefs backup/restore, `BackupFrequency`, `AutoBackupWorker`. |
+| `StorageLocation.kt` | The chosen folder, All-files-access checks, tree-URI→path, the mover. |
+| `DownloadPaths.kt` | chapterId → `<Source>/<Series>/<Chapter>`, plus `reorganiseDownloads()`. |
 
 ### Compose UI file layout
 `MainActivity.kt` used to hold every screen. It was split once it passed 2600
@@ -302,6 +344,7 @@ things between them needs no imports — only visibility changes (see §5).
 | `WebViewScreen.kt` | `ChallengeWebViewScreen` — the visible Cloudflare WebView |
 | `MoreScreens.kt` | `MoreTab`, `HistoryScreen`, `ExtensionReposDialog`, `CategoryManagerDialog`, `SourceDialog` |
 | `DownloadQueueScreen.kt` | `DownloadsTab` and `DownloadQueueScreen` — both read `DownloadQueue` directly rather than taking it as parameters |
+| `SettingsScreens.kt` | `SettingsScreen` and all eight section pages. Which section is open is local state, not a routing branch |
 
 `YomuApp` still owns all cross-screen state and passes it down as parameters, so
 the screens stay dumb. That's why the split was safe to do mechanically.
@@ -547,6 +590,87 @@ title-and-cover-only `Series`, with chapters read straight from `ChapterCache` �
 enough for every downloaded chapter to open, since the page store is consulted
 before the handle is.
 
+### Storage location, backups, and the download tree
+
+Three things that landed together and are easiest to understand in that order.
+
+**`StorageLocation`** owns the folder the user picked. It is a **real filesystem
+path**, not a SAF tree — see §5, this is the decision the whole session turns
+on. `base()` resolves to `<picked>/Yomu`, memoised against the stored string
+because `Downloads.dirFor` is called once per page and resolving involves a
+permission check and a write probe. It falls back to `filesDir` whenever the
+chosen folder can't be written (permission revoked, card unmounted, folder
+deleted by a file manager) rather than failing: a download that errors because a
+card is missing is a bug report, one that quietly lands in internal storage is a
+full library and a wrong-looking settings row.
+
+The picker is still `ACTION_OPEN_DOCUMENT_TREE`, because it's the folder UI
+people know; `pathFromTreeUri()` maps `primary:Manga/Yomu` back to
+`/storage/emulated/0/Manga/Yomu`, and returns null for providers like Drive that
+have no path behind them.
+
+**`Backup`** serialises **every SharedPreferences store, verbatim** — the app
+store `manga_reader` plus every `source_<id>` written by `SourceSettings`. This
+app has no database: the library, categories, history, read flags, resume
+positions, reader settings, theme, pinned sources, hidden languages, repo list
+and per-source logins are all JSON strings or scalars in those files. Copying
+them copies all of it with no per-model serialiser to write and, more to the
+point, none to forget to update when a field is added. Each value carries a type
+tag, because `getAll()` erases whether a number was an Int or a Long and a wrong
+guess throws `ClassCastException` on a value that looks fine in the file.
+
+Two rules in there worth keeping:
+
+- **Restore validates the entire payload before clearing anything.** Wiping and
+  then discovering the file was truncated turns a bad file into data loss, which
+  is the exact thing the feature exists to prevent. It also filters store names
+  to `manga_reader` / `source_*`, so a hand-edited backup can't name arbitrary
+  pref files and have them overwritten.
+- **The storage-location key is the one thing excluded from the payload.** A
+  path is device-local even when it looks portable — `/storage/1A2B-3C4D/Manga`
+  is a card that exists in one phone. Restore keeps whatever the local install
+  had, then re-arms the WorkManager schedule to match the restored frequency.
+
+Restore ends by calling `recreate()`. Per §5 that is normally the thing to avoid
+at all costs; here a full reset to the Library is precisely the intent, because
+every bit of `YomuApp`'s state was built from prefs that have just been replaced.
+
+**`DownloadPaths`** is what makes downloads readable. `Downloads` names a chapter
+directory after an MD5 of its id, which is one-way — fine while downloads were
+only reached through the app, useless once they live in a folder the user opens
+in a file manager. So a chapter gets `downloads/<Source>/<Series>/<Chapter>`, and
+this stores which. It has to be a stored mapping: a sanitised title can't be
+turned back into a chapter id, and `dirFor` is handed nothing else.
+
+`DownloadService` calls `register()` at the line where it resolves the source —
+the only point where the source's *display name* is known, since the queue
+stores ids and the extension may be uninstalled by the time anything else asks.
+
+Three things keep it from being a single point of failure:
+
+1. **Every chapter folder carries a `.chapterid` file**, so the tree describes
+   itself. `DownloadPaths.load()` scans and rebuilds from those markers when its
+   index file is missing — which covers clearing app storage while the downloads
+   sit safely outside it. Losing the index costs a directory walk, not a library.
+2. **It lives in `filesDir`**, so a file manager can't delete it and moving the
+   storage location doesn't disturb it.
+3. **`Downloads.dirFor` reads both layouts**, preferring the registered path and
+   falling back to the flat `<md5>` directory. A half-finished reorganisation is
+   therefore a valid state rather than a broken one, and chapters downloaded
+   before the tree existed keep working indefinitely with nothing migrated.
+
+`reorganiseDownloads()` files the old ones. It can only place a chapter the app
+can still name, and `DownloadIndex` recovers more than it was written with — for
+any series in the library it re-derives the mapping from `ChapterCache`. Whatever
+it can't name is left where it is and keeps working. **Run it with the queue
+empty**: it moves folders the service writes into.
+
+Folder names are sanitised against *Windows'* illegal set, not Linux's, because
+the point is opening these on a PC — a `?` in a title Android took happily is a
+folder that can't be copied off the phone. Collisions get a short id hash rather
+than a counter, so a rebuild in a different order can't hand two series the same
+folder.
+
 ### The reader
 
 Controls are hidden until a tap, which then raises a top bar (back, series,
@@ -646,7 +770,27 @@ Bottom nav, 5 tabs:
 0. **Library** — saved series grid, category filter chips
 1. **Browse** — sub-tabs *Sources* and *Extensions* (below)
 2. **History**
-3. **More** — incognito, cover size, Categories, **Browse → Extension repos**
+3. **Downloads** — series with chapters on device, openable offline
+4. **More** — incognito, download queue, Categories, **Settings**
+
+#### Settings (`SettingsScreens.kt`)
+Reached from More. An index of eight sections, each opening onto its own page:
+Appearance, Library, Reader, Downloads, Browse, Data and storage, Security and
+privacy, Advanced.
+
+**Which section is open is local state inside `SettingsScreen`, not a branch of
+`YomuApp`'s routing chain.** That chain already encodes real navigation rules in
+an `if / else if`; adding eight arms to it for the inside of one screen would
+put them in the worst possible place. The chain gained one boolean instead, and
+back pops the section before it pops the screen.
+
+**Rows are led by emoji, not icons** — `material-icons-core` has none of
+palette / storage / shield / sliders, and the bottom nav already does this.
+
+Incognito deliberately appears in **both** More and Settings → Security: it's
+the one preference that gets switched on for a few chapters and back off, and
+that shouldn't be three taps deep. Both read the same key, and the More tab is
+disposed while Settings is open, so it re-reads rather than going stale.
 
 Repo add/remove lives **only** in More → Browse → Extension repos
 (`ExtensionReposDialog`). The Extensions tab used to have its own copy of that
@@ -748,7 +892,19 @@ A single `if / else if` chain, in this order:
 5. `activeSource != null` → `LibraryScreen` (this is the **per-source browse**
    screen, despite the name — the Library *tab* is `LibraryTab`)
 6. `downloadsOpen` → `DownloadQueueScreen`
-7. else → `Scaffold` with the bottom nav
+7. `settingsOpen` → `SettingsScreen`
+8. else → `Scaffold` with the bottom nav
+
+**6 sits above 7 on purpose and the ordering does the work.** The queue is
+reachable from More *and* from Settings → Downloads. Leaving `settingsOpen` set
+while the queue renders means backing out of the queue falls through to
+whichever of the two it was opened from — two booleans read in order, instead of
+a "where did I come from" flag.
+
+Known wrinkle: `SettingsScreen`'s `openSection` is `rememberSaveable`, and the
+composable leaves the composition entirely while the queue is up, so returning
+from the queue lands on the Settings index rather than the Downloads page.
+Hoisting that one string next to `settingsOpen` fixes it without adding a branch.
 
 **Branch 1 was safe to put at the top**, which is worth understanding before
 adding anything else there. It is gated on state that is null in every other
@@ -1020,6 +1176,56 @@ Two things to carry forward:
   memory, "don't keep activities", a locale change. Hoisting state into a
   `ViewModel` or a saveable holder is the real fix and is §7's structural item.
 
+### Sideloading is a design input, not just a distribution choice
+
+Letting the user pick any folder on Android 11+ looks like it forces SAF, and
+SAF would have forced a page to stop being a `java.io.File` and become a `Uri` —
+a type that lives in `Source.loadPages`, `loadPagesProgressively`,
+`TachiyomiSourceAdapter`, `LocalSource`, `DownloadIndex`, `YomuApp`'s reader
+state and `ReaderScreen`'s parameter list. Six files, every read and write
+rerouted through `ContentResolver`, with no compiler in the loop.
+
+`MANAGE_EXTERNAL_STORAGE` gets the identical user-visible result — any folder,
+visible in a file manager, surviving a reinstall — and **`Downloads.root()` was
+the entire change**. Nothing below it moved.
+
+The only reason Mihon can't do this is that Google restricts the permission on
+Play. This app ships from GitHub Releases. The general lesson: constraints
+inherited from a reference implementation are worth re-deriving rather than
+assuming, because they may be *its* constraints and not yours. The cost here was
+three lines of manifest and a permission prompt.
+
+### A store addressed by a hash can't grow a human-readable layout for free
+
+`Downloads` keys chapter directories on `MD5(chapterId)`, which the handoff has
+described as one-way since it was written. That was a stated property, not a
+hidden one, and it still wasn't obvious that it made `<Source>/<Series>/<Chapter>`
+a *stored mapping* problem rather than a path-formatting one — `dirFor` receives
+a chapter id and nothing else, and no amount of care with names recovers the
+other two levels.
+
+What made it tractable was that `DownloadItem` already carried `sourceId`,
+`chapterName`, `seriesTitle` and `seriesId` at enqueue time, for `DownloadIndex`'s
+benefit. Worth checking what the existing types already know before adding a
+lookup: the data was one line away from where it was needed.
+
+The general form: **when a new feature needs the inverse of an existing one-way
+function, the answer is a record written at the point the information exists**,
+and the follow-up question is what happens when that record is lost. Here it's a
+marker file inside each folder, which makes the store self-describing and turns
+index loss into a directory scan.
+
+### Don't wipe before you've finished reading
+
+Restore originally cleared each SharedPreferences store and then decoded into it,
+discovering a truncated or malformed payload partway down — turning a bad file
+into exactly the data loss the feature exists to prevent. Validating the whole
+payload first and only then clearing is four extra lines.
+
+Same shape as the `move` fallback in `StorageLocation`: `renameTo` across mount
+points fails by *returning false* rather than throwing, so a copy-then-delete
+fallback is mandatory or an internal→SD-card move silently moves nothing.
+
 ### Termux-specific
 
 **A filename that already exists in Downloads gets `.txt` appended.** This is
@@ -1151,7 +1357,18 @@ Roughly in order of value:
     (§5) covers rotation, but low memory and "don't keep activities" still drop
     the user back at the Library mid-chapter.
 13. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
-14. **Icon debt from `material-icons-core`.** Three places now use an
+14. **Storage location doesn't move the reading cache or app data.** Chapter
+    lists (`filesDir/chapterlists`), the download queue and the path index stay
+    in internal storage by design — they're app data, not user data — but it
+    does mean "everything Yomu wrote" isn't quite one folder.
+15. **Automatic backups are silent when no folder is set.** They land inside app
+    storage, where a file manager can't reach them: fine as a safety net,
+    useless for moving to another phone. The settings note says so; nothing
+    warns more loudly.
+16. **Reorganise can't place a chapter whose series was never in the library.**
+    `ChapterCache` only holds a list fetched while online, so there's nothing to
+    match the hash against. Those stay in the flat layout and keep working.
+17. **Icon debt from `material-icons-core`.** Three places now use an
     approximate glyph because the core set is ~40 icons: a filled/dimmed `Star`
     for pinning (no `PushPin`), `KeyboardArrowDown` for download, and `Menu` for
     source visibility. Adding `material-icons-extended` fixes all three at once —
@@ -1212,6 +1429,12 @@ Update handoff through the Cloudflare and image-pipeline session
 Rebuild the reader with overlay bars, chapter picker and settings        fc2aee8  did not compile
 Add missing verticalScroll import                                       d395222  builds; reader barely tested
 Handle configuration changes instead of being recreated by them                  UNVERIFIED
+Add a Settings screen reached from More                                 912707a  verified OK
+Add backup, restore and a storage location under Data and storage       10ae342  verified OK
+Let downloads and backups live in a folder the user picks               b9b4206  verified OK
+File downloads under source, series and chapter in a Yomu folder        5590fec  verified OK
+Add a reorganise action for downloads in the old flat layout            8e43778  verified OK
+Use one back button everywhere; update the handoff
 ```
 
 "verified OK" means it was exercised on device; the annotations on the rest are
@@ -1219,10 +1442,10 @@ deliberately not that. Note `fbe6bfe` — the visible WebView shipped and did *n
 work, because the UA bug underneath it was still there; `28a4524` is what made it
 pass. A screen landing and a screen working are separate events.
 
-The last two entries are open thread 1 in §0. The handoff commit above them is
-this file's previous revision, which was written before the reader existed —
-if the working copy ever disagrees with §4 about the reader, this revision is
-the newer one.
+`fc2aee8` and `d395222` are open thread 1 in §0: the reader builds and is barely
+exercised. Everything from `912707a` down was checked on device as it landed —
+each push was installed and used before the next was written, which is why that
+run carries no untested tail.
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.

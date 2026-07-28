@@ -192,9 +192,7 @@ internal fun SourceFilterScreen(
         TopAppBar(
             title = { Text("Sources") },
             navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
+                BackButton(onBack)
             }
         )
 

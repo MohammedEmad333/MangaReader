@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -157,6 +158,26 @@ internal fun SourceIcon(pkgName: String?, fallback: String, modifier: Modifier =
                 )
             }
         }
+    }
+}
+
+/**
+ * The one back affordance in the app.
+ *
+ * There were three. An `ArrowBack` icon on the series and source-filter screens,
+ * a `TextButton` holding a literal "\u2190" on per-source browse, global search
+ * and the WebView, and the word "Back" on the download queue and settings. Three
+ * controls at three sizes for one action, and only the icon form has a real 48dp
+ * target \u2014 a bare arrow glyph inside a `TextButton` is a small thing to hit in
+ * the corner of the screen that's hardest to reach one-handed.
+ *
+ * It lives here rather than being copied into each file so that "they all match"
+ * stays true by construction instead of by everyone remembering.
+ */
+@Composable
+internal fun BackButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
     }
 }
 

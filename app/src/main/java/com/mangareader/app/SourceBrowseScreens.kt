@@ -117,7 +117,7 @@ internal fun LibraryScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(title) },
-            navigationIcon = { TextButton(onClick = onBack) { Text("←") } },
+            navigationIcon = { BackButton(onBack) },
             actions = { TextButton(onClick = onRescan) { Text("Rescan") } }
         )
         if (supportsSearch) {
@@ -359,9 +359,7 @@ internal fun SeriesScreen(
                                 .padding(horizontal = 4.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = onBack) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                            }
+                            BackButton(onBack)
                         }
 
                         Row(modifier = Modifier.padding(horizontal = 16.dp)) {

@@ -1231,7 +1231,7 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TextButton(onClick = onBack) { Text("Back") }
+        BackButton(onBack)
         Text(
             title,
             style = MaterialTheme.typography.titleLarge,

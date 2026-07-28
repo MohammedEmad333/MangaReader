@@ -150,7 +150,7 @@ internal fun ChallengeWebViewScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            navigationIcon = { TextButton(onClick = onBack) { Text("\u2190") } },
+            navigationIcon = { BackButton(onBack) },
             actions = {
                 // Manual escape hatch: the poll only fires on a cookie that
                 // appears while the screen is open, and some sources hand out
