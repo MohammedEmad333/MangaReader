@@ -12,8 +12,8 @@ android {
         applicationId = "com.mangareader.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.21"
+        versionCode = 22
+        versionName = "0.22"
     }
 
     signingConfigs {
