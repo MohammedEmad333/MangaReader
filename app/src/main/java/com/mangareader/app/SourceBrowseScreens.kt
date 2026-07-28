@@ -296,12 +296,14 @@ internal fun SeriesScreen(
     onDownloadAll: () -> Unit,
     onCancelDownloads: () -> Unit,
     onDeleteDownloads: () -> Unit,
+    onDeleteChapter: (Chapter) -> Unit,
     loading: Boolean,
     error: String?,
     readTick: Int,
     onOpen: (Int) -> Unit,
     onToggleRead: (Chapter) -> Unit,
     onLibraryChanged: () -> Unit,
+    onSolveChallenge: (() -> Unit)?,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
@@ -309,6 +311,7 @@ internal fun SeriesScreen(
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
+    var confirmDeleteChapter by remember(series.id) { mutableStateOf<Chapter?>(null) }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
     // First unread chapter drives the Start/Resume button. Recomputed on readTick
@@ -498,7 +501,22 @@ internal fun SeriesScreen(
 
             item {
                 if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                ErrorBanner(error)
+                // Same test the browse screen uses: the failure arrives as an
+                // already-formatted string from `Response.failureMessage()`,
+                // which is the one place that can see the Cloudflare headers.
+                //
+                // Worth having here and not only on browse, because these are
+                // different requests that fail separately. A source can list its
+                // catalogue from cached clearance and then 403 on the chapter
+                // list, which left the only way to solve it on a screen the user
+                // had already moved past.
+                val challengeable = onSolveChallenge != null &&
+                    error?.contains("Cloudflare", ignoreCase = true) == true
+                ErrorBanner(
+                    error = error,
+                    actionLabel = if (challengeable) "Open in WebView" else null,
+                    onAction = if (challengeable) onSolveChallenge else null
+                )
                 Text(
                     if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters",
                     style = MaterialTheme.typography.titleSmall,
@@ -560,11 +578,20 @@ internal fun SeriesScreen(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    downloaded -> Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "Downloaded",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                    // The check mark is the delete affordance.
+                                    // A separate bin icon would be a third
+                                    // control on a row that already has two, and
+                                    // the state and the action on it are the same
+                                    // thing: it's there because it's downloaded.
+                                    downloaded -> IconButton(
+                                        onClick = { confirmDeleteChapter = ch }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Downloaded \u2014 delete",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                     else -> TextButton(onClick = { onDownload(ch) }) {
                                         Text("Save")
                                     }
@@ -595,6 +622,34 @@ internal fun SeriesScreen(
                     .padding(16.dp)
             )
         }
+    }
+
+    // Confirmed rather than immediate. The row itself opens the chapter, so a
+    // control inside it that deletes on the first tap is one slipped thumb away
+    // from a re-download — and unlike "Delete all", this button sits next to the
+    // thing people are aiming at.
+    val pendingDelete = confirmDeleteChapter
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteChapter = null },
+            title = { Text("Delete this download?") },
+            text = {
+                Text(
+                    "\u201c${pendingDelete.name}\u201d is removed from storage. The " +
+                        "chapter stays in the list and can be saved again, and your " +
+                        "read mark and place in it are untouched."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onDeleteChapter(pendingDelete)
+                    confirmDeleteChapter = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteChapter = null }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showCategories) {

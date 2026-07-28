@@ -746,7 +746,22 @@ fun YomuApp() {
                 challengeUrl = null
                 // Re-run whatever was on screen. The clearance cookie is in the
                 // store OkHttp already reads, so this is an ordinary retry.
-                activeSource?.let { openSource(it, browseQuery) }
+                //
+                // Which screen matters now that the challenge is reachable from
+                // the series screen too: re-running the browse from there would
+                // solve the challenge and then throw away the series the user
+                // was trying to open.
+                val openSeriesAgain = activeSeries
+                if (openSeriesAgain != null) {
+                    // openSeries sets the origin to BROWSE unconditionally — see
+                    // the note on openGlobalResult. This is a retry, not a fresh
+                    // navigation, so back has to still go where it did before.
+                    val origin = seriesOrigin
+                    openSeries(openSeriesAgain)
+                    seriesOrigin = origin
+                } else {
+                    activeSource?.let { openSource(it, browseQuery) }
+                }
             },
             onBack = { challengeUrl = null }
         )
@@ -808,6 +823,13 @@ fun YomuApp() {
             )
         }
     } else if (activeSeries != null) {
+        // `fun()` rather than a lambda for the same reason as the browse branch
+        // below: a brace directly after `else` opens a block, so a lambda there
+        // needs a second pair and reads like a typo.
+        val seriesSite = activeSource?.siteUrl()
+        val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
+            challengeUrl = seriesSite
+        }
         SeriesScreen(
             series = activeSeries!!,
             chapters = chapterList,
@@ -826,6 +848,14 @@ fun YomuApp() {
                 chapterList.forEach { Downloads.delete(context, it.id) }
                 downloadTick++
             },
+            // Same primitive as the bulk delete above, one chapter at a time.
+            // Downloads.delete already prunes the emptied series and source
+            // folders and drops the DownloadPaths entry; DownloadIndex needs no
+            // call because list() filters on what's actually complete on disk.
+            onDeleteChapter = { ch ->
+                Downloads.delete(context, ch.id)
+                downloadTick++
+            },
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,
@@ -836,6 +866,7 @@ fun YomuApp() {
                 readTick++
             },
             onLibraryChanged = { libraryTick++ },
+            onSolveChallenge = solveFromSeries,
             onBack = {
                 activeSeries = null
                 chapterList = emptyList()
