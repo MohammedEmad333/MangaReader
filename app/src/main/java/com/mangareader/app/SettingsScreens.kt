@@ -483,6 +483,8 @@ private fun DataSettings() {
     var askAccess by remember { mutableStateOf(false) }
     var pendingMove by remember { mutableStateOf<Pair<File, File>?>(null) }
     var moving by remember { mutableStateOf(false) }
+    var confirmReorganise by remember { mutableStateOf(false) }
+    var reorganising by remember { mutableStateOf(false) }
 
     fun refreshLocation() {
         StorageLocation.invalidate()
@@ -598,6 +600,22 @@ private fun DataSettings() {
             )
             HorizontalDivider()
         }
+        ListItem(
+            headlineContent = { Text("Reorganise downloads") },
+            supportingContent = {
+                Text(
+                    if (reorganising) "Filing chapters\u2026"
+                    else "File chapters from before this layout under source and series"
+                )
+            },
+            trailingContent = {
+                TextButton(
+                    enabled = !reorganising && !moving,
+                    onClick = { confirmReorganise = true }
+                ) { Text("Run") }
+            }
+        )
+        HorizontalDivider()
         PrefNote(
             "A \u201cYomu\u201d folder is created inside whatever you pick, holding " +
                 "\u201cdownloads\u201d and \u201cbackups\u201d. Chapters are filed under " +
@@ -755,6 +773,51 @@ private fun DataSettings() {
             },
             dismissButton = {
                 TextButton(onClick = { askAccess = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (confirmReorganise) {
+        AlertDialog(
+            onDismissRequest = { confirmReorganise = false },
+            title = { Text("Reorganise downloads?") },
+            text = {
+                Text(
+                    "Chapters downloaded before this layout sit in a folder named " +
+                        "after a hash, which is unreadable but works. This files them " +
+                        "under source and series instead.\n\nA chapter can only be " +
+                        "placed if the app still knows what it was \u2014 anything it " +
+                        "can\u2019t identify is left where it is and keeps working."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    confirmReorganise = false
+                    reorganising = true
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) { reorganiseDownloads(context) }
+                        reorganising = false
+                        tick++
+                        message = result.fold(
+                            { report ->
+                                when {
+                                    report.moved == 0 && report.unidentified == 0 ->
+                                        "Everything was already filed"
+                                    report.unidentified == 0 ->
+                                        "Filed ${report.moved} chapters"
+                                    else ->
+                                        "Filed ${report.moved} chapters \u00b7 " +
+                                            "${report.unidentified} couldn\u2019t be " +
+                                            "identified and were left alone"
+                                }
+                            },
+                            { "Reorganise failed: ${it.message ?: it::class.java.simpleName}" }
+                        )
+                    }
+                }) { Text("Reorganise") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReorganise = false }) { Text("Cancel") }
             }
         )
     }
