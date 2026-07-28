@@ -12,8 +12,12 @@ android {
         applicationId = "com.mangareader.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 27
-        versionName = "0.27"
+        // Bumped on every push. versionName tracks versionCode ("0.<code>"), and
+        // versionCode has to keep increasing or Android refuses the APK as an
+        // upgrade - the installed build is replaced in place, so a repeat or a
+        // decrease silently leaves the old one on the phone.
+        versionCode = 28
+        versionName = "0.28"
     }
 
     signingConfigs {

@@ -116,6 +116,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SourceManager.migrateLegacy(this)
         ensureNotificationPermission()
+        // Both read SharedPreferences, so they have to happen before the first
+        // composition rather than inside it: the theme decides the colour scheme
+        // the whole tree is built with, and FLAG_SECURE has to be on the window
+        // before it is ever drawn to keep the app out of the recents thumbnail.
+        AppTheme.load(this)
+        AppTheme.applySecureScreen(this, AppTheme.secureScreen(this))
         // A queue left behind by a killed process resumes here rather than
         // waiting for the user to press anything. Doing it from a starting
         // Activity is also what keeps the foreground-service start legal on
@@ -124,7 +130,7 @@ class MainActivity : ComponentActivity() {
             DownloadService.start(this)
         }
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            MaterialTheme(colorScheme = yomuColorScheme()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -210,6 +216,10 @@ fun YomuApp() {
     var pageJob by remember { mutableStateOf<Job?>(null) }
     var downloadTick by remember { mutableIntStateOf(0) }
     var downloadsOpen by remember { mutableStateOf(false) }
+    // Only whether Settings is open, not which page of it. The section is local
+    // state inside SettingsScreen, so this routing chain gains one boolean rather
+    // than one arm per settings page.
+    var settingsOpen by remember { mutableStateOf(false) }
     var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -900,10 +910,17 @@ fun YomuApp() {
             onSolveChallenge = startChallenge
         )
     } else if (downloadsOpen) {
-        // Last branch before the tabs: it's only ever opened from More, which is
-        // itself a tab, so nothing deeper can be underneath it. Backing out lands
-        // on the tab bar, which is where it was reached from.
+        // Above settings on purpose, and it's the ordering that does the work.
+        // The queue is reachable from More *and* from Settings > Downloads, and
+        // leaving `settingsOpen` set while this renders means backing out of the
+        // queue falls through to whichever of the two it was opened from — no
+        // "where did I come from" flag, just two booleans read in order.
         DownloadQueueScreen(onBack = { downloadsOpen = false })
+    } else if (settingsOpen) {
+        SettingsScreen(
+            onBack = { settingsOpen = false },
+            onOpenDownloadQueue = { downloadsOpen = true }
+        )
     } else {
         Scaffold(
             bottomBar = {
@@ -1011,7 +1028,10 @@ fun YomuApp() {
                         onOpen = { openFromDownloads(it) },
                         onOpenQueue = { downloadsOpen = true }
                     )
-                    4 -> MoreTab(onOpenDownloads = { downloadsOpen = true })
+                    4 -> MoreTab(
+                        onOpenDownloads = { downloadsOpen = true },
+                        onOpenSettings = { settingsOpen = true }
+                    )
                 }
             }
         }

@@ -131,14 +131,13 @@ internal fun HistoryScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MoreTab(onOpenDownloads: () -> Unit) {
+internal fun MoreTab(
+    onOpenDownloads: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     val context = LocalContext.current
     var incognito by remember { mutableStateOf(prefs(context).getBoolean("incognito", false)) }
-    var coverSize by remember {
-        mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
-    }
     var showCategories by remember { mutableStateOf(false) }
-    var showBrowseSettings by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -148,6 +147,11 @@ internal fun MoreTab(onOpenDownloads: () -> Unit) {
         Text("More", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
 
+        // Stays here as well as under Settings > Security and privacy. It's the
+        // one preference on this screen that gets turned on for a few chapters and
+        // then off again, and a thing used that way shouldn't be three taps deep.
+        // Both switches read the same key, and this tab is disposed while Settings
+        // is open, so the one here re-reads on the way back rather than going stale.
         ListItem(
             headlineContent = { Text("Incognito mode") },
             supportingContent = { Text("Pause reading-history logging") },
@@ -160,39 +164,6 @@ internal fun MoreTab(onOpenDownloads: () -> Unit) {
                     }
                 )
             }
-        )
-        HorizontalDivider()
-
-        ListItem(
-            headlineContent = { Text("Cover size") },
-            supportingContent = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("small", "medium", "large").forEach { size ->
-                        FilterChip(
-                            selected = coverSize == size,
-                            onClick = {
-                                coverSize = size
-                                prefs(context).edit().putString("cover_size", size).apply()
-                            },
-                            label = { Text(size.replaceFirstChar { it.uppercase() }) }
-                        )
-                    }
-                }
-            }
-        )
-        HorizontalDivider()
-
-        ListItem(
-            headlineContent = { Text("Categories") },
-            supportingContent = { Text("Create and delete library categories") },
-            modifier = Modifier.clickable { showCategories = true }
-        )
-        HorizontalDivider()
-
-        ListItem(
-            headlineContent = { Text("Browse") },
-            supportingContent = { Text("Extension repositories") },
-            modifier = Modifier.clickable { showBrowseSettings = true }
         )
         HorizontalDivider()
 
@@ -218,40 +189,34 @@ internal fun MoreTab(onOpenDownloads: () -> Unit) {
         )
         HorizontalDivider()
 
-        var storageTick by remember { mutableIntStateOf(0) }
-        val downloadCount = remember(storageTick, DownloadQueue.tick) { Downloads.count(context) }
-        val downloadSize = remember(storageTick, DownloadQueue.tick) { Downloads.sizeBytes(context) }
         ListItem(
-            headlineContent = { Text("Downloaded chapters") },
-            supportingContent = {
-                Text(
-                    if (downloadCount == 0) "Nothing downloaded"
-                    else "$downloadCount chapters \u00b7 ${formatBytes(downloadSize)}"
-                )
-            },
-            trailingContent = {
-                if (downloadCount > 0) {
-                    TextButton(onClick = {
-                        Downloads.deleteAll(context)
-                        storageTick++
-                    }) { Text("Delete all") }
-                }
-            }
+            headlineContent = { Text("Categories") },
+            supportingContent = { Text("Create and delete library categories") },
+            modifier = Modifier.clickable { showCategories = true }
+        )
+        HorizontalDivider()
+
+        // Cover size, extension repositories and the downloaded-chapter totals
+        // used to be rows on this screen. They live under Settings now; the two
+        // storage rows in particular were walking the whole download tree during
+        // composition, on the main thread, every time this tab was opened.
+        ListItem(
+            headlineContent = { Text("Settings") },
+            supportingContent = { Text("Appearance, reader, downloads, storage, privacy") },
+            modifier = Modifier.clickable { onOpenSettings() }
         )
         HorizontalDivider()
 
         ListItem(
             headlineContent = { Text("About Yomu") },
-            supportingContent = { Text("Native Kotlin manga reader") }
+            supportingContent = {
+                Text("Native Kotlin manga reader \u00b7 ${BuildConfig.VERSION_NAME}")
+            }
         )
     }
 
     if (showCategories) {
         CategoryManagerDialog(onDismiss = { showCategories = false })
-    }
-
-    if (showBrowseSettings) {
-        ExtensionReposDialog(onDismiss = { showBrowseSettings = false })
     }
 }
 
