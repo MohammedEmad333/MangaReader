@@ -198,11 +198,15 @@ internal fun MoreTab(onOpenDownloads: () -> Unit) {
 
         // Reads the queue directly, so it stays live while the service drains it.
         val queued = DownloadQueue.items.size
+        val failedDownloads = DownloadQueue.failed.size
         ListItem(
             headlineContent = { Text("Download queue") },
             supportingContent = {
                 Text(
                     when {
+                        failedDownloads > 0 && queued > 0 ->
+                            "$queued waiting \u00b7 $failedDownloads failed"
+                        failedDownloads > 0 -> "$failedDownloads failed"
                         queued == 0 -> "Nothing queued"
                         DownloadQueue.paused -> "$queued waiting \u00b7 paused"
                         queued == 1 -> "1 chapter downloading"

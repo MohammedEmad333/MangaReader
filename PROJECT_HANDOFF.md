@@ -84,8 +84,12 @@ As of the source-visibility commit, verified on device:
 - **Source visibility** screen + global search scope chips (`1f60936`).
 - **Downloads run in a foreground service** with a persistent queue, so they
   survive the app being backgrounded or swiped away.
+- **Failed downloads say why** — the page exception is carried up instead of
+  swallowed — and can be retried from the queue screen.
+- **Downloads tab** lists series with chapters saved on device, and opens them
+  offline.
 
-`MainActivity.kt` is **891 lines** — the Activity, `YomuApp`, and the shared
+`MainActivity.kt` is **973 lines** — the Activity, `YomuApp`, and the shared
 prefs helpers.
 
 ## 3. Build environment
@@ -173,6 +177,7 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `Downloads.kt` | Page store on disk (cache vs download) + `ChapterCache` + `formatBytes()`. |
 | `DownloadQueue.kt` | Process-wide download queue: Compose state + JSON persistence. |
 | `DownloadService.kt` | Foreground service that drains the queue. Actions: pause / resume / skip / cancel-all. |
+| `DownloadIndex.kt` | Maps downloaded chapters back to their series, so the Downloads tab can exist. |
 | `MainActivity.kt` | Activity, `YomuApp` (all shared screen state), prefs helpers. |
 
 ### Compose UI file layout
@@ -191,7 +196,7 @@ things between them needs no imports — only visibility changes (see §5).
 | `LibraryScreens.kt` | `LibraryTab`, `AddToLibraryDialog`, `CategoryAssignDialog` |
 | `ReaderScreen.kt` | `ReaderScreen` |
 | `MoreScreens.kt` | `MoreTab`, `HistoryScreen`, `ExtensionReposDialog`, `CategoryManagerDialog`, `SourceDialog` |
-| `DownloadQueueScreen.kt` | `DownloadQueueScreen` — reads `DownloadQueue` directly rather than taking it as parameters |
+| `DownloadQueueScreen.kt` | `DownloadsTab` and `DownloadQueueScreen` — both read `DownloadQueue` directly rather than taking it as parameters |
 
 `YomuApp` still owns all cross-screen state and passes it down as parameters, so
 the screens stay dumb. That's why the split was safe to do mechanically.
@@ -315,15 +320,45 @@ service resolves the source via `SourceManager.listAllSources` and rebuilds the
 handle with `Source.rehydrateChapter`, exactly as `ChapterCache` does.
 
 Two details worth keeping:
-- **Failures leave the queue.** A chapter whose source was uninstalled would
-  otherwise sit at the head blocking everything behind it. Its partial pages stay
-  on disk, so re-queuing resumes.
+- **Failures leave the queue** into `DownloadQueue.failed`, with the reason. A
+  chapter whose source was uninstalled would otherwise sit at the head blocking
+  everything behind it. Its partial pages stay on disk, so Retry resumes.
+- **The page exception is carried up.** `loadPagesProgressively` used to wrap
+  each page in `runCatching { }.getOrNull()`, which made a 403, a timeout and a
+  missing image URL indistinguishable — the download path could only report
+  "some pages failed". It now keeps the *first* failure (with four pages in
+  flight, one 429 usually takes its neighbours with it) and throws
+  `ChapterDownloadException` when `persist = true`, so the queue screen can say
+  "3 of 18 pages failed — HTTP error 429". The reader path is untouched: a bad
+  page there is still drawn as a broken slot with the rest readable.
 - **A wake lock is held while fetching.** A foreground service keeps the *process*
   alive but not the CPU; without it the device suspends mid-transfer with the
   screen off. It's released while paused and on a 4-hour timeout as a backstop.
 
 `DownloadService.start()` is only ever called from a visible Activity on a user
 action, which is what keeps the foreground-service start legal on Android 12+.
+
+**5. `DownloadIndex`** is what the Downloads tab is built on. `Downloads` names
+each chapter directory after an MD5 of the chapter id, and that hash is one-way —
+given the folder there is no way back to the series it belonged to. So the service
+writes a record (`chapterId -> sourceId, seriesId, title, cover`) as each chapter
+completes.
+
+It is a **cache, not the truth**: `list()` drops any record whose chapter is no
+longer complete on disk, which keeps it correct across the delete paths that don't
+know it exists (a series screen's "Delete downloads", "Delete all" in More, the
+user clearing app storage). It also **backfills from the library** — for a saved
+series, `ChapterCache` is keyed by the same hash of the series id, so its stored
+chapter list can be re-checked against disk. Chapters downloaded before this index
+existed, for series never saved to the library, stay invisible; nothing short of
+re-downloading recovers those.
+
+Opening from this tab goes through `openFromDownloads`, not `openFromLibrary`:
+that one starts with `restoreSeries`, a network call, and the point of the tab is
+that it works in airplane mode. The details fetch is allowed to fail into a
+title-and-cover-only `Series`, with chapters read straight from `ChapterCache` —
+enough for every downloaded chapter to open, since the page store is consulted
+before the handle is.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -376,7 +411,7 @@ addSingletonFactory { Json { ignoreUnknownKeys = true; explicitNulls = false } }
 ```
 
 ### UI structure
-Bottom nav, 4 tabs:
+Bottom nav, 5 tabs:
 0. **Library** — saved series grid, category filter chips
 1. **Browse** — sub-tabs *Sources* and *Extensions* (below)
 2. **History**
@@ -668,10 +703,12 @@ For search coverage, the global search screen prints
 
 Roughly in order of value:
 
-1. **Downloader gaps.** The foreground service and queue are done (§4). What's
-   left versus Mihon: no reordering in the queue screen (it's strictly FIFO), no
-   per-series grouping, no retry button for a chapter that failed — it has to be
-   re-queued from the series screen — and no auto-download of new chapters.
+1. **Downloader gaps.** The foreground service, queue, retry and Downloads tab
+   are done (§4). What's left versus Mihon: no reordering in the queue (strictly
+   FIFO), no per-series grouping in the queue screen, no auto-download of new
+   chapters, and no per-source concurrency or delay — `PAGE_CONCURRENCY` is a
+   flat 4 with no gap between batches, which is the first thing to try if a
+   source starts failing partway through a series.
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
@@ -695,9 +732,11 @@ Roughly in order of value:
    skipped rather than shown as dead rows.
 8. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
    but built against the newer API; may fail at runtime.
-9. **`HttpException.kt`** isn't in the vendored network package. Some extensions
-   catch `eu.kanade.tachiyomi.network.HttpException` by name — if a
-   `NoClassDefFoundError` for it appears, it's a ~3-line class to add.
+9. ~~`HttpException.kt` isn't in the vendored network package.~~ **Wrong — it is**,
+   at the bottom of `network/OkHttpExtensions.kt`:
+   `class HttpException(val code: Int) : IllegalStateException("HTTP error $code")`.
+   `awaitSuccess()` throws it on any non-2xx, which is what makes the download
+   failure messages in the queue screen useful. Nothing to add here.
 10. **`YomuApp` is ~700 lines.** Screens are split out, but all state and every
     handler still lives in one composable, and the routing chain plus
     `SeriesOrigin` encode real navigation rules in `if / else if`. Hoisting into a
@@ -748,6 +787,7 @@ Cache chapter lists so downloaded chapters open offline   eca6caa  verified OK
 Add source visibility screen and global search scope chips 1f60936  verified OK
 Default to Multi and English only
 Move downloads into a foreground service with a persistent queue
+Report why a download failed, add retry, and add a Downloads tab
 ```
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
