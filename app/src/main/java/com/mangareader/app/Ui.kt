@@ -62,6 +62,9 @@ import java.io.File
 
 @Composable
 fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
+    // Why Coil gave up on this cover, if it did. Keyed on the model so a
+    // recycled grid cell doesn't inherit the previous entry's failure.
+    var failure by remember(cover) { mutableStateOf<String?>(null) }
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -72,8 +75,41 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
                 model = cover,
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                onError = { state ->
+                    val cause = state.result.throwable
+                    failure = cause.message ?: cause::class.java.simpleName
+                }
             )
+            // Debug builds only.
+            //
+            // A cover that fails to load and one the source never supplied both
+            // render as the same grey box, which is exactly the ambiguity that
+            // makes "no covers on this source" impossible to act on: 403, 404,
+            // an unresolvable host and a format Android can't decode all look
+            // identical from the outside. The URL and the reason are the two
+            // facts that separate them, so show both rather than guessing at a
+            // fix and shipping it blind.
+            if (BuildConfig.DEBUG && failure != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = listOfNotNull(
+                            (cover as? String)?.takeLast(48),
+                            failure
+                        ).joinToString("\n\n"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(

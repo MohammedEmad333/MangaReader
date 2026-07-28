@@ -906,13 +906,13 @@ fun YomuApp() {
                     NavigationBarItem(
                         selected = currentTab == 0,
                         onClick = { currentTab = 0 },
-                        label = { Text("Library") },
+                        label = { NavLabel("Library") },
                         icon = { Text("📚") }
                     )
                     NavigationBarItem(
                         selected = currentTab == 1,
                         onClick = { currentTab = 1 },
-                        label = { Text("Browse") },
+                        label = { NavLabel("Browse") },
                         icon = { Text("🧭") }
                     )
                     NavigationBarItem(
@@ -921,19 +921,19 @@ fun YomuApp() {
                             currentTab = 2
                             history = History.list(context)
                         },
-                        label = { Text("History") },
+                        label = { NavLabel("History") },
                         icon = { Text("🕒") }
                     )
                     NavigationBarItem(
                         selected = currentTab == 3,
                         onClick = { currentTab = 3 },
-                        label = { Text("Downloads") },
+                        label = { NavLabel("Downloads") },
                         icon = { Text("⬇️") }
                     )
                     NavigationBarItem(
                         selected = currentTab == 4,
                         onClick = { currentTab = 4 },
-                        label = { Text("More") },
+                        label = { NavLabel("More") },
                         icon = { Text("⚙️") }
                     )
                 }
@@ -1032,6 +1032,30 @@ fun YomuApp() {
 }
 
 // ---------- shared ----------
+
+/**
+ * A bottom-nav label that can't wrap.
+ *
+ * A fifth of the screen fits four of these words and not "Downloads", which
+ * broke onto a second line and left an orphaned "s" under the icon. Wrapping is
+ * never the right answer in a fixed-height bar, so every label is pinned to one
+ * line and the longest is allowed to shrink instead — applied to all five rather
+ * than just the offender, because a single odd one out is more noticeable than
+ * five slightly smaller labels.
+ *
+ * Guarding with maxLines alone would clip "Download"; the smaller style is what
+ * actually makes it fit, and the ellipsis is only insurance for a font scale
+ * larger than any tested here.
+ */
+@Composable
+private fun NavLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = MaterialTheme.typography.labelSmall
+    )
+}
 
 /**
  * The source's website, for opening in a WebView. Null when there isn't one:
