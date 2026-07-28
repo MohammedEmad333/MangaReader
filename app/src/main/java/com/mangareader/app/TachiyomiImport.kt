@@ -59,7 +59,7 @@ import java.util.zip.GZIPInputStream
  * Backup          1 manga          2 category      101 source
  * BackupManga     1 source(varint) 2 url           3 title
  *                 9 thumbnailUrl  13 dateAdded    16 chapter
- *                17 categories(varint, repeated)  104 history
+ *                17 categories(varint, repeated)  100 favorite  104 history
  * BackupChapter   1 url            2 name          4 read(bool)
  *                 6 lastPageRead
  * BackupHistory   1 url            2 lastRead
@@ -135,6 +135,15 @@ internal data class ImportedSeries(
     val cover: String,
     val addedAt: Long,
     val categoryOrders: List<Int>,
+    /**
+     * Whether the series is actually in the library.
+     *
+     * A backup also carries series you've only read from — opened once, never
+     * added — so that their progress survives. Field 100 defaults to true and
+     * the encoder omits defaults, so its absence means favourite and only a
+     * false is ever written.
+     */
+    val favourite: Boolean,
     val chapters: List<ImportedChapter>,
     /** chapter url to last-read timestamp. */
     val history: List<Pair<String, Long>>
@@ -146,6 +155,8 @@ internal data class TachiyomiBackup(
     val categories: List<Pair<Int, String>>,
     val sourceNames: Map<Long, String>
 ) {
+    val inLibrary: Int get() = series.count { it.favourite }
+    val historyOnly: Int get() = series.count { !it.favourite }
     val chapters: Int get() = series.sumOf { it.chapters.size }
     val readChapters: Int get() = series.sumOf { s -> s.chapters.count { it.read } }
     val savedPages: Int get() = series.sumOf { s -> s.chapters.count { it.lastPage > 0 } }
@@ -198,6 +209,7 @@ private fun parseSeries(data: ByteArray): ImportedSeries {
     var title = ""
     var cover = ""
     var added = 0L
+    var favourite = true
     val cats = mutableListOf<Int>()
     val chapters = mutableListOf<ImportedChapter>()
     val history = mutableListOf<Pair<String, Long>>()
@@ -214,11 +226,14 @@ private fun parseSeries(data: ByteArray): ImportedSeries {
             field == 13 && wire == 0 -> added = r.varint()
             field == 16 && wire == 2 -> chapters.add(parseChapter(r.bytes()))
             field == 17 && wire == 0 -> cats.add(r.varint().toInt())
+            field == 100 && wire == 0 -> favourite = r.varint() != 0L
             field == 104 && wire == 2 -> history.add(parseHistory(r.bytes()))
             else -> r.skip(wire)
         }
     }
-    return ImportedSeries(sourceId, url, title, cover, added, cats, chapters, history)
+    return ImportedSeries(
+        sourceId, url, title, cover, added, cats, favourite, chapters, history
+    )
 }
 
 private fun parseNamed(data: ByteArray): Pair<String, Long> {
@@ -285,7 +300,11 @@ internal fun readTachiyomiBackup(file: File): TachiyomiBackup {
 // ------------------------------------------------------------------ the merge
 
 /**
- * Merges [backup] into this app's stores. Additive: nothing existing is removed.
+ * Merges [backup] into this app's stores.
+ *
+ * Additive, with one exception: a series the backup marks as not in the library
+ * is removed from ours if it's there. That's what makes a re-import able to
+ * correct an earlier one that added everything indiscriminately.
  *
  * Bulk writes throughout, and not as an optimisation. `Library.add` rewrites the
  * whole library JSON per call, so 4645 of them is quadratic and would take
@@ -304,29 +323,39 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
     val pages = mutableMapOf<String, Int>()
     val assignments = mutableListOf<Pair<String, Set<String>>>()
     val history = mutableListOf<HistoryEntry>()
+    val notInLibrary = mutableSetOf<String>()
 
     backup.series.forEach { s ->
         val appSourceId = "tachi:${s.sourceId}"
         val seriesId = "${s.sourceId}:${s.url}"
 
-        entries.add(
-            LibraryEntry(
-                seriesId = seriesId,
-                sourceId = appSourceId,
-                title = s.title,
-                cover = if (isLoopback(s.cover)) "" else s.cover,
-                addedAt = if (s.addedAt > 0) s.addedAt else System.currentTimeMillis()
+        if (s.favourite) {
+            entries.add(
+                LibraryEntry(
+                    seriesId = seriesId,
+                    sourceId = appSourceId,
+                    title = s.title,
+                    cover = if (isLoopback(s.cover)) "" else s.cover,
+                    addedAt = if (s.addedAt > 0) s.addedAt else System.currentTimeMillis()
+                )
             )
-        )
 
-        val catIds = s.categoryOrders.mapNotNull { byOrder[it] }.toSet()
-        if (catIds.isNotEmpty()) assignments.add(seriesId to catIds)
+            val catIds = s.categoryOrders.mapNotNull { byOrder[it] }.toSet()
+            if (catIds.isNotEmpty()) assignments.add(seriesId to catIds)
+        } else {
+            notInLibrary.add(seriesId)
+        }
 
+        // Progress is kept for everything, library or not. It's keyed by
+        // chapter, so it costs nothing to hold and it's waiting if the series
+        // is ever added.
         s.chapters.forEach { c ->
             val chapterKey = "$appSourceId|${s.sourceId}:${c.url}"
             if (c.read) readKeys.add(chapterKey)
             if (c.lastPage > 0) pages[chapterKey] = c.lastPage
         }
+
+        if (!s.favourite) return@forEach
 
         s.history.forEach { (url, at) ->
             val chapterKey = "$appSourceId|${s.sourceId}:$url"
@@ -348,6 +377,7 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
         }
     }
 
+    Library.removeAll(context, notInLibrary)
     Library.mergeAll(context, entries)
     ReadState.setReadBulk(context, readKeys)
     savePageBulk(context, pages)
@@ -359,6 +389,12 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
 
     return buildString {
         appendLine("Imported ${entries.size} series.")
+        if (notInLibrary.isNotEmpty()) {
+            appendLine(
+                "${notInLibrary.size} more were read but never added to the " +
+                    "library, so they were left out."
+            )
+        }
         appendLine("${readKeys.size} chapters marked read, ${pages.size} with a saved page.")
         if (byOrder.isNotEmpty()) appendLine("${byOrder.size} categories.")
         appendLine()
@@ -480,7 +516,13 @@ internal fun TachiyomiImportDialog(onDismiss: () -> Unit) {
                     summary != null -> {
                         Text("Found in ${chosen?.name.orEmpty()}:")
                         Spacer(Modifier.height(8.dp))
-                        Text("\u2022 ${summary.series.size} series")
+                        Text("\u2022 ${summary.inLibrary} series in the library")
+                        if (summary.historyOnly > 0) {
+                            Text(
+                                "\u2022 ${summary.historyOnly} read but not in the " +
+                                    "library \u2014 skipped"
+                            )
+                        }
                         Text("\u2022 ${summary.chapters} chapters")
                         Text("\u2022 ${summary.readChapters} marked read")
                         Text("\u2022 ${summary.savedPages} with a saved page")

@@ -129,6 +129,27 @@ object Library {
         save(context, items.toMutableList().also { it[index] = it[index].copy(cover = text) })
     }
 
+    /**
+     * Removes many series in one write.
+     *
+     * The per-series [remove] rewrites the whole library JSON each call, so
+     * doing this a thousand times over is quadratic — the same reason
+     * [mergeAll] exists.
+     */
+    fun removeAll(context: Context, seriesIds: Set<String>) {
+        if (seriesIds.isEmpty()) return
+        val present = list(context)
+        val kept = present.filterNot { it.seriesId in seriesIds }
+        if (kept.size != present.size) save(context, kept)
+        // Only the ones that actually have assignments: setCategoriesFor
+        // rewrites the whole assignment JSON, so blindly calling it per id
+        // would reintroduce the quadratic write this method exists to avoid.
+        val assigned = Categories.assignedSeries(context)
+        seriesIds.forEach {
+            if (it in assigned) Categories.setCategoriesFor(context, it, emptySet())
+        }
+    }
+
     /** Removes the series and clears its category assignments. */
     fun remove(context: Context, seriesId: String) {
         save(context, list(context).filterNot { it.seriesId == seriesId })

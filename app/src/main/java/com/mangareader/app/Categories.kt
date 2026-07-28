@@ -107,6 +107,24 @@ object Categories {
         assignCache = null
     }
 
+    /**
+     * Every series with at least one category.
+     *
+     * The complement of this — inside the library — is what Tachiyomi calls
+     * "Default": not a category anything is filed under, but the absence of one.
+     */
+    fun assignedSeries(context: Context): Set<String> {
+        val map = assignments(context)
+        val out = HashSet<String>()
+        val keys = map.keys()
+        while (keys.hasNext()) {
+            val seriesId = keys.next()
+            val arr = map.optJSONArray(seriesId) ?: continue
+            if (arr.length() > 0) out.add(seriesId)
+        }
+        return out
+    }
+
     private fun assignments(context: Context): JSONObject {
         val raw = prefs(context).getString(KEY_ASSIGN, null) ?: return JSONObject()
         val hit = assignCache

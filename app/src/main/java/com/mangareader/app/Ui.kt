@@ -124,14 +124,6 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * The launcher icon of an extension APK, or the source's initials when there's
- * no package behind it (local folders) or the package is gone.
- *
- * The PackageManager lookup is remembered per package and only runs for rows
- * the LazyColumn actually composes, so a 95-source list doesn't load 95 icons.
- */
-@Composable
 /** Cached miss, so a package without an icon isn't looked up again either. */
 private object NoIcon
 
@@ -155,6 +147,14 @@ private fun extensionIcon(context: Context, pkgName: String): Drawable? {
     return loaded
 }
 
+/**
+ * The launcher icon of an extension APK, or the source's initials when there's
+ * no package behind it (local folders) or the package is gone.
+ *
+ * The lookup itself is cached process-wide by [extensionIcon]; remembering it
+ * per composed row is not enough, because scrolling disposes rows constantly.
+ */
+@Composable
 internal fun SourceIcon(pkgName: String?, fallback: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val icon = remember(pkgName) { pkgName?.let { extensionIcon(context, it) } }
