@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.model.SChapterImpl
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -248,32 +249,42 @@ class TachiyomiSourceAdapter(
     private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {
         val http = delegate as? HttpSource
 
-        // Some sources return pages without a direct image URL; it has to be
-        // resolved with a second request first.
-        if (page.imageUrl.isNullOrEmpty() && http != null) {
-            page.imageUrl = http.getImageUrl(page)
-        }
+        // Wrapped as a whole so the URL travels with the failure. Which URL that
+        // is depends on how far this got: before resolution it's whatever the
+        // page list carried, after it's what getImageUrl returned — and the
+        // difference between those two is itself diagnostic.
+        try {
+            // Some sources return pages without a direct image URL; it has to be
+            // resolved with a second request first.
+            if (page.imageUrl.isNullOrEmpty() && http != null) {
+                page.imageUrl = http.getImageUrl(page)
+            }
 
-        val target = File(dir, "%04d".format(index))
-        if (target.exists() && target.length() > 0L) return target
+            val target = File(dir, "%04d".format(index))
+            if (target.exists() && target.length() > 0L) return target
 
-        // Going through the source's own client matters: it carries the
-        // source's headers (Referer, User-Agent). A bare GET 403s on most sites.
-        val body = if (http != null) {
-            http.getImage(page).body!!
-        } else {
-            val url = page.imageUrl ?: error("No image url for page $index")
-            fallbackClient.newCall(Request.Builder().url(url).build()).execute().body!!
-        }
+            // Going through the source's own client matters: it carries the
+            // source's headers (Referer, User-Agent). A bare GET 403s on most sites.
+            val body = if (http != null) {
+                http.getImage(page).body!!
+            } else {
+                val url = page.imageUrl ?: error("No image url for page $index")
+                fallbackClient.newCall(Request.Builder().url(url).build()).execute().body!!
+            }
 
-        val partial = File(dir, "%04d.part".format(index))
-        body.byteStream().use { input ->
-            partial.outputStream().use { output -> input.copyTo(output) }
+            val partial = File(dir, "%04d.part".format(index))
+            body.byteStream().use { input ->
+                partial.outputStream().use { output -> input.copyTo(output) }
+            }
+            // Write-then-rename, so an interrupted download can't leave a truncated
+            // file that the exists() check above would later treat as complete.
+            partial.renameTo(target)
+            return target
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PageDownloadException(index, page.imageUrl, e)
         }
-        // Write-then-rename, so an interrupted download can't leave a truncated
-        // file that the exists() check above would later treat as complete.
-        partial.renameTo(target)
-        return target
     }
 
     private fun MangasPage.toSeriesPage() =

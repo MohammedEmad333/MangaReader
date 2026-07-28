@@ -167,6 +167,38 @@ data class Chapter(
 )
 
 /**
+ * One page that couldn't be fetched, with enough context to act on it.
+ *
+ * The URL is the point. A bare "HTTP error 400" says the server rejected the
+ * request but not what was wrong with it, and when most pages of the same chapter
+ * succeed, the answer is almost always visible in the URL of one that didn't —
+ * an unencoded character, an empty path where `getImageUrl` resolved to nothing,
+ * an expired signature.
+ */
+class PageDownloadException(
+    val index: Int,
+    val url: String?,
+    cause: Throwable
+) : Exception(describe(index, url, cause), cause) {
+
+    companion object {
+        /** Long enough to see the shape of a CDN URL, short enough to read. */
+        private const val URL_LIMIT = 120
+
+        private fun describe(index: Int, url: String?, cause: Throwable): String {
+            val why = cause.message?.takeIf(String::isNotBlank) ?: cause.javaClass.simpleName
+            val where = when {
+                url.isNullOrBlank() -> "no image url"
+                url.length <= URL_LIMIT -> url
+                else -> url.take(URL_LIMIT) + "\u2026"
+            }
+            // 1-based: the page numbers everywhere else in the app are.
+            return "$why on page ${index + 1} \u2014 $where"
+        }
+    }
+}
+
+/**
  * A download that finished with pages missing.
  *
  * Thrown by [Source.loadPagesProgressively] only when `persist = true`. The
