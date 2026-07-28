@@ -5,6 +5,54 @@ Context document for continuing work in a fresh chat. Last updated 2026-07-28
 
 ---
 
+## 0. Where this was left — read this first
+
+The last session shipped the downloader rework (§4) and then spent most of its
+time on two source-specific network failures. **Both are still open, and the most
+recent fix for each is unverified.** Don't assume anything below the line "as of
+the last commit" was tested on device.
+
+### Open thread 1 — manhwatoon 400s (`Secret Class`)
+
+A subset of pages of every chapter fails with HTTP 400. Four theories were tried;
+the full account is in §5, and it's worth reading before touching this, because
+three of the four were wrong in instructive ways.
+
+- **Current state:** `recycleConnections()` in `TachiyomiSourceAdapter` evicts
+  pooled connections before every retry and every `CONNECTION_RECYCLE_BATCHES`
+  batches. **Pushed but never run.**
+- **What success looks like:** *zero* failed pages, not fewer. Every previous
+  attempt reduced the rate without stopping it, and reading a reduction as
+  progress is exactly what made this take four rounds.
+- **If it still fails at a similar rate**, stop tuning constants. Capture the 400
+  **response body** — a CDN that rejects a request usually says why in plain text,
+  and that was never looked at. `awaitSuccess()` closes the response before
+  anyone can read it, so this needs a peek at the body before it's discarded.
+
+### Open thread 2 — HentaiSco is Cloudflare-blocked
+
+- **Current state:** `CloudflareInterceptor` (§4) is in and solves *JavaScript*
+  challenges. HentaiSco still returns 403 on the build that includes it, which
+  points at an **interactive** challenge — the checkbox kind, which no headless
+  WebView can answer.
+- **Next step:** a visible WebView screen the user can tap through, opened from
+  the error on the browse screen. The networking half is done; the cookie lands
+  in `android.webkit.CookieManager`, which `AndroidCookieJar` already reads, so
+  this is purely a UI job. It would also be the natural home for logging in to
+  sources that need an account.
+- **Stale message to fix while you're there:** the error still reads "no WebView
+  bypass in this build", which stopped being true when `CloudflareInterceptor`
+  landed. It's in `Response.failureMessage()` in `OkHttpExtensions.kt`. Something
+  like "Cloudflare challenge could not be solved automatically" is honest now.
+
+### Cheap wins if you want something self-contained
+
+Downloads gained a queue, retry, and a tab this session, but nothing has been
+tested beyond a few chapters of one series. The Downloads tab in particular has
+never been checked in airplane mode, which is the only thing it exists for.
+
+---
+
 ## 1. What this project is
 
 A native Kotlin/Compose Android manga reader (`com.mangareader.app`, app label
@@ -89,7 +137,7 @@ As of the source-visibility commit, verified on device:
 - **Downloads tab** lists series with chapters saved on device, and opens them
   offline.
 - **Cloudflare JS challenges are solved** in a headless WebView; interactive
-  challenges still fail.
+  challenges still fail (HentaiSco is one — see §0).
 
 `MainActivity.kt` is **973 lines** — the Activity, `YomuApp`, and the shared
 prefs helpers.
@@ -592,22 +640,33 @@ knowing.**
 2. *"The URLs are malformed."* Ruled out by carrying the URL up in
    `PageDownloadException`: plain ASCII, nothing to encode.
 
-The actual cause is **HTTP/2 multiplexing**. OkHttp puts several concurrent image
-requests on one connection and this CDN rejects a share of those streams with a
-bare 400. That explains every observation, including the one that killed the
-throttling theory: an *immediate* retry lands on the same connection and fails,
-while a manual retry later gets a fresh one and works.
+3. *"It's HTTP/2 multiplexing."* Closer — forcing HTTP/1.1 and halving
+   `PAGE_CONCURRENCY` cut the failure rate from 12 of 36 to 7 of 39 — but it
+   didn't stop it, because OkHttp still pools and **reuses** connections.
 
-The fix is `.protocols(listOf(Protocol.HTTP_1_1))` in `NetworkHelper`, plus
-`PAGE_CONCURRENCY` down from 4 to 2. Retries stayed but were dialled back to 3
-attempts — they cover genuinely transient failures, not this.
+The cause appears to be **per-connection request limits**: the CDN starts
+answering 400 once a single connection has carried enough requests. The failure
+rate tracks requests-per-connection and nothing else — 36 requests on one shared
+HTTP/2 connection gave 33% failures, 39 across two HTTP/1.1 connections gave 18%
+— and it explains the observation that killed every other theory: an immediate
+retry fails because it lands on the *same pooled socket*, while a manual retry
+minutes later gets a fresh one.
 
-Two general lessons:
+The **proposed** fix — pushed, never run, see §0 — is `recycleConnections()` in
+`TachiyomiSourceAdapter`: `client.connectionPool.evictAll()` before every retry
+and every `CONNECTION_RECYCLE_BATCHES` batches, so no connection carries more
+than about 8 requests. `.protocols(listOf(Protocol.HTTP_1_1))` and `PAGE_CONCURRENCY = 2` are
+kept from the previous attempt; both help, neither is sufficient alone.
+
+General lessons:
 
 - **An immediate retry that fails where a later one succeeds is telling you about
-  connection state**, not about rate.
-- **400 is still in `TRANSIENT_HTTP_CODES`**, which is now defensible for a
-  different reason than it was added: it's cheap insurance, not the fix.
+  connection state**, not about rate — and "connection state" survives switching
+  protocol version, because pooling is orthogonal to it.
+- **Each fix that partly worked was evidence, not success.** The drop from 33% to
+  18% was the clue that identified the real variable; treating it as a near-miss
+  and tuning the same knob harder would have missed it.
+- **400 is still in `TRANSIENT_HTTP_CODES`** — cheap insurance, not the fix.
 
 **`tachiyomiorg` org was deleted.** Any JitPack coordinate under
 `com.github.tachiyomiorg:*` will fail to resolve. Same for
@@ -762,15 +821,16 @@ For search coverage, the global search screen prints
 Roughly in order of value:
 
 1. **Downloader gaps.** The foreground service, queue, retry and Downloads tab
-   are done (§4). What's left versus Mihon: no reordering in the queue (strictly
+   are done (§4) but only lightly exercised — see §0. What's left versus Mihon: no reordering in the queue (strictly
    FIFO), no per-series grouping in the queue screen, and no auto-download of
    new chapters. Retry/backoff settings are global, not per-source — see the
    note on manhwatoon in §5 for why that might eventually need to change.
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
-2. **Cloudflare — JS challenges now solved, interactive ones not.**
-   `CloudflareInterceptor` (see §4) handles the automatic JavaScript challenge.
+2. **Cloudflare — JS challenges now solved, interactive ones not.** This is open
+   thread 2 in §0. `CloudflareInterceptor` (see §4) handles the automatic
+   JavaScript challenge.
    What remains is the *interactive* kind — the checkbox — which a WebView nobody
    can see cannot answer. Those still fail, with the original 403 and the
    "blocked by Cloudflare" message. Fixing them means a visible WebView screen the
@@ -848,9 +908,18 @@ Add chapter downloads for offline reading                 44ae521  verified OK
 Cache chapter lists so downloaded chapters open offline   eca6caa  verified OK
 Add source visibility screen and global search scope chips 1f60936  verified OK
 Default to Multi and English only
-Move downloads into a foreground service with a persistent queue
-Report why a download failed, add retry, and add a Downloads tab
+Move downloads into a foreground service with a persistent queue         9782a75  verified OK
+Report why a download failed, add retry, and add a Downloads tab        52865df  verified OK
+Report the failing image URL on page download errors                    bb1db95  verified OK
+Retry transient page failures with backoff                              5f8a5c5  did NOT fix the 400s
+Refresh the default UA, send browser headers, name Cloudflare blocks    ca59da9  detection works
+Force HTTP/1.1 and halve page concurrency to stop CDN 400s              aaa3d85  33% -> 18%, not fixed
+Solve Cloudflare JS challenges in a headless WebView; force HTTP/1.1    1c2c8c7  HentaiSco still 403
+Recycle pooled connections to stop per-connection CDN 400s                       UNVERIFIED
 ```
+
+The last three entries are the open threads in §0. "verified OK" means it was
+exercised on device; the annotations on the rest are deliberately not that.
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.
