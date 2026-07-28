@@ -896,11 +896,6 @@ fun YomuApp() {
             error = errorMessage,
             readTick = readTick,
             onOpen = { openChapter(it) },
-            onToggleRead = { chapter ->
-                val k = chapterKeyOf(activeSourceId ?: "", chapter)
-                ReadState.setRead(context, k, !ReadState.isRead(context, k))
-                readTick++
-            },
             onLibraryChanged = { libraryTick++ },
             onSolveChallenge = solveFromSeries,
             onBack = {
