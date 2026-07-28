@@ -165,3 +165,40 @@ data class Chapter(
     val dateUploaded: Long = 0L,
     val scanlator: String? = null
 )
+
+/**
+ * A download that finished with pages missing.
+ *
+ * Thrown by [Source.loadPagesProgressively] only when `persist = true`. The
+ * reader path deliberately doesn't get this: a failed page there is drawn as a
+ * broken slot and the rest of the chapter stays readable, which is the right
+ * behaviour when someone is looking at it. A *download* that quietly stops short
+ * is different — it never gets its `.complete` marker, so without an exception
+ * the caller has no way to say anything more useful than "something failed",
+ * which is exactly where this started.
+ *
+ * [cause] is the first page failure, not the last: with four pages in flight per
+ * batch, a single 429 typically takes its three neighbours down with it, and the
+ * first one is the one that explains the rest.
+ */
+class ChapterDownloadException(
+    val failedPages: Int,
+    val totalPages: Int,
+    cause: Throwable? = null
+) : Exception(describe(failedPages, totalPages, cause), cause) {
+
+    companion object {
+        private fun describe(failed: Int, total: Int, cause: Throwable?): String {
+            val what =
+                if (total == 0) "The source returned no pages"
+                else "$failed of $total pages failed"
+            // HttpException's message is "HTTP error 429", which is the whole
+            // point of carrying it up. Exceptions without one fall back to the
+            // class name so the message is never just a dangling dash.
+            val why = cause?.let {
+                it.message?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName
+            }
+            return if (why == null) what else "$what \u2014 $why"
+        }
+    }
+}

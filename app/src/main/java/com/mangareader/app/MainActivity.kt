@@ -87,7 +87,7 @@ internal const val GLOBAL_SEARCH_PER_SOURCE = 12
 
 /** One source's slice of a global search. Sources that error out are dropped. */
 /** Where the currently open series was reached from; decides where back goes. */
-internal enum class SeriesOrigin { BROWSE, LIBRARY, HISTORY, GLOBAL_SEARCH }
+internal enum class SeriesOrigin { BROWSE, LIBRARY, HISTORY, GLOBAL_SEARCH, DOWNLOADS }
 
 internal class GlobalResult(val source: Source, val series: List<Series>)
 
@@ -500,7 +500,17 @@ fun YomuApp() {
      * foreground-service start legal on Android 12+.
      */
     fun queueDownloads(src: Source, chapters: List<Chapter>) {
-        val seriesTitle = activeSeries?.title ?: ""
+        val series = activeSeries
+        val seriesTitle = series?.title ?: ""
+        // Carried so DownloadIndex can file the finished chapter under its
+        // series without a second lookup — the download path itself needs
+        // neither of these.
+        val seriesId = series?.id ?: ""
+        val cover = when (val c = series?.cover) {
+            is File -> c.absolutePath
+            is String -> c
+            else -> ""
+        }
         val added = DownloadQueue.enqueue(
             context,
             chapters.map { chapter ->
@@ -508,7 +518,9 @@ fun YomuApp() {
                     sourceId = src.id,
                     chapterId = chapter.id,
                     chapterName = chapter.name,
-                    seriesTitle = seriesTitle
+                    seriesTitle = seriesTitle,
+                    seriesId = seriesId,
+                    cover = cover
                 )
             }
         )
@@ -562,6 +574,65 @@ fun YomuApp() {
                     Triple(src, series, chaptersWithFallback(src, series))
                 }
                 seriesOrigin = SeriesOrigin.LIBRARY
+                activeSource = result.first
+                activeSourceId = result.first.id
+                activeSeries = result.second
+                chapterList = result.third
+                enrichSeries(result.first, result.second)
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Could not open this series"
+            }
+            isLoading = false
+        }
+    }
+
+    /**
+     * Opens a series from the Downloads tab, offline first.
+     *
+     * Deliberately not routed through [openFromLibrary]: that starts with
+     * `restoreSeries`, a network request, and the whole promise of this screen is
+     * that it works in airplane mode. So the cached chapter list is consulted
+     * first and the details fetch is allowed to fail into a title-and-cover-only
+     * series — enough for `SeriesScreen` to render and for every downloaded
+     * chapter to open, since the page store is checked before the handle is.
+     */
+    fun openFromDownloads(entry: DownloadedSeries) {
+        errorMessage = null
+        scope.launch {
+            isLoading = true
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val src = SourceManager.listAllSources(context)
+                        .firstOrNull { it.id == entry.sourceId }
+                        ?: throw IllegalStateException("That source is no longer installed")
+
+                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
+                        .getOrNull()
+                    val series = fetched?.copy(
+                        title = fetched.title.ifBlank { entry.title },
+                        cover = fetched.cover ?: entry.cover.ifBlank { null }
+                    ) ?: Series(
+                        id = entry.seriesId,
+                        title = entry.title,
+                        cover = entry.cover.ifBlank { null }
+                    )
+
+                    // Only ask the source for chapters if the details fetch worked
+                    // — a handle-less series can't list them, and would come back
+                    // empty rather than falling through to the cache.
+                    val chapters =
+                        if (fetched != null) chaptersWithFallback(src, series)
+                        else ChapterCache.load(context, entry.seriesId)
+                            .map { src.rehydrateChapter(it) }
+
+                    if (chapters.isEmpty()) {
+                        throw IllegalStateException(
+                            "No chapter list cached for this series \u2014 open it once online"
+                        )
+                    }
+                    Triple(src, series, chapters)
+                }
+                seriesOrigin = SeriesOrigin.DOWNLOADS
                 activeSource = result.first
                 activeSourceId = result.first.id
                 activeSeries = result.second
@@ -795,6 +866,12 @@ fun YomuApp() {
                     NavigationBarItem(
                         selected = currentTab == 3,
                         onClick = { currentTab = 3 },
+                        label = { Text("Downloads") },
+                        icon = { Text("⬇️") }
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 4,
+                        onClick = { currentTab = 4 },
                         label = { Text("More") },
                         icon = { Text("⚙️") }
                     )
@@ -863,7 +940,12 @@ fun YomuApp() {
                             history = History.list(context)
                         }
                     )
-                    3 -> MoreTab(onOpenDownloads = { downloadsOpen = true })
+                    3 -> DownloadsTab(
+                        downloadTick = downloadTick + DownloadQueue.tick,
+                        onOpen = { openFromDownloads(it) },
+                        onOpenQueue = { downloadsOpen = true }
+                    )
+                    4 -> MoreTab(onOpenDownloads = { downloadsOpen = true })
                 }
             }
         }

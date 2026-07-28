@@ -66,6 +66,10 @@ object Downloads {
     fun count(context: Context): Int =
         root(context).listFiles()?.count { File(it, MARKER).exists() } ?: 0
 
+    /** On-disk size of one chapter, for the per-series totals in the Downloads tab. */
+    fun sizeOf(context: Context, chapterId: String): Long =
+        dirFor(context, chapterId).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+
     fun sizeBytes(context: Context): Long =
         root(context).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
 

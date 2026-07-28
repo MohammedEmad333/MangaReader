@@ -147,8 +147,12 @@ class DownloadService : Service() {
         DownloadQueue.setActive(item.chapterId)
         DownloadQueue.setProgress(item.chapterId, 0)
         notifyNow()
+        var failure: String? = null
         try {
-            if (Downloads.isComplete(this, item.chapterId)) return
+            if (Downloads.isComplete(this, item.chapterId)) {
+                DownloadIndex.record(this, item)
+                return
+            }
 
             val src = SourceManager.listAllSources(this)
                 .firstOrNull { it.id == item.sourceId }
@@ -170,17 +174,21 @@ class DownloadService : Service() {
                 notifyThrottled()
             }
 
-            // loadPagesProgressively only marks a chapter complete when every
-            // page landed, so this is the "some pages failed" case.
-            if (!Downloads.isComplete(this, item.chapterId)) {
-                DownloadQueue.reportError("Some pages of \"${item.chapterName}\" failed")
+            // The adapter throws ChapterDownloadException when pages are missing,
+            // so reaching here normally means it's done. The check stays as a
+            // backstop for sources using the default loadPagesProgressively,
+            // which marks nothing.
+            if (Downloads.isComplete(this, item.chapterId)) {
+                DownloadIndex.record(this, item)
+            } else {
+                failure = "Finished without marking the chapter complete"
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            DownloadQueue.reportError(e.message ?: "Could not download \"${item.chapterName}\"")
+            failure = e.message ?: e.javaClass.simpleName
         } finally {
-            DownloadQueue.finish(this, item.chapterId)
+            DownloadQueue.finish(this, item, failure)
         }
     }
 

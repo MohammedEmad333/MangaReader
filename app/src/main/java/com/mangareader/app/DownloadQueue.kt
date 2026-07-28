@@ -18,18 +18,26 @@ import java.io.File
  * enough: [SourceManager.listAllSources] resolves the source, and
  * [Source.rehydrateChapter] rebuilds the handle from the chapter id, which is
  * the same path the offline chapter cache already relies on.
+ *
+ * [seriesId] and [cover] aren't needed to download anything. They're here so a
+ * finished chapter can be filed under its series in [DownloadIndex] without a
+ * network round trip to work out what it belonged to.
  */
 data class DownloadItem(
     val sourceId: String,
     val chapterId: String,
     val chapterName: String,
-    val seriesTitle: String
+    val seriesTitle: String,
+    val seriesId: String = "",
+    val cover: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("sourceId", sourceId)
         put("chapterId", chapterId)
         put("chapterName", chapterName)
         put("seriesTitle", seriesTitle)
+        put("seriesId", seriesId)
+        put("cover", cover)
     }
 
     companion object {
@@ -37,7 +45,25 @@ data class DownloadItem(
             sourceId = o.getString("sourceId"),
             chapterId = o.getString("chapterId"),
             chapterName = o.optString("chapterName"),
-            seriesTitle = o.optString("seriesTitle")
+            seriesTitle = o.optString("seriesTitle"),
+            // optString, not getString: a queue written by 0.20 has neither.
+            seriesId = o.optString("seriesId"),
+            cover = o.optString("cover")
+        )
+    }
+}
+
+/** A chapter that came out of the queue without finishing, and why. */
+data class FailedDownload(
+    val item: DownloadItem,
+    val reason: String
+) {
+    fun toJson(): JSONObject = item.toJson().apply { put("reason", reason) }
+
+    companion object {
+        fun fromJson(o: JSONObject) = FailedDownload(
+            item = DownloadItem.fromJson(o),
+            reason = o.optString("reason").ifBlank { "Download failed" }
         )
     }
 }
@@ -65,6 +91,18 @@ object DownloadQueue {
     var items by mutableStateOf<List<DownloadItem>>(emptyList())
         private set
 
+    /**
+     * Chapters that stopped short, newest first, kept until dismissed.
+     *
+     * They deliberately don't stay in [items]: a chapter whose source has been
+     * uninstalled would block everything behind it forever. Holding them here
+     * instead means the queue keeps draining and the user still gets told, with
+     * a Retry that puts the chapter back rather than making them find it again
+     * in the series screen.
+     */
+    var failed by mutableStateOf<List<FailedDownload>>(emptyList())
+        private set
+
     /** chapterId -> percent, for the chapter being downloaded right now. */
     var progress by mutableStateOf<Map<String, Int>>(emptyMap())
         private set
@@ -79,13 +117,10 @@ object DownloadQueue {
     /**
      * Bumped every time a chapter leaves the queue. Screens that read download
      * state off the filesystem — the tick / check mark in the chapter list, the
-     * storage row in More — key their `remember` on this to re-read.
+     * storage row in More, the Downloads tab — key their `remember` on this.
      */
     var tick by mutableIntStateOf(0)
         private set
-
-    /** Last failure, for the queue screen. Cleared when the user dismisses it. */
-    var lastError by mutableStateOf<String?>(null)
 
     private var restored = false
 
@@ -106,6 +141,9 @@ object DownloadQueue {
         }
         if (added.isEmpty()) return 0
         items = items + added
+        // Re-queuing something clears its old failure, so the same chapter can't
+        // sit in both lists at once.
+        failed = failed.filterNot { f -> added.any { it.chapterId == f.item.chapterId } }
         save(context)
         return added.size
     }
@@ -133,6 +171,34 @@ object DownloadQueue {
     /** True when the given chapter is queued but not yet started. */
     fun isQueued(chapterId: String): Boolean = items.any { it.chapterId == chapterId }
 
+    // ---------- failures ----------
+
+    /** Moves failures back into the queue. Returns how many went back. */
+    @Synchronized
+    fun retry(context: Context, chapterIds: Set<String>): Int {
+        val back = failed.filter { it.item.chapterId in chapterIds }
+        if (back.isEmpty()) return 0
+        failed = failed.filterNot { it.item.chapterId in chapterIds }
+        items = items + back.map { it.item }
+        save(context)
+        return back.size
+    }
+
+    fun retryAll(context: Context): Int =
+        retry(context, failed.map { it.item.chapterId }.toSet())
+
+    @Synchronized
+    fun dismissFailed(context: Context, chapterId: String) {
+        failed = failed.filterNot { it.item.chapterId == chapterId }
+        save(context)
+    }
+
+    @Synchronized
+    fun clearFailed(context: Context) {
+        failed = emptyList()
+        save(context)
+    }
+
     // ---------- service side ----------
 
     /** The chapter the service should work on next, or null when there's nothing. */
@@ -147,23 +213,22 @@ object DownloadQueue {
     }
 
     /**
-     * Drops a chapter from the queue whether it succeeded or not.
+     * Takes a chapter out of the queue, whether it succeeded or not.
      *
-     * A failure leaves the queue rather than staying at the head: a chapter whose
-     * source is gone, or whose pages 404, would otherwise block everything behind
-     * it forever. Its partial files stay on disk, so re-queuing it resumes.
+     * A non-null [failure] files it under [failed] on the way out. Its partial
+     * pages stay on disk either way, so a retry resumes rather than restarts.
      */
     @Synchronized
-    fun finish(context: Context, chapterId: String) {
-        items = items.filterNot { it.chapterId == chapterId }
-        progress = progress - chapterId
-        if (activeId == chapterId) activeId = null
+    fun finish(context: Context, item: DownloadItem, failure: String? = null) {
+        items = items.filterNot { it.chapterId == item.chapterId }
+        progress = progress - item.chapterId
+        if (activeId == item.chapterId) activeId = null
+        if (failure != null) {
+            failed = listOf(FailedDownload(item, failure)) +
+                failed.filterNot { it.item.chapterId == item.chapterId }
+        }
         tick++
         save(context)
-    }
-
-    fun reportError(message: String) {
-        lastError = message
     }
 
     // ---------- persistence ----------
@@ -172,15 +237,19 @@ object DownloadQueue {
         File(context.applicationContext.filesDir, FILE)
 
     private fun save(context: Context) {
-        val snapshot = items
+        val queued = items
+        val bad = failed
         val isPaused = paused
         runCatching {
-            val arr = JSONArray()
-            snapshot.forEach { arr.put(it.toJson()) }
+            val queuedArr = JSONArray()
+            queued.forEach { queuedArr.put(it.toJson()) }
+            val failedArr = JSONArray()
+            bad.forEach { failedArr.put(it.toJson()) }
             file(context).writeText(
                 JSONObject().apply {
                     put("paused", isPaused)
-                    put("items", arr)
+                    put("items", queuedArr)
+                    put("failed", failedArr)
                 }.toString()
             )
         }
@@ -202,11 +271,18 @@ object DownloadQueue {
             if (!f.exists()) return
             val root = JSONObject(f.readText())
             paused = root.optBoolean("paused", false)
-            val arr = root.optJSONArray("items") ?: return
-            items = (0 until arr.length())
-                .map { DownloadItem.fromJson(arr.getJSONObject(it)) }
-                // A chapter that finished after the last save is already on disk.
-                .filterNot { Downloads.isComplete(context, it.chapterId) }
+
+            root.optJSONArray("items")?.let { arr ->
+                items = (0 until arr.length())
+                    .map { DownloadItem.fromJson(arr.getJSONObject(it)) }
+                    // A chapter that finished after the last save is already on disk.
+                    .filterNot { Downloads.isComplete(context, it.chapterId) }
+            }
+            root.optJSONArray("failed")?.let { arr ->
+                failed = (0 until arr.length())
+                    .map { FailedDownload.fromJson(arr.getJSONObject(it)) }
+                    .filterNot { Downloads.isComplete(context, it.item.chapterId) }
+            }
         }
     }
 }

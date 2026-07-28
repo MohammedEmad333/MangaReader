@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 import eu.kanade.tachiyomi.source.model.Page as TachiPage
 
 /**
@@ -188,6 +189,7 @@ class TachiyomiSourceAdapter(
         val sChapter = chapter.handle as? SChapter
         if (sChapter == null) {
             onUpdate(emptyList())
+            if (persist) throw ChapterDownloadException(0, 0, IllegalStateException("No chapter handle"))
             return@withContext
         }
         val pages = delegate.getPageList(sChapter)
@@ -198,20 +200,34 @@ class TachiyomiSourceAdapter(
         val done = arrayOfNulls<File>(pages.size)
         onUpdate(done.toList())
 
+        // The reason a failure is kept rather than dropped: `getOrNull()` alone
+        // turned a 403, a timeout and a missing image URL into the same silence,
+        // and the download path had nothing to report but "some pages failed".
+        val firstError = AtomicReference<Throwable?>(null)
+
         pages.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
             val base = batch * PAGE_CONCURRENCY
             chunk.mapIndexed { offset, page ->
-                async { runCatching { downloadPage(page, dir, base + offset) }.getOrNull() }
+                async {
+                    runCatching { downloadPage(page, dir, base + offset) }
+                        .onFailure { firstError.compareAndSet(null, it) }
+                        .getOrNull()
+                }
             }.awaitAll().forEachIndexed { offset, file ->
                 done[base + offset] = file
             }
             onUpdate(done.toList())
         }
 
+        if (!persist) return@withContext
+
         // Only a chapter with every page present counts as downloaded; a partial
         // one stays unmarked so it can be resumed rather than trusted.
-        if (persist && pages.isNotEmpty() && done.all { it != null }) {
+        val failed = done.count { it == null }
+        if (pages.isNotEmpty() && failed == 0) {
             Downloads.markComplete(context, chapter.id, pages.size)
+        } else {
+            throw ChapterDownloadException(failed, pages.size, firstError.get())
         }
     }
 
