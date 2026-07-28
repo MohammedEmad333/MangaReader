@@ -752,10 +752,15 @@ fun YomuApp() {
                 pages = pages,
                 stillLoading = isLoading,
                 initialPage = savedPage(context, chKey).coerceIn(0, total - 1),
+                seriesTitle = series?.title ?: "",
+                chapterName = readerChapter.name,
+                chapters = chapterList,
+                chapterIndex = chapterIdx,
                 hasPrev = chapterIdx > 0,
                 hasNext = chapterIdx < chapterList.size - 1,
                 onPrev = { openChapter(chapterIdx - 1) },
                 onNext = { openChapter(chapterIdx + 1) },
+                onSelectChapter = { openChapter(it) },
                 onProgress = { page ->
                     savePage(context, chKey, page)
                     if (page >= total - 1) ReadState.setRead(context, chKey, true)
