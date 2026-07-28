@@ -1,8 +1,13 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-28
-(late), after the settings / backup / storage-location session (supersedes the
-earlier version of this file).
+Context document for continuing work in a fresh chat. Last updated 2026-07-29,
+after the settings / backup / storage / browse session (supersedes the earlier
+version of this file).
+
+**The manhwatoon 400s are fixed.** That thread had been open across several
+handoffs. It is not in §0 any more; the account is in §5, and it is worth
+reading even if you never touch that source, because the fix was the opposite of
+every previous attempt.
 
 ---
 
@@ -15,7 +20,7 @@ the first stretch of work in several sessions that isn't carrying an untested
 tail. Two older threads are still open and neither was touched.
 
 One thing the new work quietly created: the app now has a **light theme**, and
-the reader was written against dark only. See thread 3.
+the reader was written against dark only. See thread 2.
 
 ### Open thread 1 — the reader rewrite is barely tested
 
@@ -35,29 +40,7 @@ session, and the session stopped before most of it was exercised.
   underlying fragility is worth understanding before touching anything that
   might recreate the Activity.
 
-### Open thread 2 — manhwatoon 400s (`Secret Class`)
-
-A subset of pages of every chapter fails with HTTP 400. Four theories were tried;
-the full account is in §5, and it's worth reading before touching this, because
-three of the four were wrong in instructive ways.
-
-- **Current state:** `recycleConnections()` in `TachiyomiSourceAdapter` has now
-  **been run**, and it helped a lot without fixing it: Secret Class chapter 5
-  failed 1 page of 36, chapter 6 failed 3 of 39. Against 12 of 36 and 7 of 39
-  before it, that is roughly 33% → 18% → 3-8%.
-- **This is the fourth reduction, not a fix**, and the handoff's own rule applies:
-  *zero* failed pages is the bar. Three previous attempts each moved the rate and
-  each looked like progress. Tuning `CONNECTION_RECYCLE_BATCHES` down further is
-  the obvious next move and is the same move that has now failed four times.
-- **Do the thing nobody has done: capture the 400 response body.** A CDN that
-  rejects a request usually says why in plain text. `awaitSuccess()` closes the
-  response before anyone can read it, so this needs a peek at the body before
-  it's discarded. Everything else about this bug has been inferred from failure
-  *rates*; the server has been trying to say what's wrong the whole time.
-- The user deferred this deliberately. It is the oldest thread here and the only
-  one that is a genuine unknown rather than untested work.
-
-### Open thread 3 — the light theme meets the untested reader
+### Open thread 2 — the light theme meets the untested reader
 
 `AppTheme` added Light and Follow-system alongside Dark, and `ReaderScreen` has
 two hardcoded `Color.White` text draws — the page-number overlay (~line 163) and
@@ -72,6 +55,24 @@ Also unaddressed: `AndroidManifest.xml` still declares
 `@android:style/Theme.Material.NoActionBar`, which is the *dark* variant. In
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
+
+### Closed this session — the manhwatoon 400s, and how
+
+`cdn.manhwatoon.me` now downloads whole chapters with **zero failed pages**,
+which was the stated bar and had never been met. The fix was to **delete**
+`.protocols(listOf(Protocol.HTTP_1_1))` from `NetworkHelper` — the line added
+specifically to fix it.
+
+Every previous attempt tuned that constraint tighter. The full account is in §5;
+the short version is that the forced HTTP/1.1 was never the cure, and while it
+sat there it was quietly causing a *second*, unrelated-looking bug on other
+sources. `recycleConnections()` appears to have been the thing that actually
+worked, and removing 1.1 cost it nothing.
+
+**One clean chapter is good evidence, not proof.** The failure was always a rate
+— 3-8% of pages at last measurement — so a single 36-page chapter completing
+clean is roughly what you'd expect to see one time in three by luck. Two or three
+more clean chapters closes it properly.
 
 ### Closed last session — Cloudflare, covers, and two bugs
 
@@ -216,9 +217,16 @@ Added this session, all verified on device:
 - **A readable download tree**: `<picked>/Yomu/downloads/<Source>/<Series>/<Chapter>`,
   with a reorganise action for chapters in the old flat layout.
 - **One back button.** `Ui.BackButton` replaced three different affordances.
+- **Per-chapter download delete**, and **multi-select** on the chapter list —
+  long-press to start, then download / mark read / mark unread / delete.
+- **Popular and Latest** on per-source browse, search behind an icon, and three
+  grid densities (`BrowseView`).
+- **Source filters** — the source's own `getFilterList()`, rendered.
+- **A connection probe** (§6) that reports what a source actually returns.
+- **Cloudflare solving from the series screen**, not only from browse.
 
-`MainActivity.kt` is **1096 lines** — the Activity, `YomuApp`, and the shared
-prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**.
+`MainActivity.kt` is **~1130 lines** — the Activity, `YomuApp`, and the shared
+prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**, `SourceBrowseScreens.kt` is **~900**.
 
 ## 3. Build environment
 
@@ -296,6 +304,9 @@ implementation("com.squareup.logcat:logcat:0.1")
   the UA interceptor in `NetworkHelper` has to consult it.
 - **`NetworkHelper.kt` rewritten** to a minimal version exposing `client`,
   `cloudflareClient` (== `client`), `cookieJar`, `defaultUserAgentProvider()`.
+  It briefly forced `Protocol.HTTP_1_1` for every source; that line is **gone**
+  and the comment where it was explains why it must not come back without
+  measuring first (§5).
 - **`util/RxExtension.kt` replaced** with a self-contained `awaitSingle()` for
   `rx.Observable` (the original was `expect`/`actual` + `:core` import).
 - **`PreferenceScreen.kt`**: `actual` keyword stripped (no longer KMP).
@@ -324,6 +335,8 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `Backup.kt` | Whole-prefs backup/restore, `BackupFrequency`, `AutoBackupWorker`. |
 | `StorageLocation.kt` | The chosen folder, All-files-access checks, tree-URI→path, the mover. |
 | `DownloadPaths.kt` | chapterId → `<Source>/<Series>/<Chapter>`, plus `reorganiseDownloads()`. |
+| `SourceFilters.kt` | Renders a source's `getFilterList()`. Browse-side twin of `SourceSettingsUi`. |
+| `NetworkProbe.kt` | One request through the extension's own client, reported in full (§6). |
 
 ### Compose UI file layout
 `MainActivity.kt` used to hold every screen. It was split once it passed 2600
@@ -947,7 +960,7 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
-### A 400 from `cdn.manhwatoon.me` is an HTTP/2 problem, not throttling
+### The manhwatoon 400s: five attempts, and the fix was deleting one of them
 
 `cdn.manhwatoon.me` (WP-manga / Madara) answers **HTTP 400** on a minority of
 page requests. Symptoms: well-formed URLs, a scattered subset of any chapter
@@ -975,14 +988,31 @@ HTTP/2 connection gave 33% failures, 39 across two HTTP/1.1 connections gave 18%
 retry fails because it lands on the *same pooled socket*, while a manual retry
 minutes later gets a fresh one.
 
-The fix that followed — `recycleConnections()` in `TachiyomiSourceAdapter`:
-`client.connectionPool.evictAll()` before every retry and every
-`CONNECTION_RECYCLE_BATCHES` batches, so no connection carries more than about 8
-requests — has since been run, and took the failure rate from 18% to roughly
-3-8% without reaching zero. `.protocols(listOf(Protocol.HTTP_1_1))` and
-`PAGE_CONCURRENCY = 2` are kept from the previous attempt; all three help, none
-is sufficient. That is now **four** partial fixes on one bug, which is the
-signal to stop tuning and read the response body — see §0.
+`recycleConnections()` in `TachiyomiSourceAdapter` — `connectionPool.evictAll()`
+before every retry and every `CONNECTION_RECYCLE_BATCHES` batches, so no
+connection carries more than about 8 requests — took it from 18% to 3-8%.
+Still not zero. Four partial fixes, each one tightening the same constraint.
+
+**The fifth attempt went the other way and worked.** Removing
+`.protocols(listOf(Protocol.HTTP_1_1))` — the second attempt's own fix, still
+sitting in `NetworkHelper` — gives whole chapters with zero failed pages. HTTP/2
+multiplexing was never the cause; per-connection request limits were, and
+`recycleConnections()` is what addresses those. Forcing 1.1 correlated with an
+improvement because it also changed how many requests shared a connection, which
+is the variable that mattered. It was a proxy for the real fix and was mistaken
+for it, and then defended for three more rounds.
+
+Worse, it wasn't free. See the next section.
+
+Lessons, in order of how expensive they were:
+
+- **A partial improvement is evidence about the variable, not a step toward the
+  fix.** 33% → 18% identified requests-per-connection. Treating it as progress
+  meant three more rounds of tuning the wrong knob.
+- **A mitigation that never fully worked is a suspect, not an asset.** Nobody
+  reconsidered forcing HTTP/1.1 for four attempts because it had \u201chelped\u201d.
+- **The evidence was one unread response body the whole time.** §6's probe now
+  exists; use it first, not fifth.
 
 General lessons:
 
@@ -1126,9 +1156,10 @@ went nowhere. Printing the URL and Coil's error into the placeholder in debug
 builds (§6) produced the actual answer on the next screenshot: the URLs pointed
 at `127.0.0.1`, which was in *none* of the four guesses.
 
-This is the same lesson §0 records for the manhwatoon 400s, where the response
-body still hasn't been read. **When a slow build/install loop meets an ambiguous
-symptom, spend the cycle on making the symptom specific, not on a candidate fix.**
+The manhwatoon 400s went the same way and took four extra attempts to admit it;
+`NetworkProbe.kt` (§6) exists so the next one doesn't. **When a slow
+build/install loop meets an ambiguous symptom, spend the cycle on making the
+symptom specific, not on a candidate fix.**
 
 ### Don't re-assert UI state from an async callback
 
@@ -1175,6 +1206,40 @@ Two things to carry forward:
 - **Recreation is still possible** for reasons the manifest can't cover: low
   memory, "don't keep activities", a locale change. Hoisting state into a
   `ViewModel` or a saveable holder is the real fix and is §7's structural item.
+
+### A client that lies about what it is, part two: the protocol layer
+
+Forcing `Protocol.HTTP_1_1` globally, for manhwatoon's sake, broke a completely
+different source and nobody connected the two for weeks.
+
+`allporncomic.com` answered `200 OK` to one phone and `403` with
+`cf-mitigated: challenge` to another, on identical code. The visible WebView
+loaded the site fine on both, so no challenge was ever presented and no
+`cf_clearance` was ever issued \u2014 there was **nothing for the user to solve**,
+and the \u201cOpen in WebView\u201d button could not have worked no matter how it was
+wired.
+
+What Cloudflare was reacting to: the client announces itself as
+`Chrome/150 \u2026 Android` \u2014 deliberately, via `ClearanceUserAgents`, so that
+clearance earned in a WebView is honoured \u2014 and then negotiates HTTP/1.1, which
+real Chrome never does. A claimed identity contradicting observed behaviour is
+exactly what bot detection is for.
+
+**This is the same bug as the User-Agent one two sections down, one layer
+lower.** That one made the WebView claim a desktop UA inside an Android WebView;
+this one made an Android Chrome speak a protocol Android Chrome doesn't speak.
+Both were introduced as fixes for something else. Both produced symptoms that
+looked like a different subsystem failing.
+
+Two things worth carrying:
+
+- **When you make a client claim to be a browser, everything else about the
+  connection has to keep that promise** \u2014 protocol, header order, TLS. Changing
+  any of them somewhere else in the codebase silently breaks the claim.
+- **The two phones were the experiment.** Identical builds, one working, one
+  not, differing only in that the failing one is a tablet whose WebView UA omits
+  the `Mobile` token \u2014 so it claimed *desktop* Chrome over HTTP/1.1, a sharper
+  contradiction. Without a second device this would still be open.
 
 ### Sideloading is a design input, not just a distribution choice
 
@@ -1290,6 +1355,19 @@ It also prints a **`Cache:`** line showing how many sources the loader is
 currently holding — a quick read on whether the cache is working or silently
 missing on every call.
 
+**Browse → \u22ee → Connection probe** (`NetworkProbe.kt`) fires one request at the
+source's `baseUrl` through `HttpSource.client` — the extension's own client,
+headers, cookie jar and Cloudflare interceptor — and reports the status,
+negotiated protocol, the User-Agent that actually left the phone (read off
+`response.request`, after interceptors rewrite it), `cf-mitigated`, `cf-ray`,
+`Server`, `Set-Cookie` *names*, and the block page's text with markup stripped.
+`cf_clearance` is checked before and after.
+
+This is the single most useful thing in this section. `cf-mitigated: challenge`
+means a block is solvable; its absence on a 403 means it isn't. It settled the
+HTTP/1.1 bug in §5 in two runs, after an evening of guessing, and it is the tool
+§5 keeps saying to reach for: **make the symptom specific before trying fixes.**
+
 For search coverage, the global search screen prints
 "Searched X of Y sources · N with results".
 
@@ -1361,14 +1439,21 @@ Roughly in order of value:
     lists (`filesDir/chapterlists`), the download queue and the path index stay
     in internal storage by design — they're app data, not user data — but it
     does mean "everything Yomu wrote" isn't quite one folder.
-15. **Automatic backups are silent when no folder is set.** They land inside app
+15. **The Cloudflare path has no `WebViewInterceptor`.** When a site refuses
+    OkHttp but serves the WebView, and no challenge is presented, there is
+    nothing to solve \u2014 the only real answer is routing that request through the
+    WebView. §4 records the original as deliberately deleted for pulling in
+    QuickJS and moko-resources; a minimal rewrite, the way `CloudflareInterceptor`
+    was rewritten, is the structural fix. Not needed yet: removing forced
+    HTTP/1.1 (§5) resolved the case that raised it.
+16. **Automatic backups are silent when no folder is set.** They land inside app
     storage, where a file manager can't reach them: fine as a safety net,
     useless for moving to another phone. The settings note says so; nothing
     warns more loudly.
-16. **Reorganise can't place a chapter whose series was never in the library.**
+17. **Reorganise can't place a chapter whose series was never in the library.**
     `ChapterCache` only holds a list fetched while online, so there's nothing to
     match the hash against. Those stay in the flat layout and keep working.
-17. **Icon debt from `material-icons-core`.** Three places now use an
+18. **Icon debt from `material-icons-core`.** Three places now use an
     approximate glyph because the core set is ~40 icons: a filled/dimmed `Star`
     for pinning (no `PushPin`), `KeyboardArrowDown` for download, and `Menu` for
     source visibility. Adding `material-icons-extended` fixes all three at once —
@@ -1434,7 +1519,13 @@ Add backup, restore and a storage location under Data and storage       10ae342 
 Let downloads and backups live in a folder the user picks               b9b4206  verified OK
 File downloads under source, series and chapter in a Yomu folder        5590fec  verified OK
 Add a reorganise action for downloads in the old flat layout            8e43778  verified OK
-Use one back button everywhere; update the handoff
+Use one back button everywhere; update the handoff                      95850be  verified OK
+Solve Cloudflare challenges from the series screen; delete single downloads 3e14a7f  verified OK
+Add Popular/Latest, an icon search and grid view options to source browse 6c95fa1  verified OK
+Add source filters, and explain HTTP errors that mean the site is down   940fc34  verified OK
+Add a connection probe that reports what a source actually returns       5dbd024  verified OK
+Stop forcing HTTP/1.1 globally; it contradicted the Chrome UA            d2e6b30  fixed manhwatoon
+Select multiple chapters to download, mark read/unread or delete
 ```
 
 "verified OK" means it was exercised on device; the annotations on the rest are

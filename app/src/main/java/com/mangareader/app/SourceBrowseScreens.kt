@@ -11,7 +11,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -383,7 +385,7 @@ private fun SeriesAction(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun SeriesScreen(
     series: Series,
@@ -399,6 +401,7 @@ internal fun SeriesScreen(
     onCancelDownloads: () -> Unit,
     onDeleteDownloads: () -> Unit,
     onDeleteChapter: (Chapter) -> Unit,
+    onSetRead: (List<Chapter>, Boolean) -> Unit,
     loading: Boolean,
     error: String?,
     readTick: Int,
@@ -408,12 +411,25 @@ internal fun SeriesScreen(
     onSolveChallenge: (() -> Unit)?,
     onBack: () -> Unit
 ) {
-    BackHandler { onBack() }
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
     var confirmDeleteChapter by remember(series.id) { mutableStateOf<Chapter?>(null) }
+    // Chapter ids, not indices: the list is re-fetched on rescan and after a
+    // solved challenge, and indices would silently point at different chapters.
+    var selectedIds by remember(series.id) { mutableStateOf(emptySet<String>()) }
+    val selecting = selectedIds.isNotEmpty()
+    val selectedChapters = remember(selectedIds, chapters) {
+        chapters.filter { it.id in selectedIds }
+    }
+
+    // Back leaves the selection before it leaves the screen — the same rule the
+    // settings screen applies to its open section, and the one people expect
+    // from every contextual action bar on Android.
+    BackHandler {
+        if (selecting) selectedIds = emptySet() else onBack()
+    }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
     // First unread chapter drives the Start/Resume button. Recomputed on readTick
@@ -705,7 +721,24 @@ internal fun SeriesScreen(
                             }
                         }
                     },
-                    modifier = Modifier.clickable { onOpen(index) }
+                    // Tinted rather than checkboxed: adding a checkbox column
+                    // shifts every row sideways the moment selection starts,
+                    // which makes the list jump under the finger that just
+                    // long-pressed it.
+                    colors = if (ch.id in selectedIds) {
+                        ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    } else {
+                        ListItemDefaults.colors()
+                    },
+                    modifier = Modifier.combinedClickable(
+                        onClick = {
+                            if (selecting) selectedIds = selectedIds.toggle(ch.id)
+                            else onOpen(index)
+                        },
+                        onLongClick = { selectedIds = selectedIds.toggle(ch.id) }
+                    )
                 )
                 HorizontalDivider()
             }
@@ -714,7 +747,35 @@ internal fun SeriesScreen(
             item { Spacer(Modifier.height(88.dp)) }
         }
 
-        if (chapters.isNotEmpty()) {
+        if (selecting) {
+            ChapterSelectionBar(
+                count = selectedChapters.size,
+                canDownload = canDownload,
+                onSelectAll = { selectedIds = chapters.map { it.id }.toSet() },
+                onClear = { selectedIds = emptySet() },
+                onDownload = {
+                    selectedChapters.forEach { onDownload(it) }
+                    selectedIds = emptySet()
+                },
+                onRead = {
+                    onSetRead(selectedChapters, true)
+                    selectedIds = emptySet()
+                },
+                onUnread = {
+                    onSetRead(selectedChapters, false)
+                    selectedIds = emptySet()
+                },
+                onDelete = {
+                    selectedChapters.forEach { onDeleteChapter(it) }
+                    selectedIds = emptySet()
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+
+        // Hidden while selecting: it sits exactly where the action bar goes, and
+        // "Resume" is not what anyone reaches for mid-selection.
+        if (chapters.isNotEmpty() && !selecting) {
             ExtendedFloatingActionButton(
                 onClick = { onOpen(if (resumeIndex >= 0) resumeIndex else 0) },
                 icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
@@ -769,6 +830,71 @@ internal fun SeriesScreen(
                 onLibraryChanged()
             }
         )
+    }
+}
+
+/** Adds or removes one id. Written out because `Set` has no toggle. */
+private fun Set<String>.toggle(id: String): Set<String> =
+    if (id in this) this - id else this + id
+
+/**
+ * The contextual bar shown while chapters are selected.
+ *
+ * Words rather than icons, and scrollable. `material-icons-core` has nothing for
+ * mark-as-read or mark-as-unread — the fifth time that has come up in this repo
+ * — and four ambiguous glyphs on a destructive bar is worse than four labels the
+ * user has to scroll. Delete is last and coloured, so the one action that can't
+ * be undone isn't adjacent to the one that's hit most.
+ */
+@Composable
+private fun ChapterSelectionBar(
+    count: Int,
+    canDownload: Boolean,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onDownload: () -> Unit,
+    onRead: () -> Unit,
+    onUnread: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClear) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear selection")
+                }
+                Text(
+                    "$count selected",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onSelectAll) { Text("All") }
+            }
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp)
+            ) {
+                if (canDownload) {
+                    TextButton(onClick = onDownload) { Text("Download") }
+                }
+                TextButton(onClick = onRead) { Text("Mark read") }
+                TextButton(onClick = onUnread) { Text("Mark unread") }
+                TextButton(onClick = onDelete) {
+                    Text("Delete downloads", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
     }
 }
 
