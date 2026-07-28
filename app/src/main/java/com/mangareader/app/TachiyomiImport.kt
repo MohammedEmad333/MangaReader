@@ -314,7 +314,7 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
                 seriesId = seriesId,
                 sourceId = appSourceId,
                 title = s.title,
-                cover = s.cover,
+                cover = if (isLoopback(s.cover)) "" else s.cover,
                 addedAt = if (s.addedAt > 0) s.addedAt else System.currentTimeMillis()
             )
         )
@@ -367,6 +367,24 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
                 "can't list chapters until you add that source."
         )
     }
+}
+
+/**
+ * Whether a URL points at the machine that served it.
+ *
+ * Some extensions are front-ends for a server the user runs themselves, and the
+ * backup stores whatever absolute cover URL that install produced. A
+ * `http://127.0.0.1/image/...` meant one particular app on one particular phone;
+ * carried anywhere else it's an address that answers nothing, and it renders as
+ * a grid of connection errors rather than as a missing cover.
+ *
+ * Dropped to blank instead, so the grid shows a placeholder and the cover can be
+ * filled in later from the source itself — see [Library.healCover].
+ */
+internal fun isLoopback(url: String): Boolean {
+    val host = runCatching { android.net.Uri.parse(url).host }.getOrNull()?.lowercase()
+        ?: return false
+    return host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" || host == "::1"
 }
 
 // ------------------------------------------------------------- finding a file

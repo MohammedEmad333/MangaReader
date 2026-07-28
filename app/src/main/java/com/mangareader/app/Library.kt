@@ -41,11 +41,26 @@ object Library {
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
+    // Same memo as Categories.assignments, for the same reason: contains() and
+    // every screen that filters call this, and re-parsing several thousand
+    // entries per call is what a large import turns into.
+    @Volatile
+    private var listRaw: String? = null
+
+    @Volatile
+    private var listCache: List<LibraryEntry>? = null
+
     fun list(context: Context): List<LibraryEntry> {
         val raw = prefs(context).getString(KEY, null) ?: return emptyList()
+        val hit = listCache
+        if (hit != null && listRaw == raw) return hit
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length()).map { LibraryEntry.fromJson(arr.getJSONObject(it)) }
+                .also {
+                    listCache = it
+                    listRaw = raw
+                }
         } catch (e: Exception) {
             emptyList()
         }
@@ -54,7 +69,12 @@ object Library {
     private fun save(context: Context, items: List<LibraryEntry>) {
         val arr = JSONArray()
         items.forEach { arr.put(it.toJson()) }
-        prefs(context).edit().putString(KEY, arr.toString()).apply()
+        val text = arr.toString()
+        prefs(context).edit().putString(KEY, text).apply()
+        // Seeded rather than cleared: the caller usually reads straight back,
+        // and this saves re-parsing what it just serialised.
+        listCache = items
+        listRaw = text
     }
 
     fun contains(context: Context, seriesId: String): Boolean =
@@ -80,6 +100,27 @@ object Library {
         val incoming = entries.map { it.seriesId }.toHashSet()
         val kept = list(context).filterNot { it.seriesId in incoming }
         save(context, entries + kept)
+    }
+
+    /**
+     * Fills in a library entry's cover once, if it hasn't got one.
+     *
+     * Deliberately does nothing when a usable cover is already stored. Every
+     * write here rewrites the whole library JSON, and after a large import that
+     * is several thousand entries — running it on each series open would be a
+     * real cost for no gain. So this is a one-time heal per series, not an
+     * update, and it fires in exactly two cases: no cover at all, or one
+     * pointing at a loopback address, which an import from another device's
+     * self-hosted source leaves behind and which can never load here.
+     */
+    fun healCover(context: Context, seriesId: String, cover: String) {
+        if (cover.isBlank() || isLoopback(cover)) return
+        val items = list(context)
+        val index = items.indexOfFirst { it.seriesId == seriesId }
+        if (index < 0) return
+        val current = items[index].cover
+        if (current.isNotBlank() && !isLoopback(current)) return
+        save(context, items.toMutableList().also { it[index] = it[index].copy(cover = cover) })
     }
 
     /** Removes the series and clears its category assignments. */
