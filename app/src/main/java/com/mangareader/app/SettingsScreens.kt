@@ -1,7 +1,15 @@
 package com.mangareader.app
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.os.StatFs
+import android.text.format.DateUtils
 import android.webkit.CookieManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,8 +29,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,6 +55,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** One page of settings. Order is the order of the index. */
 private enum class SettingsSection(
@@ -57,7 +70,7 @@ private enum class SettingsSection(
     READER("Reader", "\uD83D\uDCD6", "Reading mode, display, colour"),
     DOWNLOADS("Downloads", "\u2B07\uFE0F", "Queue, downloaded chapters"),
     BROWSE("Browse", "\uD83E\uDDED", "Extension repositories, global search"),
-    DATA("Data and storage", "\uD83D\uDDC4\uFE0F", "Storage use, caches"),
+    DATA("Data and storage", "\uD83D\uDDC4\uFE0F", "Backups, storage use, caches"),
     PRIVACY("Security and privacy", "\uD83D\uDD12", "Incognito mode, secure screen"),
     ADVANCED("Advanced", "\uD83D\uDEE0\uFE0F", "Diagnostics, cookies, app info"),
 }
@@ -438,16 +451,158 @@ private fun BrowseSettings() {
 
 // ---------- data and storage ----------
 
+/**
+ * Storage location, backups, and what's using space.
+ *
+ * The order is Mihon's, and it's the right one: where things go, then how they
+ * get out of the app, then how much room is left, then what to delete. The two
+ * caches at the bottom are the ones the More tab used to measure inline on the
+ * main thread.
+ */
 @Composable
 private fun DataSettings() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var tick by remember { mutableIntStateOf(0) }
     var confirmDownloads by remember { mutableStateOf(false) }
     var confirmChapterLists by remember { mutableStateOf(false) }
+    var pendingRestore by remember { mutableStateOf<Uri?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
     val use = rememberStorageUse(tick)
 
+    var storageDir by remember { mutableStateOf(Backup.storageDir(context)) }
+    var frequency by remember { mutableStateOf(Backup.frequency(context)) }
+    var lastBackup by remember { mutableStateOf(Backup.lastBackupAt(context)) }
+
+    val dirPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            // Both flags, and persistable: the worker writes into this folder
+            // hours from now, in a different process lifetime, with no Activity
+            // around to re-ask. Read alone would let it list and never write.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            Backup.setStorageDir(context, uri)
+            storageDir = uri
+        }
+    }
+
+    val createPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { Backup.writeTo(context, uri) }
+                message = result.fold(
+                    { "Backup saved" },
+                    { "Backup failed: ${it.message ?: it::class.java.simpleName}" }
+                )
+                busy = false
+            }
+        }
+    }
+
+    // "*/*" rather than "application/json": a backup that's been through a chat
+    // app or a cloud drive comes back with whatever MIME type that service felt
+    // like, and a filtered picker greys out the file the user is looking at.
+    val restorePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> if (uri != null) pendingRestore = uri }
+
     SettingsColumn {
-        SectionHeader("Storage used")
+        SectionHeader("Storage location")
+        ListItem(
+            headlineContent = {
+                Text(
+                    storageDir?.let { Uri.decode(it.toString()).substringAfterLast(':') }
+                        ?: "Not set"
+                )
+            },
+            supportingContent = { Text("Where automatic backups are written") },
+            trailingContent = {
+                TextButton(onClick = { dirPicker.launch(null) }) {
+                    Text(if (storageDir == null) "Choose" else "Change")
+                }
+            },
+            modifier = Modifier.clickable { dirPicker.launch(null) }
+        )
+        HorizontalDivider()
+        PrefNote(
+            "Backups only. Downloaded chapters stay in the app's own storage \u2014 " +
+                "moving those to a folder you pick is a larger change than it " +
+                "looks, because every read and write of a page would have to go " +
+                "through the document API instead of a file path."
+        )
+
+        SectionHeader("Backup and restore")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                enabled = !busy,
+                onClick = { createPicker.launch(defaultBackupName()) },
+                modifier = Modifier.weight(1f)
+            ) { Text("Create backup") }
+            OutlinedButton(
+                enabled = !busy,
+                onClick = { restorePicker.launch(arrayOf("*/*")) },
+                modifier = Modifier.weight(1f)
+            ) { Text("Restore backup") }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        SectionHeader("Automatic backup frequency")
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            PrefChipRow(
+                label = "Frequency",
+                options = BackupFrequency.entries.map { it.label },
+                selected = BackupFrequency.entries.indexOf(frequency),
+                onSelect = {
+                    val next = BackupFrequency.entries[it]
+                    frequency = next
+                    Backup.setFrequency(context, next)
+                }
+            )
+        }
+        PrefNote(
+            if (frequency != BackupFrequency.OFF && storageDir == null)
+                "Nothing will be written until a storage location is set above."
+            else
+                "Keeps the five most recent, then deletes the oldest. A backup " +
+                    "holds the library, categories, history, read marks, resume " +
+                    "positions and every source's settings \u2014 not the downloaded " +
+                    "pages themselves."
+        )
+        ListItem(
+            headlineContent = { Text("Last automatic backup") },
+            supportingContent = {
+                Text(
+                    if (lastBackup <= 0L) "Never"
+                    else DateUtils.getRelativeTimeSpanString(
+                        lastBackup,
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS
+                    ).toString()
+                )
+            }
+        )
+        HorizontalDivider()
+
+        SectionHeader("Storage usage")
+        DeviceStorageBar()
+
+        SectionHeader("Used by Yomu")
         ListItem(
             headlineContent = { Text("Downloaded chapters") },
             supportingContent = { Text(storageLine(use?.downloadCount, use?.downloads, "chapters")) },
@@ -459,7 +614,7 @@ private fun DataSettings() {
         )
         HorizontalDivider()
         ListItem(
-            headlineContent = { Text("Reading cache") },
+            headlineContent = { Text("Clear chapter cache") },
             supportingContent = {
                 Text(
                     if (use == null) "Measuring\u2026"
@@ -475,7 +630,7 @@ private fun DataSettings() {
         )
         HorizontalDivider()
         ListItem(
-            headlineContent = { Text("Image cache") },
+            headlineContent = { Text("Clear cover cache") },
             supportingContent = {
                 Text(
                     if (use == null) "Measuring\u2026"
@@ -494,7 +649,7 @@ private fun DataSettings() {
         )
         HorizontalDivider()
         ListItem(
-            headlineContent = { Text("Chapter lists") },
+            headlineContent = { Text("Clear chapter lists") },
             supportingContent = {
                 Text(
                     if (use == null) "Measuring\u2026"
@@ -507,8 +662,65 @@ private fun DataSettings() {
         )
         HorizontalDivider()
         PrefNote(
-            "The reading cache is the only one the system can reclaim on its own. " +
-                "Clearing the image cache just means covers are fetched again."
+            "The chapter cache is the only one the system can reclaim on its own. " +
+                "Clearing the cover cache just means covers are fetched again."
+        )
+    }
+
+    val note = message
+    if (note != null) {
+        AlertDialog(
+            onDismissRequest = { message = null },
+            title = { Text("Backup") },
+            text = { Text(note) },
+            confirmButton = { Button(onClick = { message = null }) { Text("Done") } }
+        )
+    }
+
+    val restoreUri = pendingRestore
+    if (restoreUri != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Restore this backup?") },
+            text = {
+                Text(
+                    "Everything currently in the app is replaced: library, " +
+                        "categories, history, read marks and source settings. This " +
+                        "can't be undone, and it isn't a merge \u2014 anything added " +
+                        "since the backup was made is lost. Downloaded chapters stay " +
+                        "on disk either way."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingRestore = null
+                    busy = true
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            Backup.restoreFrom(context, restoreUri)
+                        }
+                        busy = false
+                        result.fold(
+                            onSuccess = {
+                                // Every piece of YomuApp's state is in `remember`,
+                                // including the source list and the open series, and
+                                // all of it was built from the prefs that just got
+                                // replaced. Restarting the Activity is the only way
+                                // to be sure nothing on screen still refers to the
+                                // library that existed a second ago.
+                                (context as? ComponentActivity)?.recreate()
+                            },
+                            onFailure = {
+                                message = "Restore failed: " +
+                                    (it.message ?: it::class.java.simpleName)
+                            }
+                        )
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestore = null }) { Text("Cancel") }
+            }
         )
     }
 
@@ -553,7 +765,54 @@ private fun DataSettings() {
             }
         )
     }
+
+    // Re-read on the way back in, so a backup written by the worker while this
+    // screen was closed doesn't leave a stale "Never" on the row.
+    LaunchedEffect(tick) { lastBackup = Backup.lastBackupAt(context) }
 }
+
+/** Free space on the volume the user thinks of as the phone's storage. */
+@Composable
+private fun DeviceStorageBar() {
+    // StatFs, not File.getFreeSpace(): on internal storage the File API reports
+    // the space *this app* may use, which is smaller than the volume's free
+    // space by whatever the system reserves, and the number then disagrees with
+    // the one Android's own Storage screen shows.
+    val stats = remember {
+        runCatching {
+            val fs = StatFs(Environment.getExternalStorageDirectory().path)
+            fs.blockCountLong * fs.blockSizeLong to fs.availableBlocksLong * fs.blockSizeLong
+        }.getOrNull()
+    }
+    val total = stats?.first ?: 0L
+    val free = stats?.second ?: 0L
+    val fraction = if (total > 0L) ((total - free).toFloat() / total).coerceIn(0f, 1f) else 0f
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            Environment.getExternalStorageDirectory().path,
+            style = MaterialTheme.typography.labelLarge
+        )
+        Spacer(Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (total <= 0L) "Couldn't read the volume"
+            else "Available: ${formatBytes(free)} / Total: ${formatBytes(total)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** `yomu_2026-07-28_2105.json` — sorts by age in any file manager. */
+private fun defaultBackupName(): String =
+    "yomu_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date()) + ".json"
 
 // ---------- security and privacy ----------
 
