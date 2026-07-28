@@ -84,7 +84,16 @@ internal fun LibraryTab(
     val shown = remember(entries, activeCategory, libraryTick) {
         val cat = activeCategory
         if (cat == null) entries
-        else {
+        else if (cat == Categories.DEFAULT_ID) {
+            // Default isn't a category things are filed under — it's where a
+            // series sits when it's filed under nothing, which is what
+            // Tachiyomi means by it too. Series put there by hand count as
+            // well, since the category editor writes it explicitly rather than
+            // saving an empty set.
+            val assigned = Categories.assignedSeries(context)
+            val explicit = Categories.seriesIn(context, cat)
+            entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
+        } else {
             // One lookup of the category's members, then a set test per entry.
             // The obvious spelling — categoriesFor(entry) for each entry — is a
             // full JSON parse per series and locks the app up on a large library.
