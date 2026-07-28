@@ -1,55 +1,96 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-28
-(supersedes the earlier version of this file).
+Context document for continuing work in a fresh chat. Last updated 2026-07-28,
+after the Cloudflare, image-pipeline and reader session (supersedes the earlier
+version of this file).
 
 ---
 
 ## 0. Where this was left — read this first
 
-The last session shipped the downloader rework (§4) and then spent most of its
-time on two source-specific network failures. **Both are still open, and the most
-recent fix for each is unverified.** Don't assume anything below the line "as of
-the last commit" was tested on device.
+The last session closed the Cloudflare thread — HentaiSco browses, covers load,
+chapters open — fixed two bugs found while testing it, and then rebuilt the
+reader. **The reader work is the least tested thing in this repo**; see the
+thread below before assuming any of it works. The older manhwatoon thread is
+still open.
 
-### Open thread 1 — manhwatoon 400s (`Secret Class`)
+### Open thread 1 — the reader rewrite is barely tested
+
+The reader was rebuilt from 152 lines to ~630 (§4) at the very end of the
+session, and the session stopped before most of it was exercised.
+
+- **Known working:** it builds, a chapter opens, tapping raises the bars, and the
+  settings sheet opens and applies. That is all that was actually seen.
+- **Never tried:** paged right-to-left, long strip, the colour filters
+  (especially grayscale + invert together, which uses its own precomputed
+  matrix and can be wrong while each alone looks right), the chapter picker, and
+  whether settings survive reopening a chapter.
+- **The last commit is unverified.** Enabling Rotation → Landscape put the app in
+  a loop: every chapter open bounced straight back to the Library. The fix —
+  `android:configChanges` on `MainActivity` — was written and pushed but never
+  run. If the loop is still there, that is where to look. See §5, because the
+  underlying fragility is worth understanding before touching anything that
+  might recreate the Activity.
+
+### Open thread 2 — manhwatoon 400s (`Secret Class`)
 
 A subset of pages of every chapter fails with HTTP 400. Four theories were tried;
 the full account is in §5, and it's worth reading before touching this, because
 three of the four were wrong in instructive ways.
 
-- **Current state:** `recycleConnections()` in `TachiyomiSourceAdapter` evicts
-  pooled connections before every retry and every `CONNECTION_RECYCLE_BATCHES`
-  batches. **Pushed but never run.**
-- **What success looks like:** *zero* failed pages, not fewer. Every previous
-  attempt reduced the rate without stopping it, and reading a reduction as
-  progress is exactly what made this take four rounds.
-- **If it still fails at a similar rate**, stop tuning constants. Capture the 400
-  **response body** — a CDN that rejects a request usually says why in plain text,
-  and that was never looked at. `awaitSuccess()` closes the response before
-  anyone can read it, so this needs a peek at the body before it's discarded.
+- **Current state:** `recycleConnections()` in `TachiyomiSourceAdapter` has now
+  **been run**, and it helped a lot without fixing it: Secret Class chapter 5
+  failed 1 page of 36, chapter 6 failed 3 of 39. Against 12 of 36 and 7 of 39
+  before it, that is roughly 33% → 18% → 3-8%.
+- **This is the fourth reduction, not a fix**, and the handoff's own rule applies:
+  *zero* failed pages is the bar. Three previous attempts each moved the rate and
+  each looked like progress. Tuning `CONNECTION_RECYCLE_BATCHES` down further is
+  the obvious next move and is the same move that has now failed four times.
+- **Do the thing nobody has done: capture the 400 response body.** A CDN that
+  rejects a request usually says why in plain text. `awaitSuccess()` closes the
+  response before anyone can read it, so this needs a peek at the body before
+  it's discarded. Everything else about this bug has been inferred from failure
+  *rates*; the server has been trying to say what's wrong the whole time.
+- The user deferred this deliberately. It is the oldest thread here and the only
+  one that is a genuine unknown rather than untested work.
 
-### Open thread 2 — HentaiSco is Cloudflare-blocked
+### Closed last session — Cloudflare, covers, and two bugs
 
-- **Current state:** `CloudflareInterceptor` (§4) is in and solves *JavaScript*
-  challenges. HentaiSco still returns 403 on the build that includes it, which
-  points at an **interactive** challenge — the checkbox kind, which no headless
-  WebView can answer.
-- **Next step:** a visible WebView screen the user can tap through, opened from
-  the error on the browse screen. The networking half is done; the cookie lands
-  in `android.webkit.CookieManager`, which `AndroidCookieJar` already reads, so
-  this is purely a UI job. It would also be the natural home for logging in to
-  sources that need an account.
-- **Stale message to fix while you're there:** the error still reads "no WebView
-  bypass in this build", which stopped being true when `CloudflareInterceptor`
-  landed. It's in `Response.failureMessage()` in `OkHttpExtensions.kt`. Something
-  like "Cloudflare challenge could not be solved automatically" is honest now.
+Recorded here because the reasoning matters more than the diff; details in §4
+and the lessons in §5.
+
+- **HentaiSco browses.** The blocker was never the missing UI. It was that the
+  headless WebView was being told to claim the app's *desktop* User-Agent so it
+  would match what OkHttp sends — inside an Android WebView, where every other
+  signal a challenge reads says phone. That contradiction is unpassable by
+  construction. The WebView now keeps its own UA and the winning string is
+  recorded per host in `ClearanceUserAgents` for OkHttp to reuse.
+- **A visible WebView exists anyway** (`WebViewScreen.kt`), reached from an
+  "Open in WebView" action on the browse error. It was written for the
+  interactive checkbox and is still the answer for genuinely interactive
+  challenges — and the natural home for logging in to sources that need an
+  account.
+- **Covers load.** Coil had its own OkHttpClient: no cookie jar, no UA, no
+  Cloudflare interceptor. `App` is now an `ImageLoaderFactory` handing Coil the
+  extension client.
+- **SpyFakku works.** Its mirrors return image URLs pointing at `127.0.0.1`;
+  `TachiyomiSourceAdapter` repoints loopback hosts at the source's `baseUrl`.
+- **The reader stopped reopening itself** when backing out mid-download, and the
+  "Downloads" nav label stopped wrapping onto two lines.
+
+### Still broken, low value — the `fakku.cc` mirror
+
+SpyFakku's mirror list offers three. `hentalk.pw` works. `fakku.cc` times out
+after 30s connecting to 162.255.119.128:443 — dead or blocked upstream, nothing
+to fix in this app. `fakkuonion.airdns.org:4096` serves titles and the same
+loopback image URLs, which the repoint now handles. **Leave the mirror on
+`hentalk.pw`.**
 
 ### Cheap wins if you want something self-contained
 
-Downloads gained a queue, retry, and a tab this session, but nothing has been
-tested beyond a few chapters of one series. The Downloads tab in particular has
-never been checked in airplane mode, which is the only thing it exists for.
+The Downloads tab has still never been checked in airplane mode, which is the
+only thing it exists for. Failed-download retry is likewise only lightly
+exercised.
 
 ---
 
@@ -136,11 +177,17 @@ As of the source-visibility commit, verified on device:
   swallowed — and can be retried from the queue screen.
 - **Downloads tab** lists series with chapters saved on device, and opens them
   offline.
-- **Cloudflare JS challenges are solved** in a headless WebView; interactive
-  challenges still fail (HentaiSco is one — see §0).
+- **Cloudflare challenges are solved** — JS ones headlessly, interactive ones
+  through a visible WebView the user taps through. HentaiSco browses.
+- **Covers and page images go through the extension's OkHttp client**, so they
+  carry cookies, the User-Agent and the Cloudflare interceptor.
+- **Sources that hand out loopback image URLs work** (SpyFakku).
+- Backing out of a chapter mid-download no longer reopens it.
+- **The reader has overlay bars, a chapter picker and a settings sheet** — but
+  see §0 before trusting any of it.
 
-`MainActivity.kt` is **973 lines** — the Activity, `YomuApp`, and the shared
-prefs helpers.
+`MainActivity.kt` is **1076 lines** — the Activity, `YomuApp`, and the shared
+prefs helpers. `ReaderScreen.kt` is **634**.
 
 ## 3. Build environment
 
@@ -200,9 +247,15 @@ implementation("com.squareup.logcat:logcat:0.1")
 (`OkHttpExtensions.kt` uses context receivers).
 
 **Modifications made to the vendored code** (don't "restore" these):
-- **Deleted:** `CloudflareInterceptor.kt`, `WebViewInterceptor.kt`,
-  `JavaScriptEngine.kt`, `NetworkPreferences.kt` — they pulled in moko-resources
-  (`MR`), WebView utils, QuickJS, and `PreferenceStore` from Tachiyomi's `:core`.
+- **Deleted:** `WebViewInterceptor.kt`, `JavaScriptEngine.kt`,
+  `NetworkPreferences.kt` — they pulled in moko-resources (`MR`), WebView utils,
+  QuickJS, and `PreferenceStore` from Tachiyomi's `:core`.
+- **`CloudflareInterceptor.kt` was deleted with them and later written back**, as
+  a much smaller class that doesn't need any of that. Don't restore the original;
+  don't delete this one either.
+- **Added:** `ClearanceUserAgents.kt` — a per-host record of which User-Agent
+  earned Cloudflare clearance. Not part of the vendored API; it exists because
+  the UA interceptor in `NetworkHelper` has to consult it.
 - **`NetworkHelper.kt` rewritten** to a minimal version exposing `client`,
   `cloudflareClient` (== `client`), `cookieJar`, `defaultUserAgentProvider()`.
 - **`util/RxExtension.kt` replaced** with a self-contained `awaitSingle()` for
@@ -244,7 +297,9 @@ things between them needs no imports — only visibility changes (see §5).
 | `GlobalSearchScreen.kt` | `GlobalSearchScreen` |
 | `SourceBrowseScreens.kt` | `LibraryScreen` (the **per-source browse** screen), `SeriesScreen` |
 | `LibraryScreens.kt` | `LibraryTab`, `AddToLibraryDialog`, `CategoryAssignDialog` |
-| `ReaderScreen.kt` | `ReaderScreen` |
+| `ReaderScreen.kt` | `ReaderScreen`, its overlay bars, chapter picker and settings sheet |
+| `ReaderPrefs.kt` | `ReaderSettings` + the enums + load/save. Not a screen |
+| `WebViewScreen.kt` | `ChallengeWebViewScreen` — the visible Cloudflare WebView |
 | `MoreScreens.kt` | `MoreTab`, `HistoryScreen`, `ExtensionReposDialog`, `CategoryManagerDialog`, `SourceDialog` |
 | `DownloadQueueScreen.kt` | `DownloadsTab` and `DownloadQueueScreen` — both read `DownloadQueue` directly rather than taking it as parameters |
 
@@ -397,19 +452,78 @@ There is no cookie plumbing — the WebView solves the challenge, `cf_clearance`
 lands in the browser cookie store, and OkHttp picks it up because it was already
 reading from there.
 
-Three things not to break:
+Five things not to break:
 
-- **It must be added after the UA interceptor.** `cf_clearance` is issued against
-  the User-Agent that solved the challenge and rejected if a later request
-  presents a different one, so the WebView is set to whatever UA the outgoing
-  request already carries. Registered before it, that header wouldn't exist yet.
+- **The WebView keeps its own User-Agent.** This is the one that took a session
+  to learn, and it reads backwards until you see why. `cf_clearance` is bound to
+  the UA that earned it, so the WebView and OkHttp must agree — and the first
+  attempt made them agree by forcing the WebView to claim the app's default,
+  which is a *desktop Chrome* string. A challenge evaluated inside an Android
+  WebView weighs platform, touch support, screen and renderer alongside the UA.
+  They contradicted each other, which is precisely what an interactive challenge
+  exists to catch, so it was unpassable: the visible version looped on the
+  checkbox forever. Agreement is now reached from the other end — the WebView is
+  honest, and whatever string passes is recorded in `ClearanceUserAgents`.
+- **`ClearanceUserAgents` overrides even an extension's own UA**, for hosts it
+  has an entry for. That looks rude and is nevertheless right: clearance is
+  rejected under any other string, so honouring the extension's preference would
+  throw away a challenge the user just solved by hand. It is scoped per host and
+  walks up the domain, because clearance issued for `example.com` covers
+  `cdn.example.com`.
+- **The retry rebuilds the request.** The UA interceptor runs *before* this one,
+  so the request in hand still carries the pre-clearance UA. Retrying it
+  unchanged presents a different string than the one that just passed and is
+  rejected — which would have made a successful solve look like a failure.
 - **On failure it returns the original 403** rather than throwing. That response
   still carries the headers `awaitSuccess()` reads to say "blocked by Cloudflare",
-  which is more use than anything the interceptor could invent.
-- **It blocks an OkHttp thread and polls the cookie store.** A challenge involves
-  several navigations, so `onPageFinished` is not the signal — the cookie
-  appearing is. There's a main-thread guard so this can never deadlock if it's
-  ever called from somewhere unexpected.
+  which is more use than anything the interceptor could invent. The browse screen
+  turns that message into the "Open in WebView" action.
+- **It blocks an OkHttp thread and polls the cookie store, one host at a time.**
+  A challenge involves several navigations, so `onPageFinished` is not the signal
+  — the cookie appearing is. There's a main-thread guard so this can never
+  deadlock. The per-host lock exists because **image loading runs through this
+  client too**: a browse grid can 403 twenty times at once, and unsynchronised
+  that is twenty WebViews and twenty separate thirty-second waits.
+
+### The visible WebView (`WebViewScreen.kt`)
+
+`ChallengeWebViewScreen` is the same idea with a user attached, opened from the
+"Open in WebView" action on the browse error. It polls for the cookie for the
+same reason the interceptor does, records the UA that passed, and closes itself.
+
+Two details that are easy to get wrong:
+
+- **It only auto-closes on a cookie that appears while it is open.** One that was
+  already there proves nothing — the request 403'd while holding it — so closing
+  on it would bounce straight back to the same error. The "Done" button covers
+  that case manually.
+- **`onSolved` re-runs the browse**, it doesn't just close. The clearance cookie
+  is in the store OkHttp already reads, so the retry is ordinary.
+
+### Images and Coil
+
+`App` implements `coil.ImageLoaderFactory` and hands Coil
+`Injekt.get<NetworkHelper>().client`.
+
+Coil builds its own OkHttpClient by default, and that client is a plain one: no
+cookie jar, no User-Agent, no Cloudflare interceptor. So a protected source would
+list its series correctly — catalogue HTML goes through the extension's client —
+and then show a grid of empty placeholders, because every cover went out naked
+and 403'd. Sharing the client fixes covers, thumbnails and anything else Coil
+fetches, and shares the connection pool and cache rather than duplicating them.
+
+**Page images do not go through Coil.** `TachiyomiSourceAdapter.fetchPage` calls
+`HttpSource.getImage(page)` directly, so anything that has to apply to both has
+to be done in two places, or upstream of both.
+
+`TachiyomiSourceAdapter.repointFromLoopback()` is one such thing. SpyFakku's
+mirrors return covers and pages as `http://127.0.0.1/image/<hash>/<n>` — the
+site's application building absolute URLs from its own bind address instead of
+the public host it's proxied behind. The path and query are correct; only the
+origin is wrong, so it swaps in the source's `baseUrl`. It runs for every source
+because no legitimate source can mean loopback (that address is the phone), and
+it leaves a genuinely loopback `baseUrl` alone rather than rewriting a correct
+port into a wrong one.
 
 **5. `DownloadIndex`** is what the Downloads tab is built on. `Downloads` names
 each chapter directory after an MD5 of the chapter id, and that hash is one-way —
@@ -432,6 +546,45 @@ that it works in airplane mode. The details fetch is allowed to fail into a
 title-and-cover-only `Series`, with chapters read straight from `ChapterCache` —
 enough for every downloaded chapter to open, since the page store is consulted
 before the handle is.
+
+### The reader
+
+Controls are hidden until a tap, which then raises a top bar (back, series,
+chapter) and a bottom bar (Prev · Chapters · Settings · Next). Settings open in a
+three-tab sheet: **Layout / Screen / Colour**.
+
+`ReaderPrefs` is one global store, not per-series. Mihon scopes reading mode and
+rotation per manga over a global default, which is better for a library mixing
+manga and webtoons — it needs a second store keyed by series id and a "use
+default" state distinct from every real value. The enums carry a `key`, so
+adding that overlay later is additive rather than a rewrite.
+
+**Settings are saved on every edit**, not on dismiss. The sheet can be swiped
+away and the screen can be left by the system; a setting lost because the sheet
+was closed the wrong way is a bug nobody reports.
+
+**What is deliberately not there.** Crop borders, split wide pages, rotate wide
+pages, and tap-zone layouts. The first three need to inspect and cut the bitmap
+and the last needs a gesture model this screen doesn't have — they are page
+pipeline work, not switches. Shipping them as toggles that do nothing is worse
+than their absence, because it costs a build cycle to discover.
+
+**Modes.** Paged uses `HorizontalPager` with `reverseLayout` for right-to-left;
+long strip is a `LazyColumn` whose items are `fillMaxWidth` with no height, so
+pages size to their own aspect ratio. Giving them a fixed height letterboxes
+every page and reinstates the gaps the mode exists to remove.
+
+**Grayscale + invert is a precomputed matrix**, not two filters composed:
+composing needs an operator whose argument order is easy to get backwards, and
+inverted Rec. 709 luminance is short enough to write out. It is also the one
+combination most likely to be wrong while each alone looks right.
+
+**Fullscreen is keyed on the controls as well as the setting.** Raising the bars
+while the status bar stays hidden puts the title under the clock.
+
+**`me.saket.telephoto:zoomable-image-coil` is in `build.gradle.kts` and unused.**
+Pinch-zoom is one swapped composable away and was left out only to avoid
+introducing an unfamiliar API inside an already-large uncompiled change.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -482,6 +635,11 @@ addSingleton<Application>(app)
 addSingletonFactory { NetworkHelper(app) }
 addSingletonFactory { Json { ignoreUnknownKeys = true; explicitNulls = false } }
 ```
+
+`App` also implements `coil.ImageLoaderFactory` and returns an `ImageLoader`
+built on `Injekt.get<NetworkHelper>().client` — see §4. The lambda form defers
+building `NetworkHelper` until the first image is requested, so this doesn't drag
+network setup into `onCreate`.
 
 ### UI structure
 Bottom nav, 5 tabs:
@@ -583,12 +741,21 @@ the routing chain — that chain is delicate enough already.
 
 A single `if / else if` chain, in this order:
 
-1. reader (`activeChapterIdx` + pages)
-2. `activeSeries != null` → `SeriesScreen`
-3. `globalSearchOpen` → `GlobalSearchScreen`
-4. `activeSource != null` → `LibraryScreen` (this is the **per-source browse**
+1. `challengeUrl != null` → `ChallengeWebViewScreen`
+2. reader (`activeChapterIdx` + pages)
+3. `activeSeries != null` → `SeriesScreen`
+4. `globalSearchOpen` → `GlobalSearchScreen`
+5. `activeSource != null` → `LibraryScreen` (this is the **per-source browse**
    screen, despite the name — the Library *tab* is `LibraryTab`)
-5. else → `Scaffold` with the bottom nav
+6. `downloadsOpen` → `DownloadQueueScreen`
+7. else → `Scaffold` with the bottom nav
+
+**Branch 1 was safe to put at the top**, which is worth understanding before
+adding anything else there. It is gated on state that is null in every other
+flow, and clearing that state drops back onto whatever was underneath with
+nothing else touched — no branch below it has to know it exists. A branch that
+needed to *coordinate* with the ones under it would not be safe in that
+position.
 
 Global search sits **below** `SeriesScreen` on purpose: tapping a result opens
 the series (branch 2 wins), and backing out of it falls through to branch 3, so
@@ -652,11 +819,14 @@ HTTP/2 connection gave 33% failures, 39 across two HTTP/1.1 connections gave 18%
 retry fails because it lands on the *same pooled socket*, while a manual retry
 minutes later gets a fresh one.
 
-The **proposed** fix — pushed, never run, see §0 — is `recycleConnections()` in
-`TachiyomiSourceAdapter`: `client.connectionPool.evictAll()` before every retry
-and every `CONNECTION_RECYCLE_BATCHES` batches, so no connection carries more
-than about 8 requests. `.protocols(listOf(Protocol.HTTP_1_1))` and `PAGE_CONCURRENCY = 2` are
-kept from the previous attempt; both help, neither is sufficient alone.
+The fix that followed — `recycleConnections()` in `TachiyomiSourceAdapter`:
+`client.connectionPool.evictAll()` before every retry and every
+`CONNECTION_RECYCLE_BATCHES` batches, so no connection carries more than about 8
+requests — has since been run, and took the failure rate from 18% to roughly
+3-8% without reaching zero. `.protocols(listOf(Protocol.HTTP_1_1))` and
+`PAGE_CONCURRENCY = 2` are kept from the previous attempt; all three help, none
+is sufficient. That is now **four** partial fixes on one bug, which is the
+signal to stop tuning and read the response body — see §0.
 
 General lessons:
 
@@ -746,6 +916,13 @@ imports are mostly wildcards (`androidx.compose.foundation.layout.*`,
 `material3.*`, `runtime.*`) and unused imports are warnings, never errors. This
 is what made the split safe to do without a compiler.
 
+The reader rewrite ignored this in favour of a tight hand-picked list, and the
+only compile error in 630 new lines was a missing
+`androidx.compose.foundation.verticalScroll` — an import the *old* version of the
+file had. A curated list is cleaner and has no safety margin; the wildcard block
+is ugly and cannot fail this way. With no compiler in the loop, take the ugly
+one.
+
 **Watch for missing braces when editing `MainActivity.kt`.** A dropped `}` in a
 `DisposableEffect` produced ~40 cascading errors ("Modifier 'private' is not
 applicable to 'local function'"). That signature = unclosed lambda earlier.
@@ -757,6 +934,91 @@ declaration. Annotations sit above the `@Composable`, outside the obvious
 boundary.
 
 **CRLF warnings on every push are benign** (LF in repo, CRLF in working copy).
+
+### A client that lies about what it is cannot pass an interactive challenge
+
+Forcing the WebView to claim the app's desktop User-Agent so it matched OkHttp
+made the checkbox unsolvable, because everything else the challenge reads said
+Android phone. **The symptom was a loop, not a refusal** — verify, pass, get
+asked again, forever — and a loop reads as a broken bypass rather than as a
+rejected client, which is why it wasn't obvious.
+
+The general form: when two things must agree, check *which* value they agree on
+is defensible, not just that they agree. Here the fix was to make the honest side
+win and record what it said, rather than making the honest side repeat a lie.
+
+A corollary worth keeping: the headless interceptor had been setting that same
+desktop UA all along, so the JS challenge had probably been failing for this
+reason too. One bad assumption was producing two unrelated-looking symptoms.
+
+### Coil is a second HTTP client
+
+Everything the app teaches its own OkHttp client — cookie jar, User-Agent,
+interceptors — Coil knows nothing about until told. A protected source therefore
+listed its titles perfectly and showed no covers, which looks like a parsing bug
+and is a networking one. `App` is now an `ImageLoaderFactory`; see §4.
+
+Ask of any new network behaviour: does this need to apply to images too? There
+are **three** paths, not one — the extension's client for catalogue and chapter
+HTML, Coil for covers, and `fetchPage` for reader pages.
+
+### A failure that renders as an empty box is unfixable by guessing
+
+"No covers on this source" was consistent with a 403, a 404, an unresolvable
+host, and an undecodable format — four different fixes. Two speculative rounds
+went nowhere. Printing the URL and Coil's error into the placeholder in debug
+builds (§6) produced the actual answer on the next screenshot: the URLs pointed
+at `127.0.0.1`, which was in *none* of the four guesses.
+
+This is the same lesson §0 records for the manhwatoon 400s, where the response
+body still hasn't been read. **When a slow build/install loop meets an ambiguous
+symptom, spend the cycle on making the symptom specific, not on a candidate fix.**
+
+### Don't re-assert UI state from an async callback
+
+`openChapter`'s progressive loader ran `if (activeChapterIdx != index)
+activeChapterIdx = index` on every partial publish. That reads as "make sure the
+reader is showing" and behaves as "put it back if the user closed it" — so
+backing out of a chapter mid-download reopened it, repeatedly. It *looked* fine
+whenever the download had already finished, which is why the close button seemed
+to work and the back button didn't: same handler, different timing.
+
+Fixes that both matter: the reader opens on the **first** publish only, and
+closing **cancels the job**. Cancellation then has to be rethrown rather than
+caught as a failure, and `isLoading` has to move into a `finally`, or a cancelled
+load leaves the spinner up forever.
+
+### This app cannot survive an Activity recreation
+
+**Read this before adding anything that touches the window, the orientation, or
+the manifest.** Every piece of `YomuApp`'s state is in `remember`, not
+`rememberSaveable` — and much of it *can't* be saveable, because the active
+source, the series handle and the loaded page files are objects that don't go in
+a Bundle. So a recreation is not a blip that Compose smooths over. It is a full
+reset to the Library tab, discarding whatever was being read.
+
+The reader's rotation setting walked straight into this. Setting
+`requestedOrientation` **is** a configuration change, and with no
+`android:configChanges` on the Activity, Android destroys and recreates it. The
+result was a loop: open chapter → reader composes → sets landscape → recreation
+→ Library. Every time, with no way to reach the setting and turn it off, because
+the reader exited before it could be tapped.
+
+The manifest now declares
+`orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode`,
+which makes those changes something Compose absorbs by recomposing. That also
+fixed the older, quieter version of the same bug: rotating the phone mid-chapter
+already lost your place, and nobody had connected the two.
+
+Two things to carry forward:
+
+- **The reviewing question was the wrong one.** The rotation effect was checked
+  for whether it restored the orientation on the way out — it did — and never for
+  what setting it does to an Activity holding all its state in `remember`. Local
+  correctness said fine; the blast radius was the whole app.
+- **Recreation is still possible** for reasons the manifest can't cover: low
+  memory, "don't keep activities", a locale change. Hoisting state into a
+  `ViewModel` or a saveable holder is the real fix and is §7's structural item.
 
 ### Termux-specific
 
@@ -773,6 +1035,17 @@ Contents are untouched either way. Two consequences:
   the actual fix; everything else is working around it.
 - **Prefer explicit filenames over a glob.** A `*.kt.txt` loop will happily copy
   a stale file from an earlier session over a newer one and silently revert it.
+
+**The `*.kt` loop only serves `:app`.** It copies into
+`app/src/main/java/com/mangareader/app/`, and a growing share of changes now land
+in `:source-api` — `network/`, and `network/interceptor/` below it. A file dropped
+in the wrong module fails the build with an unresolved reference, which reads as
+a code error rather than a copy error. Name the files explicitly and give each
+destination its own `cp` when a change spans modules.
+
+Non-Kotlin files have their own destinations again: `AndroidManifest.xml` goes to
+`app/src/main/`, and this file to the repo root. Neither is matched by any `*.kt`
+glob, so both are easy to leave sitting in Downloads.
 
 **Never keep the git repo on `/sdcard`.** A clone at
 `~/storage/shared/MangaReader` (i.e. `/storage/emulated/0/...`) gives
@@ -814,6 +1087,12 @@ missing on every call.
 For search coverage, the global search screen prints
 "Searched X of Y sources · N with results".
 
+**A cover that fails to load prints why, in debug builds.** `CoverImage` renders
+the tail of the URL and Coil's error into the placeholder when
+`BuildConfig.DEBUG` is set, in red. This exists because a failed cover and a
+cover the source never supplied are the same grey box otherwise — see §5. CI
+builds debug on push, so the installed APK always has it; release builds don't.
+
 ---
 
 ## 7. Known limitations / next steps
@@ -828,44 +1107,51 @@ Roughly in order of value:
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
-2. **Cloudflare — JS challenges now solved, interactive ones not.** This is open
-   thread 2 in §0. `CloudflareInterceptor` (see §4) handles the automatic
-   JavaScript challenge.
-   What remains is the *interactive* kind — the checkbox — which a WebView nobody
-   can see cannot answer. Those still fail, with the original 403 and the
-   "blocked by Cloudflare" message. Fixing them means a visible WebView screen the
-   user can tap through, launched from the error on the browse screen; the
-   networking half is already done, so it's a UI job. That screen would also be
-   the natural home for logging in to sources that need an account.
-3. **Covers 403 offline and on some sources.** Coil fetches thumbnails without
-   the source's headers (Referer / User-Agent), and nothing caches them, so a
-   library entry shows a grey box offline. The reader already downloads pages
-   through the source's own OkHttp client — a Coil `Fetcher` backed by the same
-   client would fix both.
-4. **Global search paging and persistence.** Pinned-only fan-out is done
+2. **Cloudflare costs 30 seconds before the error appears.** A source behind an
+   interactive challenge burns `CloudflareInterceptor`'s full timeout on the
+   headless attempt that cannot succeed, and only then shows the error carrying
+   the "Open in WebView" action. Shortening the timeout once a host is known to
+   need a human — or skipping the headless attempt for hosts with a
+   `ClearanceUserAgents` entry that still 403 — would make that instant.
+3. **Coil still sends no `Referer`.** Images now go through the extension's
+   client, so they carry cookies and the UA, but a source whose CDN checks
+   `Referer` will still 403 its covers while its pages load fine — `fetchPage`
+   goes through `HttpSource.getImage`, which applies the source's headers.
+   Nothing has hit this yet. If it does, the fix is a Coil `Fetcher` or an
+   interceptor on a derived image client, not a change to the shared one.
+4. **Reader features that need the page pipeline.** Crop borders, split wide
+   pages, rotate wide pages to fit, and tap-zone layouts are all absent by
+   decision (§4), as is pinch-zoom — for which the dependency is already
+   present and unused. Zoom is the cheapest of these by a wide margin.
+5. **Covers are not cached for offline.** A library entry still shows a grey box
+   in airplane mode. Coil's disk cache is on by default and may already cover
+   most of this now that images share the client; it hasn't been checked.
+6. **Global search paging and persistence.** Pinned-only fan-out is done
    (`0023c81`). Each row still shows page 1 only, and results are lost on restart.
-5. **Sort/filter for search.** `getFilterList()` is available on every
+7. **Sort/filter for search.** `getFilterList()` is available on every
    `CatalogueSource` and unused — `searchSeries` passes an empty `FilterList()`.
-6. **`OBSOLETE` badge.** Mihon marks installed extensions absent from the index.
+8. **`OBSOLETE` badge.** Mihon marks installed extensions absent from the index.
    The list is built from the index only, so those packages aren't visible at
    all. Update detection (`e1913c2`) already does the version half.
-7. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
+9. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
    lists, multi-select and text are rendered; other `Preference` subclasses are
    skipped rather than shown as dead rows.
-8. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
+10. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
    but built against the newer API; may fail at runtime.
-9. ~~`HttpException.kt` isn't in the vendored network package.~~ **Wrong — it is**,
-   at the bottom of `network/OkHttpExtensions.kt`:
-   `class HttpException(val code: Int) : IllegalStateException("HTTP error $code")`.
-   `awaitSuccess()` throws it on any non-2xx, which is what makes the download
-   failure messages in the queue screen useful. Nothing to add here.
-10. **`YomuApp` is ~700 lines.** Screens are split out, but all state and every
+11. ~~`HttpException.kt` isn't in the vendored network package.~~ **Wrong — it is**,
+    at the bottom of `network/OkHttpExtensions.kt`:
+    `class HttpException(val code: Int) : IllegalStateException("HTTP error $code")`.
+    `awaitSuccess()` throws it on any non-2xx, which is what makes the download
+    failure messages in the queue screen useful. Nothing to add here.
+12. **`YomuApp` is ~800 lines, and none of its state survives recreation.** Screens are split out, but all state and every
     handler still lives in one composable, and the routing chain plus
     `SeriesOrigin` encode real navigation rules in `if / else if`. Hoisting into a
     state holder, or adopting a nav library, is the next structural step — and
-    unlike the file split it is *not* mechanical.
-11. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
-12. **Icon debt from `material-icons-core`.** Three places now use an
+    unlike the file split it is *not* mechanical. The manifest's `configChanges`
+    (§5) covers rotation, but low memory and "don't keep activities" still drop
+    the user back at the Library mid-chapter.
+13. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
+14. **Icon debt from `material-icons-core`.** Three places now use an
     approximate glyph because the core set is ~40 icons: a filled/dimmed `Star`
     for pinning (no `PushPin`), `KeyboardArrowDown` for download, and `Menu` for
     source visibility. Adding `material-icons-extended` fixes all three at once —
@@ -915,11 +1201,28 @@ Retry transient page failures with backoff                              5f8a5c5 
 Refresh the default UA, send browser headers, name Cloudflare blocks    ca59da9  detection works
 Force HTTP/1.1 and halve page concurrency to stop CDN 400s              aaa3d85  33% -> 18%, not fixed
 Solve Cloudflare JS challenges in a headless WebView; force HTTP/1.1    1c2c8c7  HentaiSco still 403
-Recycle pooled connections to stop per-connection CDN 400s                       UNVERIFIED
+Recycle pooled connections to stop per-connection CDN 400s                       33%/18% -> 3-8%, not fixed
+Fix KDoc block terminated early in NetworkHelper                        f1b5eea  build fix
+Add visible WebView screen for interactive Cloudflare challenges        fbe6bfe  UI only, looped
+Solve Cloudflare challenges under the WebView's own UA                  28a4524  verified OK
+Load covers through the extension client; stop the reader reopening     7a397b4  verified OK
+Show why covers fail in debug builds; stop the Downloads label wrapping 4cb4f6c  verified OK
+Repoint loopback image URLs at the source's base URL                    867fba8  verified OK
+Update handoff through the Cloudflare and image-pipeline session
+Rebuild the reader with overlay bars, chapter picker and settings        fc2aee8  did not compile
+Add missing verticalScroll import                                       d395222  builds; reader barely tested
+Handle configuration changes instead of being recreated by them                  UNVERIFIED
 ```
 
-The last three entries are the open threads in §0. "verified OK" means it was
-exercised on device; the annotations on the rest are deliberately not that.
+"verified OK" means it was exercised on device; the annotations on the rest are
+deliberately not that. Note `fbe6bfe` — the visible WebView shipped and did *not*
+work, because the UA bug underneath it was still there; `28a4524` is what made it
+pass. A screen landing and a screen working are separate events.
+
+The last two entries are open thread 1 in §0. The handoff commit above them is
+this file's previous revision, which was written before the reader existed —
+if the working copy ever disagrees with §4 about the reader, this revision is
+the newer one.
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.
