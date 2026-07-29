@@ -43,6 +43,26 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 68,
+            name = "0.68",
+            header = "A stopped refresh now resumes",
+            body = "0.67 said stopping a library refresh was safe and that " +
+                "running it again would pick up the rest. The first half was " +
+                "true and the second was not - it started again from the top " +
+                "and re-fetched everything it had already counted. On a large " +
+                "library that meant a refresh could only ever get as far as " +
+                "the longest run you left it alone for.\n\n" +
+                "Every series a refresh counts is now marked as belonging to " +
+                "that run, so starting it again fetches only what it never " +
+                "reached. Settings - Library shows Resume refresh with how far " +
+                "it got, and a Start over next to it for when the counts are " +
+                "old rather than incomplete. Series that failed or whose " +
+                "extension is missing are retried on a resume rather than " +
+                "treated as done.\n\n" +
+                "Stopping the refresh when it wasn't running left an " +
+                "unremovable notification behind. Fixed."
+        ),
+        ReleaseNote(
             code = 67,
             name = "0.67",
             header = "Refresh the whole library at once",

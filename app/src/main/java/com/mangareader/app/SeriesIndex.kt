@@ -25,7 +25,26 @@ data class SeriesCounts(
      * the useful half of that trade: it still orders "recently moved" correctly
      * and costs nothing.
      */
-    val updatedAt: Long
+    val updatedAt: Long,
+    /**
+     * When a **library refresh** last fetched a chapter list for this series, or
+     * 0 if one never has.
+     *
+     * This is the field [updatedAt] deliberately isn't, and it exists for one
+     * reason: a refresh that is stopped has to be able to resume. [updatedAt]
+     * cannot answer "has this been swept yet" — a sweep that finds nothing
+     * changed writes nothing at all, so *swept and unchanged* and *never swept*
+     * are the same entry, and a resume that trusted it would re-fetch the whole
+     * library minus the handful that moved. That is the third invisible state
+     * from §5 arriving from the other side.
+     *
+     * It is affordable here and wasn't affordable for [updatedAt] because only
+     * [SeriesIndex.recordAll] ever sets it — a hundred series to one write.
+     * [record], which is one series per user action and one whole-index rewrite,
+     * carries the stored value forward untouched, so opening a series is still
+     * not a write.
+     */
+    val sweptAt: Long = 0L
 ) {
     val unread: Int get() = (total - read).coerceAtLeast(0)
 
@@ -92,7 +111,8 @@ object SeriesIndex {
                     total = o.optInt("t"),
                     read = o.optInt("r"),
                     latestChapterAt = o.optLong("l"),
-                    updatedAt = o.optLong("u")
+                    updatedAt = o.optLong("u"),
+                    sweptAt = o.optLong("s")
                 )
             }
             out.also {
@@ -116,6 +136,7 @@ object SeriesIndex {
                     .put("r", c.read)
                     .put("l", c.latestChapterAt)
                     .put("u", c.updatedAt)
+                    .put("s", c.sweptAt)
             )
         }
         val text = root.toString()
@@ -134,7 +155,12 @@ object SeriesIndex {
      * falls back to one, and storing `total = 0` would make the series read as
      * "completed" in every filter that asks.
      */
-    fun countsFor(context: Context, sourceId: String, chapters: List<Chapter>): SeriesCounts? {
+    fun countsFor(
+        context: Context,
+        sourceId: String,
+        chapters: List<Chapter>,
+        sweptAt: Long = 0L
+    ): SeriesCounts? {
         if (chapters.isEmpty()) return null
         var read = 0
         var latest = 0L
@@ -146,11 +172,21 @@ object SeriesIndex {
             total = chapters.size,
             read = read,
             latestChapterAt = latest,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            sweptAt = sweptAt
         )
     }
 
-    /** True when [candidate] would actually change what's stored for [seriesId]. */
+    /**
+     * True when [candidate] would actually change the *counts* stored for a
+     * series.
+     *
+     * Counts only — neither `updatedAt` nor `sweptAt` belongs here. Including
+     * `sweptAt` would make every check differ, which is precisely the
+     * "every look is a write" trade this store refuses on the [record] path.
+     * [recordAll] tests it separately, because there a hundred checks share one
+     * write and the answer changes.
+     */
     private fun differs(stored: SeriesCounts?, candidate: SeriesCounts): Boolean =
         stored == null ||
             stored.total != candidate.total ||
@@ -173,9 +209,13 @@ object SeriesIndex {
      */
     fun record(context: Context, sourceId: String, seriesId: String, chapters: List<Chapter>) {
         if (seriesId.isBlank()) return
+        val stored = all(context)[seriesId]
         val candidate = countsFor(context, sourceId, chapters) ?: return
-        if (!differs(all(context)[seriesId], candidate)) return
-        save(context, all(context) + (seriesId to candidate))
+        if (!differs(stored, candidate)) return
+        // The sweep stamp is carried over, not stamped and not dropped: opening
+        // a series is not a sweep, and writing 0 here would hand a resumed
+        // refresh a series it had already paid for.
+        save(context, all(context) + (seriesId to candidate.copy(sweptAt = stored?.sweptAt ?: 0L)))
     }
 
     /**
@@ -187,17 +227,44 @@ object SeriesIndex {
      * actually has. A refresh over 3567 series flushing every hundred is 36
      * writes rather than 3567.
      *
-     * Entries that wouldn't change anything are dropped before the write, so a
-     * second refresh over an unchanged library writes nothing at all.
+     * Entries whose counts didn't move are still written, but only to advance
+     * `sweptAt` — and **the stored `updatedAt` is kept** rather than taken from
+     * the candidate. Writing the candidate wholesale would be the obvious line
+     * and would stamp "the counts changed just now" onto every series in the
+     * library on every sweep, quietly flattening the one ordering `updatedAt`
+     * exists to provide. The number of writes is unchanged either way: each one
+     * serialises the whole index regardless of how many entries in it moved.
      */
     fun recordAll(context: Context, updates: Map<String, SeriesCounts>) {
         if (updates.isEmpty()) return
         val current = all(context)
-        val changed = updates.filter { (id, candidate) ->
-            id.isNotBlank() && differs(current[id], candidate)
+        val changed = HashMap<String, SeriesCounts>(updates.size)
+        updates.forEach { (id, candidate) ->
+            if (id.isBlank()) return@forEach
+            val stored = current[id]
+            if (differs(stored, candidate)) {
+                changed[id] = candidate
+            } else if (stored != null && candidate.sweptAt > stored.sweptAt) {
+                changed[id] = stored.copy(sweptAt = candidate.sweptAt)
+            }
         }
         if (changed.isEmpty()) return
         save(context, current + changed)
+    }
+
+    /**
+     * The ids a sweep begun at [since] has already accounted for.
+     *
+     * Read once per sweep and never inside its loop: [all] is memoised on the
+     * raw pref string and every batch flush replaces it, so a per-series lookup
+     * would re-parse a several-thousand-entry object once per flush — the
+     * O(n)-work-inside-a-loop-over-n shape §5 collected nine of.
+     */
+    fun sweptSince(context: Context, since: Long): Set<String> {
+        if (since <= 0L) return emptySet()
+        val out = HashSet<String>()
+        all(context).forEach { (id, c) -> if (c.sweptAt >= since) out.add(id) }
+        return out
     }
 
     /**

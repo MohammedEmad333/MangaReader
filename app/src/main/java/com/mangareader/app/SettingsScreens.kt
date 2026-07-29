@@ -248,17 +248,39 @@ private fun LibrarySettings() {
                 }
             }
             PrefNote(
-                "This keeps going with the app closed. Stopping keeps whatever " +
-                    "it has already counted."
+                if (LibraryRefresh.resumed > 0) {
+                    "Resumed \u2014 ${LibraryRefresh.resumed} series were already " +
+                        "counted and are not being fetched again. This keeps going " +
+                        "with the app closed, and stopping picks up here."
+                } else {
+                    "This keeps going with the app closed. Stopping keeps whatever " +
+                        "it has already counted, and starting again picks up where " +
+                        "it stopped rather than from the top."
+                }
             )
         } else {
+            // Both keyed on finishedAt so they re-read when a sweep ends, which
+            // is the moment the cursor is either cleared or left behind.
+            val sweepStartedAt = remember(entryCount, LibraryRefresh.finishedAt) {
+                RefreshCursor.startedAt(context)
+            }
+            val alreadyCounted = remember(sweepStartedAt, LibraryRefresh.finishedAt) {
+                if (sweepStartedAt <= 0L) 0
+                else SeriesIndex.sweptSince(context, sweepStartedAt).size
+            }
+            val unfinished = sweepStartedAt > 0L
             ListItem(
-                headlineContent = { Text("Refresh library") },
+                headlineContent = {
+                    Text(if (unfinished) "Resume refresh" else "Refresh library")
+                },
                 supportingContent = {
                     Text(
-                        if (LibraryRefresh.finishedAt > 0L) {
-                            listOfNotNull(
-                                "${LibraryRefresh.updated} updated",
+                        when {
+                            unfinished ->
+                                "$alreadyCounted of $entryCount counted \u2014 " +
+                                    "carries on from there"
+                            LibraryRefresh.finishedAt > 0L -> listOfNotNull(
+                                "${LibraryRefresh.counted} counted",
                                 if (LibraryRefresh.failed > 0) {
                                     "${LibraryRefresh.failed} failed"
                                 } else null,
@@ -266,13 +288,25 @@ private fun LibrarySettings() {
                                     "${LibraryRefresh.skipped} skipped"
                                 } else null
                             ).joinToString(" \u2022 ")
-                        } else {
-                            "Fetch chapter lists for all $entryCount series"
+                            else -> "Fetch chapter lists for all $entryCount series"
                         }
                     )
                 },
                 modifier = Modifier.clickable { LibraryRefreshService.start(context) }
             )
+            if (unfinished) {
+                Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    TextButton(onClick = { LibraryRefreshService.startOver(context) }) {
+                        Text("Start over")
+                    }
+                }
+                PrefNote(
+                    "A refresh was stopped before it finished. Resuming fetches " +
+                        "only the series it hadn't reached; starting over fetches " +
+                        "every series again, which is what you want if the counts " +
+                        "are old rather than incomplete."
+                )
+            }
             LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
             PrefNote(
                 "Unread counts, the unread badge and the Unread, Started and " +
