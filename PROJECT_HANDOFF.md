@@ -1,13 +1,18 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-29,
-after the settings / backup / storage / browse session (supersedes the earlier
-version of this file).
+Context document for continuing work in a fresh chat. Last updated 2026-07-29
+at **0.51 / `3052571`**, after the Tachiyomi-import and scaling session
+(supersedes the earlier version of this file).
 
 **The manhwatoon 400s are fixed.** That thread had been open across several
 handoffs. It is not in §0 any more; the account is in §5, and it is worth
 reading even if you never touch that source, because the fix was the opposite of
 every previous attempt.
+
+**The app now runs against a real library** — 3567 series, imported from
+Tachiyomi. That single event exposed nine performance bugs and two correctness
+bugs in code that had been fine for months at ~40 series. If you read one thing
+in §5, read "An import is a load test".
 
 ---
 
@@ -56,7 +61,31 @@ Also unaddressed: `AndroidManifest.xml` still declares
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
 
-### Closed this session — the manhwatoon 400s, and how
+### Closed this session — the Tachiyomi import, and scaling to it
+
+A whole Tachiyomi/SY backup now imports: 3567 series, 19001 chapters, read
+state, saved pages, history and categories. Architecture in §4, and **the
+protobuf field-number table is there** — it was read off a real backup by hand
+and is expensive to recover.
+
+Then everything else that broke because of it:
+
+- **Category chips froze** the app — an O(n) parse inside a filter over n items.
+- **Scrolling chapters, sources and tabs was slow** — per-row filesystem stats
+  and PackageManager IPC that `remember` was never holding onto.
+- **The Downloads tab was slow** twice over: a repair scan that read every
+  library entry's chapter cache off disk on every open, and an uncached
+  folder-walk per chapter to size it.
+- **Opening a series** from the library or Downloads waited on two network round
+  trips before drawing anything.
+- **Default was empty** though it held 2950 series — see §4, it is not a
+  category.
+- **1078 series were imported that were never in the library** — protobuf field
+  100, see §4. A re-import removes them.
+
+All verified on device. The perf work is the bulk of §5's new material.
+
+### Closed earlier this session — the manhwatoon 400s, and how
 
 `cdn.manhwatoon.me` now downloads whole chapters with **zero failed pages**,
 which was the stated bar and had never been met. The fix was to **delete**
@@ -106,11 +135,19 @@ to fix in this app. `fakkuonion.airdns.org:4096` serves titles and the same
 loopback image URLs, which the repoint now handles. **Leave the mirror on
 `hentalk.pw`.**
 
+### Still open from this session
+
+- **Re-verify manhwatoon.** One clean chapter is not proof at a 3-8% failure
+  rate; two or three more closes it.
+- **AllPornComic on the second phone** was never re-probed after the HTTP/1.1
+  removal. If it still returns 403 with `cf-mitigated: challenge` over h2, the
+  structural fix is a minimal `WebViewInterceptor` (§7 item 15). Not urgent —
+  removing HTTP/1.1 resolved the case that raised it.
+
 ### Cheap wins if you want something self-contained
 
-The Downloads tab has still never been checked in airplane mode, which is the
-only thing it exists for. Failed-download retry is likewise only lightly
-exercised.
+Failed-download retry is only lightly exercised. The reader (thread 1) is the
+largest untested surface in the app and has been for several sessions.
 
 ---
 
@@ -197,6 +234,16 @@ As of the source-visibility commit, verified on device:
   swallowed — and can be retried from the queue screen.
 - **Downloads tab** lists series with chapters saved on device, and opens them
   offline.
+- **A Tachiyomi/SY backup imports** — 3567 series with read state, saved pages,
+  history and categories (`931cf5f` and after). See §4.
+- **The app is usable at that scale** — category filtering, list scrolling, the
+  Downloads tab and opening a series were all rebuilt around it (`0810bed`
+  through `3052571`).
+- **Multi-select chapters** — long-press to select, then download, mark
+  read/unread or delete in bulk (`0557acf`).
+- **Source filters** from `getFilterList()` (`940fc34`), Popular/Latest and grid
+  view options (`6c95fa1`), and a **connection probe** that reports what a source
+  actually returns (`5dbd024`).
 - **Cloudflare challenges are solved** — JS ones headlessly, interactive ones
   through a visible WebView the user taps through. HentaiSco browses.
 - **Covers and page images go through the extension's OkHttp client**, so they
@@ -684,6 +731,123 @@ folder that can't be copied off the phone. Collisions get a short id hash rather
 than a counter, so a rebuild in a different order can't hand two series the same
 folder.
 
+### Importing a Tachiyomi backup (`TachiyomiImport.kt`, `931cf5f`)
+
+Settings → Data and storage → **Import Tachiyomi backup**. Scan walks external
+storage to depth 5 for `.tachibk` / `.proto.gz`, skipping `Android/`. A preview
+dialog shows counts and the first four titles **before anything is written** —
+that dialog is the safety mechanism, not a nicety, because the alternative to
+"cancel" is unpicking several thousand merged entries by hand.
+
+A `.tachibk` is gzipped protobuf. The reader is `PbReader`, about forty lines of
+wire-format decoding at the bottom of the file: varint, length-delimited, skip
+everything unrecognised. **This is deliberate.** The alternative,
+`kotlinx-serialization-protobuf`, needs a new dependency and a full
+`@ProtoNumber` schema mirroring Tachiyomi's model classes, and the schema would
+then be a second thing to keep in sync with a format we don't control. Wire
+format needs neither: unknown fields are skipped by construction, so a backup
+from a newer Tachiyomi parses fine and just carries fields we ignore.
+
+**The field numbers below were read off a real 4645-series SY backup, not
+recalled.** If they ever need re-deriving, do it the same way — dump the wire
+fields of one manga message and match them against visible values in the app.
+That is an hour's work to recover, which is why they are written down here.
+
+```
+Backup           1 manga        2 category     101 source
+BackupManga      1 source(varint)   2 url      3 title    9 thumbnailUrl
+                13 dateAdded       16 chapter  17 categories(varint, repeated)
+               100 favorite(bool)  104 history
+BackupChapter    1 url          2 name         4 read(bool)   6 lastPageRead
+BackupHistory    1 url          2 lastRead
+BackupCategory   1 name         2 order
+BackupSource     1 name         2 sourceId
+```
+
+**Field 100 (`favorite`) is the subtle one.** It defaults to `true` and the
+encoder omits defaults, so it is *only ever written when false*. Absent means in
+the library; present-and-zero means the series is not in the library and is only
+carried so its reading progress survives. Miss this and you import a pile of
+series the user never added — the first version did exactly that, and put 1078
+extra entries in a 3567-series library.
+
+What maps where:
+
+- **Library** ← favourites only. Non-favourites are additionally *removed* from
+  our library if present, which is what lets a re-import correct an earlier one.
+  This is the only place in the app that deletes library entries wholesale.
+- **Read state and saved pages** ← every series, favourite or not. It's keyed by
+  chapter, costs nothing to hold, and is waiting if the series is ever added.
+- **History** ← favourites only, and it caps at 40, so only the newest survive.
+- **Categories** ← by `order`, matched to existing categories by name.
+
+Every write is bulk (`Library.mergeAll`, `ReadState.setReadBulk`,
+`savePageBulk`). Not an optimisation: `Library.add` rewrites the entire library
+JSON per call, so several thousand of them is quadratic and takes minutes.
+
+The import is a **merge** and **idempotent** — every write is keyed, so running
+it twice changes nothing except the corrections above.
+
+#### Loopback covers
+
+SpyFakku is a self-hosted front end, so its backup stores covers as
+`http://127.0.0.1/image/...`, which can never load on another device.
+`isLoopback()` blanks those on import, and `Library.healCover` writes the real
+cover back the first time a series is opened — it fires only when there is no
+cover or a loopback one, because every write rewrites the whole library JSON and
+doing that per series open would be a real cost for no gain.
+
+### "Default" is not a category
+
+Tachiyomi shows uncategorised series under **Default**. It is not a category
+anything is filed under; it is the *absence* of one, and a backup stores no
+assignment for those series. We do have a real `Categories.DEFAULT_ID`, because
+the in-app category editor writes it explicitly rather than saving an empty set.
+
+So the Library filter treats Default as **union of the two**: series with no
+assignments at all, plus series explicitly filed there. Filtering it like any
+other category — which is what it did originally — shows an empty screen for
+what is usually the largest group in the library.
+
+### The three ways a series gets opened
+
+All three now put something on screen **before** any network request, which is
+worth preserving:
+
+| entry point | has in hand | does |
+| --- | --- | --- |
+| `openSeries` (browse) | a full `Series` with a handle | one request: `listChapters` |
+| `openFromLibrary` | a `LibraryEntry` — title, cover | renders a stub, shows cached chapters, then `restoreSeries` + `listChapters` |
+| `openFromDownloads` | a `DownloadedSeries` | renders a stub, shows cached chapters, then tries the network and keeps the cache if it fails |
+
+The stub carries **no handle**. `TachiyomiSourceAdapter.listChapters` returns an
+empty list without one rather than throwing, so a stub is display-only and
+anything needing a handle waits for the real fetch. `activeSource` is read
+through `?.` on the series screen, so the moment before it resolves is safe.
+
+Note `restoreSeries` is **not** cheap despite what its neighbours imply — it
+calls `getSeries`, which calls `getMangaDetails`, which is a network request.
+Opening from the library was therefore two sequential round trips with an empty
+screen in front of them.
+
+### What is cached, and what drops it
+
+After a 3567-series library arrived, most of a night went into this. Anything
+added here needs an invalidation path thought through at the same time, because
+a stale entry here shows up as data that is silently wrong rather than slow.
+
+| cache | holds | dropped by |
+| --- | --- | --- |
+| `Library.list()` | parsed library | keyed on the raw pref string; `save()` seeds it |
+| `Categories.assignments()` | parsed assignments | keyed on the raw pref string; `invalidateAssignments()` |
+| `Downloads.completion` | is a chapter downloaded | `forget(id)` from `markComplete`/`delete`; `invalidateCompletion()` |
+| `Downloads.sizes` | bytes per chapter | same as above |
+| `DownloadIndex.cached` | the whole Downloads tab listing | `record`, `deleteSeries`, and every `Downloads` invalidation |
+| `iconCache` (`Ui.kt`) | extension launcher icons | never — process lifetime, see §7 |
+
+`Downloads.invalidateCompletion()` is also called by `reorganiseDownloads`,
+which moves every chapter folder.
+
 ### The reader
 
 Controls are hidden until a tap, which then raises a top bar (back, series,
@@ -959,6 +1123,92 @@ unconditionally — so its own origin assignment has to come *after* that call.
 ---
 
 ## 5. Hard-won lessons — don't repeat these
+
+### An import is a load test, and this app had never had one
+
+The library went from ~40 series to 3567 in one action. **Nine** separate
+performance bugs surfaced in the hours after, and every one of them had been in
+the code for months behaving perfectly. They came in three shapes:
+
+1. **O(n) work inside a filter over n items.** The category chips called
+   `Categories.categoriesFor()` per entry, and each call re-parsed the whole
+   assignment JSON — 3567 full parses per chip tap. Invisible at 40. A freeze at
+   3567.
+2. **Per-row I/O in a `LazyColumn`.** See below.
+3. **Repair passes running on the happy path.** `DownloadIndex.list` scanned
+   every library entry's chapter cache off disk to recover downloads the index
+   had lost track of. It normally recovers nothing, and it ran on every open of
+   the tab.
+
+The general form: *code whose cost is proportional to library size, sitting
+somewhere that runs on every interaction.* When adding anything that touches
+library or download state, the question to ask is not "is this fast?" but "what
+is this proportional to, and how often does it run?"
+
+Worth knowing the library is still **one JSON string**. Reads are cached now, but
+every write rewrites all 3567 entries. If a single add or remove ever feels slow,
+that is the cause, and the fix is a different storage shape — not another cache.
+
+### `remember(key)` is not a cache
+
+`remember` holds a value only while its composable is composed, and a
+`LazyColumn` **disposes rows the moment they scroll off screen**. So a
+`remember(id) { expensiveThing() }` in a list row re-runs continuously while
+scrolling — the exact opposite of what the code reads like it does.
+
+Two of these were live at once. `Downloads.isComplete` did several filesystem
+stats per chapter row, on external storage where every stat crosses the FUSE
+layer. `SourceIcon` called `getApplicationIcon` per source row — a PackageManager
+IPC plus opening another APK's resources — across a list of 1368 extensions.
+
+If a value is expensive and doesn't depend on composition, it belongs in a
+process-level cache with an explicit invalidation path, not in `remember`.
+
+### Guessing the hot path finds *a* real cost, not the biggest one
+
+The Downloads tab was slow. The recovery scan above was found, explained,
+fixed — and the tab was still slow, because `Downloads.sizeOf` walks every page
+file in every chapter folder and the screen calls it once per downloaded
+chapter. Both were real. Only one dominated.
+
+Two rounds of "found it, fixed it, still slow" in one evening. The lesson is not
+to look harder; it is that a plausible culprit found by reading is a hypothesis,
+and the cheap way to rank several is to look at *all* the per-item work in a
+screen before fixing any of it.
+
+### Check how a field is consumed before declaring a signature against it
+
+`Library.healCover(seriesId, cover: String)` failed CI because `Series.cover` is
+`Any?` — a URL `String` from extensions, a `java.io.File` from local folders.
+The signature was written from what the *call site* looked like it passed.
+
+With no compiler in the loop, one `grep` for how a field is read elsewhere costs
+seconds and a wrong guess costs a full CI round trip. Narrow inside the function
+instead: `(cover as? String) ?: (cover as? File)?.absolutePath`.
+
+### An anchor-based edit can land inside a declaration's annotations
+
+Inserting a block "just before `fun SourceIcon`" put it **between `@Composable`
+and the function**. The annotation then applied to the inserted `private object`,
+and the compiler reported six errors at the *call sites* inside `SourceIcon`
+("`@Composable` invocations can only happen from the context of a `@Composable`
+function") and one at the object. Nothing pointed at the insertion.
+
+The brace-balance checker passes this happily — braces are fine. Insert above the
+KDoc, not above the declaration, and a cheap scan for "annotation line whose next
+line isn't a declaration" catches it before CI does. That scan found nothing else
+across eight edited files, so it is worth keeping as a pre-push check.
+
+### Offline-first means reading the cache first, not falling back to it
+
+`openFromDownloads` was documented as offline-first and genuinely worked in
+airplane mode — because the network call *failed fast* and it fell through to the
+cache. Online, the same code awaited two round trips before drawing anything, on
+the screen whose whole purpose is instant local access.
+
+A fallback path and a fast path are not the same thing. If the cache is good
+enough to render, render from it immediately and let the network refresh land
+when it lands.
 
 ### The manhwatoon 400s: five attempts, and the fix was deleting one of them
 
@@ -1383,7 +1633,29 @@ builds debug on push, so the installed APK always has it; release builds don't.
 
 Roughly in order of value:
 
-1. **Downloader gaps.** The foreground service, queue, retry and Downloads tab
+1. **The library is one JSON string.** `Library.list()` is cached, but every
+   write rewrites all 3567 entries, and `Categories.setCategoriesFor` does the
+   same to the assignment map. Bulk helpers exist (`mergeAll`, `removeAll`) and
+   should be used for anything touching many series at once. If a *single* add
+   or remove ever feels slow, the answer is a different storage shape — probably
+   per-series keys or SQLite — not another cache.
+
+2. **Extension icons are cached for the process lifetime** and never
+   invalidated. A newly installed extension is fine (new package name, fresh
+   lookup); an extension that *changes its icon* in an update will show the old
+   one until the app restarts. Cheap to fix if it ever matters — drop the entry
+   on the install broadcast.
+
+3. **A re-import is needed to fix covers on an already-imported library.**
+   `healCover` repairs a series when it's opened, but the wholesale fix is
+   running the import again.
+
+4. **The Downloads recovery scan is gated but not free.** It still runs once per
+   process when legacy flat-layout folders exist, because their names are hashes
+   that can't be mapped back to chapter ids. If that ever hurts, the answer is to
+   record what the scan found rather than to scan faster.
+
+5. **Downloader gaps.** The foreground service, queue, retry and Downloads tab
    are done (§4) but only lightly exercised — see §0. What's left versus Mihon: no reordering in the queue (strictly
    FIFO), no per-series grouping in the queue screen, and no auto-download of
    new chapters. Retry/backoff settings are global, not per-source — see the
@@ -1391,69 +1663,69 @@ Roughly in order of value:
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
-2. **Cloudflare costs 30 seconds before the error appears.** A source behind an
+6. **Cloudflare costs 30 seconds before the error appears.** A source behind an
    interactive challenge burns `CloudflareInterceptor`'s full timeout on the
    headless attempt that cannot succeed, and only then shows the error carrying
    the "Open in WebView" action. Shortening the timeout once a host is known to
    need a human — or skipping the headless attempt for hosts with a
    `ClearanceUserAgents` entry that still 403 — would make that instant.
-3. **Coil still sends no `Referer`.** Images now go through the extension's
+7. **Coil still sends no `Referer`.** Images now go through the extension's
    client, so they carry cookies and the UA, but a source whose CDN checks
    `Referer` will still 403 its covers while its pages load fine — `fetchPage`
    goes through `HttpSource.getImage`, which applies the source's headers.
    Nothing has hit this yet. If it does, the fix is a Coil `Fetcher` or an
    interceptor on a derived image client, not a change to the shared one.
-4. **Reader features that need the page pipeline.** Crop borders, split wide
+8. **Reader features that need the page pipeline.** Crop borders, split wide
    pages, rotate wide pages to fit, and tap-zone layouts are all absent by
    decision (§4), as is pinch-zoom — for which the dependency is already
    present and unused. Zoom is the cheapest of these by a wide margin.
-5. **Covers are not cached for offline.** A library entry still shows a grey box
+9. **Covers are not cached for offline.** A library entry still shows a grey box
    in airplane mode. Coil's disk cache is on by default and may already cover
    most of this now that images share the client; it hasn't been checked.
-6. **Global search paging and persistence.** Pinned-only fan-out is done
+10. **Global search paging and persistence.** Pinned-only fan-out is done
    (`0023c81`). Each row still shows page 1 only, and results are lost on restart.
-7. **Sort/filter for search.** `getFilterList()` is available on every
+11. **Sort/filter for search.** `getFilterList()` is available on every
    `CatalogueSource` and unused — `searchSeries` passes an empty `FilterList()`.
-8. **`OBSOLETE` badge.** Mihon marks installed extensions absent from the index.
+12. **`OBSOLETE` badge.** Mihon marks installed extensions absent from the index.
    The list is built from the index only, so those packages aren't visible at
    all. Update detection (`e1913c2`) already does the version half.
-9. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
+13. **Per-source settings only reach `ConfigurableSource` basics.** Toggles,
    lists, multi-select and text are rendered; other `Preference` subclasses are
    skipped rather than shown as dead rows.
-10. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
+14. **One extension is lib 1.6** (`AHottie`, v1.6.4) — inside the accepted range
    but built against the newer API; may fail at runtime.
 11. ~~`HttpException.kt` isn't in the vendored network package.~~ **Wrong — it is**,
     at the bottom of `network/OkHttpExtensions.kt`:
     `class HttpException(val code: Int) : IllegalStateException("HTTP error $code")`.
     `awaitSuccess()` throws it on any non-2xx, which is what makes the download
     failure messages in the queue screen useful. Nothing to add here.
-12. **`YomuApp` is ~800 lines, and none of its state survives recreation.** Screens are split out, but all state and every
+16. **`YomuApp` is ~800 lines, and none of its state survives recreation.** Screens are split out, but all state and every
     handler still lives in one composable, and the routing chain plus
     `SeriesOrigin` encode real navigation rules in `if / else if`. Hoisting into a
     state holder, or adopting a nav library, is the next structural step — and
     unlike the file split it is *not* mechanical. The manifest's `configChanges`
     (§5) covers rotation, but low memory and "don't keep activities" still drop
     the user back at the Library mid-chapter.
-13. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
-14. **Storage location doesn't move the reading cache or app data.** Chapter
+17. **No Feed / Migrate tabs.** Mihon has four sub-tabs under Browse; this has two.
+18. **Storage location doesn't move the reading cache or app data.** Chapter
     lists (`filesDir/chapterlists`), the download queue and the path index stay
     in internal storage by design — they're app data, not user data — but it
     does mean "everything Yomu wrote" isn't quite one folder.
-15. **The Cloudflare path has no `WebViewInterceptor`.** When a site refuses
+19. **The Cloudflare path has no `WebViewInterceptor`.** When a site refuses
     OkHttp but serves the WebView, and no challenge is presented, there is
     nothing to solve \u2014 the only real answer is routing that request through the
     WebView. §4 records the original as deliberately deleted for pulling in
     QuickJS and moko-resources; a minimal rewrite, the way `CloudflareInterceptor`
     was rewritten, is the structural fix. Not needed yet: removing forced
     HTTP/1.1 (§5) resolved the case that raised it.
-16. **Automatic backups are silent when no folder is set.** They land inside app
+20. **Automatic backups are silent when no folder is set.** They land inside app
     storage, where a file manager can't reach them: fine as a safety net,
     useless for moving to another phone. The settings note says so; nothing
     warns more loudly.
-17. **Reorganise can't place a chapter whose series was never in the library.**
+21. **Reorganise can't place a chapter whose series was never in the library.**
     `ChapterCache` only holds a list fetched while online, so there's nothing to
     match the hash against. Those stay in the flat layout and keep working.
-18. **Icon debt from `material-icons-core`.** Three places now use an
+22. **Icon debt from `material-icons-core`.** Three places now use an
     approximate glyph because the core set is ~40 icons: a filled/dimmed `Star`
     for pinning (no `PushPin`), `KeyboardArrowDown` for download, and `Menu` for
     source visibility. Adding `material-icons-extended` fixes all three at once —
@@ -1525,7 +1797,16 @@ Add Popular/Latest, an icon search and grid view options to source browse 6c95fa
 Add source filters, and explain HTTP errors that mean the site is down   940fc34  verified OK
 Add a connection probe that reports what a source actually returns       5dbd024  verified OK
 Stop forcing HTTP/1.1 globally; it contradicted the Chrome UA            d2e6b30  fixed manhwatoon
-Select multiple chapters to download, mark read/unread or delete
+Select multiple chapters to download, mark read/unread or delete           0557acf  verified OK
+Dim read chapters instead of labelling them                             0fe6eab  verified OK
+Reduce chapter row actions to icons; explain a .tachibk given to restore af5fcc6  verified OK
+Import a Tachiyomi backup                                               931cf5f  verified OK
+Do one parse per category filter instead of one per series              0810bed  verified OK
+Fix healCover: Series.cover is Any?, not String                         c1198af  verified OK
+Cache download-completion stats and extension icons                     c57a91d  DID NOT COMPILE
+Fix misplaced @Composable; Default means uncategorised; skip non-library entries 54c4c0d  verified OK
+Open library series on cached data; gate the downloads recovery scan    32dacaf  verified OK
+Cache chapter sizes and the downloads listing; open downloads from cache 3052571  verified OK
 ```
 
 "verified OK" means it was exercised on device; the annotations on the rest are
@@ -1537,6 +1818,15 @@ pass. A screen landing and a screen working are separate events.
 exercised. Everything from `912707a` down was checked on device as it landed —
 each push was installed and used before the next was written, which is why that
 run carries no untested tail.
+
+`c57a91d` is the annotation-placement failure written up in §5: the cache it
+added was correct and shipped unchanged in `54c4c0d`, which only moved it above
+the KDoc. `0.45` never reached a commit for the same class of reason — a
+signature declared against `Series.cover` as `String` when it is `Any?`. Two CI
+round trips in one session, both from an assumption a `grep` would have settled.
+
+The run from `931cf5f` to `3052571` is one continuous thread: import a real
+library, then fix everything the real library broke.
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.
