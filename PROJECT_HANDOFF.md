@@ -1,10 +1,17 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.64**. **0.55 through 0.62 are all verified on device** — the Trello
-backlog is cleared. 0.63 added a vertical page slider and shipped it rotated the
-wrong way; 0.64 fixes that and the page-number colour, and is unverified.
-(Supersedes the earlier version of this file.)
+at **0.65**. **0.55 through 0.65 are all verified on device — there is no
+untested tail.** 0.63 shipped the vertical page slider rotated the wrong way,
+0.64 fixed it, and 0.65 landed the per-series chapter index that four backlog
+items were all waiting on. (Supersedes the earlier version of this file.)
+
+**The index exists.** §0's "named next piece of work" carried the same entry for
+four sessions and is now closed: `SeriesIndex.kt` holds per-series chapter and
+read counts, and unread badges, Unread / Started / Completed filters and three
+new sorts all shipped with it. What it still can't do is one specific thing
+rather than a list — §4 "What the index still can't tell you" — and closing that
+is the new named next piece of work.
 
 **The library screen was rebuilt and every part of it is verified on device**
 (builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
@@ -47,25 +54,78 @@ shipped a regression inside that run — chapters marking themselves read on ope
 — which 0.58 fixed; both entries are in §5 and the pair is worth reading
 together, because the second was caused by the first.
 
-**0.59 and 0.60 are the untested tail**, kept small on purpose: an uninstall
-button, the reader's back arrow, a tag menu on the series screen, and a
-swipeable Browse. Nothing in either touches the reader's page indexing or the
-library — the two remaining backlog items that do are being taken one per build.
-Thread 3 has the list.
+**0.59 through 0.65 are all confirmed on device.** The uninstall button, the
+reader's back arrow, the series-screen tag menu, swipeable Browse, the vertical
+slider, and the whole chapter index went in one build at a time and each was
+exercised before the next was written. There is no untested tail as of this
+writing — which has not been true of this file since it was started, and is
+worth not squandering.
 
-**The two older threads below are still open and neither was touched.** They
-have now survived four sessions. The reader is still the largest untested
-surface in the app.
+**Thread 1 below is still open and has now survived five sessions.** The reader
+is still the largest untested surface in the app: 0.62 through 0.65 all touched
+it and were checked, but each check exercised the one path that release changed.
+The list of things nobody has ever run — paged right-to-left, grayscale and
+invert together, the chapter picker, whether settings survive reopening — has
+not shrunk. **Thread 2 is now half closed**: 0.64 fixed the white-on-white text,
+and what remains of it is one line of manifest.
 
-**The named next piece of work** is a per-series chapter/read count index — see
-"What the library can't do yet" in §4. It is the single thing standing between
-this app and unread counts, unread/started/completed filters, chapter-count
-sorts, and the badge overlays Mihon shows. One index unlocks all of them at
-once; without it each is independently impossible.
+**The named next piece of work** is a **library refresh**: something that walks
+the library, fetches each series' chapter list with bounded concurrency, and
+calls `SeriesIndex.record`. The index shipped in 0.65 is only as complete as
+your browsing history — it knows about series opened at least once since that
+build and nothing else — so every count, badge, filter and sort it feeds is
+currently answering for a minority of a 3567-entry library. Nothing else in the
+backlog changes what the app can *tell* you as much as this does, and it needs
+no new data model: the write path already exists and takes a chapter list.
 
-### Open thread 3 — 0.64 is written, not run
+Treat it as an import-scale operation, not a loop. §5's "An import is a load
+test" is the relevant entry, and the specific hazards are in §7 item 1.
 
-Fixes to 0.63's vertical slider, plus a colour bug it sat next to.
+### Closed — 0.65, the chapter index and three fixes
+
+**All six device checks passed.** The index is real, the badges distinguish
+un-counted from zero, and both scroll fixes hold.
+
+- **`SeriesIndex.kt`** — one JSON object keyed by series id holding
+  `{ total, read, latestChapterAt, updatedAt }`, memoised on the raw pref string
+  exactly like `Library.list`. It is written from `SeriesScreen`, the only place
+  in the app holding a chapter list, its source id and the series id at the same
+  moment — which is why the write lives there rather than next to the fetch in
+  `YomuApp`. Gated on library membership, so merely browsing doesn't grow it.
+- **A write that wouldn't change anything is refused.** Every write rewrites the
+  whole object and this runs on every series open, so without the equality check
+  reopening a series would serialise several thousand entries to change nothing.
+  That is also why `updatedAt` means "when the counts last moved" rather than
+  "when they were last checked" — a last-checked timestamp is the one field that
+  would guarantee every check is a write.
+- **What it unlocked, all in the same build:** an unread badge on covers,
+  Unread / Started / Completed tri-state filters, and sorts by unread count,
+  chapter count and latest chapter.
+- **`counts` is deliberately absent from the scroll-invalidation signature**
+  (`ordering`, handed to `ScrollMemory.sync`). It moves every time a chapter is
+  finished, so including it would throw the library's scroll away on every
+  return from the reader — reintroducing from the other end the exact bug that
+  mechanism exists to prevent. What it costs is a slightly stale anchor under an
+  index sort, and that is one series moving a few rows rather than the wholesale
+  reorder a position genuinely can't survive.
+- **The page number is outlined** — four offset copies in the opposite colour
+  under a normal one. Not `TextStyle(drawStyle = Stroke(...))`, which would be
+  one parameter instead of five composables: it spent a release behind
+  `@ExperimentalTextApi`, and with no compiler in this loop, finding out which
+  side of that line this Compose version falls on costs a CI round trip. 0.64
+  made the colour follow the background, which was only half an answer — the
+  number sits over the *page*, and a dark panel in a bright scan swallows black
+  text as readily as a white page swallows white.
+- **The chapter list keeps its scroll** across opening a chapter. Fourth
+  instance of the hoisting bug; see §5.
+- **Tapping a series cover opens it full screen and zoomable**, as a `Dialog`
+  rather than a routing branch — it needs nothing a branch buys and that chain
+  is delicate enough.
+
+### Closed — 0.64, the vertical slider
+
+Fixes to 0.63's vertical slider, plus a colour bug it sat next to. **Verified on
+device.**
 
 - **The slider was rotated anti-clockwise**, which put its start at the bottom,
   so dragging down walked backwards through the chapter. Now `rotate(90f)`. The
@@ -107,7 +167,7 @@ rather than exotic.
   value would otherwise be a scroll request *and* a `savePage` write *and* a
   `History.touch`, since `onProgress` fires on every page change.
 
-### Open thread 3b — 0.59 and 0.60, closed
+### Closed — 0.59 and 0.60
 
 Backlog items, deliberately kept apart from each other and from anything
 load-bearing:
@@ -211,18 +271,16 @@ session, and the session stopped before most of it was exercised.
   underlying fragility is worth understanding before touching anything that
   might recreate the Activity.
 
-### Open thread 2 — the light theme meets the untested reader
+### Open thread 2 — one line of manifest
 
-`AppTheme` added Light and Follow-system alongside Dark, and `ReaderScreen` has
-two hardcoded `Color.White` text draws — the page-number overlay (~line 163) and
-the failed-page message (~line 317). With `ReaderBackground.THEME` on a light
-scheme both are white on white. The bug already existed for
-`ReaderBackground.WHITE`; the theme setting is what makes it reachable by
-default. Trivial to fix — take the colour from the resolved background — but it
-sits inside the file thread 1 says nobody has exercised, so fix it in the same
-pass as the paged-RTL and grayscale+invert checks rather than on its own.
+**The text half is fixed.** `ReaderScreen`'s two hardcoded `Color.White` draws —
+the page-number overlay and the failed-page message — took their colour from the
+background's luminance in 0.64, and 0.65 outlined the page number as well, which
+covers the case luminance can't: the number sits over the page, not the
+background, so a dark panel in a bright scan defeats a colour chosen from the
+background alone.
 
-Also unaddressed: `AndroidManifest.xml` still declares
+Still unaddressed: `AndroidManifest.xml` declares
 `@android:style/Theme.Material.NoActionBar`, which is the *dark* variant. In
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
@@ -454,6 +512,10 @@ As of the source-visibility commit, verified on device:
   would change that, is in §4.
 - **Updates announce themselves** — a "What's new" dialog on the first launch
   after a version bump, newest release expanded and intermediate ones collapsed.
+- **The library counts chapters** (`c5266d7`) — unread badges on covers,
+  Unread / Started / Completed filters, and sorts by unread count, chapter count
+  and latest chapter, all off one aggregate index. Only for series opened since
+  0.65; see §4.
 - **The app is usable at that scale** — category filtering, list scrolling, the
   Downloads tab and opening a series were all rebuilt around it (`0810bed`
   through `3052571`).
@@ -591,6 +653,7 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
 | `Categories.kt` | Categories + series→category assignments. `applyCategories()` is the batched add/remove used by bulk editing. |
 | `LibraryPrefs.kt` | Library sort / display / group / filter settings, and the `LibrarySort`, `LibraryDisplay`, `LibraryGroup`, `FilterState` enums. |
+| `SeriesIndex.kt` | Per-series `{ total, read, latestChapterAt, updatedAt }`. Written from `SeriesScreen`; read by the library's unread badge, its Unread/Started/Completed filters and its three index-backed sorts. |
 | `WhatsNew.kt` | The changelog (`Changelog.notes`), the seen-version marker, and the post-update dialog. |
 | `SourceSettings.kt` | Reads `ConfigurableSource` preferences into a Compose-renderable model. |
 | `Downloads.kt` | Page store on disk (cache vs download) + `ChapterCache` + `formatBytes()`. |
@@ -1027,9 +1090,14 @@ Four axes, all stored in `LibraryPrefs` and all read once per tick in
 | Axis | Values |
 |---|---|
 | Group | Categories, Ungrouped |
-| Sort | Alphabetical, Date added, Last read, Random — each reversible |
+| Sort | Alphabetical, Date added, Last read, Unread count, Chapter count, Latest chapter, Random — each reversible |
 | Display | Compact grid, Comfortable grid, Cover-only grid, List; Auto or fixed 1–10 columns |
-| Filter | Downloaded, Local source, Read — tri-state (off / require / exclude) |
+| Filter | Downloaded, Local source, Read, Unread, Started, Completed — tri-state (off / require / exclude) |
+
+The last three filters and three of the sorts read `SeriesIndex` rather than the
+library itself, and it is only asked for when one of them — or the unread badge
+— is actually on. Same rule as `DownloadIndex.list()` below it, for a cheaper
+reason: this is one string read and one parse, not a directory walk.
 
 `LibraryTab` builds a `List<Group>` of `(key, label, items)` and the pager runs
 off that, so grouping mode changes the tab set without any other code caring.
@@ -1060,32 +1128,32 @@ reason as `activeCategory`.
 new field. It costs one `seriesIn()` set lookup. The alternative — a real
 "every chapter read" test — is in the next section.
 
-#### What the library can't do yet, and the one thing that would fix it
+#### What the index still can't tell you
 
-Mihon's options sheet also offers Unread / Started / Completed / Bookmarked
-filters, and sorts by total chapters, unread count, latest chapter, last update
-check and fetch date, plus per-cover unread and downloaded *chapter* badges.
-**None of those are implementable in this app today**, and they were left out
-rather than shipped as switches that do nothing — the same call §4 records for
-the reader's crop-borders and split-page toggles, for the same reason: a dead
-toggle costs a build cycle to discover.
+The index is **lagging** by construction. An entry is written when a series
+screen resolves its chapter list, because that is the only moment the app holds
+one — so it knows about series opened at least once since 0.65, and nothing
+else. On the build it shipped in, that was none of them.
 
-The blocker is uniform. Every one of them needs a chapter list per series, and
-the only chapter store here is `ChapterCache` — one JSON file per series,
-written when that series is opened. So for a 3567-entry library most series have
-no file at all, and answering "how many unread" across the library means
-thousands of file reads on every grid draw.
+**Un-counted is not zero, and the whole feature rests on that distinction.** A
+series with no entry has an *unknown* unread count, not a count of nought. Every
+consumer takes the null branch on purpose: the badge draws nothing rather than
+`0`, the filters read "the condition doesn't hold" (so INCLUDE hides an
+un-counted series and EXCLUDE leaves it alone, which is the right shape both
+ways round), and the sorts use `MIN_VALUE` so it lands at one end instead of
+among the finished. Collapse that into `?: 0` anywhere and a freshly imported
+library renders as a wall of covers announcing everything has been read. §5 has
+the general form — it is the most reusable thing in this release.
 
-**The fix is one aggregate index**, not one per feature: a single JSON keyed by
-series id holding `{ total, read, latestChapterDate, fetchedAt }`, written
-whenever a series screen resolves its chapter list (the same call site that
-already feeds `ChapterCache`), cached in memory on the same raw-string key as
-`Library.list()` and `Categories.assignments()`. Read as one file, it makes all
-of the above cheap simultaneously. Note the invalidation path up front, per the
-cache table — a stale entry here is data that is silently wrong rather than
-slow.
+The options sheet carries a note saying the same thing in the UI, which is the
+other half of it: where a store's coldness is visible to the user, an empty
+Unread tab has to explain itself or it reads as a broken filter.
 
-Two smaller absences, unrelated to that index:
+**Closing the gap is a library refresh, not a change here** — see §0. The write
+path already exists and takes a chapter list; what's missing is something that
+fetches them without opening 3567 screens.
+
+Two smaller absences remain, and neither is blocked on the index:
 
 - **Bookmarked, Lewd, Language, and Group → Status** have no backing field
   anywhere in the app. They need a data model decision first, not an index.
@@ -1164,6 +1232,7 @@ a stale entry here shows up as data that is silently wrong rather than slow.
 | `Downloads.completion` | is a chapter downloaded | `forget(id)` from `markComplete`/`delete`; `invalidateCompletion()` |
 | `Downloads.sizes` | bytes per chapter | same as above |
 | `DownloadIndex.cached` | the whole Downloads tab listing | `record`, `deleteSeries`, and every `Downloads` invalidation |
+| `SeriesIndex.all()` | per-series chapter and read counts | keyed on the raw pref string; `record` seeds it; `forget` from `Library.remove`/`removeAll`. Deliberately **not** dropped by Settings' clear-cached-data, which clears chapter lists and leaves the counts correct |
 | `iconCache` (`Ui.kt`) | extension launcher icons | never — process lifetime, see §7 |
 
 `Downloads.invalidateCompletion()` is also called by `reorganiseDownloads`,
@@ -1204,9 +1273,10 @@ combination most likely to be wrong while each alone looks right.
 **Fullscreen is keyed on the controls as well as the setting.** Raising the bars
 while the status bar stays hidden puts the title under the clock.
 
-**`me.saket.telephoto:zoomable-image-coil` is in `build.gradle.kts` and unused.**
-Pinch-zoom is one swapped composable away and was left out only to avoid
-introducing an unfamiliar API inside an already-large uncompiled change.
+**`me.saket.telephoto:zoomable-image-coil` carries paged zoom** (0.62) and, since
+0.65, the full-screen cover viewer on the series screen. Long strip is still
+deliberately untouched: a pinch there fights the scroll the mode exists for, and
+doing it properly means zooming the viewport rather than an item.
 
 ### Source caching (added `3e28e81`)
 `listAllSources()` used to classload all 26 APKs on **every call**, including
@@ -1444,6 +1514,41 @@ unconditionally — so its own origin assignment has to come *after* that call.
 ---
 
 ## 5. Hard-won lessons — don't repeat these
+
+### A lazily-populated store has three states, and the third one is invisible
+
+`SeriesIndex` (0.65) answers "how many unread chapters" for the library grid,
+and it can only answer for series it has counts for — which on the build it
+shipped in was none of them, and after a week of reading is still a minority of
+a 3567-entry library.
+
+The trap is that two of its states have the same shape at the call site. An
+absent entry and a stored zero both arrive as "nothing to report", and the
+idiomatic Kotlin for it — `counts[id]?.unread ?: 0` — silently converts the
+first into the second. Written that way, every series nobody had opened would
+have drawn a `0` badge, dropped out of the Unread filter, and sorted among the
+finished. **None of that reads as a bug.** It reads as a library you have
+completely read, which is a perfectly plausible state, so it would have been
+believed rather than reported.
+
+Getting it right cost three deliberate null branches, one per consumer, and they
+are listed in §4. What is worth carrying is the shape of the mistake:
+
+- **Any cache populated lazily has three states, not two:** present,
+  known-empty, and never-looked. Only the first two have obvious values.
+- **Write down what each consumer does with the third before adding the
+  store**, not after. The consumers are where the collapse happens, not the
+  store — `SeriesIndex` itself was never wrong.
+- **Be most suspicious when the wrong answer is a plausible one.** A crash gets
+  reported and a blank screen gets reported; a library that claims you have read
+  everything gets shrugged at. The failure modes that survive are the ones that
+  look like legitimate readings of the data.
+
+The same question is worth asking of `ChapterCache` and `DownloadIndex`, both of
+which are also populated lazily. Neither currently collapses unknown into a
+value — `DownloadIndex.list()` filters on what is actually on disk, and
+`chaptersWithFallback` errors rather than returning an empty list — but neither
+was designed with this written down either.
 
 ### An import is a load test, and this app had never had one
 
@@ -1693,11 +1798,27 @@ same wrinkle is recorded against `SettingsScreen`'s `openSection` in the routing
 note above, and against the browse screen's category chip in §0 — three
 instances of one bug, found three times.
 
+**A fourth instance turned up in 0.65**, on a different screen: `SeriesScreen`'s
+`LazyColumn` had no hoisted state, so opening a chapter destroyed the chapter
+list's scroll position and backing out landed at the top of a list the user may
+have scrolled a long way down. Reported, again, as its own separate bug. Note
+that the enumeration advice below was followed for `LibraryTab` and stopped
+there — the rule was applied to the branch that had been caught rather than to
+the pattern, and the reader's branch destroys *every* screen beneath it.
+
+It also needed its own `ScrollMemory` rather than sharing the library's: the
+class keeps one signature for everything it holds, so a library re-sort would
+have cleared the chapter position and opening a different series would have
+cleared the library's. Its signature is the series id, which is exactly what
+makes returning from a chapter restore and opening a different series start at
+the top.
+
 So: **when a routing branch is found to be destructive to one piece of state,
-enumerate that branch's state.** Anything a user can see and change, and would
-expect to find on the way back, belongs outside it. The cost of checking is one
-read of the composable; the cost of not is a bug report per value, spread over
-however many releases it takes someone to notice.
+enumerate that branch's state — and then enumerate every other branch it can
+cover.** Anything a user can see and change, and would expect to find on the way
+back, belongs outside it. The cost of checking is one read of the composable;
+the cost of not is a bug report per value, spread over however many releases it
+takes someone to notice.
 
 ### `remember(key)` is not a cache
 
@@ -2189,12 +2310,21 @@ builds debug on push, so the installed APK always has it; release builds don't.
 
 Roughly in order of value:
 
-1. **The library is one JSON string.** `Library.list()` is cached, but every
-   write rewrites all 3567 entries, and `Categories.setCategoriesFor` does the
-   same to the assignment map. Bulk helpers exist (`mergeAll`, `removeAll`) and
-   should be used for anything touching many series at once. If a *single* add
-   or remove ever feels slow, the answer is a different storage shape — probably
-   per-series keys or SQLite — not another cache.
+1. **The library is one JSON string, and so is the index now.** `Library.list()`
+   is cached, but every write rewrites all 3567 entries; `Categories.setCategoriesFor`
+   does the same to the assignment map, and `SeriesIndex.record` does it to the
+   counts. Bulk helpers exist (`mergeAll`, `removeAll`) and should be used for
+   anything touching many series at once. If a *single* add or remove ever feels
+   slow, the answer is a different storage shape — probably per-series keys or
+   SQLite — not another cache.
+
+   **This is the constraint the library refresh in §0 runs straight into.**
+   `SeriesIndex.record` is safe at one series open per user action because it
+   refuses a write that changes nothing; a refresh sweeping 3567 series would
+   hit it thousands of times with something to say each time, and that is
+   quadratic. A refresh needs a bulk `recordAll` taking the whole batch and
+   writing once, in the same shape and for the same reason as `Library.mergeAll`
+   — write it before writing the sweep, not after measuring it.
 
 2. **Extension icons are cached for the process lifetime** and never
    invalidated. A newly installed extension is fine (new package name, fresh
@@ -2233,8 +2363,11 @@ Roughly in order of value:
    interceptor on a derived image client, not a change to the shared one.
 8. **Reader features that need the page pipeline.** Crop borders, split wide
    pages, rotate wide pages to fit, and tap-zone layouts are all absent by
-   decision (§4), as is pinch-zoom — for which the dependency is already
-   present and unused. Zoom is the cheapest of these by a wide margin.
+   decision (§4) — the first three need to inspect and cut the bitmap and the
+   last needs a gesture model this screen doesn't have. Pinch-zoom is **done**
+   for paged modes (0.62); long strip is the remaining gap and needs the
+   viewport zoomed rather than an item, which is a piece of work rather than a
+   flag.
 9. **Covers are not cached for offline.** A library entry still shows a grey box
    in airplane mode. Coil's disk cache is on by default and may already cover
    most of this now that images share the client; it hasn't been checked.
@@ -2363,7 +2496,20 @@ Cache download-completion stats and extension icons                     c57a91d 
 Fix misplaced @Composable; Default means uncategorised; skip non-library entries 54c4c0d  verified OK
 Open library series on cached data; gate the downloads recovery scan    32dacaf  verified OK
 Cache chapter sizes and the downloads listing; open downloads from cache 3052571  verified OK
+Fix vertical slider direction and length, and page number contrast      2f0e3b2  verified OK
+Add a per-series chapter index; outline the page number; keep the
+  chapter list's scroll; open covers full screen                        c5266d7  verified OK
 ```
+
+`c5266d7` is the largest single change in this project's history — 553
+insertions across nine files, one of them new — and it went in uncompiled like
+everything else here. It built first time and all six device checks passed,
+which is worth recording precisely because it is not the base rate: `c57a91d`
+and the 0.45 attempt are both in this list as single-assumption CI failures. The
+difference was not care, it was that the risky parts were checked by `grep`
+rather than recalled — `Chapter.dateUploaded`, `chapterKeyOf`'s signature, the
+`ZoomableAsyncImage` parameter list already in use in `ReaderScreen`, and
+whether `when (sort)` was exhaustive after three new enum values.
 
 "verified OK" means it was exercised on device; the annotations on the rest are
 deliberately not that. Note `fbe6bfe` — the visible WebView shipped and did *not*
