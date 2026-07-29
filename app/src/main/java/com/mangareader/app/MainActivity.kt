@@ -248,6 +248,20 @@ fun YomuApp() {
     // behind it. This says where "back" should actually go.
     var seriesOrigin by remember { mutableStateOf(SeriesOrigin.BROWSE) }
 
+    // The series a tag search was launched from, if any.
+    //
+    // A tag search has to clear `activeSeries` to be visible at all — branch 3
+    // sits above both search branches, so a live series hides them. That makes
+    // the search a one-way trip unless the series is kept somewhere, and
+    // without this it was: back fell through to the bottom nav and landed on
+    // whichever tab was selected, usually Library. A tag is a detour from a
+    // series, so back belongs on that series.
+    //
+    // Cleared by [openSeries], because opening something from the results is
+    // navigating onward rather than detouring, and back from *there* should
+    // return to the results.
+    var tagSearchReturn by remember { mutableStateOf<Series?>(null) }
+
     // Live download state now lives in DownloadQueue, which the service writes to
     // from its own process-scoped worker — the whole point being that a download
     // outlives this composable. What stays here is the local tick for filesystem
@@ -502,6 +516,9 @@ fun YomuApp() {
     fun openSeries(series: Series) {
         val src = activeSource ?: return
         seriesOrigin = SeriesOrigin.BROWSE
+        // Opening a result ends the detour: back from this series goes to the
+        // listing behind it, not to whatever the tag search started from.
+        tagSearchReturn = null
         activeSeries = series
         chapterList = emptyList()
         errorMessage = null
@@ -980,8 +997,11 @@ fun YomuApp() {
             // land on a branch below this one to be visible at all.
             onSearchTag = { tag ->
                 activeSource?.let { src ->
+                    // chapterList is deliberately left alone: it still belongs
+                    // to this series, nothing below branch 3 reads it, and
+                    // keeping it is what makes coming back instant.
+                    tagSearchReturn = activeSeries
                     activeSeries = null
-                    chapterList = emptyList()
                     errorMessage = null
                     // Keeps the adopted source rather than dropping it the way
                     // onBack does for a non-BROWSE origin — searching *this*
@@ -991,8 +1011,8 @@ fun YomuApp() {
                 }
             },
             onGlobalSearchTag = { tag ->
+                tagSearchReturn = activeSeries
                 activeSeries = null
-                chapterList = emptyList()
                 errorMessage = null
                 globalSearchOpen = true
                 runGlobalSearch(tag)
@@ -1032,12 +1052,21 @@ fun YomuApp() {
             onBack = {
                 cancelGlobalSearch()
                 globalSearchOpen = false
-                // Opening a result adopted that result's source. Leaving search
-                // has to give it back, or the chain lands on a browse screen with
-                // nothing in it.
-                activeSource = null
-                activeSourceId = null
                 seriesList = null
+                val cameFromTag = tagSearchReturn
+                if (cameFromTag != null) {
+                    // Same detour as the per-source case. The adopted-source
+                    // problem below doesn't apply: nothing was opened from these
+                    // results, so activeSource is still the series' own.
+                    tagSearchReturn = null
+                    activeSeries = cameFromTag
+                } else {
+                    // Opening a result adopted that result's source. Leaving
+                    // search has to give it back, or the chain lands on a browse
+                    // screen with nothing in it.
+                    activeSource = null
+                    activeSourceId = null
+                }
             }
         )
     } else if (activeSource != null) {
@@ -1070,10 +1099,19 @@ fun YomuApp() {
             onRescan = { activeSource?.let { openSource(it, browseQuery, browseMode) } },
             onOpen = { openSeries(it) },
             onBack = {
-                activeSource = null
-                activeSourceId = null
                 seriesList = null
                 errorMessage = null
+                val cameFromTag = tagSearchReturn
+                if (cameFromTag != null) {
+                    // Back to the series the tag was on. The source stays: it is
+                    // that series' own source, which the series screen needs for
+                    // chapters and pages.
+                    tagSearchReturn = null
+                    activeSeries = cameFromTag
+                } else {
+                    activeSource = null
+                    activeSourceId = null
+                }
             },
             scroll = browseScroll,
             onSolveChallenge = startChallenge
