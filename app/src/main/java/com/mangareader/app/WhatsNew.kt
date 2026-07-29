@@ -43,6 +43,22 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 62,
+            name = "0.62",
+            header = "Zoom and a page slider in the reader",
+            body = "Paged modes zoom. Pinch, double-tap, and drag to move around " +
+                "a zoomed page; swiping to the next page still works, because " +
+                "the swipe is only taken once a zoomed page has nothing left to " +
+                "pan. Grayscale and invert still apply.\n\n" +
+                "Long strip is deliberately left alone. A pinch there competes " +
+                "with the scroll the mode is built on, and doing it properly is " +
+                "its own piece of work rather than a switch to flip.\n\n" +
+                "The controls now carry a slider across the whole chapter. It " +
+                "jumps when you let go rather than while dragging, and the page " +
+                "count above it follows the thumb so you can see where you are " +
+                "about to land."
+        ),
+        ReleaseNote(
             code = 61,
             name = "0.61",
             header = "Uninstall works, and tag searches come back",
