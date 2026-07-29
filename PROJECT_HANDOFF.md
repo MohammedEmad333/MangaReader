@@ -72,7 +72,13 @@ load-bearing:
   now open a menu offering a source search, a global search, or copy. Both
   searches clear `activeSeries` so the chain falls through to a branch that can
   show results — the source search *keeps* the adopted source, unlike `onBack`,
-  because searching that source is the entire request.
+  because searching that source is the entire request. **0.60 shipped this
+  without a way back**: clearing `activeSeries` made the search a one-way trip
+  and back fell through to the bottom nav, landing on Library. `tagSearchReturn`
+  holds the series and both search branches' `onBack` restore it; `openSeries`
+  clears it, because opening a result is navigating onward rather than
+  detouring. `chapterList` is deliberately no longer cleared — nothing below
+  branch 3 reads it, and keeping it makes the return instant.
 - **Browse swipes.** `TabRow` over a `HorizontalPager`. No outward report of the
   position exists here, so the feedback loop §5 records could not be recreated:
   the pager owns it, tabs only call `animateScrollToPage`.

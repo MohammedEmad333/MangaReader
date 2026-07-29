@@ -45,7 +45,7 @@ object Changelog {
         ReleaseNote(
             code = 61,
             name = "0.61",
-            header = "Uninstall actually uninstalls",
+            header = "Uninstall works, and tag searches come back",
             body = "0.59's uninstall button asked the system to remove the " +
                 "package without holding the permission that lets an app ask, " +
                 "so the request was refused before anything appeared - a tap, a " +
@@ -53,7 +53,11 @@ object Changelog {
                 "The permission is declared now, the system's confirmation opens " +
                 "inside the app rather than in a window of its own, and if the " +
                 "package is still there afterwards you get told so instead of " +
-                "being left to guess."
+                "being left to guess.\n\n" +
+                "Backing out of a tag search now returns to the series the tag " +
+                "was on, rather than dropping you on the Library tab. Opening " +
+                "something from the results still behaves normally - back goes " +
+                "to the results."
         ),
         ReleaseNote(
             code = 60,
