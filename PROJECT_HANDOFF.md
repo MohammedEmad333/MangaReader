@@ -1,8 +1,8 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.57**. 0.55 and 0.56 are **verified on device**; 0.57 is a second bug-fix
-pass — reader, history covers, extension index — and is unverified.
+at **0.58**. 0.55 and 0.56 are **verified on device**. 0.57 shipped a
+regression that marked chapters read on open; 0.58 fixes it and is unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -63,8 +63,13 @@ of them exercised:
 - **Long strip never reached its last page**, so chapters read in that mode were
   never marked read — `currentPage` was `firstVisibleItemIndex`, and the last
   page is visible at the bottom of the screen long before it reaches the top.
-  Now falls back to `pages.lastIndex` when the list can't scroll further, gated
-  on the chapter having finished loading.
+  **The 0.57 fix for this was wrong and shipped a worse bug** — see "Layout
+  state does not exist yet" in §5. 0.58 tests whether the last item's bottom
+  edge is inside the viewport instead.
+- **State damage from 0.57 is not repaired.** Chapters opened in long strip
+  under that build were marked read and had `lastIndex` written as their resume
+  position. Mark unread from the chapter list; positions correct themselves on
+  a re-read. Worth knowing before trusting read state in this library.
 - **Long strip drifted while untouched.** An `AsyncImage` with unbounded height
   measures zero until its bitmap decodes, so every page was a zero-height row
   until it arrived. Pages now carry `heightIn(min = 240.dp)`. This is the fix
@@ -1404,6 +1409,52 @@ are one feedback loop wearing two hats, and no amount of comparing "is it alread
 equal" fixes it — the values genuinely differ at every intermediate step. Look
 for a settled/committed variant of whatever state is being observed, and if the
 API doesn't have one, the loop is the design and it needs cutting, not guarding.
+
+### Layout state does not exist yet when your effect first reads it
+
+0.57 fixed the strip counter with `!listState.canScrollForward` as the test for
+"at the end of the chapter". It is a reasonable-looking test and it was wrong in
+the one way that mattered: **a `LazyListState` reports `canScrollForward` as
+false until its first measure.** `LaunchedEffect` bodies run after composition
+and before that measure lands, so the very first thing every chapter did on open
+was report its last page — which saved the wrong resume position and marked the
+chapter read before a page had been looked at.
+
+It also spread. The corrupted position meant reopening the chapter in *paged*
+mode started on the last page, which legitimately marks read, so a bug that only
+existed in one mode produced wrong state in both.
+
+0.58 asks a question that cannot be answered without a layout: is the last
+item's bottom edge inside the viewport?
+
+```kotlin
+val info = listState.layoutInfo
+val last = info.visibleItemsInfo.lastOrNull()
+pages.isNotEmpty() &&
+    info.totalItemsCount == pages.size &&
+    last != null && last.index == pages.lastIndex &&
+    last.offset + last.size <= info.viewportEndOffset
+```
+
+An empty `visibleItemsInfo` is the proof that no layout has happened, so the
+pre-measure frame answers false instead of true.
+
+Carry forward:
+
+- **Ask whether a state's default is a lie.** `canScrollForward`'s default of
+  false means "no layout yet" and reads as "nothing below" — the two are
+  opposite conclusions from the same value. Any layout-derived boolean read
+  before first measure has this problem; prefer a query whose empty case is
+  unambiguous.
+- **A guard chosen for the wrong window protects nothing.** The 0.57 code did
+  carry a guard — `!stillLoading` — aimed at a half-fetched chapter. The actual
+  window was pre-measure, which has nothing to do with fetching, so an
+  already-downloaded chapter walked straight through it. A guard is only worth
+  what its condition names.
+- **Write-side bugs outlive the fix.** This one wrote to `ReadState` and
+  `savePage`, so correcting the reader does not correct the library. Any fix
+  touching persisted state needs "what do we do about what's already stored"
+  answered in the same breath.
 
 ### The reader's page counter could not count to the last page
 
