@@ -73,6 +73,7 @@ object DownloadIndex {
      */
     @Synchronized
     fun record(context: Context, item: DownloadItem) {
+        invalidate()
         if (item.seriesId.isBlank()) return
         val current = read(context).associateBy { it.chapterId }.toMutableMap()
         current[item.chapterId] = Record(
@@ -89,7 +90,27 @@ object DownloadIndex {
     // ---------- reading ----------
 
     /** Downloaded series, largest first. Self-healing against what's on disk. */
+    /**
+     * The last result of [list].
+     *
+     * Everything below is disk work — reading records, sizing folders, and
+     * sometimes scanning for orphans — and none of it changes unless a download
+     * finishes or something is deleted, both of which clear this. Without it the
+     * whole lot ran again every time the tab was opened.
+     */
+    @Volatile
+    private var cached: List<DownloadedSeries>? = null
+
+    fun invalidate() {
+        cached = null
+    }
+
     fun list(context: Context): List<DownloadedSeries> {
+        cached?.let { return it }
+        return build(context).also { cached = it }
+    }
+
+    private fun build(context: Context): List<DownloadedSeries> {
         val live = read(context).filter { Downloads.isComplete(context, it.chapterId) }
         val known = live.map { it.chapterId }.toMutableSet()
 
@@ -155,6 +176,7 @@ object DownloadIndex {
     /** Deletes every downloaded chapter of a series, pages included. */
     @Synchronized
     fun deleteSeries(context: Context, series: DownloadedSeries) {
+        invalidate()
         series.chapters.forEach { Downloads.delete(context, it.chapterId) }
         val gone = series.chapters.map { it.chapterId }.toSet()
         write(context, read(context).filterNot { it.chapterId in gone })

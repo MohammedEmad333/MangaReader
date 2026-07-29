@@ -98,9 +98,28 @@ object Downloads {
     // is worse than re-statting.
     private val completion = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
-    /** Drops the memo. For anything that moves or removes files in bulk. */
+    /**
+     * Sizes, remembered for the same reason.
+     *
+     * [sizeOf] walks every page file in a chapter folder, and the Downloads tab
+     * asks for one per downloaded chapter before it can draw a single row. A
+     * finished chapter's size never changes, so the walk only has to happen
+     * once.
+     */
+    private val sizes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** Drops everything remembered about one chapter's files. */
+    private fun forget(chapterId: String) {
+        completion.remove(chapterId)
+        sizes.remove(chapterId)
+        DownloadIndex.invalidate()
+    }
+
+    /** Drops the memos. For anything that moves or removes files in bulk. */
     fun invalidateCompletion() {
         completion.clear()
+        sizes.clear()
+        DownloadIndex.invalidate()
     }
 
     fun isComplete(context: Context, chapterId: String): Boolean =
@@ -111,7 +130,7 @@ object Downloads {
     fun markComplete(context: Context, chapterId: String, pageCount: Int) {
         val dir = dirFor(context, chapterId)
         if (!dir.exists()) return
-        completion.remove(chapterId)
+        forget(chapterId)
         runCatching { File(dir, MARKER).writeText(pageCount.toString()) }
         // Makes the tree self-describing. The folder name is for the user; this
         // is what lets DownloadPaths.rebuild recover the mapping by scanning,
@@ -132,7 +151,7 @@ object Downloads {
 
     fun delete(context: Context, chapterId: String) {
         val dir = dirFor(context, chapterId)
-        completion.remove(chapterId)
+        forget(chapterId)
         runCatching { dir.deleteRecursively() }
         pruneEmptyParents(context, dir)
         DownloadPaths.forget(context, chapterId)
@@ -193,9 +212,11 @@ object Downloads {
 
     /** On-disk size of one chapter, for the per-series totals in the Downloads tab. */
     fun sizeOf(context: Context, chapterId: String): Long =
-        runCatching {
-            dirFor(context, chapterId).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-        }.getOrDefault(0L)
+        sizes.getOrPut(chapterId) {
+            runCatching {
+                dirFor(context, chapterId).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+            }.getOrDefault(0L)
+        }
 
     fun sizeBytes(context: Context): Long =
         roots(context).sumOf { root ->
