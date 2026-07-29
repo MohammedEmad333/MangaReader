@@ -88,18 +88,44 @@ object SeriesIndex {
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
-    // Same memo as Library.list and Categories.assignments, keyed on the raw
-    // pref string so an external write can't leave a stale parse behind.
-    @Volatile
-    private var cacheRaw: String? = null
+    /**
+     * Serialises every read-modify-write on this store.
+     *
+     * [record], [recordAll] and [forget] all do `all()` → merge → [save], and
+     * three of them can be in flight at once: a library refresh flushes from
+     * `SOURCE_CONCURRENCY` coroutines while a series screen records its own
+     * chapter list from `Dispatchers.IO`. Without this, two of them read the same
+     * index, both merge into it, and the second `save` silently drops the first's
+     * work — up to `FLUSH_EVERY` series' counts and their `sweptAt` stamps in one
+     * go.
+     *
+     * **Readers deliberately do not take it.** [all] is called during
+     * composition, so putting it behind this lock would park a grid draw behind
+     * a whole-index serialisation. A reader can therefore see the index as it was
+     * a moment ago, which is the documented behaviour of a store whose entries are
+     * a lagging cache anyway — what it can no longer see is a *torn* index.
+     */
+    private val writeLock = Any()
+
+    /**
+     * The parsed index and the exact raw string it came from, as one value.
+     *
+     * One field rather than two, and the reason is a real if narrow bug: written
+     * separately, a reader could match the *new* raw string against the *old*
+     * parsed map and hand back stale counts for one draw. A single volatile
+     * reference changes both halves at once, so a reader sees the new pair or the
+     * old pair and never a mix. Same memo-on-the-raw-string trick as
+     * `Library.list` and `Categories.assignments`, which is what makes an
+     * external write unable to leave a stale parse behind.
+     */
+    private class Memo(val raw: String, val items: Map<String, SeriesCounts>)
 
     @Volatile
-    private var cache: Map<String, SeriesCounts>? = null
+    private var memo: Memo? = null
 
     fun all(context: Context): Map<String, SeriesCounts> {
         val raw = prefs(context).getString(KEY, null) ?: return emptyMap()
-        val hit = cache
-        if (hit != null && cacheRaw == raw) return hit
+        memo?.let { if (it.raw == raw) return it.items }
         return try {
             val root = JSONObject(raw)
             val out = HashMap<String, SeriesCounts>(root.length())
@@ -115,10 +141,7 @@ object SeriesIndex {
                     sweptAt = o.optLong("s")
                 )
             }
-            out.also {
-                cache = it
-                cacheRaw = raw
-            }
+            out.also { memo = Memo(raw, it) }
         } catch (e: Exception) {
             emptyMap()
         }
@@ -126,25 +149,33 @@ object SeriesIndex {
 
     fun of(context: Context, seriesId: String): SeriesCounts? = all(context)[seriesId]
 
+    /**
+     * Writes the whole index.
+     *
+     * Takes [writeLock] as well as being called from inside it — Kotlin's
+     * `synchronized` is reentrant, so this costs nothing and means a future caller
+     * that forgets the lock is still safe rather than silently racy.
+     */
     private fun save(context: Context, items: Map<String, SeriesCounts>) {
-        val root = JSONObject()
-        items.forEach { (id, c) ->
-            root.put(
-                id,
-                JSONObject()
-                    .put("t", c.total)
-                    .put("r", c.read)
-                    .put("l", c.latestChapterAt)
-                    .put("u", c.updatedAt)
-                    .put("s", c.sweptAt)
-            )
+        synchronized(writeLock) {
+            val root = JSONObject()
+            items.forEach { (id, c) ->
+                root.put(
+                    id,
+                    JSONObject()
+                        .put("t", c.total)
+                        .put("r", c.read)
+                        .put("l", c.latestChapterAt)
+                        .put("u", c.updatedAt)
+                        .put("s", c.sweptAt)
+                )
+            }
+            val text = root.toString()
+            prefs(context).edit().putString(KEY, text).apply()
+            // Seeded rather than cleared, like Library.save: the caller normally
+            // reads straight back and this saves re-parsing what was just written.
+            memo = Memo(text, items)
         }
-        val text = root.toString()
-        prefs(context).edit().putString(KEY, text).apply()
-        // Seeded rather than cleared, like Library.save: the caller normally
-        // reads straight back and this saves re-parsing what was just written.
-        cache = items
-        cacheRaw = text
     }
 
     /**
@@ -209,13 +240,22 @@ object SeriesIndex {
      */
     fun record(context: Context, sourceId: String, seriesId: String, chapters: List<Chapter>) {
         if (seriesId.isBlank()) return
-        val stored = all(context)[seriesId]
+        // Counted before the lock is taken. countsFor walks every chapter and asks
+        // ReadState about each one, so doing it inside would hold the monitor
+        // through a pile of pref reads and stall a refresh's flushes behind one
+        // series screen.
         val candidate = countsFor(context, sourceId, chapters) ?: return
-        if (!differs(stored, candidate)) return
-        // The sweep stamp is carried over, not stamped and not dropped: opening
-        // a series is not a sweep, and writing 0 here would hand a resumed
-        // refresh a series it had already paid for.
-        save(context, all(context) + (seriesId to candidate.copy(sweptAt = stored?.sweptAt ?: 0L)))
+        synchronized(writeLock) {
+            val stored = all(context)[seriesId]
+            if (!differs(stored, candidate)) return
+            // The sweep stamp is carried over, not stamped and not dropped: opening
+            // a series is not a sweep, and writing 0 here would hand a resumed
+            // refresh a series it had already paid for.
+            save(
+                context,
+                all(context) + (seriesId to candidate.copy(sweptAt = stored?.sweptAt ?: 0L))
+            )
+        }
     }
 
     /**
@@ -237,19 +277,21 @@ object SeriesIndex {
      */
     fun recordAll(context: Context, updates: Map<String, SeriesCounts>) {
         if (updates.isEmpty()) return
-        val current = all(context)
-        val changed = HashMap<String, SeriesCounts>(updates.size)
-        updates.forEach { (id, candidate) ->
-            if (id.isBlank()) return@forEach
-            val stored = current[id]
-            if (differs(stored, candidate)) {
-                changed[id] = candidate
-            } else if (stored != null && candidate.sweptAt > stored.sweptAt) {
-                changed[id] = stored.copy(sweptAt = candidate.sweptAt)
+        synchronized(writeLock) {
+            val current = all(context)
+            val changed = HashMap<String, SeriesCounts>(updates.size)
+            updates.forEach { (id, candidate) ->
+                if (id.isBlank()) return@forEach
+                val stored = current[id]
+                if (differs(stored, candidate)) {
+                    changed[id] = candidate
+                } else if (stored != null && candidate.sweptAt > stored.sweptAt) {
+                    changed[id] = stored.copy(sweptAt = candidate.sweptAt)
+                }
             }
+            if (changed.isEmpty()) return
+            save(context, current + changed)
         }
-        if (changed.isEmpty()) return
-        save(context, current + changed)
     }
 
     /**
@@ -277,15 +319,18 @@ object SeriesIndex {
      */
     fun forget(context: Context, seriesIds: Set<String>) {
         if (seriesIds.isEmpty()) return
-        val current = all(context)
-        val kept = current.filterKeys { it !in seriesIds }
-        if (kept.size != current.size) save(context, kept)
+        synchronized(writeLock) {
+            val current = all(context)
+            val kept = current.filterKeys { it !in seriesIds }
+            if (kept.size != current.size) save(context, kept)
+        }
     }
 
     /** For the "clear cached data" action, which drops every derived store. */
     fun clearAll(context: Context) {
-        prefs(context).edit().remove(KEY).apply()
-        cache = null
-        cacheRaw = null
+        synchronized(writeLock) {
+            prefs(context).edit().remove(KEY).apply()
+            memo = null
+        }
     }
 }

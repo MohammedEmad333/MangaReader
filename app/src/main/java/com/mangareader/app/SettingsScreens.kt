@@ -306,6 +306,17 @@ private fun LibrarySettings() {
                         "every series again, which is what you want if the counts " +
                         "are old rather than incomplete."
                 )
+            } else if (LibraryRefresh.finishedAt > 0L) {
+                // The summary is process-lifetime snapshot state with nothing
+                // persisting it, so without a dismiss it sits on this row until
+                // something kills the app and the plain "fetch chapter lists"
+                // copy never comes back. Clearing it is also what removes the
+                // first-error note below.
+                Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    TextButton(onClick = { LibraryRefresh.clearSummary() }) {
+                        Text("Dismiss")
+                    }
+                }
             }
             LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
             PrefNote(

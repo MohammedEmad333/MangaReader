@@ -574,6 +574,12 @@ class LibraryRefreshService : Service() {
          * what keeps the foreground-service start legal on Android 12+.
          */
         fun start(context: Context) {
+            // Cleared here rather than left to begin(), which doesn't run until the
+            // worker has read the library and the swept set — a several-thousand
+            // entry parse each. Until it does, `running` is still false and the
+            // Settings row is showing the *last* sweep's summary beside a refresh
+            // that has already started.
+            LibraryRefresh.clearSummary()
             val intent = Intent(context, LibraryRefreshService::class.java)
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
