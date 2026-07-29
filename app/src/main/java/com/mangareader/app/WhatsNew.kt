@@ -43,6 +43,19 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 64,
+            name = "0.64",
+            header = "Vertical slider fixes, and readable page numbers",
+            body = "The vertical slider ran backwards - dragging down walked " +
+                "towards the start of the chapter. It was rotated the wrong way, " +
+                "which looks identical sitting still. It is also half the screen " +
+                "tall now rather than a fixed stub.\n\n" +
+                "Page numbers were drawn white whatever the reader background " +
+                "was, so on a white page they were invisible. The colour now " +
+                "follows the background, which also covers the Theme option and " +
+                "the message shown when a page fails to load."
+        ),
+        ReleaseNote(
             code = 63,
             name = "0.63",
             header = "The page slider can stand up",
