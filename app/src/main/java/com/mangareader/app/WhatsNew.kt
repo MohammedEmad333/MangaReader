@@ -43,6 +43,25 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 54,
+            name = "0.54",
+            header = "Library filter, sort, display and group options",
+            body = "The library bar's second icon now opens a sheet with four " +
+                "tabs.\n\n" +
+                "Filter: downloaded, local source, and read - each tri-state, so " +
+                "tap once to require, twice to exclude, three times to clear. " +
+                "Sort: alphabetically, date added, last read, or random, and " +
+                "tapping the active one reverses it. Display: compact, " +
+                "comfortable, cover-only or list, a fixed or automatic column " +
+                "count, download and local badges, and whether the tabs show at " +
+                "all or carry a count. Group: by category, or not at all.\n\n" +
+                "Filters that need a chapter list per series - unread, started, " +
+                "completed, chapter counts - aren't here. The app only keeps a " +
+                "chapter list for a series once it has been opened, so answering " +
+                "those across the whole library would mean thousands of reads " +
+                "every time the grid draws."
+        ),
+        ReleaseNote(
             code = 53,
             name = "0.53",
             header = "Change categories for a whole selection",

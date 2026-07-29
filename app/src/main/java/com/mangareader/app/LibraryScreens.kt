@@ -5,20 +5,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +34,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -49,6 +51,23 @@ import kotlinx.coroutines.launch
  * so a null [activeCategory] is only the pre-resolution state; the first frame
  * resolves it to a real id.
  */
+/**
+ * The library grid.
+ *
+ * [activeCategory] is hoisted into `YomuApp` on purpose. It used to be a plain
+ * `remember` in here, which meant opening a series — the routing chain replaces
+ * this whole branch — destroyed it, and backing out always landed on the first
+ * category rather than the one that was being looked at.
+ *
+ * There is no "All" tab. The tabs are exactly the groups, so a null
+ * [activeCategory] is only the pre-resolution state; the first frame resolves it
+ * to a real key.
+ *
+ * Everything about layout, order, grouping and filtering comes from
+ * [LibraryPrefs], written by the options sheet. This composable reads them once
+ * per tick and does no work the current settings don't ask for — the download
+ * index in particular is only touched when a badge or filter needs it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LibraryTab(
@@ -62,45 +81,128 @@ internal fun LibraryTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // A bulk category edit changes what every tab holds and what is dimmed, but
-    // not the library itself, so there is nothing for YomuApp's libraryTick to
-    // say about it. This is added to that tick rather than replacing it, so
-    // either can invalidate the reads below — the same shape as downloadTick.
+    // A view-setting change alters what every tab holds without touching the
+    // library itself, so there is nothing for YomuApp's libraryTick to say about
+    // it. This is added to that tick rather than replacing it, so either can
+    // invalidate the reads below — the same shape as downloadTick.
     var localTick by remember { mutableIntStateOf(0) }
     val tick = libraryTick + localTick
 
-    // Re-read on every tick so adds/removes show up immediately.
     val entries = remember(tick) { Library.list(context) }
     val categories = remember(tick) { Categories.list(context) }
 
-    var coverSize by remember { mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium") }
-    val coverMinDp = when (coverSize) {
-        "small" -> 88.dp
-        "large" -> 140.dp
-        else -> 110.dp
-    }
+    val sort = remember(tick) { LibraryPrefs.sort(context) }
+    val ascending = remember(tick) { LibraryPrefs.ascending(context) }
+    val randomSeed = remember(tick) { LibraryPrefs.randomSeed(context) }
+    val display = remember(tick) { LibraryPrefs.display(context) }
+    val perRow = remember(tick) { LibraryPrefs.itemsPerRow(context) }
+    val grouping = remember(tick) { LibraryPrefs.group(context) }
+    val badgeDl = remember(tick) { LibraryPrefs.badgeDownloaded(context) }
+    val badgeLocal = remember(tick) { LibraryPrefs.badgeLocal(context) }
+    val showTabs = remember(tick) { LibraryPrefs.showTabs(context) }
+    val showCount = remember(tick) { LibraryPrefs.showCount(context) }
+    val fDownloaded = remember(tick) { LibraryPrefs.filterDownloaded(context) }
+    val fLocal = remember(tick) { LibraryPrefs.filterLocal(context) }
+    val fRead = remember(tick) { LibraryPrefs.filterRead(context) }
 
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var menuOpen by remember { mutableStateOf(false) }
+    var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var assignOpen by remember { mutableStateOf(false) }
     val selecting = selected.isNotEmpty()
 
     // "Read" is a normal user category, so this is a name match rather than a
-    // new field. Resolved once per tick; the members are one parse, the same
-    // shape as the category filter below — asking "is this series read" per
-    // entry would be a full JSON parse per entry, which is the mistake §5
-    // records for categoriesFor().
+    // new field. One parse for the members; asking it per entry, through
+    // categoriesFor(), is a full parse per series and is the mistake §5 records.
     val readIds = remember(tick, categories) {
         val readCat = categories.firstOrNull { it.name.equals("Read", ignoreCase = true) }
         if (readCat == null) emptySet<String>() else Categories.seriesIn(context, readCat.id)
     }
 
-    // Which category each tab shows. Falls back to the first tab when the
-    // remembered one has been deleted since it was last looked at.
-    val tabIndex = categories.indexOfFirst { it.id == activeCategory }.let { if (it < 0) 0 else it }
-    val pagerState = rememberPagerState(initialPage = tabIndex) { categories.size }
+    // DownloadIndex.list() walks the download tree when its cache is cold, so it
+    // is only asked for when something on screen actually depends on it.
+    val downloadedIds = remember(tick, badgeDl, fDownloaded) {
+        if (!badgeDl && fDownloaded == FilterState.OFF) emptySet()
+        else DownloadIndex.list(context).map { it.seriesId }.toSet()
+    }
+
+    // Most recent read per series, from History. History is capped at 40
+    // chapters, so this is a partial answer by construction: anything older
+    // simply has no timestamp and sorts to the end. That is worth having and
+    // isn't worth a second store.
+    val lastReadAt = remember(tick, sort) {
+        if (sort != LibrarySort.LAST_READ) emptyMap()
+        else History.list(context)
+            .filter { it.seriesId.isNotBlank() }
+            .groupBy { it.seriesId }
+            .mapValues { (_, v) -> v.maxOf { it.updatedAt } }
+    }
+
+    /** Filter, then order. Applied per group so each tab sorts within itself. */
+    fun arrange(list: List<LibraryEntry>): List<LibraryEntry> {
+        val needle = query.trim()
+        val filtered = list.filter { e ->
+            val isLocal = !e.sourceId.startsWith("tachi:")
+            val checks = listOf(
+                fDownloaded to (e.seriesId in downloadedIds),
+                fLocal to isLocal,
+                fRead to (e.seriesId in readIds)
+            )
+            checks.all { (state, holds) ->
+                when (state) {
+                    FilterState.OFF -> true
+                    FilterState.INCLUDE -> holds
+                    FilterState.EXCLUDE -> !holds
+                }
+            } && (needle.isBlank() || e.title.contains(needle, ignoreCase = true))
+        }
+        val ordered = when (sort) {
+            LibrarySort.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase() }
+            LibrarySort.DATE_ADDED -> filtered.sortedBy { it.addedAt }
+            LibrarySort.LAST_READ -> filtered.sortedBy { lastReadAt[it.seriesId] ?: Long.MIN_VALUE }
+            // Seeded so the order holds across recompositions and restarts.
+            // hashCode of the id mixed with the seed is enough here and costs
+            // nothing; a real shuffle would need a list copy per group.
+            LibrarySort.RANDOM -> filtered.sortedBy { (it.seriesId.hashCode() xor randomSeed) }
+        }
+        return if (ascending || sort == LibrarySort.RANDOM) ordered else ordered.reversed()
+    }
+
+    // The tabs, and what each holds. Grouping by source is deliberately absent:
+    // a LibraryEntry stores the source id it came from and never the source's
+    // name, so those tabs would read as raw extension ids.
+    data class Group(val key: String, val label: String, val items: List<LibraryEntry>)
+
+    val groups: List<Group> = remember(
+        entries, categories, tick, query, grouping, sort, ascending,
+        fDownloaded, fLocal, fRead, randomSeed
+    ) {
+        when (grouping) {
+            LibraryGroup.UNGROUPED -> listOf(Group("all", "All", arrange(entries)))
+            else -> {
+                val assigned by lazy { Categories.assignedSeries(context) }
+                categories.map { cat ->
+                    val base = if (cat.id == Categories.DEFAULT_ID) {
+                        // Default isn't a category things are filed under — it's
+                        // where a series sits when it's filed under nothing,
+                        // which is what Tachiyomi means by it too. Series put
+                        // there by hand count as well, since the category editor
+                        // writes it explicitly rather than saving an empty set.
+                        val explicit = Categories.seriesIn(context, cat.id)
+                        entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
+                    } else {
+                        val ids = Categories.seriesIn(context, cat.id)
+                        entries.filter { it.seriesId in ids }
+                    }
+                    Group(cat.id, cat.name, arrange(base))
+                }
+            }
+        }
+    }
+
+    val tabIndex = groups.indexOfFirst { it.key == activeCategory }.let { if (it < 0) 0 else it }
+    val pagerState = rememberPagerState(initialPage = tabIndex) { groups.size }
 
     // The pager owns the position. This is the only thing that reports it
     // outward, and it reads settledPage rather than currentPage on purpose.
@@ -108,55 +210,21 @@ internal fun LibraryTab(
     // The two-way sync this replaces deadlocked itself: animateScrollToPage(3)
     // from page 0 animates *through* 1 and 2, currentPage updates at each one,
     // and reporting those intermediate values back out moved activeCategory,
-    // which tripped a second effect into issuing its own animateScrollToPage
-    // and cancelling the first mid-flight. Every distant tab tap landed one
-    // short, on the side it came from.
+    // which tripped a second effect into issuing its own animateScrollToPage and
+    // cancelling the first mid-flight. Every distant tab tap landed one short.
     //
-    // settledPage only moves when the scroll stops, so a five-tab jump reports
-    // once, at the end. Nothing drives the pager from activeCategory any more —
-    // restoring the tab after a series is opened and backed out of is what
-    // initialPage above is for, and that is read once, before any of this runs.
-    LaunchedEffect(pagerState.settledPage, categories) {
-        categories.getOrNull(pagerState.settledPage)?.let {
-            if (it.id != activeCategory) onCategoryChange(it.id)
+    // settledPage only moves when the scroll stops, so a jump reports once, at
+    // the end. Nothing drives the pager from activeCategory any more — restoring
+    // the tab after a series is opened and backed out of is what initialPage is
+    // for, and that is read once, before any of this runs.
+    LaunchedEffect(pagerState.settledPage, groups) {
+        groups.getOrNull(pagerState.settledPage)?.let {
+            if (it.key != activeCategory) onCategoryChange(it.key)
         }
     }
 
-    // Leaving selection is what back should do first, ahead of leaving the tab.
     BackHandler(enabled = selecting) { selected = emptySet() }
     BackHandler(enabled = !selecting && searchOpen) { searchOpen = false; query = "" }
-
-    // Every tab's contents, built once per tick rather than per page.
-    //
-    // A local @Composable helper would have been the obvious spelling and is
-    // the wrong one: the pager composes neighbouring pages, so it would run the
-    // filter for pages nobody is looking at on every recomposition. One pass
-    // here, a map lookup there.
-    //
-    // Each seriesIn() call reads the cached assignment object — the parse is
-    // paid once. Asking it the other way round, categoriesFor() per entry, is a
-    // full parse per series and is what locked the app up at 3567 of them.
-    val perCategory: Map<String, List<LibraryEntry>> =
-        remember(entries, categories, tick, query) {
-            val needle = query.trim()
-            val assigned by lazy { Categories.assignedSeries(context) }
-            categories.associate { cat ->
-                val base = if (cat.id == Categories.DEFAULT_ID) {
-                    // Default isn't a category things are filed under — it's
-                    // where a series sits when it's filed under nothing, which
-                    // is what Tachiyomi means by it too. Series put there by
-                    // hand count as well, since the category editor writes it
-                    // explicitly rather than saving an empty set.
-                    val explicit = Categories.seriesIn(context, cat.id)
-                    entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
-                } else {
-                    val ids = Categories.seriesIn(context, cat.id)
-                    entries.filter { it.seriesId in ids }
-                }
-                cat.id to if (needle.isBlank()) base
-                else base.filter { it.title.contains(needle, ignoreCase = true) }
-            }
-        }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (selecting) {
@@ -170,9 +238,7 @@ internal fun LibraryTab(
                     }
                 },
                 actions = {
-                    val visible = categories.getOrNull(pagerState.currentPage)
-                        ?.let { perCategory[it.id] }
-                        .orEmpty()
+                    val visible = groups.getOrNull(pagerState.currentPage)?.items.orEmpty()
                     IconButton(onClick = { selected = visible.map { it.seriesId }.toSet() }) {
                         Icon(Icons.Default.Check, contentDescription = "Select all")
                     }
@@ -220,34 +286,16 @@ internal fun LibraryTab(
                             contentDescription = if (searchOpen) "Close search" else "Search"
                         )
                     }
-                    Box {
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            Text(
-                                "Cover size",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                            listOf("small" to "Small", "medium" to "Medium", "large" to "Large")
-                                .forEach { (key, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        trailingIcon = {
-                                            if (coverSize == key) {
-                                                Icon(Icons.Default.Check, contentDescription = null)
-                                            }
-                                        },
-                                        onClick = {
-                                            coverSize = key
-                                            prefs(context).edit().putString("cover_size", key).apply()
-                                            menuOpen = false
-                                        }
-                                    )
-                                }
-                        }
+                    IconButton(onClick = { optionsOpen = true }) {
+                        // Menu, not a funnel: material-icons-core has no
+                        // FilterList and the extended pack isn't a dependency.
+                        Icon(
+                            Icons.Default.Menu,
+                            contentDescription = "Filter, sort and display options",
+                            tint = if (LibraryPrefs.anyFilterActive(context))
+                                MaterialTheme.colorScheme.primary
+                            else LocalContentColor.current
+                        )
                     }
                 }
             )
@@ -255,51 +303,46 @@ internal fun LibraryTab(
 
         ErrorBanner(error)
 
-        if (categories.isEmpty()) {
-            // Nothing to tab between. One flat grid, no pager.
-            LibraryGrid(
-                shown = entries.filter {
-                    query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)
-                },
-                allEmpty = entries.isEmpty(),
-                coverMinDp = coverMinDp,
-                readIds = readIds,
-                selected = selected,
-                selecting = selecting,
-                onOpen = onOpen,
-                onToggle = { id ->
-                    selected = if (id in selected) selected - id else selected + id
-                },
-                modifier = Modifier.weight(1f)
-            )
-        } else {
+        if (groups.size > 1 && showTabs) {
             ScrollableTabRow(
-                selectedTabIndex = pagerState.currentPage.coerceIn(0, categories.size - 1),
+                selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.size - 1),
                 edgePadding = 8.dp
             ) {
-                categories.forEachIndexed { index, cat ->
+                groups.forEachIndexed { index, g ->
                     Tab(
                         selected = index == pagerState.currentPage,
                         onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                        text = { Text(cat.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        text = {
+                            Text(
+                                if (showCount) "${g.label} (${g.items.size})" else g.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                 }
             }
+        }
 
+        if (groups.isEmpty()) {
+            LibraryEmpty(allEmpty = true, modifier = Modifier.weight(1f))
+        } else {
             HorizontalPager(
                 state = pagerState,
                 // A swipe that also drags entries around is not a swipe. Held
                 // off during selection so a mis-swipe can't change tab out from
                 // under a half-made selection.
-                userScrollEnabled = !selecting,
+                userScrollEnabled = !selecting && groups.size > 1,
                 modifier = Modifier.weight(1f)
             ) { page ->
-                val cat = categories[page]
                 LibraryGrid(
-                    shown = perCategory[cat.id].orEmpty(),
+                    shown = groups[page].items,
                     allEmpty = entries.isEmpty(),
-                    coverMinDp = coverMinDp,
+                    display = display,
+                    perRow = perRow,
                     readIds = readIds,
+                    downloadedIds = if (badgeDl) downloadedIds else emptySet(),
+                    badgeLocal = badgeLocal,
                     selected = selected,
                     selecting = selecting,
                     onOpen = onOpen,
@@ -310,6 +353,13 @@ internal fun LibraryTab(
                 )
             }
         }
+    }
+
+    if (optionsOpen) {
+        LibraryOptionsSheet(
+            onDismiss = { optionsOpen = false },
+            onChanged = { localTick++ }
+        )
     }
 
     if (assignOpen) {
@@ -325,6 +375,237 @@ internal fun LibraryTab(
     }
 }
 
+@Composable
+private fun LibraryEmpty(allEmpty: Boolean, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            if (allEmpty) "Your library is empty." else "Nothing here.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (allEmpty) "Open a series from Browse and tap \u201cAdd to library\u201d."
+            else "Nothing matches the current filters.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+/**
+ * One group's entries, in whichever display mode is set.
+ *
+ * Split out of [LibraryTab] because the pager instantiates it per page, and
+ * because the selection rules — tap opens, or toggles while selecting; long
+ * press always starts a selection — are the same on every page and worth having
+ * in one place.
+ */
+@Composable
+private fun LibraryGrid(
+    shown: List<LibraryEntry>,
+    allEmpty: Boolean,
+    display: LibraryDisplay,
+    perRow: Int,
+    readIds: Set<String>,
+    downloadedIds: Set<String>,
+    badgeLocal: Boolean,
+    selected: Set<String>,
+    selecting: Boolean,
+    onOpen: (LibraryEntry) -> Unit,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (shown.isEmpty()) {
+        LibraryEmpty(allEmpty = allEmpty, modifier = modifier)
+        return
+    }
+
+    if (display == LibraryDisplay.LIST) {
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp)
+        ) {
+            items(shown, key = { it.seriesId }) { entry ->
+                val isSelected = entry.seriesId in selected
+                val dim = entry.seriesId in readIds && !isSelected
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isSelected)
+                                Modifier.background(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                )
+                            else Modifier
+                        )
+                        .pointerInput(entry.seriesId, selecting) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (selecting) onToggle(entry.seriesId) else onOpen(entry)
+                                },
+                                onLongPress = { onToggle(entry.seriesId) }
+                            )
+                        }
+                        .padding(vertical = 6.dp)
+                ) {
+                    CoverImage(
+                        cover = entry.cover.ifBlank { null },
+                        title = entry.title,
+                        modifier = Modifier
+                            .width(44.dp)
+                            .aspectRatio(0.7f)
+                            .alpha(if (dim) 0.4f else 1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        entry.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .alpha(if (dim) 0.4f else 1f)
+                    )
+                    EntryBadges(
+                        downloaded = entry.seriesId in downloadedIds,
+                        local = badgeLocal && !entry.sourceId.startsWith("tachi:")
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        // A fixed count when the user has set one, otherwise size-driven.
+        columns = if (perRow > 0) GridCells.Fixed(perRow)
+        else GridCells.Adaptive(minSize = 110.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(shown, key = { it.seriesId }) { entry ->
+            val isSelected = entry.seriesId in selected
+            // Read entries are dimmed everywhere, not only inside the Read tab:
+            // the same series showing bright in Manhwa and dim in Read would be
+            // a state that depends on where you're standing.
+            val dim = entry.seriesId in readIds && !isSelected
+
+            Column(
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .pointerInput(entry.seriesId, selecting) {
+                        detectTapGestures(
+                            onTap = {
+                                if (selecting) onToggle(entry.seriesId) else onOpen(entry)
+                            },
+                            onLongPress = { onToggle(entry.seriesId) }
+                        )
+                    }
+            ) {
+                Box {
+                    CoverImage(
+                        cover = entry.cover.ifBlank { null },
+                        title = entry.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(0.7f)
+                            .alpha(if (dim) 0.4f else 1f)
+                    )
+
+                    Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+                        EntryBadges(
+                            downloaded = entry.seriesId in downloadedIds,
+                            local = badgeLocal && !entry.sourceId.startsWith("tachi:")
+                        )
+                    }
+
+                    if (display == LibraryDisplay.COMPACT_GRID) {
+                        // Title over the cover, on a scrim. A plain Text here is
+                        // unreadable on a pale cover, which is most of them.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .padding(horizontal = 4.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                entry.title,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.alpha(if (dim) 0.6f else 1f)
+                            )
+                        }
+                    }
+
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                        )
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(2.dp)
+                        )
+                    }
+                }
+
+                if (display == LibraryDisplay.COMFORTABLE_GRID) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        entry.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alpha(if (dim) 0.4f else 1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The corner markers. Nothing is drawn when both are off, so there is no box. */
+@Composable
+private fun EntryBadges(downloaded: Boolean, local: Boolean) {
+    if (!downloaded && !local) return
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        if (downloaded) MiniBadge("DL", MaterialTheme.colorScheme.tertiary)
+        if (local) MiniBadge("Local", MaterialTheme.colorScheme.secondary)
+    }
+}
+
+@Composable
+private fun MiniBadge(text: String, colour: Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onPrimary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(colour)
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    )
+}
 /**
  * Category editor for a selection of any size.
  *
@@ -436,115 +717,6 @@ internal fun BulkCategoryDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
-}
-
-/**
- * One category's grid.
- *
- * Split out of [LibraryTab] because the pager instantiates it per page, and
- * because the selection rules — tap opens, or toggles while selecting; long
- * press always starts a selection — are the same on every page and worth
- * having in one place.
- */
-@Composable
-private fun LibraryGrid(
-    shown: List<LibraryEntry>,
-    allEmpty: Boolean,
-    coverMinDp: Dp,
-    readIds: Set<String>,
-    selected: Set<String>,
-    selecting: Boolean,
-    onOpen: (LibraryEntry) -> Unit,
-    onToggle: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    if (shown.isEmpty()) {
-        Column(
-            modifier = modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                if (allEmpty) "Your library is empty." else "Nothing in this category yet.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Open a series from Browse and tap \u201cAdd to library\u201d.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        return
-    }
-
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = coverMinDp),
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(shown, key = { it.seriesId }) { entry ->
-            val isSelected = entry.seriesId in selected
-            // Read entries are dimmed everywhere, not only inside the Read tab:
-            // the same series showing bright in Manhwa and dim in Read would be
-            // a state that depends on where you're standing.
-            val dim = entry.seriesId in readIds && !isSelected
-
-            Column(
-                modifier = Modifier
-                    .padding(vertical = 4.dp)
-                    .pointerInput(entry.seriesId, selecting) {
-                        detectTapGestures(
-                            onTap = {
-                                if (selecting) onToggle(entry.seriesId) else onOpen(entry)
-                            },
-                            onLongPress = { onToggle(entry.seriesId) }
-                        )
-                    }
-            ) {
-                Box {
-                    CoverImage(
-                        cover = entry.cover.ifBlank { null },
-                        title = entry.title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .alpha(if (dim) 0.4f else 1f)
-                    )
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                        )
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Selected",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .padding(2.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    entry.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(if (dim) 0.4f else 1f)
-                )
-            }
-        }
-    }
 }
 
 // ---------- browse ----------
