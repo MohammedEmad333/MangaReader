@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -174,6 +175,23 @@ fun YomuApp() {
     val scope = rememberCoroutineScope()
 
     var currentTab by remember { mutableIntStateOf(0) }
+
+    // Which library category is showing. Hoisted out of LibraryTab because the
+    // routing chain below replaces that whole branch when a series opens, which
+    // destroyed the state and dumped the user back on the first tab every time
+    // they backed out. rememberSaveable so it also survives a config change.
+    var libraryCategory by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Read once per process. Empty on a fresh install and on a launch that
+    // isn't an update, so this is normally a single getInt.
+    val releaseNotes = remember { WhatsNew.pending(context) }
+    var whatsNewOpen by remember { mutableStateOf(releaseNotes.isNotEmpty()) }
+    LaunchedEffect(releaseNotes) {
+        // An update whose versionCode has no changelog entry still has to move
+        // the marker, or the next update replays this one as well.
+        if (releaseNotes.isEmpty()) WhatsNew.markSeen(context)
+    }
+
     var configs by remember { mutableStateOf(SourceManager.list(context)) }
     var extensionSources by remember { mutableStateOf<List<Source>>(emptyList()) }
     var history by remember { mutableStateOf(History.list(context)) }
@@ -1081,9 +1099,15 @@ fun YomuApp() {
                     0 -> LibraryTab(
                         libraryTick = libraryTick,
                         error = errorMessage,
+                        activeCategory = libraryCategory,
+                        onCategoryChange = { libraryCategory = it },
                         onOpen = { openFromLibrary(it) },
-                        onRemove = {
-                            Library.remove(context, it.seriesId)
+                        onRemoveMany = { ids ->
+                            // removeAll, not remove-in-a-loop: each remove()
+                            // rewrites the whole library JSON, so a hundred
+                            // selected entries would be a hundred growing
+                            // serialisations. Same reason mergeAll exists.
+                            Library.removeAll(context, ids)
                             libraryTick++
                         }
                     )
@@ -1169,6 +1193,16 @@ fun YomuApp() {
                 openSource(filterSource, "", BrowseMode.FILTER)
             },
             onDismiss = { filtersOpen = false }
+        )
+    }
+
+    if (whatsNewOpen) {
+        WhatsNewDialog(
+            notes = releaseNotes,
+            onDismiss = {
+                whatsNewOpen = false
+                WhatsNew.markSeen(context)
+            }
         )
     }
 

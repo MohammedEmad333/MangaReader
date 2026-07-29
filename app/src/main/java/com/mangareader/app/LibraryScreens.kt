@@ -1,204 +1,421 @@
 package com.mangareader.app
 
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import coil.compose.AsyncImage
-import dalvik.system.PathClassLoader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
-// ---------- prefs: the same store every other object in this package uses ----------
+// ---------- library ----------
 
+/**
+ * The library grid.
+ *
+ * [activeCategory] is hoisted into `YomuApp` on purpose. It used to be a plain
+ * `remember` in here, which meant opening a series — the routing chain replaces
+ * this whole branch — destroyed it, and backing out always landed on the first
+ * category rather than the one that was being looked at.
+ *
+ * There is no longer an "All" tab. The tabs are exactly the user's categories,
+ * so a null [activeCategory] is only the pre-resolution state; the first frame
+ * resolves it to a real id.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LibraryTab(
     libraryTick: Int,
     error: String?,
+    activeCategory: String?,
+    onCategoryChange: (String?) -> Unit,
     onOpen: (LibraryEntry) -> Unit,
-    onRemove: (LibraryEntry) -> Unit
+    onRemoveMany: (Set<String>) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Re-read on every tick so adds/removes show up immediately.
     val entries = remember(libraryTick) { Library.list(context) }
     val categories = remember(libraryTick) { Categories.list(context) }
-    var activeCategory by remember { mutableStateOf<String?>(null) }
 
-    val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
+    var coverSize by remember { mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium") }
+    val coverMinDp = when (coverSize) {
         "small" -> 88.dp
         "large" -> 140.dp
         else -> 110.dp
     }
 
-    val shown = remember(entries, activeCategory, libraryTick) {
-        val cat = activeCategory
-        if (cat == null) entries
-        else if (cat == Categories.DEFAULT_ID) {
-            // Default isn't a category things are filed under — it's where a
-            // series sits when it's filed under nothing, which is what
-            // Tachiyomi means by it too. Series put there by hand count as
-            // well, since the category editor writes it explicitly rather than
-            // saving an empty set.
-            val assigned = Categories.assignedSeries(context)
-            val explicit = Categories.seriesIn(context, cat)
-            entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
-        } else {
-            // One lookup of the category's members, then a set test per entry.
-            // The obvious spelling — categoriesFor(entry) for each entry — is a
-            // full JSON parse per series and locks the app up on a large library.
-            val ids = Categories.seriesIn(context, cat)
-            entries.filter { it.seriesId in ids }
-        }
+    var searchOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var menuOpen by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var assignFor by remember { mutableStateOf<String?>(null) }
+    val selecting = selected.isNotEmpty()
+
+    // "Read" is a normal user category, so this is a name match rather than a
+    // new field. Resolved once per tick; the members are one parse, the same
+    // shape as the category filter below — asking "is this series read" per
+    // entry would be a full JSON parse per entry, which is the mistake §5
+    // records for categoriesFor().
+    val readIds = remember(libraryTick, categories) {
+        val readCat = categories.firstOrNull { it.name.equals("Read", ignoreCase = true) }
+        if (readCat == null) emptySet<String>() else Categories.seriesIn(context, readCat.id)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Library") })
-        ErrorBanner(error)
+    // Which category each tab shows. Falls back to the first tab when the
+    // remembered one has been deleted since it was last looked at.
+    val tabIndex = categories.indexOfFirst { it.id == activeCategory }.let { if (it < 0) 0 else it }
+    val pagerState = rememberPagerState(initialPage = tabIndex) { categories.size }
 
-        if (categories.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = activeCategory == null,
-                    onClick = { activeCategory = null },
-                    label = { Text("All") }
-                )
-                categories.forEach { cat ->
-                    FilterChip(
-                        selected = activeCategory == cat.id,
-                        onClick = { activeCategory = cat.id },
-                        label = { Text(cat.name) }
-                    )
+    // Two-way sync. The pager is the source of truth while a swipe is in
+    // flight, so this only pushes the settled page outward; tapping a tab
+    // drives the pager in the other direction through the LaunchedEffect below.
+    LaunchedEffect(pagerState.currentPage, categories) {
+        categories.getOrNull(pagerState.currentPage)?.let {
+            if (it.id != activeCategory) onCategoryChange(it.id)
+        }
+    }
+    LaunchedEffect(activeCategory, categories) {
+        val target = categories.indexOfFirst { it.id == activeCategory }
+        if (target >= 0 && target != pagerState.currentPage) pagerState.animateScrollToPage(target)
+    }
+
+    // Leaving selection is what back should do first, ahead of leaving the tab.
+    BackHandler(enabled = selecting) { selected = emptySet() }
+    BackHandler(enabled = !selecting && searchOpen) { searchOpen = false; query = "" }
+
+    // Every tab's contents, built once per tick rather than per page.
+    //
+    // A local @Composable helper would have been the obvious spelling and is
+    // the wrong one: the pager composes neighbouring pages, so it would run the
+    // filter for pages nobody is looking at on every recomposition. One pass
+    // here, a map lookup there.
+    //
+    // Each seriesIn() call reads the cached assignment object — the parse is
+    // paid once. Asking it the other way round, categoriesFor() per entry, is a
+    // full parse per series and is what locked the app up at 3567 of them.
+    val perCategory: Map<String, List<LibraryEntry>> =
+        remember(entries, categories, libraryTick, query) {
+            val needle = query.trim()
+            val assigned by lazy { Categories.assignedSeries(context) }
+            categories.associate { cat ->
+                val base = if (cat.id == Categories.DEFAULT_ID) {
+                    // Default isn't a category things are filed under — it's
+                    // where a series sits when it's filed under nothing, which
+                    // is what Tachiyomi means by it too. Series put there by
+                    // hand count as well, since the category editor writes it
+                    // explicitly rather than saving an empty set.
+                    val explicit = Categories.seriesIn(context, cat.id)
+                    entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
+                } else {
+                    val ids = Categories.seriesIn(context, cat.id)
+                    entries.filter { it.seriesId in ids }
                 }
+                cat.id to if (needle.isBlank()) base
+                else base.filter { it.title.contains(needle, ignoreCase = true) }
             }
         }
 
-        if (shown.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    if (entries.isEmpty()) "Your library is empty."
-                    else "Nothing in this category yet.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Open a series from Browse and tap \u201cAdd to library\u201d.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (selecting) {
+            // Contextual bar. Replaces the normal one rather than sitting under
+            // it, so the grid doesn't jump by a bar's height on every long press.
+            TopAppBar(
+                title = { Text("${selected.size} selected") },
+                navigationIcon = {
+                    IconButton(onClick = { selected = emptySet() }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                    }
+                },
+                actions = {
+                    val visible = categories.getOrNull(pagerState.currentPage)
+                        ?.let { perCategory[it.id] }
+                        .orEmpty()
+                    IconButton(onClick = { selected = visible.map { it.seriesId }.toSet() }) {
+                        Icon(Icons.Default.Check, contentDescription = "Select all")
+                    }
+                    if (selected.size == 1) {
+                        IconButton(onClick = { assignFor = selected.first() }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Categories")
+                        }
+                    }
+                    IconButton(onClick = {
+                        onRemoveMany(selected)
+                        selected = emptySet()
+                    }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Remove from library")
+                    }
+                }
+            )
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = coverMinDp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(shown) { entry ->
-                    var menuOpen by remember(entry.seriesId) { mutableStateOf(false) }
-                    Column(
-                        modifier = Modifier
-                            .padding(vertical = 4.dp)
-                            .pointerInput(entry.seriesId) {
-                                detectTapGestures(
-                                    onTap = { onOpen(entry) },
-                                    onLongPress = { menuOpen = true }
-                                )
-                            }
-                    ) {
-                        CoverImage(
-                            cover = entry.cover.ifBlank { null },
-                            title = entry.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.7f)
+            TopAppBar(
+                title = {
+                    if (searchOpen) {
+                        // Not an OutlinedTextField: a bordered box inside a bar
+                        // is taller than the bar's own content slot and clips.
+                        TextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            placeholder = { Text("Search library") },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            entry.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                    } else {
+                        Text("Library")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        if (searchOpen) query = ""
+                        searchOpen = !searchOpen
+                    }) {
+                        Icon(
+                            if (searchOpen) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (searchOpen) "Close search" else "Search"
                         )
-                        Box {
-                            DropdownMenu(
-                                expanded = menuOpen,
-                                onDismissRequest = { menuOpen = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Remove from library") },
-                                    onClick = { menuOpen = false; onRemove(entry) }
-                                )
-                            }
+                    }
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            Text(
+                                "Cover size",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            listOf("small" to "Small", "medium" to "Medium", "large" to "Large")
+                                .forEach { (key, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        trailingIcon = {
+                                            if (coverSize == key) {
+                                                Icon(Icons.Default.Check, contentDescription = null)
+                                            }
+                                        },
+                                        onClick = {
+                                            coverSize = key
+                                            prefs(context).edit().putString("cover_size", key).apply()
+                                            menuOpen = false
+                                        }
+                                    )
+                                }
                         }
                     }
                 }
+            )
+        }
+
+        ErrorBanner(error)
+
+        if (categories.isEmpty()) {
+            // Nothing to tab between. One flat grid, no pager.
+            LibraryGrid(
+                shown = entries.filter {
+                    query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)
+                },
+                allEmpty = entries.isEmpty(),
+                coverMinDp = coverMinDp,
+                readIds = readIds,
+                selected = selected,
+                selecting = selecting,
+                onOpen = onOpen,
+                onToggle = { id ->
+                    selected = if (id in selected) selected - id else selected + id
+                },
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            ScrollableTabRow(
+                selectedTabIndex = pagerState.currentPage.coerceIn(0, categories.size - 1),
+                edgePadding = 8.dp
+            ) {
+                categories.forEachIndexed { index, cat ->
+                    Tab(
+                        selected = index == pagerState.currentPage,
+                        onClick = {
+                            onCategoryChange(cat.id)
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                        },
+                        text = { Text(cat.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    )
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                // A swipe that also drags entries around is not a swipe. Held
+                // off during selection so a mis-swipe can't change tab out from
+                // under a half-made selection.
+                userScrollEnabled = !selecting,
+                modifier = Modifier.weight(1f)
+            ) { page ->
+                val cat = categories[page]
+                LibraryGrid(
+                    shown = perCategory[cat.id].orEmpty(),
+                    allEmpty = entries.isEmpty(),
+                    coverMinDp = coverMinDp,
+                    readIds = readIds,
+                    selected = selected,
+                    selecting = selecting,
+                    onOpen = onOpen,
+                    onToggle = { id ->
+                        selected = if (id in selected) selected - id else selected + id
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+
+    assignFor?.let { id ->
+        CategoryAssignDialog(
+            seriesId = id,
+            onDismiss = {
+                assignFor = null
+                selected = emptySet()
+            }
+        )
+    }
+}
+
+/**
+ * One category's grid.
+ *
+ * Split out of [LibraryTab] because the pager instantiates it per page, and
+ * because the selection rules — tap opens, or toggles while selecting; long
+ * press always starts a selection — are the same on every page and worth
+ * having in one place.
+ */
+@Composable
+private fun LibraryGrid(
+    shown: List<LibraryEntry>,
+    allEmpty: Boolean,
+    coverMinDp: Dp,
+    readIds: Set<String>,
+    selected: Set<String>,
+    selecting: Boolean,
+    onOpen: (LibraryEntry) -> Unit,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (shown.isEmpty()) {
+        Column(
+            modifier = modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                if (allEmpty) "Your library is empty." else "Nothing in this category yet.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Open a series from Browse and tap \u201cAdd to library\u201d.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = coverMinDp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(shown, key = { it.seriesId }) { entry ->
+            val isSelected = entry.seriesId in selected
+            // Read entries are dimmed everywhere, not only inside the Read tab:
+            // the same series showing bright in Manhwa and dim in Read would be
+            // a state that depends on where you're standing.
+            val dim = entry.seriesId in readIds && !isSelected
+
+            Column(
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .pointerInput(entry.seriesId, selecting) {
+                        detectTapGestures(
+                            onTap = {
+                                if (selecting) onToggle(entry.seriesId) else onOpen(entry)
+                            },
+                            onLongPress = { onToggle(entry.seriesId) }
+                        )
+                    }
+            ) {
+                Box {
+                    CoverImage(
+                        cover = entry.cover.ifBlank { null },
+                        title = entry.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(0.7f)
+                            .alpha(if (dim) 0.4f else 1f)
+                    )
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                        )
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(2.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    entry.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(if (dim) 0.4f else 1f)
+                )
             }
         }
     }
