@@ -1,8 +1,11 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.54 / `62e7267`**, after the library-screen session (supersedes the
-earlier version of this file).
+at **0.55**, after a bug-fix pass over the library and per-source browse screens
+(supersedes the earlier version of this file).
+
+**0.55 is unverified.** It was written from a bug report, not on device — see
+"Open thread 3" in §0 before building on it.
 
 **The library screen was rebuilt and every part of it is verified on device**
 (builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
@@ -25,14 +28,18 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-The last session rebuilt the library screen across three releases, and **all of
-it is verified on device** — the user confirmed each build before the next was
-written. That makes two sessions running that aren't carrying an untested tail.
+The library screen was rebuilt across three releases and **all of that is
+verified on device** — the user confirmed each build before the next was
+written. What shipped, in order: 0.52 category tabs with swipe, multi-select,
+search and an options menu, read entries dimmed, and the "What's new" dialog;
+0.53 bulk category editing plus a tab-sync fix; 0.54 the full Filter / Sort /
+Display / Group sheet.
 
-What shipped, in order: 0.52 category tabs with swipe, multi-select, search and
-an options menu, read entries dimmed, and the "What's new" dialog; 0.53 bulk
-category editing plus a tab-sync fix; 0.54 the full Filter / Sort / Display /
-Group sheet.
+**0.55 broke the streak: it is a bug-fix release written from a report and never
+run.** Four bugs, in the screen that had just been declared finished. Thread 3
+below is the account; the two of them worth reading are in §5, because one is a
+Compose behaviour that makes a working sort look broken and the other is the
+same state-hoisting bug found for the third time.
 
 **The two older threads below are still open and neither was touched.** They
 have now survived four sessions. The reader is still the largest untested
@@ -43,6 +50,27 @@ surface in the app.
 this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
+
+### Open thread 3 — 0.55 is written but not seen running
+
+Four bugs were reported and fixed in one pass, none of it exercised on device.
+The changes are small and three of the four are the *same* bug, but the whole
+release is unconfirmed.
+
+- **Random sort, and its reshuffle button.** Both symptoms had one cause and it
+  wasn't the sort — see "A keyed lazy list re-anchors" in §5. The shuffle
+  function was also replaced (`LibraryPrefs.shuffleKey`); that part is cosmetic
+  and independent.
+- **Scroll position and the library search** now survive opening a series, via
+  `ScrollMemory` and two more hoisted values in `YomuApp`.
+- **Default on a per-source screen** now means what §4 says it means. This one
+  is a straight correctness fix against a documented rule and is the safest of
+  the four.
+- **Not done, and known:** the category chip on the per-source browse screen is
+  still a `remember` inside that screen, so it resets to All on the way back.
+  Same shape as the `openSection` wrinkle in §5's routing note. The grid's
+  scroll key includes the chip, so a return trip restores the All position
+  correctly; it just doesn't restore the chip.
 
 ### Open thread 1 — the reader rewrite is barely tested
 
@@ -471,6 +499,7 @@ things between them needs no imports — only visibility changes (see §5).
 | `SourceBrowseScreens.kt` | `LibraryScreen` (the **per-source browse** screen), `SeriesScreen` |
 | `LibraryScreens.kt` | `LibraryTab`, `LibraryGrid`, `LibraryEmpty`, `MiniBadge`, `AddToLibraryDialog`, `CategoryAssignDialog`, `BulkCategoryDialog` |
 | `LibraryOptions.kt` | `LibraryOptionsSheet` — the Filter / Sort / Display / Group bottom sheet, and its row composables |
+| `ScrollMemory.kt` | `ScrollMemory` + `rememberRestoredGridState`/`rememberRestoredListState`. Lazy-list positions held by `YomuApp` so they outlive a routing branch |
 | `ReaderScreen.kt` | `ReaderScreen`, its overlay bars, chapter picker and settings sheet |
 | `ReaderPrefs.kt` | `ReaderSettings` + the enums + load/save. Not a screen |
 | `WebViewScreen.kt` | `ChallengeWebViewScreen` — the visible Cloudflare WebView |
@@ -897,6 +926,15 @@ download tree on a cold cache, so it is only called when the Downloaded badge or
 the Downloaded filter is actually on. `History` is only grouped by series when
 the sort is Last read.
 
+**Scroll position is hoisted, like the tab was.** `ScrollMemory` lives in
+`YomuApp` and each grid seeds a `LazyGridState`/`LazyListState` from it and
+writes back on dispose. Its other half is `sync(ordering)`: a stored position
+only means something against the ordering that produced it, so the store is
+emptied when — and only when — sort, direction, seed, grouping, search or any
+filter changes. That is also what makes a re-sort start at the top rather than
+re-anchoring (§5). The library search is hoisted the same way and for the same
+reason as `activeCategory`.
+
 **Dimming "read" is category membership**, matched on the category *name*, not a
 new field. It costs one `seriesIn()` set lookup. The alternative — a real
 "every chapter read" test — is in the next section.
@@ -963,6 +1001,14 @@ So the Library filter treats Default as **union of the two**: series with no
 assignments at all, plus series explicitly filed there. Filtering it like any
 other category — which is what it did originally — shows an empty screen for
 what is usually the largest group in the library.
+
+**This rule binds every screen that offers a Default filter, and for a while it
+only bound one.** The per-source browse screen's category chips kept the naive
+version for three releases after `LibraryTab` was fixed, so the same 2950 series
+were correct in one place and invisible in the other. Fixed in 0.55. Note the
+extra clause it needs: on a browse screen "has no category" is true of every
+catalogue result as well, so Default there is intersected with what is actually
+in the library, or the chip lists the entire source.
 
 ### The three ways a series gets opened
 
@@ -1332,6 +1378,59 @@ equal" fixes it — the values genuinely differ at every intermediate step. Look
 for a settled/committed variant of whatever state is being observed, and if the
 API doesn't have one, the loop is the design and it needs cutting, not guarding.
 
+### A keyed lazy list re-anchors, and the symptom blames the sort
+
+"Random sort doesn't work, it just scrolls down, and the refresh button does
+nothing." Two complaints, one cause, and neither of them is the sort — which had
+been reordering the list correctly the whole time.
+
+`LibraryGrid` keys its items by series id. When the data reorders under a keyed
+lazy list, Compose looks up the key that was at the top and scrolls to wherever
+that item now is. After a shuffle that's the middle of the library, so the grid
+lurched downwards and then showed the *same series* at the top — which reads
+exactly like "it scrolled and didn't sort". Reshuffling made it worse: the
+anchored item stayed pinned at the top of the viewport, so a genuinely different
+order looked like a button that did nothing.
+
+The fix is to decide that a reorder invalidates the scroll position and say so:
+`ScrollMemory.sync(ordering)` drops stored positions when the ordering changes,
+and the state object is rebuilt with it, so the grid starts at the top. Keys are
+still right — they're what makes an item animate to its new place instead of
+being torn down — the position just isn't meaningful across them.
+
+Generalise it: **item keys make position sticky, and stickiness across a reorder
+is a bug that presents as the reorder not happening.** Any list where both the
+order and the contents can change under a stable key needs an explicit answer to
+"is the old position still meaningful", and the honest answer is usually no.
+
+The shuffle function was weak too and that was found by looking, not from the
+report: `hashCode() xor seed` is a bit-flip, and ids from one source differ in
+their last few characters, so their hashes arrive clustered and xor can't break
+a cluster apart. It's now an avalanche mix (`LibraryPrefs.shuffleKey`). Worth
+separating from the real bug — fixing only this would have changed nothing the
+user could see.
+
+### Hoisting one value out of a doomed branch doesn't hoist its neighbours
+
+`activeCategory` was moved into `YomuApp` in 0.52 because the routing chain
+destroys `LibraryTab` the moment a series opens. Correct, documented, and
+verified — and the search box and both grids' scroll positions were left sitting
+in the same doomed composable for three more releases, failing the same way for
+the same reason. They were reported as three separate bugs.
+
+`rememberSaveable` is not the escape hatch it looks like here. It survives a
+configuration change and process death; it does **not** survive leaving the
+composition, which is what an `if / else if` routing chain does to a branch. The
+same wrinkle is recorded against `SettingsScreen`'s `openSection` in the routing
+note above, and against the browse screen's category chip in §0 — three
+instances of one bug, found three times.
+
+So: **when a routing branch is found to be destructive to one piece of state,
+enumerate that branch's state.** Anything a user can see and change, and would
+expect to find on the way back, belongs outside it. The cost of checking is one
+read of the composable; the cost of not is a bug report per value, spread over
+however many releases it takes someone to notice.
+
 ### `remember(key)` is not a cache
 
 `remember` holds a value only while its composable is composed, and a
@@ -1639,6 +1738,12 @@ Two things to carry forward:
 - **Recreation is still possible** for reasons the manifest can't cover: low
   memory, "don't keep activities", a locale change. Hoisting state into a
   `ViewModel` or a saveable holder is the real fix and is §7's structural item.
+- **`ScrollMemory` (0.55) is a plain `remember`,** deliberately, and so is
+  everything it holds. It solves leaving the composition, which is the common
+  case and happens dozens of times a session; it does not solve recreation, and
+  pretending otherwise would mean a `Saver` for something that is already lost
+  along with the source, the handle and the loaded pages. It is one more object
+  for §7's holder to absorb, not an exception to it.
 
 ### A client that lies about what it is, part two: the protocol layer
 
