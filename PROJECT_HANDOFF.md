@@ -1,11 +1,9 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.56**, after a bug-fix pass over the library and per-source browse screens
-(supersedes the earlier version of this file).
-
-**0.55 built and 0.56 is unverified.** See "Open thread 3" in §0 before building
-on either.
+at **0.57**. 0.55 and 0.56 are **verified on device**; 0.57 is a second bug-fix
+pass — reader, history covers, extension index — and is unverified.
+(Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
 (builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
@@ -35,12 +33,17 @@ search and an options menu, read entries dimmed, and the "What's new" dialog;
 0.53 bulk category editing plus a tab-sync fix; 0.54 the full Filter / Sort /
 Display / Group sheet.
 
-**0.55 and 0.56 broke the streak: bug-fix releases written from reports, with
-only the compile confirmed.** 0.55 fixed four bugs in the screen that had just
-been declared finished; 0.56 deleted a feature that 0.55 had just repaired.
-Thread 3 below is the account. The two entries worth reading are in §5 — one is
-a Compose behaviour that makes a working sort look broken, the other is the same
-state-hoisting bug found for the third time.
+**0.55 and 0.56 are confirmed working.** The library keeps its scroll, tab and
+search across opening a series; random sort and reshuffle behave; per-source
+screens list rather than filter. The two entries worth reading are in §5 — one
+is a Compose behaviour that makes a working sort look broken, the other is the
+same state-hoisting bug found for the third time.
+
+**0.57 is the untested tail.** Four more reports, three of them in the reader,
+which §0 has called the largest untested surface in the app for five sessions
+running — and it was: two of the three had been there since the rewrite. Thread
+3 has the detail. The extension one isn't an app bug in origin; see §5's "A
+repository can change shape underneath you".
 
 **The two older threads below are still open and neither was touched.** They
 have now survived four sessions. The reader is still the largest untested
@@ -52,10 +55,27 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.55 / 0.56 compile, and that is all that is known
+### Open thread 3 — 0.57 is written, not run
 
-Both were written from bug reports. 0.55 builds and is pushed; nothing in either
-has been confirmed working on device.
+0.55 and 0.56 are done and confirmed. 0.57 is four fixes from one report, none
+of them exercised:
+
+- **Long strip never reached its last page**, so chapters read in that mode were
+  never marked read — `currentPage` was `firstVisibleItemIndex`, and the last
+  page is visible at the bottom of the screen long before it reaches the top.
+  Now falls back to `pages.lastIndex` when the list can't scroll further, gated
+  on the chapter having finished loading.
+- **Long strip drifted while untouched.** An `AsyncImage` with unbounded height
+  measures zero until its bitmap decodes, so every page was a zero-height row
+  until it arrived. Pages now carry `heightIn(min = 240.dp)`. This is the fix
+  I'd least trust: the mechanism is certain, that it accounts for *all* of the
+  observed movement is not.
+- **History covers were opened as files.** One-line fix, `coverModel()` in
+  `Ui.kt`. The library and downloads grids pass their cover strings straight to
+  Coil and were never affected.
+- **The extension list collapsed to two entries.** Repo-side format change; the
+  parser now reads both shapes. **The repo URL still has to be changed by hand**
+  — see §5.
 
 - **Random sort, and its reshuffle button.** Both symptoms had one cause and it
   wasn't the sort — see "A keyed lazy list re-anchors" in §5. The shuffle
@@ -75,6 +95,12 @@ nothing. Extension search endpoints commonly index differently from their
 listing pages. Don't spend another session on it without new evidence.
 
 ### Open thread 1 — the reader rewrite is barely tested
+
+**Two of its bugs surfaced in 0.57** and both had been there since the rewrite:
+long strip could not report its last page, and undecoded pages measured zero
+tall. See §5. That is two found by ordinary use, in the one mode a tester is
+least likely to open — the list below is still the list, and it has not shrunk
+by much.
 
 The reader was rebuilt from 152 lines to ~630 (§4) at the very end of the
 session, and the session stopped before most of it was exercised.
@@ -1378,6 +1404,74 @@ are one feedback loop wearing two hats, and no amount of comparing "is it alread
 equal" fixes it — the values genuinely differ at every intermediate step. Look
 for a settled/committed variant of whatever state is being observed, and if the
 API doesn't have one, the loop is the design and it needs cutting, not guarding.
+
+### The reader's page counter could not count to the last page
+
+Long strip reported `listState.firstVisibleItemIndex` as the current page. On a
+strip, the last page is visible at the bottom of the screen long before it is
+ever the *first* item on it — with pages taller than the viewport it never is.
+So the counter stopped one or two short, and `page >= total - 1` in
+`onProgress`, which is the only thing that marks a chapter read, could not fire.
+Paged mode uses `pagerState.currentPage`, which does reach the end, so the bug
+was invisible in the mode most likely to be tested.
+
+The second reader bug shares a cause with the first's fix. An `AsyncImage` given
+`fillMaxWidth()` and no height measures **zero** until its bitmap decodes, so
+every page not yet decoded was a zero-height row — the chapter collapsed to a
+few hundred pixels and then shoved itself apart page by page as images landed,
+which reads as the reader scrolling on its own. It also made the list briefly
+unscrollable, which is exactly the test the fix above uses for "at the end". A
+`heightIn(min = 240.dp)` on strip pages fixes the drift *and* keeps the
+end-of-chapter test honest; without it the first fix would mark a chapter read
+the instant it opened.
+
+Carry forward: **a position derived from "first visible" is not a position, it
+is a lower bound.** Anywhere a counter has to reach the end of a list — progress,
+read state, "did they finish it" — the first visible item cannot express it, and
+the honest test is whether there is anything left to scroll to.
+
+### A repository can change shape underneath you, and yours will not say so
+
+The Extensions tab went from 1368 entries to two: "Outdated App" and "Update to
+Mihon 0.20.1+". Nothing in this app had changed.
+
+Keiyoushi replaced `.../repo/index.min.json` — the flat array every Tachiyomi
+fork reads — with a two-entry stub carrying exactly those names, and moved the
+real list to `.../repo/index.json` in a **different shape**:
+
+| | flat (`index.min.json`, now a stub) | nested (`index.json`) |
+|---|---|---|
+| root | array | object with repo metadata |
+| entries | top level | `extensionList.extensions[]` |
+| package | `pkg` | `packageName` |
+| version | `version` | `versionName` |
+| apk | `apk`, relative to `apk/` | `resources.apkUrl`, absolute |
+| language | `lang` on the entry | `sources[].language` |
+| nsfw | `nsfw: 0/1` | `contentWarning`: SAFE / MIXED / NSFW |
+
+Most of the catalogue is still `extensionLib` 1.4 (1202 of 1368), so the APKs
+themselves are the same ones this app was already loading — the format changed,
+the compatibility didn't.
+
+`fetchAvailable` now reads both. **The URL still has to be edited by hand**, and
+that is the part worth remembering: a parser that understands the new shape
+still gets two entries from a URL that only serves two.
+
+What made this cost a session rather than a minute:
+
+- **The failure was well-formed.** Two valid entries, correctly parsed,
+  correctly rendered, with a plausible "2 of 2" count. Had the stub been
+  malformed, `JSONArray()` would have thrown and the empty screen would at least
+  have pointed somewhere. A remote change that keeps parsing is strictly harder
+  to see than one that breaks it.
+- **The names were the message and nobody was listening.** "Outdated App" and
+  "Update to Mihon 0.20.1+" are the upstream telling the user precisely what
+  happened. They read as ordinary extension names inside a list of extension
+  names.
+- **`catch { e.printStackTrace() }` in `fetchAvailable` swallows a whole repo.**
+  It didn't fire here, but a repo that 404s or changes to a third shape fails
+  silently and identically. If this screen is touched again, surface per-repo
+  failures.
 
 ### A filter nobody could have used, fixed twice before being deleted
 

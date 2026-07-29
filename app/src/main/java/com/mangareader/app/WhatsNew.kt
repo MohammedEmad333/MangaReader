@@ -43,6 +43,26 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 57,
+            name = "0.57",
+            header = "Reader, history covers, and the extension list",
+            body = "Long strip could not reach its last page. It reported whichever " +
+                "page was at the top of the screen, and the final page is visible " +
+                "at the bottom long before it gets to the top - so the counter " +
+                "stopped short and chapters were never marked read. It now " +
+                "reports the end when the strip can't scroll further.\n\n" +
+                "Long strip also shifted around on its own while you sat still. " +
+                "A page that hasn't decoded yet measures zero tall, so the whole " +
+                "chapter collapsed and then shoved itself apart as the images " +
+                "arrived. Pages now reserve space before they load.\n\n" +
+                "History covers show again. A cover from an extension is a web " +
+                "address and was being opened as if it were a file on disk.\n\n" +
+                "Extension lists in the newer repository format are read. If your " +
+                "repository shows only \u201cOutdated App\u201d and \u201cUpdate to " +
+                "Mihon\u201d, its address needs changing too - see More \u2192 " +
+                "Extension repos."
+        ),
+        ReleaseNote(
             code = 56,
             name = "0.56",
             header = "Source screens list, they don't filter",

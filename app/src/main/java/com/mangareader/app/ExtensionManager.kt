@@ -8,6 +8,7 @@ import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -64,49 +65,134 @@ object ExtensionManager {
             try {
                 val conn = URL(repoUrl).openConnection() as HttpURLConnection
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val arr = JSONArray(jsonStr)
-                
-                                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val pkg = obj.getString("pkg")
-                    
-                    // Keep the installed versionName, not just the boolean: it's
-                    // what tells an out-of-date extension from an up-to-date one.
-                    val installedInfo = try {
-                        pm.getPackageInfo(pkg, 0)
-                    } catch (e: PackageManager.NameNotFoundException) {
-                        null
-                    }
-                    val installed = installedInfo != null
-
-                    // FIXED: Prepend "apk/" so it points to the correct subdirectory on GitHub
-                    val rawApkUrl = obj.getString("apk")
-                    val relativePath = if (rawApkUrl.startsWith("http")) rawApkUrl else "apk/$rawApkUrl"
-                    val absoluteApkUrl = URL(URL(repoUrl), relativePath).toString()
-
-                    available.add(
-                        Extension(
-                            // Index entries are named "Tachiyomi: Foo"; the prefix
-                            // is noise on every single row.
-                            name = obj.getString("name")
-                                .removePrefix("Tachiyomi: ")
-                                .removePrefix("Mihon: "),
-                            pkgName = pkg,
-                            versionName = obj.getString("version"),
-                            apkUrl = absoluteApkUrl,
-                            isInstalled = installed,
-                            lang = langLabel(obj.optString("lang", "")),
-                            isNsfw = obj.optInt("nsfw", 0) == 1,
-                            installedVersion = installedInfo?.versionName
-                        )
-                    )
-                }
-
+                available += parseIndex(jsonStr, repoUrl, pm)
             } catch (e: Exception) {
-                e.printStackTrace() 
+                e.printStackTrace()
             }
         }
         available
+    }
+
+    /**
+     * Reads a repository index in either of the two shapes now in the wild.
+     *
+     * **Flat (original):** a JSON array of
+     * `{name, pkg, apk, lang, version, nsfw}`, where `apk` is a filename
+     * relative to the index's own `apk/` directory.
+     *
+     * **Nested (current Keiyoushi):** an object of repo metadata carrying
+     * `extensionList.extensions[]`, each
+     * `{name, packageName, versionName, contentWarning, resources.apkUrl,
+     * sources[].language}` — absolute apk URLs, language moved down onto the
+     * sources, and the boolean nsfw flag replaced by a three-way warning.
+     *
+     * Reading only the flat shape doesn't fail loudly, which is what made this
+     * hard to see: Keiyoushi left the old `index.min.json` path serving a
+     * two-entry stub named "Outdated App" and "Update to Mihon 0.20.1+", so the
+     * screen showed two plausible-looking extensions instead of an error, and
+     * 1366 others were simply gone. The full list moved to `index.json` on the
+     * same branch — **a repo URL ending in `index.min.json` still needs
+     * changing by hand; this parser cannot conjure entries the stub omits.**
+     */
+    private fun parseIndex(
+        json: String,
+        repoUrl: String,
+        pm: PackageManager
+    ): List<Extension> {
+        val trimmed = json.trimStart()
+        val entries = mutableListOf<Extension>()
+
+        if (trimmed.startsWith("[")) {
+            val arr = JSONArray(trimmed)
+            for (i in 0 until arr.length()) {
+                runCatching { flatEntry(arr.getJSONObject(i), repoUrl, pm) }
+                    .getOrNull()
+                    ?.let(entries::add)
+            }
+        } else {
+            val arr = JSONObject(trimmed)
+                .optJSONObject("extensionList")
+                ?.optJSONArray("extensions")
+                ?: return emptyList()
+            for (i in 0 until arr.length()) {
+                runCatching { nestedEntry(arr.getJSONObject(i), pm) }
+                    .getOrNull()
+                    ?.let(entries::add)
+            }
+        }
+        return entries
+    }
+
+    private fun flatEntry(obj: JSONObject, repoUrl: String, pm: PackageManager): Extension {
+        val pkg = obj.getString("pkg")
+
+        // Keep the installed versionName, not just the boolean: it's what tells
+        // an out-of-date extension from an up-to-date one.
+        val installedInfo = installedInfo(pm, pkg)
+
+        // Relative filenames point at the index's own apk/ subdirectory.
+        val rawApkUrl = obj.getString("apk")
+        val relativePath = if (rawApkUrl.startsWith("http")) rawApkUrl else "apk/$rawApkUrl"
+
+        return Extension(
+            // Index entries are named "Tachiyomi: Foo"; the prefix is noise on
+            // every single row.
+            name = obj.getString("name")
+                .removePrefix("Tachiyomi: ")
+                .removePrefix("Mihon: "),
+            pkgName = pkg,
+            versionName = obj.getString("version"),
+            apkUrl = URL(URL(repoUrl), relativePath).toString(),
+            isInstalled = installedInfo != null,
+            lang = langLabel(obj.optString("lang", "")),
+            isNsfw = obj.optInt("nsfw", 0) == 1,
+            installedVersion = installedInfo?.versionName
+        )
+    }
+
+    private fun nestedEntry(obj: JSONObject, pm: PackageManager): Extension {
+        val pkg = obj.getString("packageName")
+        val installedInfo = installedInfo(pm, pkg)
+
+        // Language lives on the sources now. One distinct language means that
+        // language; a package whose sources disagree is a multi-language
+        // extension, which is what the flat index's "all" meant.
+        val langs = mutableSetOf<String>()
+        obj.optJSONArray("sources")?.let { srcs ->
+            for (i in 0 until srcs.length()) {
+                srcs.optJSONObject(i)
+                    ?.optString("language")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(langs::add)
+            }
+        }
+
+        return Extension(
+            name = obj.getString("name")
+                .removePrefix("Tachiyomi: ")
+                .removePrefix("Mihon: "),
+            pkgName = pkg,
+            versionName = obj.getString("versionName"),
+            // Required: an entry with no downloadable apk is not installable,
+            // and getString throwing here drops it rather than listing a row
+            // whose Install button can only fail.
+            apkUrl = obj.getJSONObject("resources").getString("apkUrl"),
+            isInstalled = installedInfo != null,
+            lang = langLabel(langs.singleOrNull() ?: "all"),
+            // Three values now: SAFE, MIXED, NSFW. Anything but SAFE carries the
+            // badge — nothing filters on this flag, it only labels, so erring
+            // towards showing it costs nothing and hides nothing.
+            isNsfw = obj.optString("contentWarning", SAFE) != SAFE,
+            installedVersion = installedInfo?.versionName
+        )
+    }
+
+    private const val SAFE = "CONTENT_WARNING_SAFE"
+
+    private fun installedInfo(pm: PackageManager, pkg: String) = try {
+        pm.getPackageInfo(pkg, 0)
+    } catch (e: PackageManager.NameNotFoundException) {
+        null
     }
 
     /**

@@ -102,10 +102,24 @@ internal fun ReaderScreen(
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialPage)
 
-    val currentPage = if (settings.mode == ReaderMode.LONG_STRIP) {
-        listState.firstVisibleItemIndex
-    } else {
-        pagerState.currentPage
+    val currentPage = when {
+        settings.mode != ReaderMode.LONG_STRIP -> pagerState.currentPage
+
+        // A strip's last page is visible at the bottom of the screen long
+        // before it is ever the *first* item on it, so firstVisibleItemIndex
+        // tops out one or two short of the end and never reports the last page
+        // at all. That's both halves of the same bug: the counter read "66/68"
+        // at the bottom of a chapter, and "page >= total - 1" — which is what
+        // marks a chapter read — could not fire.
+        //
+        // Being unable to scroll any further is the honest test for "at the
+        // end". Gated on the chapter having finished loading, because a
+        // half-fetched strip is short enough not to scroll and would otherwise
+        // mark itself read the moment it opened.
+        !stillLoading && pages.isNotEmpty() && !listState.canScrollForward ->
+            pages.lastIndex
+
+        else -> listState.firstVisibleItemIndex
     }
     LaunchedEffect(currentPage) { onProgress(currentPage) }
 
@@ -134,8 +148,19 @@ internal fun ReaderScreen(
                         colorFilter = filter,
                         // Height is left to the image in a strip: a fixed one
                         // would letterbox every page to the screen and reinstate
-                        // the gaps this mode exists to remove.
-                        modifier = Modifier.fillMaxWidth(),
+                        // the gaps this mode exists to remove. A *minimum* is
+                        // not that, and it's load-bearing — an AsyncImage with
+                        // an unbounded height measures zero until its bitmap
+                        // decodes, so every undecoded page was a zero-height
+                        // row. The whole chapter collapsed into a few hundred
+                        // pixels, then shoved itself apart page by page as the
+                        // images arrived, which is the reader "scrolling down
+                        // on its own" while untouched. It also made the list
+                        // briefly unscrollable, which the end-of-chapter test
+                        // above would otherwise read as "at the last page".
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 240.dp),
                         contentScale = ContentScale.FillWidth
                     )
                 }
