@@ -102,6 +102,27 @@ internal fun ReaderScreen(
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialPage)
 
+    // Whether the bottom of the last page is actually on screen.
+    //
+    // `!canScrollForward`, which this replaces, was wrong in a way that only
+    // showed at runtime: a LazyListState reports it as false until its first
+    // measure, and the effect below runs before that. So opening any chapter in
+    // this mode reported the last page immediately, which saved the wrong
+    // resume position and marked the chapter read before a single page had been
+    // looked at. Reading a *derived* fact about layout means waiting for layout
+    // to exist — an empty `visibleItemsInfo` is the proof it doesn't yet.
+    val atStripEnd by remember(pages.size) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            pages.isNotEmpty() &&
+                info.totalItemsCount == pages.size &&
+                last != null &&
+                last.index == pages.lastIndex &&
+                last.offset + last.size <= info.viewportEndOffset
+        }
+    }
+
     val currentPage = when {
         settings.mode != ReaderMode.LONG_STRIP -> pagerState.currentPage
 
@@ -111,13 +132,7 @@ internal fun ReaderScreen(
         // at all. That's both halves of the same bug: the counter read "66/68"
         // at the bottom of a chapter, and "page >= total - 1" — which is what
         // marks a chapter read — could not fire.
-        //
-        // Being unable to scroll any further is the honest test for "at the
-        // end". Gated on the chapter having finished loading, because a
-        // half-fetched strip is short enough not to scroll and would otherwise
-        // mark itself read the moment it opened.
-        !stillLoading && pages.isNotEmpty() && !listState.canScrollForward ->
-            pages.lastIndex
+        atStripEnd -> pages.lastIndex
 
         else -> listState.firstVisibleItemIndex
     }

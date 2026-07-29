@@ -43,6 +43,23 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 58,
+            name = "0.58",
+            header = "Fixes chapters marking themselves read",
+            body = "0.57 marked a chapter read the moment it was opened in long " +
+                "strip, whatever page you left from, and saved the last page as " +
+                "your position.\n\n" +
+                "The end-of-chapter check asked the page list whether it could " +
+                "still scroll. A list answers no to that until it has been " +
+                "measured for the first time, and the check ran before that " +
+                "happened - so every chapter looked finished on arrival. It now " +
+                "asks whether the bottom of the last page is actually on screen, " +
+                "which nothing can answer until there is a layout to read.\n\n" +
+                "Chapters wrongly marked read in 0.57 stay that way: long-press " +
+                "them in the chapter list and choose Mark unread. Any that reopen " +
+                "at the last page will correct themselves once read again."
+        ),
+        ReleaseNote(
             code = 57,
             name = "0.57",
             header = "Reader, history covers, and the extension list",
