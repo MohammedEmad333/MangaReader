@@ -182,6 +182,19 @@ fun YomuApp() {
     // they backed out. rememberSaveable so it also survives a config change.
     var libraryCategory by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // The library's search, hoisted for exactly the same reason and with the
+    // same symptom when it wasn't: typing a query, opening a result and backing
+    // out landed on an unfiltered library with an empty field.
+    var librarySearch by rememberSaveable { mutableStateOf("") }
+    var librarySearchOpen by rememberSaveable { mutableStateOf(false) }
+
+    // Where each grid was left. Same problem again — the routing chain replaces
+    // whichever branch is showing, so a LazyGridState inside it doesn't survive
+    // opening a series — and, because these are ordinary objects rather than
+    // state, reading or writing one doesn't invalidate anything.
+    val libraryScroll = remember { ScrollMemory() }
+    val browseScroll = remember { ScrollMemory() }
+
     // Read once per process. Empty on a fresh install and on a launch that
     // isn't an update, so this is normally a single getInt.
     val releaseNotes = remember { WhatsNew.pending(context) }
@@ -1040,6 +1053,7 @@ fun YomuApp() {
                 seriesList = null
                 errorMessage = null
             },
+            scroll = browseScroll,
             onSolveChallenge = startChallenge
         )
     } else if (downloadsOpen) {
@@ -1101,6 +1115,11 @@ fun YomuApp() {
                         error = errorMessage,
                         activeCategory = libraryCategory,
                         onCategoryChange = { libraryCategory = it },
+                        search = librarySearch,
+                        onSearchChange = { librarySearch = it },
+                        searchOpen = librarySearchOpen,
+                        onSearchOpenChange = { librarySearchOpen = it },
+                        scroll = libraryScroll,
                         onOpen = { openFromLibrary(it) },
                         onRemoveMany = { ids ->
                             // removeAll, not remove-in-a-loop: each remove()
