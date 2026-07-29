@@ -43,6 +43,19 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 56,
+            name = "0.56",
+            header = "Source screens list, they don't filter",
+            body = "The category chips are gone from per-source browse. They only " +
+                "ever filtered the page already on screen - the first twenty or " +
+                "so titles of Popular - against your library categories, so they " +
+                "were almost always empty, and they switched off \u201cLoad more\u201d " +
+                "while active. Popular, Latest and Filter are the listing " +
+                "controls; filtering your library is the library's job.\n\n" +
+                "This also removes the Default chip that 0.55 had just fixed. It " +
+                "was correct and still not worth having."
+        ),
+        ReleaseNote(
             code = 55,
             name = "0.55",
             header = "Four library and browse fixes",

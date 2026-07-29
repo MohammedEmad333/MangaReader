@@ -1,11 +1,11 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.55**, after a bug-fix pass over the library and per-source browse screens
+at **0.56**, after a bug-fix pass over the library and per-source browse screens
 (supersedes the earlier version of this file).
 
-**0.55 is unverified.** It was written from a bug report, not on device — see
-"Open thread 3" in §0 before building on it.
+**0.55 built and 0.56 is unverified.** See "Open thread 3" in §0 before building
+on either.
 
 **The library screen was rebuilt and every part of it is verified on device**
 (builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
@@ -35,11 +35,12 @@ search and an options menu, read entries dimmed, and the "What's new" dialog;
 0.53 bulk category editing plus a tab-sync fix; 0.54 the full Filter / Sort /
 Display / Group sheet.
 
-**0.55 broke the streak: it is a bug-fix release written from a report and never
-run.** Four bugs, in the screen that had just been declared finished. Thread 3
-below is the account; the two of them worth reading are in §5, because one is a
-Compose behaviour that makes a working sort look broken and the other is the
-same state-hoisting bug found for the third time.
+**0.55 and 0.56 broke the streak: bug-fix releases written from reports, with
+only the compile confirmed.** 0.55 fixed four bugs in the screen that had just
+been declared finished; 0.56 deleted a feature that 0.55 had just repaired.
+Thread 3 below is the account. The two entries worth reading are in §5 — one is
+a Compose behaviour that makes a working sort look broken, the other is the same
+state-hoisting bug found for the third time.
 
 **The two older threads below are still open and neither was touched.** They
 have now survived four sessions. The reader is still the largest untested
@@ -51,11 +52,10 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.55 is written but not seen running
+### Open thread 3 — 0.55 / 0.56 compile, and that is all that is known
 
-Four bugs were reported and fixed in one pass, none of it exercised on device.
-The changes are small and three of the four are the *same* bug, but the whole
-release is unconfirmed.
+Both were written from bug reports. 0.55 builds and is pushed; nothing in either
+has been confirmed working on device.
 
 - **Random sort, and its reshuffle button.** Both symptoms had one cause and it
   wasn't the sort — see "A keyed lazy list re-anchors" in §5. The shuffle
@@ -63,14 +63,16 @@ release is unconfirmed.
   and independent.
 - **Scroll position and the library search** now survive opening a series, via
   `ScrollMemory` and two more hoisted values in `YomuApp`.
-- **Default on a per-source screen** now means what §4 says it means. This one
-  is a straight correctness fix against a documented rule and is the safest of
-  the four.
-- **Not done, and known:** the category chip on the per-source browse screen is
-  still a `remember` inside that screen, so it resets to All on the way back.
-  Same shape as the `openSection` wrinkle in §5's routing note. The grid's
-  scroll key includes the chip, so a return trip restores the All position
-  correctly; it just doesn't restore the chip.
+- **Default on a per-source screen** was fixed to the §4 rule in 0.55 and then
+  **deleted along with the whole chip row in 0.56** — see "A filter nobody could
+  have used" in §5. The per-source screen now has Popular / Latest / Filter and
+  no category filtering at all.
+
+**Reported and *not* a bug:** on some sources a series appears in Popular but
+its own search can't find it. Ruled out app-side — the filter list carried into
+`getSearchManga` was the suspect, and resetting the source's filters changed
+nothing. Extension search endpoints commonly index differently from their
+listing pages. Don't spend another session on it without new evidence.
 
 ### Open thread 1 — the reader rewrite is barely tested
 
@@ -1002,13 +1004,12 @@ assignments at all, plus series explicitly filed there. Filtering it like any
 other category — which is what it did originally — shows an empty screen for
 what is usually the largest group in the library.
 
-**This rule binds every screen that offers a Default filter, and for a while it
-only bound one.** The per-source browse screen's category chips kept the naive
-version for three releases after `LibraryTab` was fixed, so the same 2950 series
-were correct in one place and invisible in the other. Fixed in 0.55. Note the
-extra clause it needs: on a browse screen "has no category" is true of every
-catalogue result as well, so Default there is intersected with what is actually
-in the library, or the chip lists the entire source.
+**`LibraryTab` is now the only screen that offers this filter.** The per-source
+browse screen had category chips carrying the naive version, was corrected to
+the union rule in 0.55, and had the whole row deleted in 0.56 — see §5. If a
+Default filter is ever added somewhere new, it needs the union rule *and*, on
+any screen listing something other than the library, an intersection with what
+is actually saved: "has no category" is true of every catalogue result too.
 
 ### The three ways a series gets opened
 
@@ -1377,6 +1378,40 @@ are one feedback loop wearing two hats, and no amount of comparing "is it alread
 equal" fixes it — the values genuinely differ at every intermediate step. Look
 for a settled/committed variant of whatever state is being observed, and if the
 API doesn't have one, the loop is the design and it needs cutting, not guarding.
+
+### A filter nobody could have used, fixed twice before being deleted
+
+The per-source browse screen carried a row of category chips: All, then one per
+user category. Reported as "entries in the Default category don't show". Fixed
+to §4's union rule, which was a real inconsistency — `LibraryTab` had used the
+union since the import and this screen never had. The report came back: *every*
+chip was empty, not just Default.
+
+The chips filtered `shown`, and `shown` is the page already loaded. On an
+extension source that is Popular's first ~20 titles. So a chip asked "which of
+these twenty catalogue entries are in this category of your library", which is
+almost always none — and the screen disabled "Load more" while a chip was
+active, so it couldn't even reach further. It made sense only for the local
+folder source, where the listing *is* effectively the library, and that is
+probably what it was built against; §0's "category chips froze the app" is that
+same row over a listing large enough to matter.
+
+Deleted in 0.56 at the user's call: Popular, Latest and Filter are the listing
+controls, and filtering a library belongs to the library.
+
+Two things worth keeping:
+
+- **Confirming the reported symptom is not the same as understanding it.** The
+  Default report was accurate, the rule it named was real, and fixing it was
+  correct — and it left the feature exactly as useless as before, because the
+  reason it was empty had nothing to do with Default. The tell was available
+  and not asked for: does *any* chip work? One question, and it would have
+  reframed the whole thing before a line was written.
+- **A filter over a paged listing needs its scope stated.** Filtering what has
+  been fetched, while paging is off, is a different feature from filtering what
+  exists — and it fails silently, looking like a data problem rather than a
+  design one. If a control can't reach past the current page, either it searches
+  or it shouldn't be there.
 
 ### A keyed lazy list re-anchors, and the symptom blames the sort
 
