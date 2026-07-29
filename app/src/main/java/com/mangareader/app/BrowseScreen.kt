@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -501,6 +502,26 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     var filter by remember { mutableStateOf("") }
     var installedOnly by remember { mutableStateOf(false) }
 
+    // Installing and uninstalling both finish in the system's UI, in another
+    // process, so this screen can't be told when they're done — the only signal
+    // it gets is the user coming back. Set on the way out, read on the next
+    // resume, so an ordinary resume (unlocking the phone, switching back to the
+    // app) doesn't refetch the index for nothing.
+    var awaitingPackageChange by remember { mutableStateOf(false) }
+    var refreshTick by remember { mutableIntStateOf(0) }
+
+    val hostActivity = context as? ComponentActivity
+    DisposableEffect(hostActivity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingPackageChange) {
+                awaitingPackageChange = false
+                refreshTick++
+            }
+        }
+        hostActivity?.lifecycle?.addObserver(observer)
+        onDispose { hostActivity?.lifecycle?.removeObserver(observer) }
+    }
+
     // Client-side filter over the already-fetched index: no refetch, no network.
     val shownExtensions = remember(available, filter, installedOnly) {
         val q = filter.trim()
@@ -512,7 +533,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         }
     }
 
-    LaunchedEffect(repos) {
+    LaunchedEffect(repos, refreshTick) {
         if (repos.isEmpty()) {
             available = emptyList()
             return@LaunchedEffect
@@ -605,29 +626,48 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                 if (updatableExts.isNotEmpty()) {
                     item { SectionHeader("Update available (${updatableExts.size})") }
                     items(updatableExts) { ext ->
-                        ExtensionRow(ext) {
-                            scope.launch {
-                                ExtensionManager.install(context, ext)
-                                onInstalled()
+                        ExtensionRow(
+                            ext = ext,
+                            onInstall = {
+                                awaitingPackageChange = true
+                                scope.launch {
+                                    ExtensionManager.install(context, ext)
+                                    onInstalled()
+                                }
+                            },
+                            onUninstall = {
+                                awaitingPackageChange = true
+                                ExtensionManager.uninstall(context, ext.pkgName)
                             }
-                        }
+                        )
                     }
                 }
                 if (installedExts.isNotEmpty()) {
                     item { SectionHeader("Installed") }
                     items(installedExts) { ext ->
-                        ExtensionRow(ext) { }
+                        ExtensionRow(
+                            ext = ext,
+                            onInstall = { },
+                            onUninstall = {
+                                awaitingPackageChange = true
+                                ExtensionManager.uninstall(context, ext.pkgName)
+                            }
+                        )
                     }
                 }
                 if (availableExts.isNotEmpty()) {
                     item { SectionHeader("Available") }
                     items(availableExts) { ext ->
-                        ExtensionRow(ext) {
-                            scope.launch {
-                                ExtensionManager.install(context, ext)
-                                onInstalled()
+                        ExtensionRow(
+                            ext = ext,
+                            onInstall = {
+                                awaitingPackageChange = true
+                                scope.launch {
+                                    ExtensionManager.install(context, ext)
+                                    onInstalled()
+                                }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -662,7 +702,11 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ExtensionRow(ext: Extension, onInstall: () -> Unit) {
+internal fun ExtensionRow(
+    ext: Extension,
+    onInstall: () -> Unit,
+    onUninstall: (() -> Unit)? = null
+) {
     ListItem(
         leadingContent = {
             SourceIcon(if (ext.isInstalled) ext.pkgName else null, ext.name)
@@ -685,17 +729,24 @@ internal fun ExtensionRow(ext: Extension, onInstall: () -> Unit) {
             }
         },
         trailingContent = {
-            if (ext.isInstalled && !ext.hasUpdate) {
-                Text(
-                    "Installed",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelMedium
-                )
-            } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 // Updating is the same flow as installing: the system installer
                 // treats a higher versionCode on the same package as an upgrade.
-                TextButton(onClick = onInstall) {
-                    Text(if (ext.hasUpdate) "Update" else "Install")
+                if (!ext.isInstalled || ext.hasUpdate) {
+                    TextButton(onClick = onInstall) {
+                        Text(if (ext.hasUpdate) "Update" else "Install")
+                    }
+                }
+                // The "Installed" label this replaces said nothing the section
+                // header above the row didn't already say, and it was sitting in
+                // the one place an action for an installed extension belongs.
+                if (ext.isInstalled && onUninstall != null) {
+                    IconButton(onClick = onUninstall) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Uninstall ${ext.name}"
+                        )
+                    }
                 }
             }
         }
