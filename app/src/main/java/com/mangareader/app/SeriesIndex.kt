@@ -127,6 +127,37 @@ object SeriesIndex {
     }
 
     /**
+     * Counts [chapters] without writing anything.
+     *
+     * Split out so a sweep can build up a whole batch and hand it to
+     * [recordAll] in one write. Returns null for an empty list: a failed fetch
+     * falls back to one, and storing `total = 0` would make the series read as
+     * "completed" in every filter that asks.
+     */
+    fun countsFor(context: Context, sourceId: String, chapters: List<Chapter>): SeriesCounts? {
+        if (chapters.isEmpty()) return null
+        var read = 0
+        var latest = 0L
+        chapters.forEach { ch ->
+            if (ReadState.isRead(context, chapterKeyOf(sourceId, ch))) read++
+            if (ch.dateUploaded > latest) latest = ch.dateUploaded
+        }
+        return SeriesCounts(
+            total = chapters.size,
+            read = read,
+            latestChapterAt = latest,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    /** True when [candidate] would actually change what's stored for [seriesId]. */
+    private fun differs(stored: SeriesCounts?, candidate: SeriesCounts): Boolean =
+        stored == null ||
+            stored.total != candidate.total ||
+            stored.read != candidate.read ||
+            stored.latestChapterAt != candidate.latestChapterAt
+
+    /**
      * Counts [chapters] and stores the result, if it differs from what's there.
      *
      * The equality check is load-bearing rather than tidy. Every write here
@@ -135,33 +166,38 @@ object SeriesIndex {
      * several thousand entries to change nothing. With it, a re-open is a map
      * lookup and three integer comparisons.
      *
-     * An empty [chapters] is ignored outright. A failed fetch falls back to an
-     * empty list, and writing `total = 0` for it would make the series read as
-     * "completed" in every filter that asks.
+     * **One series at a time only.** Calling this in a loop over the library is
+     * the quadratic write this file exists to avoid — 3567 calls, each
+     * serialising a growing 3567-entry object. [recordAll] is the one to use for
+     * anything sweeping.
      */
     fun record(context: Context, sourceId: String, seriesId: String, chapters: List<Chapter>) {
-        if (seriesId.isBlank() || chapters.isEmpty()) return
-        var read = 0
-        var latest = 0L
-        chapters.forEach { ch ->
-            if (ReadState.isRead(context, chapterKeyOf(sourceId, ch))) read++
-            if (ch.dateUploaded > latest) latest = ch.dateUploaded
+        if (seriesId.isBlank()) return
+        val candidate = countsFor(context, sourceId, chapters) ?: return
+        if (!differs(all(context)[seriesId], candidate)) return
+        save(context, all(context) + (seriesId to candidate))
+    }
+
+    /**
+     * Stores a whole batch in a single write.
+     *
+     * This is the shape `Library.mergeAll` has and for the identical reason: the
+     * per-item call rewrites the entire store, so a sweep built out of [record]
+     * is quadratic in library size and takes minutes on the library this app
+     * actually has. A refresh over 3567 series flushing every hundred is 36
+     * writes rather than 3567.
+     *
+     * Entries that wouldn't change anything are dropped before the write, so a
+     * second refresh over an unchanged library writes nothing at all.
+     */
+    fun recordAll(context: Context, updates: Map<String, SeriesCounts>) {
+        if (updates.isEmpty()) return
+        val current = all(context)
+        val changed = updates.filter { (id, candidate) ->
+            id.isNotBlank() && differs(current[id], candidate)
         }
-        val existing = all(context)[seriesId]
-        if (existing != null &&
-            existing.total == chapters.size &&
-            existing.read == read &&
-            existing.latestChapterAt == latest
-        ) return
-        save(
-            context,
-            all(context) + (seriesId to SeriesCounts(
-                total = chapters.size,
-                read = read,
-                latestChapterAt = latest,
-                updatedAt = System.currentTimeMillis()
-            ))
-        )
+        if (changed.isEmpty()) return
+        save(context, current + changed)
     }
 
     /**

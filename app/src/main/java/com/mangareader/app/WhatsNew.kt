@@ -43,6 +43,24 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 67,
+            name = "0.67",
+            header = "Refresh the whole library at once",
+            body = "Settings - Library - Refresh library fetches a chapter list " +
+                "for every saved series, so unread counts, the badge and the " +
+                "Unread, Started and Completed filters cover your whole " +
+                "library instead of only the series you have opened.\n\n" +
+                "It runs in the background with a progress notification and " +
+                "keeps going with the app closed. Stopping it is safe - " +
+                "whatever it has already counted is kept, and running it again " +
+                "picks up the rest.\n\n" +
+                "It is one request per series and it paces itself per source, " +
+                "so a few thousand series takes a while. Best left running on " +
+                "Wi-Fi. Nothing is downloaded, only chapter lists - though the " +
+                "offline chapter lists get refreshed along the way, so series " +
+                "you have saved open more accurately without a connection."
+        ),
+        ReleaseNote(
             code = 65,
             name = "0.65",
             header = "Unread counts, and three smaller fixes",
