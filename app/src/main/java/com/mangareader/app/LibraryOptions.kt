@@ -27,15 +27,24 @@ import kotlin.math.roundToInt
  * behind the sheet updates as each row is tapped, which is the whole point of a
  * sheet rather than a dialog.
  *
- * **What isn't here, and why.** Mihon's version of this sheet also offers
- * Unread, Started, Completed and Bookmarked filters, and sorts by total
- * chapters, unread count, latest chapter and fetch date. All of those need a
- * chapter list per series. `ChapterCache` only holds one for a series that has
- * actually been opened, as a file per series — so answering "how many unread"
- * across a 3567-entry library means either a network fetch per series or
- * thousands of file reads on the library screen. They are left out rather than
- * shipped as switches that do nothing; see the reader-settings note in §4 for
- * the same call made once already.
+ * **What the Unread / Started / Completed filters can and can't say.** They are
+ * answered from `SeriesIndex`, one aggregate store of per-series chapter and
+ * read counts, which is what made them possible at all — the live answer needs
+ * a chapter list per series, and the only chapter store here is `ChapterCache`,
+ * a file per series written when that series is opened. Reading thousands of
+ * those on every grid draw is what kept these off the sheet until now.
+ *
+ * The cost of that trade is that the index only knows about series that have
+ * been opened at least once since it shipped. Everything else is un-counted, and
+ * un-counted is not zero — so these three filters, the unread badge and the
+ * index-backed sorts all treat a missing entry as "no answer" rather than
+ * guessing one. [SheetNote] below says so in the sheet, because after an import
+ * that is most of the library and an Unread tab showing four entries would
+ * otherwise look like a broken filter rather than a cold index.
+ *
+ * **Still not here:** Bookmarked, Lewd and Language filters, and Group → Status.
+ * Those aren't blocked on an index — they have no backing field anywhere in the
+ * app and need a data-model decision first.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,11 +66,15 @@ internal fun LibraryOptionsSheet(
     var group by remember { mutableStateOf(LibraryPrefs.group(context)) }
     var badgeDl by remember { mutableStateOf(LibraryPrefs.badgeDownloaded(context)) }
     var badgeLocal by remember { mutableStateOf(LibraryPrefs.badgeLocal(context)) }
+    var badgeUnread by remember { mutableStateOf(LibraryPrefs.badgeUnread(context)) }
     var showTabs by remember { mutableStateOf(LibraryPrefs.showTabs(context)) }
     var showCount by remember { mutableStateOf(LibraryPrefs.showCount(context)) }
     var fDownloaded by remember { mutableStateOf(LibraryPrefs.filterDownloaded(context)) }
     var fLocal by remember { mutableStateOf(LibraryPrefs.filterLocal(context)) }
     var fRead by remember { mutableStateOf(LibraryPrefs.filterRead(context)) }
+    var fUnread by remember { mutableStateOf(LibraryPrefs.filterUnread(context)) }
+    var fStarted by remember { mutableStateOf(LibraryPrefs.filterStarted(context)) }
+    var fCompleted by remember { mutableStateOf(LibraryPrefs.filterCompleted(context)) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         TabRow(selectedTabIndex = tab) {
@@ -97,9 +110,30 @@ internal fun LibraryOptionsSheet(
                         LibraryPrefs.setFilterRead(context, it)
                         onChanged()
                     }
+                    TriFilterRow("Unread", fUnread) {
+                        fUnread = it
+                        LibraryPrefs.setFilterUnread(context, it)
+                        onChanged()
+                    }
+                    TriFilterRow("Started", fStarted) {
+                        fStarted = it
+                        LibraryPrefs.setFilterStarted(context, it)
+                        onChanged()
+                    }
+                    TriFilterRow("Completed", fCompleted) {
+                        fCompleted = it
+                        LibraryPrefs.setFilterCompleted(context, it)
+                        onChanged()
+                    }
                     SheetNote(
                         "Tap once to require, twice to exclude, three times to clear. " +
                             "\u201cRead\u201d is the category of that name."
+                    )
+                    SheetNote(
+                        "Unread, Started and Completed count chapters, so they only " +
+                            "know about series you have opened at least once. Anything " +
+                            "not yet counted stays out of those views rather than being " +
+                            "guessed at \u2014 open a series once and it joins them."
                     )
                 }
 
@@ -200,6 +234,11 @@ internal fun LibraryOptionsSheet(
                     CheckRow("Local source", badgeLocal) {
                         badgeLocal = it
                         LibraryPrefs.setBadgeLocal(context, it)
+                        onChanged()
+                    }
+                    CheckRow("Unread count", badgeUnread) {
+                        badgeUnread = it
+                        LibraryPrefs.setBadgeUnread(context, it)
                         onChanged()
                     }
 

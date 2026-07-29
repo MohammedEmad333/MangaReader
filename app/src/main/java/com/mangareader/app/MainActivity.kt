@@ -195,6 +195,14 @@ fun YomuApp() {
     val libraryScroll = remember { ScrollMemory() }
     val browseScroll = remember { ScrollMemory() }
 
+    // The series screen needs its own rather than sharing one of the above:
+    // ScrollMemory keeps a single signature for everything it holds, so a
+    // library re-sort would throw away the chapter-list position and opening a
+    // different series would throw away the library's. Its signature is the
+    // series id, which is what makes backing out of a chapter restore the
+    // position while opening a different series starts at the top.
+    val seriesScroll = remember { ScrollMemory() }
+
     // Read once per process. Empty on a fresh install and on a launch that
     // isn't an update, so this is normally a single getInt.
     val releaseNotes = remember { WhatsNew.pending(context) }
@@ -990,6 +998,7 @@ fun YomuApp() {
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,
+            scroll = seriesScroll,
             onOpen = { openChapter(it) },
             onLibraryChanged = { libraryTick++ },
             // Both leave the series behind deliberately: a tag search is a

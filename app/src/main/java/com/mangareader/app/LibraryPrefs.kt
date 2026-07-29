@@ -15,10 +15,20 @@ import kotlin.random.Random
  * Every value carries a `key` so it survives being reordered or renamed here.
  */
 
+/**
+ * [UNREAD_COUNT], [TOTAL_CHAPTERS] and [LATEST_CHAPTER] all read `SeriesIndex`,
+ * which is a lagging store — a series that has never been opened has no entry
+ * and no counts. Those sort to the end rather than to zero: "un-counted" and
+ * "none left to read" are opposite claims, and after an import the first is
+ * nearly the whole library.
+ */
 enum class LibrarySort(val key: String, val label: String) {
     ALPHABETICAL("alpha", "Alphabetically"),
     DATE_ADDED("added", "Date added"),
     LAST_READ("lastread", "Last read"),
+    UNREAD_COUNT("unread", "Unread count"),
+    TOTAL_CHAPTERS("chapters", "Chapter count"),
+    LATEST_CHAPTER("latest", "Latest chapter"),
     RANDOM("random", "Random");
 
     companion object {
@@ -137,6 +147,10 @@ object LibraryPrefs {
     fun badgeLocal(c: Context) = p(c).getBoolean("lib_badge_local", true)
     fun setBadgeLocal(c: Context, v: Boolean) = p(c).edit().putBoolean("lib_badge_local", v).apply()
 
+    fun badgeUnread(c: Context) = p(c).getBoolean("lib_badge_unread", true)
+    fun setBadgeUnread(c: Context, v: Boolean) =
+        p(c).edit().putBoolean("lib_badge_unread", v).apply()
+
     fun showTabs(c: Context) = p(c).getBoolean("lib_show_tabs", true)
     fun setShowTabs(c: Context, v: Boolean) = p(c).edit().putBoolean("lib_show_tabs", v).apply()
 
@@ -162,9 +176,34 @@ object LibraryPrefs {
     fun setFilterRead(c: Context, v: FilterState) =
         p(c).edit().putInt("lib_f_read", v.stored).apply()
 
+    // The three below are answered from SeriesIndex, which is a lagging store:
+    // a series that has never been opened has no counts at all. Those are read
+    // as "the condition doesn't hold" rather than guessed at, which falls out of
+    // the existing tri-state with no special case and gives the right shape both
+    // ways round — INCLUDE Unread shows only series known to have unread
+    // chapters, EXCLUDE Unread hides the ones known to have them and leaves the
+    // un-counted alone. The sheet carries a note saying so, because after an
+    // import "un-counted" is most of the library and an empty Unread tab would
+    // otherwise look like a broken filter.
+
+    fun filterUnread(c: Context) = FilterState.from(p(c).getInt("lib_f_unread", 0))
+    fun setFilterUnread(c: Context, v: FilterState) =
+        p(c).edit().putInt("lib_f_unread", v.stored).apply()
+
+    fun filterStarted(c: Context) = FilterState.from(p(c).getInt("lib_f_started", 0))
+    fun setFilterStarted(c: Context, v: FilterState) =
+        p(c).edit().putInt("lib_f_started", v.stored).apply()
+
+    fun filterCompleted(c: Context) = FilterState.from(p(c).getInt("lib_f_completed", 0))
+    fun setFilterCompleted(c: Context, v: FilterState) =
+        p(c).edit().putInt("lib_f_completed", v.stored).apply()
+
     /** True when anything is filtering, so the bar can show it. */
     fun anyFilterActive(c: Context) =
         filterDownloaded(c) != FilterState.OFF ||
             filterLocal(c) != FilterState.OFF ||
-            filterRead(c) != FilterState.OFF
+            filterRead(c) != FilterState.OFF ||
+            filterUnread(c) != FilterState.OFF ||
+            filterStarted(c) != FilterState.OFF ||
+            filterCompleted(c) != FilterState.OFF
 }

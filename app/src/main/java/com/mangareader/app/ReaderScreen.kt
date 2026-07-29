@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -179,7 +180,14 @@ internal fun ReaderScreen(
     // White page number on a white page is invisible, and "Theme" can be either
     // colour depending on the app theme. Taken from the background's own
     // luminance rather than assuming the reader is dark.
-    val onBackground = if (backgroundColor.luminance() > 0.5f) Color.Black else Color.White
+    val lightBackground = backgroundColor.luminance() > 0.5f
+    val onBackground = if (lightBackground) Color.Black else Color.White
+    // The page number sits over the *page*, not the background, so matching the
+    // background is only half an answer — a dark panel in a bright scan swallows
+    // black text as readily as a white page swallows white. The outline is the
+    // opposite colour, so whichever of the two the artwork happens to match,
+    // the other one is still there to read the digits against.
+    val outlineBackground = if (lightBackground) Color.White else Color.Black
     val filter = readerColorFilter(settings.grayscale, settings.inverted)
 
     Box(
@@ -250,9 +258,10 @@ internal fun ReaderScreen(
         }
 
         if (settings.showPageNumber && !showControls && pages.isNotEmpty()) {
-            Text(
+            OutlinedText(
                 text = "${currentPage + 1} / ${pages.size}",
-                color = onBackground.copy(alpha = 0.75f),
+                color = onBackground,
+                outline = outlineBackground,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -562,6 +571,46 @@ private fun ReaderBottomBar(
                 TextButton(onClick = onNext, enabled = hasNext) { Text("Next") }
             }
         }
+    }
+}
+
+/**
+ * [text] drawn in [color] over an outline of [outline].
+ *
+ * Four offset copies underneath a normal one, rather than a stroked
+ * [androidx.compose.ui.text.TextStyle]. `drawStyle` would be one parameter
+ * instead of five composables and it is the obvious way to write this — the
+ * reason it isn't used is that there's no compiler in this loop, `drawStyle`
+ * spent a release opted-in behind `@ExperimentalTextApi`, and finding out which
+ * side of that line this Compose version falls on costs a CI round trip. Offsets
+ * and colours have been stable for the whole life of Compose.
+ *
+ * The copies are opaque on purpose. A translucent outline under a translucent
+ * fill compounds where they overlap, which draws a visible seam around every
+ * glyph — the exact artefact this is meant to remove.
+ */
+@Composable
+private fun OutlinedText(
+    text: String,
+    color: Color,
+    outline: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier) {
+        val w = 1.2.dp
+        // Diagonals only: at this width the four of them already close the ring,
+        // and the axis-aligned four would be four more Text layouts for a
+        // difference nobody can see on a label this size.
+        listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f).forEach { (dx, dy) ->
+            Text(
+                text = text,
+                color = outline,
+                style = style,
+                modifier = Modifier.offset(x = w * dx, y = w * dy)
+            )
+        }
+        Text(text = text, color = color, style = style)
     }
 }
 

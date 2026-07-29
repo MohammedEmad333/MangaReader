@@ -63,9 +63,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
+import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -396,6 +399,17 @@ internal fun SeriesScreen(
     loading: Boolean,
     error: String?,
     readTick: Int,
+    /**
+     * Where this screen was scrolled to, held by `YomuApp`.
+     *
+     * Opening a chapter doesn't cover this screen, it replaces it — the routing
+     * chain is an if/else and the reader's branch sits above this one — so a
+     * `LazyListState` remembered in here is destroyed the moment a chapter
+     * opens, and coming back landed at the top of a chapter list the user may
+     * have scrolled a long way down. Same bug as the library's tab, search and
+     * grid position, found a fourth time, and it takes the same answer.
+     */
+    scroll: ScrollMemory,
     onOpen: (Int) -> Unit,
     onLibraryChanged: () -> Unit,
     /** Runs [String] as a search of this series' own source. */
@@ -436,6 +450,31 @@ internal fun SeriesScreen(
     val downloadedCount = remember(chapters, downloadTick) {
         chapters.count { Downloads.isComplete(context, it.id) }
     }
+    var coverOpen by remember(series.id) { mutableStateOf(false) }
+
+    // The one place in the app that has a chapter list, its source and the
+    // series id in hand at the same time, which is exactly what the index needs
+    // and the reason it's written from here rather than from the fetch in
+    // YomuApp. Keyed on readTick as well as the list, so marking chapters read
+    // — here or by finishing one in the reader, which bumps the same tick on the
+    // way out — corrects the stored count rather than leaving it to drift until
+    // the next fetch.
+    //
+    // Gated on library membership: this store only feeds the library screen, and
+    // recording every series merely *browsed* would grow a JSON that gets
+    // rewritten in full, for entries nothing will ever read.
+    LaunchedEffect(chapters, readTick, inLibrary, sourceId) {
+        if (!inLibrary || chapters.isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            SeriesIndex.record(context, sourceId, series.id, chapters)
+        }
+    }
+
+    // Seeded before the list below composes, not in an effect: the LazyColumn
+    // builds its state as it composes, so a position belonging to a different
+    // series has to be gone by then rather than one frame later.
+    scroll.sync(series.id)
+
     val anyProgress = remember(chapters, readTick, sourceId) {
         chapters.any {
             val k = chapterKeyOf(sourceId, it)
@@ -444,7 +483,10 @@ internal fun SeriesScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = rememberRestoredListState(scroll, "series", series.id),
+            modifier = Modifier.fillMaxSize()
+        ) {
             item {
                 Box {
                     // Cover as a faded backdrop, then a gradient down to the
@@ -486,6 +528,16 @@ internal fun SeriesScreen(
                                 modifier = Modifier
                                     .width(108.dp)
                                     .aspectRatio(0.7f)
+                                    // Only when there's something to enlarge —
+                                    // CoverImage draws initials on a blank when
+                                    // the source gave no cover, and opening a
+                                    // viewer onto that is a black screen and a
+                                    // back press.
+                                    .then(
+                                        if (series.cover != null)
+                                            Modifier.clickable { coverOpen = true }
+                                        else Modifier
+                                    )
                             )
                             Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -920,6 +972,61 @@ internal fun SeriesScreen(
                 onLibraryChanged()
             }
         )
+    }
+
+    if (coverOpen && series.cover != null) {
+        CoverViewer(cover = series.cover, onDismiss = { coverOpen = false })
+    }
+}
+
+/**
+ * The series cover, full screen and zoomable.
+ *
+ * A `Dialog` rather than a branch of the routing chain in `YomuApp`. That chain
+ * encodes real navigation rules in an if/else and is delicate enough already —
+ * §5 has three separate bugs from state living in the wrong side of it — and
+ * this needs none of what a branch buys: nothing below it has to know it's open,
+ * it holds no state worth surviving, and a dialog's own back handling dismisses
+ * it without touching the series underneath.
+ *
+ * `usePlatformDefaultWidth = false` is what makes it full-bleed; without it a
+ * dialog is inset to the platform's alert width and a cover in the middle of it
+ * is barely larger than the one on the screen behind.
+ *
+ * Zoomable because a cover is one of the few images in this app worth looking at
+ * closely, and `telephoto` is already a dependency the reader leans on — the
+ * same call that made paged zoom cheap makes this nearly free.
+ */
+@Composable
+private fun CoverViewer(cover: Any?, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.94f))
+        ) {
+            ZoomableAsyncImage(
+                model = cover,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                // A zoomable image consumes its own pointer events, so a tap
+                // detector wrapped around it never fires — the same thing that
+                // moved the reader's show-controls tap off the pager and onto
+                // the pages. Tapping the image is the way out.
+                onClick = { onDismiss() }
+            )
+            // The scrim is black in both themes, so the arrow can't take its
+            // colour from the scheme — on a light theme that's near-black on
+            // black. Overridden rather than a second BackButton, so this stays
+            // the one back affordance the app uses everywhere.
+            CompositionLocalProvider(LocalContentColor provides Color.White) {
+                BackButton(onDismiss)
+            }
+        }
     }
 }
 
