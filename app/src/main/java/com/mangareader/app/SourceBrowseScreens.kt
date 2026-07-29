@@ -122,46 +122,22 @@ internal fun LibraryScreen(
         else -> 110.dp
     }
 
-    val categories = remember { Categories.list(context) }
-    var activeCategory by remember { mutableStateOf<String?>(null) }
-
-    val shown = remember(series, activeCategory) {
-        val all = series ?: emptyList()
-        val cat = activeCategory
-        if (cat == null) {
-            all
-        } else if (cat == Categories.DEFAULT_ID) {
-            // Default isn't a category series are filed under — it's where one
-            // sits when it's filed under nothing, which is what the library
-            // grid's Default tab already means by it. Matching only explicit
-            // members left everything the user never categorised showing under
-            // All and under no chip at all.
-            //
-            // Narrowed to what's actually in the library, because "has no
-            // category" is true of every result in a source catalogue too, and
-            // without this the chip would show the whole listing.
-            val explicit = Categories.seriesIn(context, cat)
-            val assigned = Categories.assignedSeries(context)
-            val saved = HashSet<String>()
-            Library.list(context).forEach { saved.add(it.seriesId) }
-            all.filter { it.id in explicit || (it.id in saved && it.id !in assigned) }
-        } else {
-            // One parse for the whole category. categoriesFor() per series is
-            // a full parse of the assignment object each time round.
-            val ids = Categories.seriesIn(context, cat)
-            all.filter { it.id in ids }
-        }
-    }
+    // No category chips here any more (0.56). They filtered only the page
+    // already loaded — on an extension source that's Popular's first ~20 titles
+    // — against the user's library categories, so they were near-always empty
+    // and disabled "Load more" while active. Library filtering belongs to the
+    // library; the listing controls are Popular, Latest and Filter.
+    val shown = series ?: emptyList()
 
     // Survives opening a series and coming back: this screen is a branch of the
     // routing chain, so it's torn down and rebuilt, and the grid's own state
-    // goes with it. Keyed by source and chip so each listing keeps its own
-    // place; reset when the listing itself changes underneath it.
+    // goes with it. Keyed per source and view; reset when the listing itself
+    // changes underneath it.
     val browseOrdering = remember(title, query, mode) { listOf(title, query, mode) }
     scroll.sync(browseOrdering)
     val gridState = rememberRestoredGridState(
         memory = scroll,
-        key = "$title#${activeCategory ?: "all"}#${view.key}",
+        key = "$title#${view.key}",
         ordering = browseOrdering
     )
 
@@ -319,28 +295,6 @@ internal fun LibraryScreen(
             onAction = if (challengeable) onSolveChallenge else null
         )
 
-        if (categories.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = activeCategory == null,
-                    onClick = { activeCategory = null },
-                    label = { Text("All") }
-                )
-                categories.forEach { cat ->
-                    FilterChip(
-                        selected = activeCategory == cat.id,
-                        onClick = { activeCategory = cat.id },
-                        label = { Text(cat.name) }
-                    )
-                }
-            }
-        }
-
         if (shown.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -350,8 +304,7 @@ internal fun LibraryScreen(
             ) {
                 if (!loading) {
                     Text(
-                        if (series.isNullOrEmpty()) "Nothing found in this source."
-                        else "No series in this category.",
+                        "Nothing found in this source.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -378,7 +331,7 @@ internal fun LibraryScreen(
 
                 // Paging is manual rather than infinite-scroll: one tap per page
                 // keeps request volume predictable and visible.
-                if (hasNext && activeCategory == null) {
+                if (hasNext) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Box(
                             modifier = Modifier
