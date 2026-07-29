@@ -75,6 +75,14 @@ internal fun LibraryTab(
     error: String?,
     activeCategory: String?,
     onCategoryChange: (String?) -> Unit,
+    // Hoisted for the same reason [activeCategory] is: opening a series replaces
+    // this branch of the routing chain, so a `remember` here doesn't come back.
+    // The search used to be one, and every trip into a series cleared it.
+    search: String,
+    onSearchChange: (String) -> Unit,
+    searchOpen: Boolean,
+    onSearchOpenChange: (Boolean) -> Unit,
+    scroll: ScrollMemory,
     onOpen: (LibraryEntry) -> Unit,
     onRemoveMany: (Set<String>) -> Unit
 ) {
@@ -105,8 +113,6 @@ internal fun LibraryTab(
     val fLocal = remember(tick) { LibraryPrefs.filterLocal(context) }
     val fRead = remember(tick) { LibraryPrefs.filterRead(context) }
 
-    var searchOpen by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
     var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var assignOpen by remember { mutableStateOf(false) }
@@ -141,7 +147,7 @@ internal fun LibraryTab(
 
     /** Filter, then order. Applied per group so each tab sorts within itself. */
     fun arrange(list: List<LibraryEntry>): List<LibraryEntry> {
-        val needle = query.trim()
+        val needle = search.trim()
         val filtered = list.filter { e ->
             val isLocal = !e.sourceId.startsWith("tachi:")
             val checks = listOf(
@@ -161,10 +167,12 @@ internal fun LibraryTab(
             LibrarySort.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase() }
             LibrarySort.DATE_ADDED -> filtered.sortedBy { it.addedAt }
             LibrarySort.LAST_READ -> filtered.sortedBy { lastReadAt[it.seriesId] ?: Long.MIN_VALUE }
-            // Seeded so the order holds across recompositions and restarts.
-            // hashCode of the id mixed with the seed is enough here and costs
-            // nothing; a real shuffle would need a list copy per group.
-            LibrarySort.RANDOM -> filtered.sortedBy { (it.seriesId.hashCode() xor randomSeed) }
+            // Seeded so the order holds across recompositions and restarts, and
+            // avalanche-mixed so it doesn't inherit the shape of the ids — see
+            // LibraryPrefs.shuffleKey. Still a pure key per entry, so this is
+            // one sort and no list copy per group.
+            LibrarySort.RANDOM ->
+                filtered.sortedBy { LibraryPrefs.shuffleKey(it.seriesId, randomSeed) }
         }
         return if (ascending || sort == LibrarySort.RANDOM) ordered else ordered.reversed()
     }
@@ -175,7 +183,7 @@ internal fun LibraryTab(
     data class Group(val key: String, val label: String, val items: List<LibraryEntry>)
 
     val groups: List<Group> = remember(
-        entries, categories, tick, query, grouping, sort, ascending,
+        entries, categories, tick, search, grouping, sort, ascending,
         fDownloaded, fLocal, fRead, randomSeed
     ) {
         when (grouping) {
@@ -201,6 +209,27 @@ internal fun LibraryTab(
         }
     }
 
+    // What a stored scroll position is a position *into*. Everything that
+    // changes which series sits at which index goes in here, and nothing else
+    // does — a return trip from a series has to leave this identical or it
+    // counts as a re-sort and throws the position away.
+    //
+    // This is why re-sorting used to look like the grid "just scrolling down":
+    // the grid keys its items by series id, so on a reorder it hunts down
+    // whatever was at the top and scrolls to its new index — which after a
+    // shuffle is somewhere in the middle. The list really had been reordered;
+    // it was just showing the same series, a thousand rows further in. Clearing
+    // the position here is what makes a reorder start at the top.
+    val ordering = remember(
+        sort, ascending, randomSeed, grouping, search, fDownloaded, fLocal, fRead
+    ) {
+        listOf(sort, ascending, randomSeed, grouping, search.trim(), fDownloaded, fLocal, fRead)
+    }
+    // Deliberately in composition rather than an effect: the grids below build
+    // their state from `scroll` as they compose, so a stale position has to be
+    // gone before they do, not one frame later. Idempotent, and a map lookup.
+    scroll.sync(ordering)
+
     val tabIndex = groups.indexOfFirst { it.key == activeCategory }.let { if (it < 0) 0 else it }
     val pagerState = rememberPagerState(initialPage = tabIndex) { groups.size }
 
@@ -224,7 +253,10 @@ internal fun LibraryTab(
     }
 
     BackHandler(enabled = selecting) { selected = emptySet() }
-    BackHandler(enabled = !selecting && searchOpen) { searchOpen = false; query = "" }
+    BackHandler(enabled = !selecting && searchOpen) {
+        onSearchOpenChange(false)
+        onSearchChange("")
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (selecting) {
@@ -260,8 +292,8 @@ internal fun LibraryTab(
                         // Not an OutlinedTextField: a bordered box inside a bar
                         // is taller than the bar's own content slot and clips.
                         TextField(
-                            value = query,
-                            onValueChange = { query = it },
+                            value = search,
+                            onValueChange = onSearchChange,
                             placeholder = { Text("Search library") },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
@@ -278,8 +310,8 @@ internal fun LibraryTab(
                 },
                 actions = {
                     IconButton(onClick = {
-                        if (searchOpen) query = ""
-                        searchOpen = !searchOpen
+                        if (searchOpen) onSearchChange("")
+                        onSearchOpenChange(!searchOpen)
                     }) {
                         Icon(
                             if (searchOpen) Icons.Default.Close else Icons.Default.Search,
@@ -338,6 +370,12 @@ internal fun LibraryTab(
                 LibraryGrid(
                     shown = groups[page].items,
                     allEmpty = entries.isEmpty(),
+                    // Per group, not per page index: the tabs can be reordered
+                    // or renamed under a position, and a category's own scroll
+                    // should follow the category.
+                    scrollKey = groups[page].key,
+                    scroll = scroll,
+                    ordering = ordering,
                     display = display,
                     perRow = perRow,
                     readIds = readIds,
@@ -408,6 +446,9 @@ private fun LibraryEmpty(allEmpty: Boolean, modifier: Modifier = Modifier) {
 private fun LibraryGrid(
     shown: List<LibraryEntry>,
     allEmpty: Boolean,
+    scrollKey: String,
+    scroll: ScrollMemory,
+    ordering: Any?,
     display: LibraryDisplay,
     perRow: Int,
     readIds: Set<String>,
@@ -426,6 +467,10 @@ private fun LibraryGrid(
 
     if (display == LibraryDisplay.LIST) {
         LazyColumn(
+            // Suffixed, because list and grid measure position in different
+            // units — item index in a column isn't item index in a four-wide
+            // grid — so switching display mode shouldn't restore the other's.
+            state = rememberRestoredListState(scroll, "$scrollKey#list", ordering),
             modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp)
@@ -486,6 +531,7 @@ private fun LibraryGrid(
         // A fixed count when the user has set one, otherwise size-driven.
         columns = if (perRow > 0) GridCells.Fixed(perRow)
         else GridCells.Adaptive(minSize = 110.dp),
+        state = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering),
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp),

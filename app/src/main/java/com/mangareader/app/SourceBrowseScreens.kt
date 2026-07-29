@@ -97,6 +97,8 @@ internal fun LibraryScreen(
     onRescan: () -> Unit,
     onOpen: (Series) -> Unit,
     onBack: () -> Unit,
+    /** Held by the root so the grid's position outlives this branch. */
+    scroll: ScrollMemory,
     /**
      * Opens a visible WebView at this source's site so the user can answer a
      * Cloudflare challenge by hand. Null for sources with no site to open —
@@ -126,9 +128,42 @@ internal fun LibraryScreen(
     val shown = remember(series, activeCategory) {
         val all = series ?: emptyList()
         val cat = activeCategory
-        if (cat == null) all
-        else all.filter { Categories.categoriesFor(context, it.id).contains(cat) }
+        if (cat == null) {
+            all
+        } else if (cat == Categories.DEFAULT_ID) {
+            // Default isn't a category series are filed under — it's where one
+            // sits when it's filed under nothing, which is what the library
+            // grid's Default tab already means by it. Matching only explicit
+            // members left everything the user never categorised showing under
+            // All and under no chip at all.
+            //
+            // Narrowed to what's actually in the library, because "has no
+            // category" is true of every result in a source catalogue too, and
+            // without this the chip would show the whole listing.
+            val explicit = Categories.seriesIn(context, cat)
+            val assigned = Categories.assignedSeries(context)
+            val saved = HashSet<String>()
+            Library.list(context).forEach { saved.add(it.seriesId) }
+            all.filter { it.id in explicit || (it.id in saved && it.id !in assigned) }
+        } else {
+            // One parse for the whole category. categoriesFor() per series is
+            // a full parse of the assignment object each time round.
+            val ids = Categories.seriesIn(context, cat)
+            all.filter { it.id in ids }
+        }
     }
+
+    // Survives opening a series and coming back: this screen is a branch of the
+    // routing chain, so it's torn down and rebuilt, and the grid's own state
+    // goes with it. Keyed by source and chip so each listing keeps its own
+    // place; reset when the listing itself changes underneath it.
+    val browseOrdering = remember(title, query, mode) { listOf(title, query, mode) }
+    scroll.sync(browseOrdering)
+    val gridState = rememberRestoredGridState(
+        memory = scroll,
+        key = "$title#${activeCategory ?: "all"}#${view.key}",
+        ordering = browseOrdering
+    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -327,6 +362,7 @@ internal fun LibraryScreen(
                 // state and "Load more" stay on one code path instead of two.
                 columns = if (view == BrowseView.LIST) GridCells.Fixed(1)
                 else GridCells.Adaptive(minSize = coverMinDp),
+                state = gridState,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),

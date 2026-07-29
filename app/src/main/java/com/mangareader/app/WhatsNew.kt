@@ -43,6 +43,26 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 55,
+            name = "0.55",
+            header = "Four library and browse fixes",
+            body = "Random sort works. It was reordering the grid all along - but " +
+                "the grid identifies entries by series, so after a shuffle it " +
+                "chased whatever had been at the top down to its new place and " +
+                "scrolled there, which looked like nothing had happened except a " +
+                "lurch downwards. A reorder now starts at the top, and the " +
+                "shuffle itself mixes properly rather than leaving series from " +
+                "one source clumped together.\n\n" +
+                "The library and per-source grids keep their place when you open " +
+                "an entry and come back, and the library keeps its search. Both " +
+                "were stored inside the screen, which opening a series replaces " +
+                "outright - the same thing that used to lose the category tab.\n\n" +
+                "The Default chip on a source screen now lists what the library's " +
+                "Default tab does. Default isn't a category series are filed " +
+                "under, it's where one sits when it's filed under nothing, and " +
+                "that screen was matching only the ones filed there by hand."
+        ),
+        ReleaseNote(
             code = 54,
             name = "0.54",
             header = "Library filter, sort, display and group options",

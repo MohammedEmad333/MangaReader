@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import kotlin.random.Random
 
 /**
  * How the library grid is laid out, ordered, grouped and filtered.
@@ -87,8 +88,37 @@ object LibraryPrefs {
      * the option is the only thing that moves it.
      */
     fun randomSeed(c: Context) = p(c).getInt("lib_random_seed", 0)
+
+    // Random.nextInt() rather than the clock: two reshuffles a second apart
+    // differ only in the low bits of a timestamp, and a seed that only moves in
+    // its low bits is a weak input to any mixing that follows.
     fun reshuffle(c: Context) =
-        p(c).edit().putInt("lib_random_seed", System.currentTimeMillis().toInt()).apply()
+        p(c).edit().putInt("lib_random_seed", Random.nextInt()).apply()
+
+    /**
+     * The ordering key for [LibrarySort.RANDOM].
+     *
+     * `hashCode() xor seed` is the tempting version and it's weak in a way that
+     * only shows on real data: ids from one source differ mostly in their last
+     * few characters, so their hashes arrive already clustered, and xor is a
+     * bit-flip — it can reverse blocks of an order but it can't break a cluster
+     * apart. Running the id and the seed through an avalanche mix gives an order
+     * with no visible relation to either, which is what "random" has to mean
+     * here, and it stays a pure function of (id, seed) so the order is still
+     * stable across recompositions and restarts.
+     */
+    fun shuffleKey(seriesId: String, seed: Int): Int = mix(seriesId.hashCode() xor mix(seed))
+
+    /** murmur3's fmix32 finaliser. */
+    private fun mix(value: Int): Int {
+        var h = value
+        h = h xor (h ushr 16)
+        h *= 0x85EBCA6B.toInt()
+        h = h xor (h ushr 13)
+        h *= 0xC2B2AE35.toInt()
+        h = h xor (h ushr 16)
+        return h
+    }
 
     // ---- display ----
 
