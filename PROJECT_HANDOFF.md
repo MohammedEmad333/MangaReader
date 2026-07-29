@@ -1,8 +1,8 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.58**. 0.55 and 0.56 are **verified on device**. 0.57 shipped a
-regression that marked chapters read on open; 0.58 fixes it and is unverified.
+at **0.59**. **0.55 through 0.58 are all verified on device.** 0.59 adds the
+first two items off the Trello backlog and is unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -39,11 +39,15 @@ screens list rather than filter. The two entries worth reading are in §5 — on
 is a Compose behaviour that makes a working sort look broken, the other is the
 same state-hoisting bug found for the third time.
 
-**0.57 is the untested tail.** Four more reports, three of them in the reader,
-which §0 has called the largest untested surface in the app for five sessions
-running — and it was: two of the three had been there since the rewrite. Thread
-3 has the detail. The extension one isn't an app bug in origin; see §5's "A
-repository can change shape underneath you".
+**0.55–0.58 are done and confirmed**: library scroll/tab/search persistence,
+random sort, per-source screens that list rather than filter, long-strip page
+counting and drift, history covers, and the new repository index format. 0.57
+shipped a regression inside that run — chapters marking themselves read on open
+— which 0.58 fixed; both entries are in §5 and the pair is worth reading
+together, because the second was caused by the first.
+
+**0.59 is the untested tail**, and it is small on purpose: an uninstall button
+and the reader's back arrow. The rest of the backlog is in §7.
 
 **The two older threads below are still open and neither was touched.** They
 have now survived four sessions. The reader is still the largest untested
@@ -55,7 +59,24 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.57 is written, not run
+### Open thread 3 — 0.59 is written, not run
+
+Two backlog items, deliberately kept apart from each other and from anything
+load-bearing:
+
+- **Uninstall button** on installed extension rows. `ExtensionManager.uninstall`
+  fires `ACTION_DELETE`, so the system prompts and this app holds no
+  `REQUEST_DELETE_PACKAGES`. The row's "Installed" label is gone — the section
+  header said the same thing and that slot is where an action belongs.
+- **Reader back button** is now `Ui.BackButton` like everywhere else.
+
+The one thing worth checking beyond "does it work": the Extensions list refetches
+the whole index on the resume *after* an install or uninstall, gated on a flag
+so an ordinary resume doesn't. That index is 1.3 MB. If it feels slow, the fix
+is to cache the parsed list and re-query only the installed flags — not to drop
+the refresh, or the row will lie about what's installed.
+
+### Closed — 0.57's four reports
 
 0.55 and 0.56 are done and confirmed. 0.57 is four fixes from one report, none
 of them exercised:

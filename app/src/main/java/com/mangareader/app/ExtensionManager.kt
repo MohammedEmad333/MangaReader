@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import androidx.core.content.FileProvider
 import dalvik.system.PathClassLoader
@@ -188,6 +189,26 @@ object ExtensionManager {
     }
 
     private const val SAFE = "CONTENT_WARNING_SAFE"
+
+    /**
+     * Hands a package to the system uninstaller.
+     *
+     * `ACTION_DELETE` rather than `ACTION_UNINSTALL_PACKAGE`: the latter is
+     * deprecated, and the version that skips the confirmation wants
+     * `REQUEST_DELETE_PACKAGES` — a permission worth not holding. The prompt is
+     * the point. This app has no business removing a package silently, and the
+     * user can still back out of it.
+     *
+     * Nothing is returned. The uninstall completes in another process after
+     * this call, so the caller learns about it by re-reading the package
+     * manager once the user comes back, not from here.
+     */
+    fun uninstall(context: Context, pkgName: String) {
+        context.startActivity(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkgName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
 
     private fun installedInfo(pm: PackageManager, pkg: String) = try {
         pm.getPackageInfo(pkg, 0)

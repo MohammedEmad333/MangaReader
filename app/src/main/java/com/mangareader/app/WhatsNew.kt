@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 59,
+            name = "0.59",
+            header = "Uninstall extensions, and a consistent reader back button",
+            body = "Installed extensions now have an uninstall button in the " +
+                "Extensions list, next to the update button where there is one. " +
+                "It opens the system's uninstall prompt, so nothing is removed " +
+                "without your say-so, and the list re-reads itself when you come " +
+                "back.\n\n" +
+                "The reader's back arrow is the same button every other screen " +
+                "uses. It was the last one drawing its own."
+        ),
+        ReleaseNote(
             code = 58,
             name = "0.58",
             header = "Fixes chapters marking themselves read",

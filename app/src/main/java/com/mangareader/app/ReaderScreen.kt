@@ -374,7 +374,10 @@ private fun ReaderTopBar(title: String, subtitle: String, onClose: () -> Unit) {
                 .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onClose) { Text("\u2190") }
+            // Ui.BackButton, like every other screen. This was the one place
+            // still drawing its own arrow as a TextButton, which sat at a
+            // different size and alignment to the rest of the app.
+            BackButton(onClose)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
