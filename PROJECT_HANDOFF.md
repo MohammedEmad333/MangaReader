@@ -1,8 +1,10 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.68**. **0.55 through 0.65 and 0.68 are verified on device. 0.67 is
-installed and only partly exercised, and 0.66 is unaccounted for** — see §0.
+Context document for continuing work in a fresh chat. Last updated 2026-07-30
+at **0.69**. **0.55 through 0.65, 0.67 and 0.68 are verified on device. 0.69 is
+pushed and unverified, and 0.66 is unaccounted for** — see §0. A full library
+sweep ran to completion on the night of 2026-07-29/30, which is what exercised
+0.67's machinery end to end.
 0.63 shipped the vertical page slider rotated the wrong way, 0.64 fixed it, 0.65
 landed the per-series chapter index that four backlog items were all waiting on,
 and 0.67–0.68 made it answer for the whole library instead of your browsing
@@ -166,11 +168,21 @@ how bugs 3, 4 and 6 announce themselves.
   notes promise; the cost is that the "N of 3571 counted" label can't reach the
   total while anything persistently fails.
 
-**Still unrun, and it is one branch:** no sweep has ever reached its own end. Both
-stop tests ended in a stop or a kill, so `completed = true` has never been true.
-That branch holds the final flush on normal exit, `RefreshCursor.clear()`, the row
-reverting to "Refresh library", and the summary line. **If the cursor doesn't
-clear on completion, the app will offer to resume a finished sweep forever.**
+**The completion branch is now verified too, and 0.68 is done.** A full sweep ran
+to its own end on the night of 2026-07-29/30 and the Settings row afterwards read
+"Refresh library" **with no "Start over" button** — which only renders when
+`unfinished` is true, so its absence is direct proof that `RefreshCursor.clear()`
+ran. That single observation closes the whole branch: `completed` was set from
+`currentCoroutineIsActive()`, the worker's `finally` ran the last flush
+immediately before the clear, the notification tore itself down, and the service
+stopped. **The wake lock also held across the full run** — comfortably, as it
+turns out: the run took about 79 minutes against a 4-hour timeout, not the ~3
+hours an earlier revision of this file wrongly calculated.
+
+What was *not* captured is the summary's three numbers — the row was tapped before
+anyone read them, and `finishedAt` and the counters are process-lifetime state
+with nothing persisting them. So the arithmetic below is still unmeasured; it is
+not blocked on anything but a screenshot of the next sweep to finish.
 
 **Four bugs from the 0.67 review are still open**, all in files that session had
 open:
@@ -2528,13 +2540,37 @@ Roughly in order of value:
    lock but not the service.
 
    **That budget is shared, as of 0.67.** `LibraryRefreshService` is a second
-   `dataSync` foreground service, and a full sweep is on the order of an hour or
-   two of it. So the likely casualty is not the refresh — it is **a download queue
-   started later the same day, which gets refused**, with the cause an hour in the
-   past and nothing on screen connecting the two. If the sweep is ever put on a
-   schedule rather than a button, it should become `WorkManager` work instead of a
+   `dataSync` foreground service, and a full sweep is **~1h25m — measured**:
+   3114 series in 73 minutes on the night of 2026-07-29/30, or **42.7/min** over
+   3571 entries, cross-checked against a full run of 3378 series in 79 minutes.
+   So the original "an hour or two" estimate in this document was right, and two
+   full sweeps in one night came to under three hours — comfortably inside the
+   ~6-hour cap. The hazard is real but not one or two sweeps deep: it is a queue
+   left paused indefinitely, or a sweep put on a repeating schedule. If it ever is
+   scheduled rather than pressed, it should become `WorkManager` work instead of a
    service; a user-initiated sweep is defensible as a foreground service, a
    recurring one is not.
+
+   *A previous revision of this entry claimed ~3h10m and "over half the daily
+   budget". That was wrong — it came from computing a rate against an assumed
+   timestamp for a progress reading that didn't carry one. Don't derive rates from
+   readings whose time you inferred.*
+
+   **The sweep is latency-bound, not spacing-bound**, and this part survives the
+   correction. 42.7/min across `SOURCE_CONCURRENCY = 3` is roughly 4 seconds per
+   series within a source, against a `REQUEST_SPACING_MS` of 250ms — the pacing
+   constant is not what sets the pace, the network is. If this ever needs to be
+   faster, `SOURCE_CONCURRENCY` is the lever and `REQUEST_SPACING_MS` is not.
+   Weigh either against the manhwatoon lesson in §5 first.
+
+   **A related thing found while measuring:** `NetworkHelper` gives the shared
+   client a 5 MiB disk cache and `Requests.kt` defaults every `GET` to
+   `maxAge(10, MINUTES)`. So two sweeps started inside ten minutes of each other
+   can serve chapter lists from cache rather than re-checking the source — which is
+   not what a *refresh* means. In practice a sweep takes far longer than ten
+   minutes and 5 MiB won't hold 3571 chapter lists, so most of a second sweep
+   misses anyway. Worth knowing before anyone adds a "refresh this series now"
+   button, which would sit squarely inside that window.
 6. **Cloudflare costs 30 seconds before the error appears.** A source behind an
    interactive challenge burns `CloudflareInterceptor`'s full timeout on the
    headless attempt that cannot succeed, and only then shows the error carrying
