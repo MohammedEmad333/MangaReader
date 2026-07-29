@@ -107,11 +107,15 @@ internal fun LibraryTab(
     val grouping = remember(tick) { LibraryPrefs.group(context) }
     val badgeDl = remember(tick) { LibraryPrefs.badgeDownloaded(context) }
     val badgeLocal = remember(tick) { LibraryPrefs.badgeLocal(context) }
+    val badgeUnread = remember(tick) { LibraryPrefs.badgeUnread(context) }
     val showTabs = remember(tick) { LibraryPrefs.showTabs(context) }
     val showCount = remember(tick) { LibraryPrefs.showCount(context) }
     val fDownloaded = remember(tick) { LibraryPrefs.filterDownloaded(context) }
     val fLocal = remember(tick) { LibraryPrefs.filterLocal(context) }
     val fRead = remember(tick) { LibraryPrefs.filterRead(context) }
+    val fUnread = remember(tick) { LibraryPrefs.filterUnread(context) }
+    val fStarted = remember(tick) { LibraryPrefs.filterStarted(context) }
+    val fCompleted = remember(tick) { LibraryPrefs.filterCompleted(context) }
 
     var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -133,6 +137,21 @@ internal fun LibraryTab(
         else DownloadIndex.list(context).map { it.seriesId }.toSet()
     }
 
+    // Chapter counts per series. Unlike DownloadIndex this is a single string
+    // read and one parse — no directory walk — but it is still conditional, for
+    // the same reason and by the same rule: the library screen does no work the
+    // current settings don't ask for.
+    val counts = remember(tick, badgeUnread, sort, fUnread, fStarted, fCompleted) {
+        val wanted = badgeUnread ||
+            sort == LibrarySort.UNREAD_COUNT ||
+            sort == LibrarySort.TOTAL_CHAPTERS ||
+            sort == LibrarySort.LATEST_CHAPTER ||
+            fUnread != FilterState.OFF ||
+            fStarted != FilterState.OFF ||
+            fCompleted != FilterState.OFF
+        if (wanted) SeriesIndex.all(context) else emptyMap()
+    }
+
     // Most recent read per series, from History. History is capped at 40
     // chapters, so this is a partial answer by construction: anything older
     // simply has no timestamp and sorts to the end. That is worth having and
@@ -150,10 +169,17 @@ internal fun LibraryTab(
         val needle = search.trim()
         val filtered = list.filter { e ->
             val isLocal = !e.sourceId.startsWith("tachi:")
+            // A missing index entry reads as "doesn't hold" on all three, which
+            // is why these are `?: false` rather than a null branch — see the
+            // note on LibraryPrefs.filterUnread.
+            val c = counts[e.seriesId]
             val checks = listOf(
                 fDownloaded to (e.seriesId in downloadedIds),
                 fLocal to isLocal,
-                fRead to (e.seriesId in readIds)
+                fRead to (e.seriesId in readIds),
+                fUnread to ((c?.unread ?: 0) > 0),
+                fStarted to (c?.started ?: false),
+                fCompleted to (c?.completed ?: false)
             )
             checks.all { (state, holds) ->
                 when (state) {
@@ -167,6 +193,17 @@ internal fun LibraryTab(
             LibrarySort.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase() }
             LibrarySort.DATE_ADDED -> filtered.sortedBy { it.addedAt }
             LibrarySort.LAST_READ -> filtered.sortedBy { lastReadAt[it.seriesId] ?: Long.MIN_VALUE }
+            // MIN_VALUE, not 0, for an un-counted series: ascending puts it
+            // first and descending last, which is what "we don't know" deserves
+            // in both directions. Zero would claim it has nothing unread, and
+            // after an import that claim would be made about most of the
+            // library.
+            LibrarySort.UNREAD_COUNT ->
+                filtered.sortedBy { counts[it.seriesId]?.unread ?: Int.MIN_VALUE }
+            LibrarySort.TOTAL_CHAPTERS ->
+                filtered.sortedBy { counts[it.seriesId]?.total ?: Int.MIN_VALUE }
+            LibrarySort.LATEST_CHAPTER ->
+                filtered.sortedBy { counts[it.seriesId]?.latestChapterAt ?: Long.MIN_VALUE }
             // Seeded so the order holds across recompositions and restarts, and
             // avalanche-mixed so it doesn't inherit the shape of the ids — see
             // LibraryPrefs.shuffleKey. Still a pure key per entry, so this is
@@ -184,7 +221,7 @@ internal fun LibraryTab(
 
     val groups: List<Group> = remember(
         entries, categories, tick, search, grouping, sort, ascending,
-        fDownloaded, fLocal, fRead, randomSeed
+        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted, counts, randomSeed
     ) {
         when (grouping) {
             LibraryGroup.UNGROUPED -> listOf(Group("all", "All", arrange(entries)))
@@ -220,10 +257,24 @@ internal fun LibraryTab(
     // shuffle is somewhere in the middle. The list really had been reordered;
     // it was just showing the same series, a thousand rows further in. Clearing
     // the position here is what makes a reorder start at the top.
+    //
+    // `counts` is deliberately *not* in here, though the three index-backed
+    // sorts read it. It moves every time a chapter is finished, so including it
+    // would drop the library's scroll position on every return from the reader —
+    // which is the bug this whole mechanism exists to prevent, reintroduced from
+    // the other end. What it costs is a slightly stale anchor when counts shift
+    // under an index sort, and that case is a single series moving a few rows
+    // rather than the wholesale reorder the position can't survive. Item keys
+    // then re-anchor to the same series, which under a small change is the
+    // behaviour you want anyway.
     val ordering = remember(
-        sort, ascending, randomSeed, grouping, search, fDownloaded, fLocal, fRead
+        sort, ascending, randomSeed, grouping, search,
+        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted
     ) {
-        listOf(sort, ascending, randomSeed, grouping, search.trim(), fDownloaded, fLocal, fRead)
+        listOf(
+            sort, ascending, randomSeed, grouping, search.trim(),
+            fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted
+        )
     }
     // Deliberately in composition rather than an effect: the grids below build
     // their state from `scroll` as they compose, so a stale position has to be
@@ -381,6 +432,12 @@ internal fun LibraryTab(
                     readIds = readIds,
                     downloadedIds = if (badgeDl) downloadedIds else emptySet(),
                     badgeLocal = badgeLocal,
+                    // Only what the badge needs, and only when it's on: the grid
+                    // has no use for totals or dates, and handing it the whole
+                    // index would make every count change recompose every cell.
+                    unreadCounts = if (badgeUnread) {
+                        counts.mapValues { (_, c) -> c.unread }.filterValues { it > 0 }
+                    } else emptyMap(),
                     selected = selected,
                     selecting = selecting,
                     onOpen = onOpen,
@@ -454,6 +511,8 @@ private fun LibraryGrid(
     readIds: Set<String>,
     downloadedIds: Set<String>,
     badgeLocal: Boolean,
+    /** Series id to unread chapter count. Absent means un-counted, not zero. */
+    unreadCounts: Map<String, Int>,
     selected: Set<String>,
     selecting: Boolean,
     onOpen: (LibraryEntry) -> Unit,
@@ -519,7 +578,8 @@ private fun LibraryGrid(
                     )
                     EntryBadges(
                         downloaded = entry.seriesId in downloadedIds,
-                        local = badgeLocal && !entry.sourceId.startsWith("tachi:")
+                        local = badgeLocal && !entry.sourceId.startsWith("tachi:"),
+                        unread = unreadCounts[entry.seriesId]
                     )
                 }
             }
@@ -570,7 +630,8 @@ private fun LibraryGrid(
                     Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
                         EntryBadges(
                             downloaded = entry.seriesId in downloadedIds,
-                            local = badgeLocal && !entry.sourceId.startsWith("tachi:")
+                            local = badgeLocal && !entry.sourceId.startsWith("tachi:"),
+                            unread = unreadCounts[entry.seriesId]
                         )
                     }
 
@@ -630,11 +691,22 @@ private fun LibraryGrid(
     }
 }
 
-/** The corner markers. Nothing is drawn when both are off, so there is no box. */
+/**
+ * The corner markers. Nothing is drawn when all are off, so there is no box.
+ *
+ * [unread] is null for a series `SeriesIndex` has no counts for, which is not
+ * the same as zero and must not render as "0" — after an import that is most of
+ * the library, and a grid of zeroes would read as "you have read everything"
+ * rather than "nothing has been counted yet". Null draws nothing; the count
+ * appears the first time the series is opened.
+ */
 @Composable
-private fun EntryBadges(downloaded: Boolean, local: Boolean) {
-    if (!downloaded && !local) return
+private fun EntryBadges(downloaded: Boolean, local: Boolean, unread: Int? = null) {
+    val showUnread = unread != null && unread > 0
+    if (!downloaded && !local && !showUnread) return
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        // First, because it's the one that changes and the one being looked for.
+        if (showUnread) MiniBadge("$unread", MaterialTheme.colorScheme.primary)
         if (downloaded) MiniBadge("DL", MaterialTheme.colorScheme.tertiary)
         if (local) MiniBadge("Local", MaterialTheme.colorScheme.secondary)
     }

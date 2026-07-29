@@ -148,11 +148,15 @@ object Library {
         seriesIds.forEach {
             if (it in assigned) Categories.setCategoriesFor(context, it, emptySet())
         }
+        // Chapter counts are only ever recorded for series in the library, so
+        // leaving these behind is weight in a store that gets rewritten whole.
+        SeriesIndex.forget(context, seriesIds)
     }
 
     /** Removes the series and clears its category assignments. */
     fun remove(context: Context, seriesId: String) {
         save(context, list(context).filterNot { it.seriesId == seriesId })
         Categories.setCategoriesFor(context, seriesId, emptySet())
+        SeriesIndex.forget(context, setOf(seriesId))
     }
 }

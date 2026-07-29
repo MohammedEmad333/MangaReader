@@ -43,6 +43,27 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 65,
+            name = "0.65",
+            header = "Unread counts, and three smaller fixes",
+            body = "The library can count chapters now. Covers carry an unread " +
+                "badge, and the options sheet gains Unread, Started and " +
+                "Completed filters plus sorting by unread count, chapter count " +
+                "or latest chapter.\n\n" +
+                "It only knows about series you have opened at least once - " +
+                "counting the rest would mean reading a file per series every " +
+                "time the grid draws. Anything not yet counted stays out of " +
+                "those views instead of being guessed at, and joins them the " +
+                "first time you open it. All of it can be switched off under " +
+                "Display and Filter.\n\n" +
+                "Also: the page number is outlined now, so it stays readable " +
+                "over a dark panel or a blown-out white one rather than only " +
+                "over the background colour. Backing out of a chapter returns " +
+                "to where you were in the chapter list instead of the top. And " +
+                "tapping a cover on a series page opens it full screen, with " +
+                "pinch to zoom."
+        ),
+        ReleaseNote(
             code = 64,
             name = "0.64",
             header = "Vertical slider fixes, and readable page numbers",
