@@ -170,6 +170,52 @@ object Categories {
         return (0 until arr.length()).map { arr.getString(it) }.toSet()
     }
 
+    /**
+     * Adds and removes categories across many series in a single write.
+     *
+     * [setCategoriesFor] reserialises the entire assignment object per call, so
+     * running it once per selected series is the quadratic write §5 keeps
+     * finding — a hundred selected entries would be a hundred growing
+     * serialisations of a map that already holds thousands. This is one parse,
+     * one pass, one write, one invalidation.
+     *
+     * A category in neither [add] nor [remove] is left exactly as it was on each
+     * series, which is what makes a mixed selection editable: the caller can
+     * leave the categories only *some* of the selection belongs to alone instead
+     * of having to force them on or off.
+     *
+     * [remove] is applied after [add], so a category in both wins as a removal.
+     */
+    fun applyCategories(
+        context: Context,
+        seriesIds: Set<String>,
+        add: Set<String>,
+        remove: Set<String>
+    ) {
+        if (seriesIds.isEmpty() || (add.isEmpty() && remove.isEmpty())) return
+        val map = assignments(context)
+        seriesIds.forEach { seriesId ->
+            // LinkedHashSet, not HashSet: assignment order is what the category
+            // list is written in, and reordering it on every bulk edit would
+            // make the stored JSON churn for no reason.
+            val current = LinkedHashSet<String>()
+            map.optJSONArray(seriesId)?.let { arr ->
+                for (i in 0 until arr.length()) current.add(arr.getString(i))
+            }
+            current.addAll(add)
+            current.removeAll(remove)
+            if (current.isEmpty()) {
+                map.remove(seriesId)
+            } else {
+                val arr = JSONArray()
+                current.forEach { arr.put(it) }
+                map.put(seriesId, arr)
+            }
+        }
+        prefs(context).edit().putString(KEY_ASSIGN, map.toString()).apply()
+        invalidateAssignments()
+    }
+
     fun setCategoriesFor(context: Context, seriesId: String, catIds: Set<String>) {
         val map = assignments(context)
         if (catIds.isEmpty()) {

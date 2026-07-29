@@ -43,6 +43,19 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 53,
+            name = "0.53",
+            header = "Change categories for a whole selection",
+            body = "Select any number of entries and the pencil in the selection " +
+                "bar now edits all of their categories at once.\n\n" +
+                "The boxes are three-state. A category every selected entry is " +
+                "already in starts checked, one none of them is in starts empty, " +
+                "and one that only some of them are in starts filled - meaning " +
+                "leave it alone. Tapping cycles on, off, and back to where it " +
+                "started, so a mixed category can be forced either way or " +
+                "restored without touching the entries that were already right."
+        ),
+        ReleaseNote(
             code = 52,
             name = "0.52",
             header = "Library tabs, multi-select, and What's new",
