@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 60,
+            name = "0.60",
+            header = "Tappable tags, and a swipeable Browse",
+            body = "Tapping a tag on a series now offers to search it: in that " +
+                "series' own source, across every source at once, or to copy it. " +
+                "Either search leaves the series behind and shows the results, " +
+                "so back returns to whichever list you were looking at.\n\n" +
+                "Sources and Extensions swipe, the way the library's category " +
+                "tabs do."
+        ),
+        ReleaseNote(
             code = 59,
             name = "0.59",
             header = "Uninstall extensions, and a consistent reader back button",
