@@ -43,6 +43,19 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 61,
+            name = "0.61",
+            header = "Uninstall actually uninstalls",
+            body = "0.59's uninstall button asked the system to remove the " +
+                "package without holding the permission that lets an app ask, " +
+                "so the request was refused before anything appeared - a tap, a " +
+                "flicker, and the extension still installed.\n\n" +
+                "The permission is declared now, the system's confirmation opens " +
+                "inside the app rather than in a window of its own, and if the " +
+                "package is still there afterwards you get told so instead of " +
+                "being left to guess."
+        ),
+        ReleaseNote(
             code = 60,
             name = "0.60",
             header = "Tappable tags, and a swipeable Browse",

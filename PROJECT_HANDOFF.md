@@ -1,8 +1,9 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.60**. **0.55 through 0.58 are all verified on device.** 0.59 and 0.60
-work through the Trello backlog and are unverified.
+at **0.61**. **0.55 through 0.58 are all verified on device.** 0.59 shipped a
+non-working uninstall button, fixed in 0.61. 0.59–0.61 work through the Trello
+backlog; only 0.59 has been run.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -76,10 +77,14 @@ load-bearing:
   position exists here, so the feedback loop §5 records could not be recreated:
   the pager owns it, tabs only call `animateScrollToPage`.
 
-- **Uninstall button** on installed extension rows. `ExtensionManager.uninstall`
-  fires `ACTION_DELETE`, so the system prompts and this app holds no
-  `REQUEST_DELETE_PACKAGES`. The row's "Installed" label is gone — the section
-  header said the same thing and that slot is where an action belongs.
+- **Uninstall button** on installed extension rows. Shipped broken in 0.59 and
+  fixed in 0.61: `ACTION_DELETE` needs `REQUEST_DELETE_PACKAGES` declared, which
+  the manifest didn't have, and the request was refused before any dialog
+  appeared. It now goes through an `ActivityResultLauncher` (so the dialog stays
+  in this task and the screen hears about the result) and reports when the
+  package is still installed afterwards. The row's "Installed" label is gone —
+  the section header said the same thing and that slot is where an action
+  belongs.
 - **Reader back button** is now `Ui.BackButton` like everywhere else.
 
 The one thing worth checking beyond "does it work": the Extensions list refetches

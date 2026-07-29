@@ -523,6 +523,36 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     var awaitingPackageChange by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableIntStateOf(0) }
 
+    // Uninstall goes through a launcher rather than startActivity so the system
+    // dialog stays in this task and this screen is told when it closes. The
+    // check afterwards is the point: a refused or cancelled uninstall is
+    // otherwise indistinguishable from a successful one, which is how the first
+    // attempt at this shipped — tap, flicker, package still there, no idea why.
+    var pendingUninstall by remember { mutableStateOf<String?>(null) }
+    val uninstallLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val pkg = pendingUninstall
+        pendingUninstall = null
+        refreshTick++
+        if (pkg != null && ExtensionManager.isInstalled(context, pkg)) {
+            report = "$pkg is still installed.\n\nThe uninstall was either " +
+                "cancelled, or refused by the system. If no dialog appeared at " +
+                "all, this build is missing the REQUEST_DELETE_PACKAGES " +
+                "permission, or the ROM blocks app-initiated uninstalls."
+        }
+    }
+    val startUninstall: (String) -> Unit = { pkg ->
+        pendingUninstall = pkg
+        val launched = runCatching {
+            uninstallLauncher.launch(ExtensionManager.uninstallIntent(pkg))
+        }
+        launched.onFailure {
+            pendingUninstall = null
+            report = "Couldn't open the uninstaller: ${it.message}"
+        }
+    }
+
     val hostActivity = context as? ComponentActivity
     DisposableEffect(hostActivity) {
         val observer = LifecycleEventObserver { _, event ->
@@ -648,10 +678,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                                     onInstalled()
                                 }
                             },
-                            onUninstall = {
-                                awaitingPackageChange = true
-                                ExtensionManager.uninstall(context, ext.pkgName)
-                            }
+                            onUninstall = { startUninstall(ext.pkgName) }
                         )
                     }
                 }
@@ -661,10 +688,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                         ExtensionRow(
                             ext = ext,
                             onInstall = { },
-                            onUninstall = {
-                                awaitingPackageChange = true
-                                ExtensionManager.uninstall(context, ext.pkgName)
-                            }
+                            onUninstall = { startUninstall(ext.pkgName) }
                         )
                     }
                 }

@@ -7,6 +7,13 @@
     <!-- Required to prompt the user to install an APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- The uninstall counterpart. The system still shows its own confirmation;
+         this only buys the right to ask for it. Without it the request is
+         refused on API 26+ and, on some ROMs, refused silently - which is
+         exactly how it presented: a tap, a flicker, and the package still
+         installed. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!-- Lets us enumerate installed extension packages on Android 11+.
          This is what ExtensionLoader relies on to find packages declaring
          the tachiyomi.extension feature. -->
