@@ -622,13 +622,40 @@ fun YomuApp() {
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
     fun openFromLibrary(entry: LibraryEntry) {
         errorMessage = null
+        seriesOrigin = SeriesOrigin.LIBRARY
+        // The screen opens on what the library already holds, before any network
+        // work happens. Opening from browse has a Series in hand and makes one
+        // request; opening from here made two — details, then chapters — with
+        // nothing on screen until both had come back.
+        //
+        // This stub carries no handle, so it's for display only: listChapters
+        // returns nothing without one, and everything that needs it waits for
+        // the real Series fetched below. activeSource is read through `?.` on
+        // the series screen, so the moment before it's resolved is safe too.
+        activeSeries = Series(
+            id = entry.seriesId,
+            title = entry.title,
+            cover = entry.cover.ifBlank { null }
+        )
+        chapterList = emptyList()
         scope.launch {
             isLoading = true
             try {
+                val src = withContext(Dispatchers.IO) {
+                    SourceManager.listAllSources(context).firstOrNull { it.id == entry.sourceId }
+                } ?: throw IllegalStateException("That source is no longer installed")
+                activeSource = src
+                activeSourceId = src.id
+
+                // Whatever was cached goes up while the requests are in flight.
+                val cached = withContext(Dispatchers.IO) {
+                    ChapterCache.load(context, entry.seriesId).map { src.rehydrateChapter(it) }
+                }
+                if (cached.isNotEmpty() && activeSeries?.id == entry.seriesId) {
+                    chapterList = cached
+                }
+
                 val result = withContext(Dispatchers.IO) {
-                    val src = SourceManager.listAllSources(context)
-                        .firstOrNull { it.id == entry.sourceId }
-                        ?: throw IllegalStateException("That source is no longer installed")
                     // Each stage names itself in the error: "details" and
                     // "chapters" are separate requests in most extensions, and
                     // knowing which one failed is the whole diagnosis.
@@ -643,14 +670,14 @@ fun YomuApp() {
                         title = fetched.title.ifBlank { entry.title },
                         cover = fetched.cover ?: entry.cover.ifBlank { null }
                     )
-                    Triple(src, series, chaptersWithFallback(src, series))
+                    series to chaptersWithFallback(src, series)
                 }
-                seriesOrigin = SeriesOrigin.LIBRARY
-                activeSource = result.first
-                activeSourceId = result.first.id
-                activeSeries = result.second
-                chapterList = result.third
-                enrichSeries(result.first, result.second)
+                // Not if the user has moved on to another series meanwhile.
+                if (activeSeries?.id == entry.seriesId) {
+                    activeSeries = result.first
+                    chapterList = result.second
+                    enrichSeries(src, result.first)
+                }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Could not open this series"
             }

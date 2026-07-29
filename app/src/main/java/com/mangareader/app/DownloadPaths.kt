@@ -59,6 +59,13 @@ internal object DownloadPaths {
         return chapters[chapterId]
     }
 
+    /** Every chapter this index has a folder for. */
+    @Synchronized
+    fun knownChapterIds(context: Context): Set<String> {
+        load(context)
+        return chapters.keys.toSet()
+    }
+
     @Synchronized
     fun forget(context: Context, chapterId: String) {
         load(context)
