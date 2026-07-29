@@ -43,6 +43,22 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 69,
+            name = "0.69",
+            header = "Chapter counts hold up under a refresh",
+            body = "The library refresh writes chapter counts a hundred series " +
+                "at a time, and it does that from several places at once. Two " +
+                "of those writes landing together could overwrite each other, " +
+                "losing a batch of counts - and, since 0.68, losing the marks " +
+                "that say which series a refresh has already reached, so a " +
+                "resume would fetch them again. Opening a series while a " +
+                "refresh was running could do the same thing. Writes now take " +
+                "turns.\n\n" +
+                "The summary a finished refresh leaves behind can be dismissed, " +
+                "so the row goes back to offering a plain refresh instead of " +
+                "showing the last one's totals until the app is closed.",
+        ),
+        ReleaseNote(
             code = 68,
             name = "0.68",
             header = "A stopped refresh now resumes",
