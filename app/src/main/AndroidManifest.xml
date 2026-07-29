@@ -107,6 +107,21 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- The library refresh sweeps every saved series for its chapter list,
+             which is minutes of network work on a large library. Same reasoning
+             as the downloader: it has to survive the app being backgrounded, so
+             it's a foreground service rather than a coroutine in YomuApp's
+             scope, and dataSync is the type Android 14 requires for it.
+
+             Unlike DownloadService this is deliberately not START_STICKY. There
+             is no persisted queue behind it, so a system restart would begin an
+             unasked-for sweep from the top - and losing one costs nothing,
+             because the counts it already wrote are correct on their own. -->
+        <service
+            android:name=".LibraryRefreshService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 
 </manifest>

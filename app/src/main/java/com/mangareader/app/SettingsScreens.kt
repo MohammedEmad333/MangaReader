@@ -220,6 +220,69 @@ private fun LibrarySettings() {
             headlineContent = { Text("Saved series") },
             supportingContent = { Text("$entryCount in the library") }
         )
+
+        SectionHeader("Chapter counts")
+        if (LibraryRefresh.running) {
+            val total = LibraryRefresh.total
+            val done = LibraryRefresh.done
+            ListItem(
+                headlineContent = { Text("Refreshing\u2026") },
+                supportingContent = {
+                    Text(
+                        listOfNotNull(
+                            if (total > 0) "$done of $total" else "Starting",
+                            LibraryRefresh.currentTitle.ifBlank { null }
+                        ).joinToString(" \u2022 ")
+                    )
+                }
+            )
+            LinearProgressIndicator(
+                progress = { if (total <= 0) 0f else done.toFloat() / total },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            Row(modifier = Modifier.padding(16.dp)) {
+                OutlinedButton(onClick = { LibraryRefreshService.stop(context) }) {
+                    Text("Stop")
+                }
+            }
+            PrefNote(
+                "This keeps going with the app closed. Stopping keeps whatever " +
+                    "it has already counted."
+            )
+        } else {
+            ListItem(
+                headlineContent = { Text("Refresh library") },
+                supportingContent = {
+                    Text(
+                        if (LibraryRefresh.finishedAt > 0L) {
+                            listOfNotNull(
+                                "${LibraryRefresh.updated} updated",
+                                if (LibraryRefresh.failed > 0) {
+                                    "${LibraryRefresh.failed} failed"
+                                } else null,
+                                if (LibraryRefresh.skipped > 0) {
+                                    "${LibraryRefresh.skipped} skipped"
+                                } else null
+                            ).joinToString(" \u2022 ")
+                        } else {
+                            "Fetch chapter lists for all $entryCount series"
+                        }
+                    )
+                },
+                modifier = Modifier.clickable { LibraryRefreshService.start(context) }
+            )
+            LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
+            PrefNote(
+                "Unread counts, the unread badge and the Unread, Started and " +
+                    "Completed filters only know about series you have opened. " +
+                    "This fetches a chapter list for every series so they know " +
+                    "about all of them. It is one network request per series, so " +
+                    "on a large library it takes a while and is best left running " +
+                    "on Wi\u2011Fi. Nothing is downloaded \u2014 only the chapter lists."
+            )
+        }
     }
 
     if (showCategories) {
