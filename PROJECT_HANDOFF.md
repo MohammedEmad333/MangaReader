@@ -1,17 +1,27 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.65**. **0.55 through 0.65 are all verified on device — there is no
-untested tail.** 0.63 shipped the vertical page slider rotated the wrong way,
-0.64 fixed it, and 0.65 landed the per-series chapter index that four backlog
-items were all waiting on. (Supersedes the earlier version of this file.)
+at **0.68**. **0.55 through 0.65 and 0.68 are verified on device. 0.67 is
+installed and only partly exercised, and 0.66 is unaccounted for** — see §0.
+0.63 shipped the vertical page slider rotated the wrong way, 0.64 fixed it, 0.65
+landed the per-series chapter index that four backlog items were all waiting on,
+and 0.67–0.68 made it answer for the whole library instead of your browsing
+history. (Supersedes the earlier version of this file, and folds in
+`SESSION_HANDOFF_0.67.md`.)
 
-**The index exists.** §0's "named next piece of work" carried the same entry for
-four sessions and is now closed: `SeriesIndex.kt` holds per-series chapter and
-read counts, and unread badges, Unread / Started / Completed filters and three
-new sorts all shipped with it. What it still can't do is one specific thing
-rather than a list — §4 "What the index still can't tell you" — and closing that
-is the new named next piece of work.
+**The index exists and is now filled by a sweep, not by browsing.**
+`SeriesIndex.kt` holds per-series chapter and read counts, and unread badges,
+Unread / Started / Completed filters and three sorts all shipped on it in 0.65.
+0.67 added a foreground-service library refresh that fetches a chapter list for
+every saved series, and 0.68 made a stopped refresh **resume** rather than start
+again from the top — which is what turned it from a feature into one that can
+actually finish on a 3571-entry library. Both are in §0.
+
+**The library is 3571 entries as of 0.68.** Most of this document says 3567,
+which is what the Tachiyomi import produced and is still the right number in
+every sentence about that import. Where a current count matters, it moves — which
+is itself the reason `RefreshCursor` stores a timestamp rather than an offset into
+the entry list.
 
 **The library screen was rebuilt and every part of it is verified on device**
 (builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
@@ -57,9 +67,25 @@ together, because the second was caused by the first.
 **0.59 through 0.65 are all confirmed on device.** The uninstall button, the
 reader's back arrow, the series-screen tag menu, swipeable Browse, the vertical
 slider, and the whole chapter index went in one build at a time and each was
-exercised before the next was written. There is no untested tail as of this
-writing — which has not been true of this file since it was started, and is
-worth not squandering.
+exercised before the next was written.
+
+**That run ended at 0.65, and it is worth being precise about how.** 0.67 shipped
+the library refresh and was installed without being run at all; 0.68 then rewrote
+the same three files before anyone had exercised 0.67, so for one session there
+were two unrun releases stacked on the same code path. 0.68's seven device checks
+(below) cleared most of that backlog at once, because the short tests exercise
+0.67's machinery on the way to testing 0.68's. What they did **not** reach is the
+branch where a sweep runs to completion — see "Still unrun" below. The lesson is
+the cheap one: the 0.67 handoff opened its test plan with "do this before writing
+anything new", and writing first cost nothing here only because the second change
+happened to be testable through the first.
+
+**0.66 is unaccounted for.** No `WhatsNew` entry, no line in §8, and no mention
+anywhere in the repository except as the version 0.67 bumped up from — so
+`WhatsNew.kt` reads 0.68 → 0.67 → 0.65. Either it shipped something nobody wrote
+down or the number went on a build fix. Recorded as a gap rather than guessed at;
+if anyone remembers, fill it in, because the missing entry looks like a bug in
+`WhatsNew`'s ordering to whoever finds it next.
 
 **Thread 1 below is still open and has now survived five sessions.** The reader
 is still the largest untested surface in the app: 0.62 through 0.65 all touched
@@ -69,17 +95,138 @@ invert together, the chapter picker, whether settings survive reopening — has
 not shrunk. **Thread 2 is now half closed**: 0.64 fixed the white-on-white text,
 and what remains of it is one line of manifest.
 
-**The named next piece of work** is a **library refresh**: something that walks
-the library, fetches each series' chapter list with bounded concurrency, and
-calls `SeriesIndex.record`. The index shipped in 0.65 is only as complete as
-your browsing history — it knows about series opened at least once since that
-build and nothing else — so every count, badge, filter and sort it feeds is
-currently answering for a minority of a 3567-entry library. Nothing else in the
-backlog changes what the app can *tell* you as much as this does, and it needs
-no new data model: the write path already exists and takes a chapter list.
+**The library refresh is built.** This entry named it for four sessions and it
+closed across 0.67 and 0.68 — see the two Closed sections below. It was treated
+as an import-scale operation rather than a loop, exactly as §5's "An import is a
+load test" and §7 item 1 required, and both of those entries have been rewritten
+to describe what exists instead of instructing someone to build it.
 
-Treat it as an import-scale operation, not a loop. §5's "An import is a load
-test" is the relevant entry, and the specific hazards are in §7 item 1.
+**The named next piece of work** — proposed this session rather than inherited,
+so override it if something else is louder — is a **Feed / Updates tab**, §7 item
+17's remaining half. It is on this list now because the sweep changed its price.
+The reason a "recently updated" view was expensive was that nothing in the app
+knew the whole library's chapter counts; the refresh now produces exactly that,
+and `latestChapterAt` is already in the index. What is still missing is a *diff*:
+the sweep overwrites counts rather than recording that a series gained three
+chapters, so this needs somewhere to put "what changed in this sweep" and is a
+genuine piece of work rather than a wiring job. It is nonetheless the largest
+remaining gap between what the app knows and what it can tell you.
+
+**Before that, four small refresh bugs are still open** — §0's "Closed — 0.68"
+section lists them with their fixes, and three of the four are one or two lines
+each. And **finish a full sweep before writing anything**: as of this writing no
+sweep has ever reached its own end, and the numbers it prints when one does are
+how bugs 3, 4 and 6 announce themselves.
+
+### Closed — 0.68, resuming a stopped refresh
+
+**Seven device checks passed.** `2bac449`, five files. The full detail is in
+`SESSION_HANDOFF_0.68.md`; this is the part that belongs in the project's memory.
+
+- **0.67 shipped a claim it hadn't implemented.** Its release notes said stopping
+  a refresh was safe and that running it again would pick up the rest. The first
+  half was true — the worker's `finally` flushes whatever counts are in hand — and
+  the second was not: `sweep()` read the library from the top every time. That is
+  not cosmetic at this scale. The sweep's cost is one paced network request per
+  series, so a start-from-the-top refresh **capped how complete the index could
+  ever get at the length of the longest run the user left it alone for.** Stop it
+  at 600 twice and you have 600 counted, not 1200.
+- **`RefreshCursor`** is one persisted long: the start time of the sweep in
+  progress, or 0. **`SeriesCounts.sweptAt`** stamps every counted series with that
+  same timestamp, so "what's left" is a set comparison rather than a stored list
+  of thousands of ids. Cleared only on completion; deliberately survives a stop, a
+  crash and a process kill.
+- **Not an offset into the entry list**, because the library is re-read and
+  re-grouped on every start and one added series shifts every position after it —
+  "resume at 812" would mean a different 812 each run. The library went 3567 →
+  3571 during this session, so the concern was not hypothetical.
+- **`updatedAt` could not answer "has this been swept yet", and that is the
+  entry worth reading.** `record` refuses a write that changes nothing, so a
+  series that was swept and turned out unchanged has no new `updatedAt` and is
+  indistinguishable from one never swept at all. A resume trusting it would
+  re-fetch the whole library minus the few that moved. This is §5's "a
+  lazily-populated store has three states" arriving from the other side, and it is
+  the second time that shape has cost a release.
+- **Why `sweptAt` is affordable where a general last-checked stamp wasn't.** Only
+  `recordAll` sets it — a hundred series per whole-index write. `record`, which is
+  one series per user action and one full rewrite, carries the stored value
+  forward untouched, so opening a series is still not a write. Don't "simplify"
+  this by stamping on the `record` path; that is the trade this store has now
+  refused twice.
+- **`recordAll` keeps the stored `updatedAt`** when it writes an unchanged entry
+  just to advance `sweptAt`. Taking the candidate's would be the obvious line and
+  would stamp "changed just now" onto every series on every sweep, flattening the
+  one ordering `updatedAt` exists to provide. The write count is the same either
+  way.
+- **"Start over" exists beside "Resume"** because refreshing from the top is a
+  real request — a sweep that finished a week ago is stale — and after this change
+  a plain start would honour the stale cursor instead.
+- **Failures, empty chapter lists and series whose extension is missing are not
+  stamped**, so a resume retries them. Deliberate, and it is what the release
+  notes promise; the cost is that the "N of 3571 counted" label can't reach the
+  total while anything persistently fails.
+
+**Still unrun, and it is one branch:** no sweep has ever reached its own end. Both
+stop tests ended in a stop or a kill, so `completed = true` has never been true.
+That branch holds the final flush on normal exit, `RefreshCursor.clear()`, the row
+reverting to "Refresh library", and the summary line. **If the cursor doesn't
+clear on completion, the app will offer to resume a finished sweep forever.**
+
+**Four bugs from the 0.67 review are still open**, all in files that session had
+open:
+
+1. **`recordAll` is not atomic** — `all()` → merge → `save()` with no lock, and
+   `flush()` is reachable from three coroutines. Two can interleave and one loses
+   a hundred series' counts *and* their `sweptAt`. Self-healing on a stop (they
+   get re-fetched), silent on a completion. `@Synchronized` on `recordAll` and
+   `save`. Described as free in four consecutive handoffs.
+2. **`clearSummary()` has no callers** — the post-sweep summary and `firstError`
+   persist for the process lifetime. One call from `start()`.
+3. **The counters race** — `done++`, `counted++`, `failed++`, `skipped++` from up
+   to three coroutines. Display only, but it is what makes the end-of-sweep
+   arithmetic unreadable, which is how bug 4 below would announce itself.
+4. **`done` doesn't reconcile** — an empty chapter list lands in `done` and in
+   none of the other three. *Not writing* on an empty list stays correct (a stored
+   `total = 0` reads as "completed" in every filter); only the accounting is
+   wrong. Count it as a failure — from a live source it usually is a broken parse.
+
+**The arithmetic to check at the end of a sweep changed in 0.68**:
+`counted + failed + skipped` against **`total − resumed`**, not against `total`.
+`done` is seeded from `resumed`, so checking against 3571 looks wrong on every
+resumed run even when nothing is broken.
+
+### Closed — 0.67, the library refresh
+
+`dbbe38a` and `8fcd519`. Installed and only partly exercised on its own; most of
+its machinery was confirmed on the way to testing 0.68, above.
+
+- **One tap in Settings → Chapter counts** starts `LibraryRefreshService`:
+  foreground (`dataSync`), ongoing notification with a Stop action,
+  `PARTIAL_WAKE_LOCK` with a 4h timeout.
+- **Sources run `SOURCE_CONCURRENCY = 3` at a time; series within one source go
+  sequentially with `REQUEST_SPACING_MS = 250` between them.** That shape is the
+  manhwatoon lesson in §5 applied directly: per-connection request volume against
+  one host is the variable that matters, not total throughput.
+- **One network request per series.** `restoreSeries(id, title)` rebuilds the
+  url + title pair without a fetch, then `listChapters`. The details endpoint is
+  deliberately skipped — no metadata is being displayed. Note that
+  `Source.restoreSeries` *defaults* to `getSeries(id)` and only
+  `TachiyomiSourceAdapter` overrides it, so the one-request claim rests on
+  extensions overriding it and `LocalSource` being local. Both true today; both
+  quietly load-bearing if a third source type appears.
+- **Counts flush through `SeriesIndex.recordAll` every `FLUSH_EVERY = 100`
+  series** — about 36 whole-index writes over the library rather than 3567. This
+  is §7 item 1's requirement, and it was written before the sweep rather than
+  after measuring it.
+- **`dbbe38a` does not compile** and the version bump sits on it: the manifest
+  declared `.LibraryRefreshService` and `SettingsScreens.kt` referenced
+  `LibraryRefresh`, but `LibraryRefresh.kt` didn't land until `8fcd519` — the
+  first `cp` loop only picked up one of the files. Nothing to fix retroactively;
+  build releases from `8fcd519` or later. Third instance in §8 of a commit broken
+  by a file that didn't land or a signature that wasn't checked.
+- **It does not** download anything, fetch metadata, touch read state, add or
+  remove library entries, or diff which series gained chapters. The last of those
+  is what the Feed tab needs.
 
 ### Closed — 0.65, the chapter index and three fixes
 
@@ -285,7 +432,14 @@ Still unaddressed: `AndroidManifest.xml` declares
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
 
-### Closed this session — the library screen
+**It is line 65, it is still one line, and it has now survived three sessions
+after the one that found it.** 0.67's `dbbe38a` edited that same file to add a
+service declaration and left the theme alone; 0.68 didn't open it. The reason it
+keeps surviving is that the test device runs in dark mode, where the bug is
+invisible — which is worth knowing about every other appearance-in-light-mode
+item too.
+
+### Closed — 0.52–0.54, the library screen
 
 Every item verified on device. The design notes are in §4 "The library screen";
 what matters here is that none of it is outstanding.
@@ -352,7 +506,7 @@ worked, and removing 1.1 cost it nothing.
 clean is roughly what you'd expect to see one time in three by luck. Two or three
 more clean chapters closes it properly.
 
-### Closed last session — Cloudflare, covers, and two bugs
+### Closed earlier — Cloudflare, covers, and two bugs
 
 Recorded here because the reasoning matters more than the diff; details in §4
 and the lessons in §5.
@@ -514,8 +668,12 @@ As of the source-visibility commit, verified on device:
   after a version bump, newest release expanded and intermediate ones collapsed.
 - **The library counts chapters** (`c5266d7`) — unread badges on covers,
   Unread / Started / Completed filters, and sorts by unread count, chapter count
-  and latest chapter, all off one aggregate index. Only for series opened since
-  0.65; see §4.
+  and latest chapter, all off one aggregate index. See §4.
+- **And it can count the whole library, not just what you've opened** — Settings →
+  Library → Chapter counts sweeps every saved series in a foreground service
+  (`8fcd519`), and a stopped sweep resumes where it left off rather than starting
+  again (`2bac449`). This is what makes the badges, filters and sorts above answer
+  for all 3571 entries instead of a browsing history.
 - **The app is usable at that scale** — category filtering, list scrolling, the
   Downloads tab and opening a series were all rebuilt around it (`0810bed`
   through `3052571`).
@@ -1132,8 +1290,17 @@ new field. It costs one `seriesIn()` set lookup. The alternative — a real
 
 The index is **lagging** by construction. An entry is written when a series
 screen resolves its chapter list, because that is the only moment the app holds
-one — so it knows about series opened at least once since 0.65, and nothing
-else. On the build it shipped in, that was none of them.
+one — so on 0.65 it knew about series opened at least once since that build and
+nothing else, which on the build it shipped in was none of them.
+
+**0.67–0.68 added the second writer**, and it is the one that fills the index
+rather than trickling into it: `LibraryRefreshService` fetches a chapter list for
+every saved series and flushes through `recordAll`. Everything below is still
+true — a series the sweep has never reached, or one whose fetch failed or came
+back empty, still has no entry — but "no entry" is now the exception rather than
+the rule. Do not let that soften the next paragraph: the null branch is what makes
+a *partial* sweep safe to read, and a sweep is partial the whole time it is
+running.
 
 **Un-counted is not zero, and the whole feature rests on that distinction.** A
 series with no entry has an *unknown* unread count, not a count of nought. Every
@@ -1149,9 +1316,13 @@ The options sheet carries a note saying the same thing in the UI, which is the
 other half of it: where a store's coldness is visible to the user, an empty
 Unread tab has to explain itself or it reads as a broken filter.
 
-**Closing the gap is a library refresh, not a change here** — see §0. The write
-path already exists and takes a chapter list; what's missing is something that
-fetches them without opening 3567 screens.
+**Closing the gap was a library refresh, not a change here** — built in 0.67 and
+made resumable in 0.68; see §0. It needed no new data model on this side, only a
+bulk write (`recordAll`) and, for the resume, one new field (`sweptAt`) that
+`updatedAt` could not stand in for. **What the index still can't tell you, after
+all that, is what *changed*** — the sweep overwrites counts rather than recording
+that a series gained three chapters, which is the one thing a Feed / Updates tab
+needs and the reason it is §0's named next piece of work.
 
 Two smaller absences remain, and neither is blocked on the index:
 
@@ -2318,13 +2489,19 @@ Roughly in order of value:
    slow, the answer is a different storage shape — probably per-series keys or
    SQLite — not another cache.
 
-   **This is the constraint the library refresh in §0 runs straight into.**
-   `SeriesIndex.record` is safe at one series open per user action because it
-   refuses a write that changes nothing; a refresh sweeping 3567 series would
-   hit it thousands of times with something to say each time, and that is
-   quadratic. A refresh needs a bulk `recordAll` taking the whole batch and
-   writing once, in the same shape and for the same reason as `Library.mergeAll`
-   — write it before writing the sweep, not after measuring it.
+   **The library refresh ran straight into this, and `recordAll` is the answer
+   that shipped for it** (0.67). `SeriesIndex.record` is safe at one series open
+   per user action because it refuses a write that changes nothing; a sweep over
+   3571 series hits it thousands of times with something to say each time, which
+   is quadratic. `SeriesIndex.recordAll` takes a whole batch and writes once, in
+   the same shape and for the same reason as `Library.mergeAll`, and
+   `LibraryRefreshService` flushes into it every 100 series — about 36 writes
+   instead of 3571. **Anything new that touches many series at once uses
+   `recordAll`, `mergeAll` or `removeAll`, never the single-item call in a loop.**
+
+   One caveat that is still open: `recordAll` is `all()` → merge → `save()` with
+   no lock, and the sweep calls it from three coroutines. See §0's 0.68 section,
+   bug 1.
 
 2. **Extension icons are cached for the process lifetime** and never
    invalidated. A newly installed extension is fine (new package name, fresh
@@ -2349,6 +2526,15 @@ Roughly in order of value:
    Android 14 also caps `dataSync` foreground services at ~6 hours a day, which a
    queue left paused indefinitely would burn through; pausing releases the wake
    lock but not the service.
+
+   **That budget is shared, as of 0.67.** `LibraryRefreshService` is a second
+   `dataSync` foreground service, and a full sweep is on the order of an hour or
+   two of it. So the likely casualty is not the refresh — it is **a download queue
+   started later the same day, which gets refused**, with the cause an hour in the
+   past and nothing on screen connecting the two. If the sweep is ever put on a
+   schedule rather than a button, it should become `WorkManager` work instead of a
+   service; a user-initiated sweep is defensible as a foreground service, a
+   recurring one is not.
 6. **Cloudflare costs 30 seconds before the error appears.** A source behind an
    interactive challenge burns `CloudflareInterceptor`'s full timeout on the
    headless attempt that cannot succeed, and only then shows the error carrying
@@ -2499,7 +2685,22 @@ Cache chapter sizes and the downloads listing; open downloads from cache 3052571
 Fix vertical slider direction and length, and page number contrast      2f0e3b2  verified OK
 Add a per-series chapter index; outline the page number; keep the
   chapter list's scroll; open covers full screen                        c5266d7  verified OK
+(0.66 — no record; see §0)                                                       UNKNOWN
+Refresh the whole library's chapter counts in a foreground service       dbbe38a  DID NOT COMPILE
+Add the library refresh service and the index bulk write                 8fcd519  builds; see §0
+Resume a stopped library refresh instead of restarting it                2bac449  verified OK
 ```
+
+`dbbe38a` and `8fcd519` are one piece of work split by an accident: the version
+bump landed on the commit that doesn't build, because the first `cp` loop found
+only one of the two files it needed. **Build releases from `8fcd519` or later.**
+That is now the third entry in this list broken by something a `grep` would have
+settled — `c57a91d`, the 0.45 attempt, and this — and the fourth, `fc2aee8`, was a
+missing import. The countermeasure that has actually worked twice is the one
+described under `c5266d7` below and repeated for `2bac449`: check the risky
+identifiers against the tree before pushing rather than recalling them. `2bac449`
+renamed a field (`LibraryRefresh.updated` → `counted`) that a second file read,
+which is exactly the `dbbe38a` failure shape, and it built first time.
 
 `c5266d7` is the largest single change in this project's history — 553
 insertions across nine files, one of them new — and it went in uncompiled like
