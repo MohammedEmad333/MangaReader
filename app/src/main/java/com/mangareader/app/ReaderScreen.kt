@@ -5,6 +5,8 @@ import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -35,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.launch
@@ -142,6 +147,27 @@ internal fun ReaderScreen(
     }
     LaunchedEffect(currentPage) { onProgress(currentPage) }
 
+    // Where the thumb is mid-drag, null when it isn't. Hoisted because there
+    // are now two sliders that mean the same thing — one in the control bar, one
+    // standing up at the edge — and the page count above the bar has to follow
+    // whichever is being dragged.
+    var seekTarget by remember(pages.size) { mutableStateOf<Float?>(null) }
+    val lastPage = (pages.size - 1).coerceAtLeast(0)
+    val seekPage = seekTarget?.roundToInt()?.coerceIn(0, lastPage) ?: currentPage
+
+    // Committed on release, never during the drag: every intermediate value
+    // would be a scroll request, a savePage write and a History.touch, because
+    // onProgress fires on every page change.
+    fun commitSeek() {
+        val target = seekTarget?.roundToInt()?.coerceIn(0, lastPage)
+        seekTarget = null
+        if (target == null || pages.isEmpty()) return
+        scope.launch {
+            if (settings.mode == ReaderMode.LONG_STRIP) listState.scrollToItem(target)
+            else pagerState.scrollToPage(target)
+        }
+    }
+
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
     val filter = readerColorFilter(settings.grayscale, settings.inverted)
 
@@ -235,27 +261,50 @@ internal fun ReaderScreen(
         }
 
         AnimatedVisibility(
+            visible = showControls &&
+                settings.sliderPosition == ReaderSliderPosition.VERTICAL &&
+                pages.size > 1,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 6.dp)
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                shape = MaterialTheme.shapes.large
+            ) {
+                VerticalSlider(
+                    value = seekTarget ?: currentPage.toFloat(),
+                    onValueChange = { seekTarget = it },
+                    onValueChangeFinished = { commitSeek() },
+                    valueRange = 0f..lastPage.toFloat(),
+                    length = 240.dp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+        }
+
+        AnimatedVisibility(
             visible = showControls,
             enter = slideInVertically { it },
             exit = slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             ReaderBottomBar(
-                page = currentPage + 1,
+                page = seekPage + 1,
                 total = pages.size,
+                // The vertical one lives at the screen edge instead; the bar
+                // keeps its buttons either way.
+                showSlider = settings.sliderPosition == ReaderSliderPosition.HORIZONTAL &&
+                    pages.size > 1,
+                sliderValue = seekTarget ?: currentPage.toFloat(),
+                onSliderChange = { seekTarget = it },
+                onSliderCommit = { commitSeek() },
                 hasPrev = hasPrev,
                 hasNext = hasNext,
                 onPrev = onPrev,
                 onNext = onNext,
-                onSeek = { target ->
-                    scope.launch {
-                        if (settings.mode == ReaderMode.LONG_STRIP) {
-                            listState.scrollToItem(target)
-                        } else {
-                            pagerState.scrollToPage(target)
-                        }
-                    }
-                },
                 onChapters = { showChapters = true },
                 onSettings = { showSettings = true }
             )
@@ -445,20 +494,17 @@ private fun ReaderTopBar(title: String, subtitle: String, onClose: () -> Unit) {
 private fun ReaderBottomBar(
     page: Int,
     total: Int,
+    showSlider: Boolean,
+    sliderValue: Float,
+    onSliderChange: (Float) -> Unit,
+    onSliderCommit: () -> Unit,
     hasPrev: Boolean,
     hasNext: Boolean,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onSeek: (Int) -> Unit,
     onChapters: () -> Unit,
     onSettings: () -> Unit
 ) {
-    // Where the thumb is while it's being dragged, null when it isn't. The jump
-    // is deferred to the end of the drag on purpose: reporting every
-    // intermediate value would be a scroll request and a progress write per
-    // pixel, across a chapter that can be two hundred pages long.
-    var dragging by remember { mutableStateOf<Float?>(null) }
-    val shownPage = dragging?.roundToInt()?.plus(1) ?: page
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
@@ -470,7 +516,7 @@ private fun ReaderBottomBar(
                 .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Text(
-                text = if (total > 0) "Page $shownPage of $total" else "",
+                text = if (total > 0) "Page $page of $total" else "",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -478,16 +524,13 @@ private fun ReaderBottomBar(
                     .padding(bottom = 2.dp)
             )
 
-            // A one-page chapter has nothing to seek through, and a Slider whose
+            // The caller has already ruled out a one-page chapter: a Slider whose
             // range starts and ends at the same value is not a legal Slider.
-            if (total > 1) {
+            if (showSlider) {
                 Slider(
-                    value = dragging ?: (page - 1).coerceIn(0, total - 1).toFloat(),
-                    onValueChange = { dragging = it },
-                    onValueChangeFinished = {
-                        dragging?.let { onSeek(it.roundToInt().coerceIn(0, total - 1)) }
-                        dragging = null
-                    },
+                    value = sliderValue,
+                    onValueChange = onSliderChange,
+                    onValueChangeFinished = onSliderCommit,
                     valueRange = 0f..(total - 1).toFloat(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -505,6 +548,48 @@ private fun ReaderBottomBar(
             }
         }
     }
+}
+
+/**
+ * A [Slider] stood on end.
+ *
+ * Compose has no vertical slider, and rotating one is only half the job:
+ * `Modifier.rotate` changes what is drawn and never what was measured, so a
+ * rotated slider still claims its whole length horizontally and shoulders the
+ * page aside. The `layout` block reports the rotated footprint instead —
+ * measure the child as usual, then hand the parent the swapped dimensions and
+ * place the child centred inside them.
+ *
+ * Pointer input travels through the same transform, so the drag runs along the
+ * axis it looks like it should.
+ */
+@Composable
+private fun VerticalSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    length: Dp,
+    modifier: Modifier = Modifier
+) {
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = valueRange,
+        modifier = modifier
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.height, placeable.width) {
+                    placeable.place(
+                        x = (placeable.height - placeable.width) / 2,
+                        y = (placeable.width - placeable.height) / 2
+                    )
+                }
+            }
+            .rotate(-90f)
+            .requiredWidth(length)
+    )
 }
 
 @Composable
@@ -575,6 +660,16 @@ private fun ReaderSettingsSheet(
                         options = ReaderRotation.entries.map { it.label },
                         selected = ReaderRotation.entries.indexOf(settings.rotation),
                         onSelect = { onChange(settings.copy(rotation = ReaderRotation.entries[it])) }
+                    )
+                    ChipRow(
+                        label = "Page slider",
+                        options = ReaderSliderPosition.entries.map { it.label },
+                        selected = ReaderSliderPosition.entries.indexOf(settings.sliderPosition),
+                        onSelect = {
+                            onChange(
+                                settings.copy(sliderPosition = ReaderSliderPosition.entries[it])
+                            )
+                        }
                     )
                     SliderRow(
                         label = "Side padding",

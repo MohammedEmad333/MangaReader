@@ -44,6 +44,23 @@ internal enum class ReaderBackground(val key: String, val label: String) {
     }
 }
 
+/**
+ * Where the chapter slider sits.
+ *
+ * Horizontal is the default because it lives inside the control bar and costs
+ * no screen. Vertical is what a long strip wants — the thumb then travels the
+ * same direction the pages do, and it sits under the thumb of the hand already
+ * holding the phone.
+ */
+internal enum class ReaderSliderPosition(val key: String, val label: String) {
+    HORIZONTAL("horizontal", "Horizontal"),
+    VERTICAL("vertical", "Vertical");
+
+    companion object {
+        fun from(key: String?) = entries.firstOrNull { it.key == key } ?: HORIZONTAL
+    }
+}
+
 internal data class ReaderSettings(
     val mode: ReaderMode = ReaderMode.PAGED_LTR,
     val rotation: ReaderRotation = ReaderRotation.SYSTEM,
@@ -51,6 +68,7 @@ internal data class ReaderSettings(
     /** Horizontal breathing room, as a percentage of screen width. */
     val sidePadding: Int = 0,
     val showPageNumber: Boolean = true,
+    val sliderPosition: ReaderSliderPosition = ReaderSliderPosition.HORIZONTAL,
     val fullscreen: Boolean = true,
     val keepScreenOn: Boolean = true,
     val grayscale: Boolean = false,
@@ -67,6 +85,7 @@ internal object ReaderPrefs {
     private const val BACKGROUND = "reader_background"
     private const val SIDE_PADDING = "reader_side_padding"
     private const val PAGE_NUMBER = "reader_page_number"
+    private const val SLIDER_POSITION = "reader_slider_position"
     private const val FULLSCREEN = "reader_fullscreen"
     private const val KEEP_SCREEN_ON = "reader_keep_screen_on"
     private const val GRAYSCALE = "reader_grayscale"
@@ -83,6 +102,7 @@ internal object ReaderPrefs {
             background = ReaderBackground.from(p.getString(BACKGROUND, null)),
             sidePadding = p.getInt(SIDE_PADDING, defaults.sidePadding),
             showPageNumber = p.getBoolean(PAGE_NUMBER, defaults.showPageNumber),
+            sliderPosition = ReaderSliderPosition.from(p.getString(SLIDER_POSITION, null)),
             fullscreen = p.getBoolean(FULLSCREEN, defaults.fullscreen),
             keepScreenOn = p.getBoolean(KEEP_SCREEN_ON, defaults.keepScreenOn),
             grayscale = p.getBoolean(GRAYSCALE, defaults.grayscale),
@@ -104,6 +124,7 @@ internal object ReaderPrefs {
             .putString(BACKGROUND, settings.background.key)
             .putInt(SIDE_PADDING, settings.sidePadding)
             .putBoolean(PAGE_NUMBER, settings.showPageNumber)
+            .putString(SLIDER_POSITION, settings.sliderPosition.key)
             .putBoolean(FULLSCREEN, settings.fullscreen)
             .putBoolean(KEEP_SCREEN_ON, settings.keepScreenOn)
             .putBoolean(GRAYSCALE, settings.grayscale)

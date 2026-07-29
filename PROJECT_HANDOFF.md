@@ -1,8 +1,9 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.62**. **0.55 through 0.61 are all verified on device.** 0.62 is the last
-two backlog items — reader zoom and a page slider — and is unverified.
+at **0.63**. **0.55 through 0.62 are all verified on device** — the Trello
+backlog is cleared. 0.63 adds a vertical option for the page slider and is
+unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -62,7 +63,19 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.62 is written, not run
+### Open thread 3 — 0.63 is written, not run
+
+**A vertical page slider**, selectable under reader settings → Layout. The only
+part worth a second look is `VerticalSlider`: Compose has no vertical slider and
+rotating one is half the job, because `Modifier.rotate` changes what is drawn
+and never what was measured — a rotated slider still claims its full length
+horizontally. The `layout` block reports the swapped footprint and centres the
+child inside it. Pointer input travels through the same transform, so the drag
+runs along the axis it looks like it should. **It is layout code written without
+being seen rendered**; if the thumb tracks the wrong way or the surface is the
+wrong shape, that block is why.
+
+### Closed — 0.62, reader zoom and the page slider
 
 **Reader zoom** and **a page slider**, done together at the user's call after I
 argued for splitting them. Both are in `ReaderScreen.kt`, the file with the
