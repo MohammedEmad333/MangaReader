@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.input.pointer.pointerInput
@@ -169,12 +170,22 @@ internal fun ReaderScreen(
     }
 
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
+
+    // Half the screen, so the whole chapter is a comfortable thumb-sweep. A
+    // fixed 240dp was a quarter of a tall phone and read as a stub.
+    val verticalSliderLength = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
+
+    val backgroundColor = settings.background.toColor()
+    // White page number on a white page is invisible, and "Theme" can be either
+    // colour depending on the app theme. Taken from the background's own
+    // luminance rather than assuming the reader is dark.
+    val onBackground = if (backgroundColor.luminance() > 0.5f) Color.Black else Color.White
     val filter = readerColorFilter(settings.grayscale, settings.inverted)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(settings.background.toColor())
+            .background(backgroundColor)
     ) {
         val pageModifier = Modifier
             .fillMaxSize()
@@ -211,7 +222,8 @@ internal fun ReaderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 240.dp),
-                        contentScale = ContentScale.FillWidth
+                        contentScale = ContentScale.FillWidth,
+                        textColor = onBackground
                     )
                 }
             }
@@ -228,6 +240,7 @@ internal fun ReaderScreen(
                     colorFilter = filter,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
+                    textColor = onBackground,
                     // Paged only. In a strip the same gestures already belong to
                     // the list, and a pinch that also scrolls is neither.
                     zoomable = true,
@@ -239,7 +252,7 @@ internal fun ReaderScreen(
         if (settings.showPageNumber && !showControls && pages.isNotEmpty()) {
             Text(
                 text = "${currentPage + 1} / ${pages.size}",
-                color = Color.White.copy(alpha = 0.75f),
+                color = onBackground.copy(alpha = 0.75f),
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -279,7 +292,7 @@ internal fun ReaderScreen(
                     onValueChange = { seekTarget = it },
                     onValueChangeFinished = { commitSeek() },
                     valueRange = 0f..lastPage.toFloat(),
-                    length = 240.dp,
+                    length = verticalSliderLength,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
@@ -402,6 +415,8 @@ private fun ReaderPage(
     colorFilter: ColorFilter?,
     modifier: Modifier,
     contentScale: ContentScale,
+    /** Readable against whatever the reader background is set to. */
+    textColor: Color,
     /** Pinch, double-tap and pan. Paged modes only — see the call site. */
     zoomable: Boolean = false,
     /** Non-null when this page is responsible for its own taps. */
@@ -445,7 +460,7 @@ private fun ReaderPage(
         ) {
             Text(
                 "Page ${index + 1} couldn't be loaded",
-                color = Color.White,
+                color = textColor,
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -587,7 +602,10 @@ private fun VerticalSlider(
                     )
                 }
             }
-            .rotate(-90f)
+            // Clockwise, not anti-: rotating the other way puts the slider's
+            // start at the bottom, so dragging down walked *backwards* through
+            // the chapter while looking perfectly normal sitting there.
+            .rotate(90f)
             .requiredWidth(length)
     )
 }

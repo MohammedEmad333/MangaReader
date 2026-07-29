@@ -1,9 +1,9 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.63**. **0.55 through 0.62 are all verified on device** — the Trello
-backlog is cleared. 0.63 adds a vertical option for the page slider and is
-unverified.
+at **0.64**. **0.55 through 0.62 are all verified on device** — the Trello
+backlog is cleared. 0.63 added a vertical page slider and shipped it rotated the
+wrong way; 0.64 fixes that and the page-number colour, and is unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -63,17 +63,27 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.63 is written, not run
+### Open thread 3 — 0.64 is written, not run
 
-**A vertical page slider**, selectable under reader settings → Layout. The only
-part worth a second look is `VerticalSlider`: Compose has no vertical slider and
-rotating one is half the job, because `Modifier.rotate` changes what is drawn
-and never what was measured — a rotated slider still claims its full length
-horizontally. The `layout` block reports the swapped footprint and centres the
-child inside it. Pointer input travels through the same transform, so the drag
-runs along the axis it looks like it should. **It is layout code written without
-being seen rendered**; if the thumb tracks the wrong way or the surface is the
-wrong shape, that block is why.
+Fixes to 0.63's vertical slider, plus a colour bug it sat next to.
+
+- **The slider was rotated anti-clockwise**, which put its start at the bottom,
+  so dragging down walked backwards through the chapter. Now `rotate(90f)`. The
+  rest of `VerticalSlider` was right: Compose has no vertical slider, and
+  rotating one is half the job because `Modifier.rotate` changes what is drawn
+  and never what was measured — a rotated slider still claims its full length
+  horizontally, so the `layout` block reports the swapped footprint and centres
+  the child inside it.
+- **Length is half the screen height**, not a fixed 240dp, which was a quarter
+  of a tall phone.
+- **Page numbers were hardcoded white.** Invisible on the White background, and
+  a coin toss on Theme. Both that and the failed-page message now take their
+  colour from the background's luminance.
+
+Worth generalising the first one: **a symmetric mistake looks correct at rest.**
+A slider rotated the wrong way is indistinguishable from a right one until it is
+dragged, and neither a screenshot nor a code read catches it. The same is true
+of reversed sort order, mirrored RTL paging, and inverted scroll deltas.
 
 ### Closed — 0.62, reader zoom and the page slider
 
