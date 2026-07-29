@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -28,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,9 +62,16 @@ internal fun LibraryTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // A bulk category edit changes what every tab holds and what is dimmed, but
+    // not the library itself, so there is nothing for YomuApp's libraryTick to
+    // say about it. This is added to that tick rather than replacing it, so
+    // either can invalidate the reads below — the same shape as downloadTick.
+    var localTick by remember { mutableIntStateOf(0) }
+    val tick = libraryTick + localTick
+
     // Re-read on every tick so adds/removes show up immediately.
-    val entries = remember(libraryTick) { Library.list(context) }
-    val categories = remember(libraryTick) { Categories.list(context) }
+    val entries = remember(tick) { Library.list(context) }
+    val categories = remember(tick) { Categories.list(context) }
 
     var coverSize by remember { mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium") }
     val coverMinDp = when (coverSize) {
@@ -75,7 +84,7 @@ internal fun LibraryTab(
     var query by remember { mutableStateOf("") }
     var menuOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var assignFor by remember { mutableStateOf<String?>(null) }
+    var assignOpen by remember { mutableStateOf(false) }
     val selecting = selected.isNotEmpty()
 
     // "Read" is a normal user category, so this is a name match rather than a
@@ -83,7 +92,7 @@ internal fun LibraryTab(
     // shape as the category filter below — asking "is this series read" per
     // entry would be a full JSON parse per entry, which is the mistake §5
     // records for categoriesFor().
-    val readIds = remember(libraryTick, categories) {
+    val readIds = remember(tick, categories) {
         val readCat = categories.firstOrNull { it.name.equals("Read", ignoreCase = true) }
         if (readCat == null) emptySet<String>() else Categories.seriesIn(context, readCat.id)
     }
@@ -93,17 +102,24 @@ internal fun LibraryTab(
     val tabIndex = categories.indexOfFirst { it.id == activeCategory }.let { if (it < 0) 0 else it }
     val pagerState = rememberPagerState(initialPage = tabIndex) { categories.size }
 
-    // Two-way sync. The pager is the source of truth while a swipe is in
-    // flight, so this only pushes the settled page outward; tapping a tab
-    // drives the pager in the other direction through the LaunchedEffect below.
-    LaunchedEffect(pagerState.currentPage, categories) {
-        categories.getOrNull(pagerState.currentPage)?.let {
+    // The pager owns the position. This is the only thing that reports it
+    // outward, and it reads settledPage rather than currentPage on purpose.
+    //
+    // The two-way sync this replaces deadlocked itself: animateScrollToPage(3)
+    // from page 0 animates *through* 1 and 2, currentPage updates at each one,
+    // and reporting those intermediate values back out moved activeCategory,
+    // which tripped a second effect into issuing its own animateScrollToPage
+    // and cancelling the first mid-flight. Every distant tab tap landed one
+    // short, on the side it came from.
+    //
+    // settledPage only moves when the scroll stops, so a five-tab jump reports
+    // once, at the end. Nothing drives the pager from activeCategory any more —
+    // restoring the tab after a series is opened and backed out of is what
+    // initialPage above is for, and that is read once, before any of this runs.
+    LaunchedEffect(pagerState.settledPage, categories) {
+        categories.getOrNull(pagerState.settledPage)?.let {
             if (it.id != activeCategory) onCategoryChange(it.id)
         }
-    }
-    LaunchedEffect(activeCategory, categories) {
-        val target = categories.indexOfFirst { it.id == activeCategory }
-        if (target >= 0 && target != pagerState.currentPage) pagerState.animateScrollToPage(target)
     }
 
     // Leaving selection is what back should do first, ahead of leaving the tab.
@@ -121,7 +137,7 @@ internal fun LibraryTab(
     // paid once. Asking it the other way round, categoriesFor() per entry, is a
     // full parse per series and is what locked the app up at 3567 of them.
     val perCategory: Map<String, List<LibraryEntry>> =
-        remember(entries, categories, libraryTick, query) {
+        remember(entries, categories, tick, query) {
             val needle = query.trim()
             val assigned by lazy { Categories.assignedSeries(context) }
             categories.associate { cat ->
@@ -160,10 +176,8 @@ internal fun LibraryTab(
                     IconButton(onClick = { selected = visible.map { it.seriesId }.toSet() }) {
                         Icon(Icons.Default.Check, contentDescription = "Select all")
                     }
-                    if (selected.size == 1) {
-                        IconButton(onClick = { assignFor = selected.first() }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Categories")
-                        }
+                    IconButton(onClick = { assignOpen = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Change categories")
                     }
                     IconButton(onClick = {
                         onRemoveMany(selected)
@@ -266,10 +280,7 @@ internal fun LibraryTab(
                 categories.forEachIndexed { index, cat ->
                     Tab(
                         selected = index == pagerState.currentPage,
-                        onClick = {
-                            onCategoryChange(cat.id)
-                            scope.launch { pagerState.animateScrollToPage(index) }
-                        },
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                         text = { Text(cat.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
@@ -301,15 +312,130 @@ internal fun LibraryTab(
         }
     }
 
-    assignFor?.let { id ->
-        CategoryAssignDialog(
-            seriesId = id,
-            onDismiss = {
-                assignFor = null
+    if (assignOpen) {
+        BulkCategoryDialog(
+            seriesIds = selected,
+            onDismiss = { assignOpen = false },
+            onApplied = {
+                assignOpen = false
                 selected = emptySet()
+                localTick++
             }
         )
     }
+}
+
+/**
+ * Category editor for a selection of any size.
+ *
+ * The checkboxes are tri-state because a selection usually isn't uniform: with
+ * six series highlighted, "Manhwa" may hold four of them, and both a plain
+ * checked box and a plain unchecked one would be a lie that silently rewrites
+ * the other two on save. Indeterminate means *leave this alone*, and it is the
+ * state a mixed category starts in and returns to.
+ *
+ * Tapping cycles On -> Off -> back to where it started. A category that began
+ * mixed can therefore be forced on, forced off, or restored; one that began
+ * uniform just toggles.
+ */
+@Composable
+internal fun BulkCategoryDialog(
+    seriesIds: Set<String>,
+    onDismiss: () -> Unit,
+    onApplied: () -> Unit
+) {
+    val context = LocalContext.current
+    val cats = remember { Categories.list(context) }
+
+    // One membership lookup per category against the cached assignment object,
+    // then a set test per selected id. The other direction — categoriesFor()
+    // per selected series — is a full parse each time.
+    val initial = remember(seriesIds, cats) {
+        cats.associate { cat ->
+            val members = Categories.seriesIn(context, cat.id)
+            val hits = seriesIds.count { it in members }
+            cat.id to when (hits) {
+                0 -> ToggleableState.Off
+                seriesIds.size -> ToggleableState.On
+                else -> ToggleableState.Indeterminate
+            }
+        }
+    }
+    val state = remember(initial) {
+        mutableStateMapOf<String, ToggleableState>().apply { putAll(initial) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Categories") },
+        text = {
+            if (cats.isEmpty()) {
+                Text("No categories yet - create some under More > Categories.")
+            } else {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        if (seriesIds.size == 1) "1 entry selected"
+                        else "${seriesIds.size} entries selected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    cats.forEach { cat ->
+                        val current = state[cat.id] ?: ToggleableState.Off
+                        val start = initial[cat.id] ?: ToggleableState.Off
+                        val cycle = {
+                            state[cat.id] = when (current) {
+                                ToggleableState.On -> ToggleableState.Off
+                                ToggleableState.Off ->
+                                    if (start == ToggleableState.Indeterminate) start
+                                    else ToggleableState.On
+                                ToggleableState.Indeterminate -> ToggleableState.On
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { cycle() }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TriStateCheckbox(state = current, onClick = cycle)
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(cat.name)
+                                if (current == ToggleableState.Indeterminate) {
+                                    Text(
+                                        "Some selected - left unchanged",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = cats.isNotEmpty(),
+                onClick = {
+                    Categories.applyCategories(
+                        context,
+                        seriesIds,
+                        add = state.filterValues { it == ToggleableState.On }.keys.toSet(),
+                        remove = state.filterValues { it == ToggleableState.Off }.keys.toSet()
+                    )
+                    onApplied()
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 /**
