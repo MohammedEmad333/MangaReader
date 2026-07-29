@@ -36,7 +36,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
+import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
+import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * The reader.
@@ -74,6 +77,7 @@ internal fun ReaderScreen(
 ) {
     val view = LocalView.current
     val context = view.context
+    val scope = rememberCoroutineScope()
 
     var settings by remember { mutableStateOf(ReaderPrefs.load(context)) }
     var showControls by remember { mutableStateOf(false) }
@@ -149,12 +153,17 @@ internal fun ReaderScreen(
         val pageModifier = Modifier
             .fillMaxSize()
             .padding(horizontal = sidePadding)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { showControls = !showControls })
-            }
+
+        // Long strip can keep one tap detector over the whole list, because
+        // nothing inside it handles gestures. Paged mode can't: a zoomable page
+        // consumes its own pointer events, so a detector up here would never
+        // see a tap on an image. The tap is handed to the pages instead.
+        val stripModifier = pageModifier.pointerInput(Unit) {
+            detectTapGestures(onTap = { showControls = !showControls })
+        }
 
         if (settings.mode == ReaderMode.LONG_STRIP) {
-            LazyColumn(state = listState, modifier = pageModifier) {
+            LazyColumn(state = listState, modifier = stripModifier) {
                 itemsIndexed(pages) { index, file ->
                     ReaderPage(
                         file = file,
@@ -192,7 +201,11 @@ internal fun ReaderScreen(
                     stillLoading = stillLoading,
                     colorFilter = filter,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+                    contentScale = ContentScale.Fit,
+                    // Paged only. In a strip the same gestures already belong to
+                    // the list, and a pinch that also scrolls is neither.
+                    zoomable = true,
+                    onTap = { showControls = !showControls }
                 )
             }
         }
@@ -234,6 +247,15 @@ internal fun ReaderScreen(
                 hasNext = hasNext,
                 onPrev = onPrev,
                 onNext = onNext,
+                onSeek = { target ->
+                    scope.launch {
+                        if (settings.mode == ReaderMode.LONG_STRIP) {
+                            listState.scrollToItem(target)
+                        } else {
+                            pagerState.scrollToPage(target)
+                        }
+                    }
+                },
                 onChapters = { showChapters = true },
                 onSettings = { showSettings = true }
             )
@@ -330,9 +352,29 @@ private fun ReaderPage(
     stillLoading: Boolean,
     colorFilter: ColorFilter?,
     modifier: Modifier,
-    contentScale: ContentScale
+    contentScale: ContentScale,
+    /** Pinch, double-tap and pan. Paged modes only — see the call site. */
+    zoomable: Boolean = false,
+    /** Non-null when this page is responsible for its own taps. */
+    onTap: (() -> Unit)? = null
 ) {
+    // A placeholder handles no gestures of its own, so where the page owns the
+    // tap it has to be attached here too — otherwise tapping a page that hasn't
+    // loaded would be the one dead spot on the screen.
+    val placeholder =
+        if (onTap == null) modifier
+        else modifier.pointerInput(Unit) { detectTapGestures { onTap() } }
+
     when {
+        file != null && zoomable -> ZoomableAsyncImage(
+            model = file,
+            contentDescription = null,
+            modifier = modifier,
+            colorFilter = colorFilter,
+            contentScale = contentScale,
+            // Its own, because a tap this consumes never reaches the pager.
+            onClick = { onTap?.invoke() }
+        )
         file != null -> AsyncImage(
             model = file,
             contentDescription = null,
@@ -343,13 +385,13 @@ private fun ReaderPage(
         // Null while the chapter is still downloading means "not here yet";
         // null once it has finished means that page failed.
         stillLoading -> Box(
-            modifier = modifier.heightIn(min = 240.dp),
+            modifier = placeholder.heightIn(min = 240.dp),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator()
         }
         else -> Box(
-            modifier = modifier.heightIn(min = 240.dp),
+            modifier = placeholder.heightIn(min = 240.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -407,9 +449,16 @@ private fun ReaderBottomBar(
     hasNext: Boolean,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onSeek: (Int) -> Unit,
     onChapters: () -> Unit,
     onSettings: () -> Unit
 ) {
+    // Where the thumb is while it's being dragged, null when it isn't. The jump
+    // is deferred to the end of the drag on purpose: reporting every
+    // intermediate value would be a scroll request and a progress write per
+    // pixel, across a chapter that can be two hundred pages long.
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val shownPage = dragging?.roundToInt()?.plus(1) ?: page
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
@@ -421,13 +470,29 @@ private fun ReaderBottomBar(
                 .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Text(
-                text = if (total > 0) "Page $page of $total" else "",
+                text = if (total > 0) "Page $shownPage of $total" else "",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(bottom = 2.dp)
             )
+
+            // A one-page chapter has nothing to seek through, and a Slider whose
+            // range starts and ends at the same value is not a legal Slider.
+            if (total > 1) {
+                Slider(
+                    value = dragging ?: (page - 1).coerceIn(0, total - 1).toFloat(),
+                    onValueChange = { dragging = it },
+                    onValueChangeFinished = {
+                        dragging?.let { onSeek(it.roundToInt().coerceIn(0, total - 1)) }
+                        dragging = null
+                    },
+                    valueRange = 0f..(total - 1).toFloat(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

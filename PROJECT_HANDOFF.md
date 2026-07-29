@@ -1,9 +1,8 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.61**. **0.55 through 0.58 are all verified on device.** 0.59 shipped a
-non-working uninstall button, fixed in 0.61. 0.59–0.61 work through the Trello
-backlog; only 0.59 has been run.
+at **0.62**. **0.55 through 0.61 are all verified on device.** 0.62 is the last
+two backlog items — reader zoom and a page slider — and is unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -63,7 +62,29 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.59 and 0.60 are written, not run
+### Open thread 3 — 0.62 is written, not run
+
+**Reader zoom** and **a page slider**, done together at the user's call after I
+argued for splitting them. Both are in `ReaderScreen.kt`, the file with the
+worst track record in this project, so treat a failure here as likely mine
+rather than exotic.
+
+- **Zoom is paged-only**, via telephoto's `ZoomableAsyncImage` — the
+  `zoomable-image-coil` dependency had been sitting in `build.gradle` unused
+  since before this session. Its signature was checked against the 0.14.0 source
+  on GitHub rather than assumed: `colorFilter` is a real parameter, so grayscale
+  and invert survive, and `onClick` exists, which matters because a zoomable
+  page consumes its own pointer events. That is why the tap-to-show-controls
+  detector moved off the pager and onto the pages, placeholders included —
+  a detector above a gesture-consuming child never fires.
+- **Long strip is untouched.** A pinch there fights the scroll the mode exists
+  for. Doing it properly means zooming the viewport rather than an item, and
+  that is a piece of work, not a flag.
+- **The slider commits on release**, not during the drag. Every intermediate
+  value would otherwise be a scroll request *and* a `savePage` write *and* a
+  `History.touch`, since `onProgress` fires on every page change.
+
+### Open thread 3b — 0.59 and 0.60, closed
 
 Backlog items, deliberately kept apart from each other and from anything
 load-bearing:
