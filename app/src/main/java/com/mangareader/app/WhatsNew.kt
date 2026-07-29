@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 63,
+            name = "0.63",
+            header = "The page slider can stand up",
+            body = "Reader settings, under Layout, now has a Page slider choice: " +
+                "horizontal keeps it in the control bar as before, vertical " +
+                "stands it up against the right edge.\n\n" +
+                "Vertical suits long strip, where the thumb then travels the same " +
+                "direction the pages do. Both behave the same otherwise - the " +
+                "jump happens when you let go, and the page count follows the " +
+                "thumb while you drag."
+        ),
+        ReleaseNote(
             code = 62,
             name = "0.62",
             header = "Zoom and a page slider in the reader",
