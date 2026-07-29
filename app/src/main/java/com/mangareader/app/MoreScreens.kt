@@ -97,9 +97,7 @@ internal fun HistoryScreen(
                     ListItem(
                         leadingContent = {
                             CoverImage(
-                                cover = entry.coverPath
-                                    .takeIf { it.isNotBlank() }
-                                    ?.let { File(it) },
+                                cover = coverModel(entry.coverPath),
                                 title = entry.title,
                                 modifier = Modifier
                                     .width(40.dp)

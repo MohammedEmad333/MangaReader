@@ -62,6 +62,31 @@ import java.io.File
 
 // ---------- prefs: the same store every other object in this package uses ----------
 
+/**
+ * Turns a stored cover string into something Coil can actually load.
+ *
+ * The two kinds disagree by design and share one `String` field: a local
+ * series' cover is a filesystem path or a `content://` uri, an extension's is
+ * an http URL. Wrapping the second in a `File` — which the history list did —
+ * yields `/https:/host/...`, a path that cannot exist, so every
+ * extension-sourced cover failed. In a debug build the failure overlay then
+ * rendered that mangled path as text, which is why the rows showed "https:/hen…"
+ * where the picture should be.
+ */
+internal fun coverModel(path: String?): Any? {
+    val s = path?.trim().orEmpty()
+    return when {
+        s.isBlank() -> null
+        // Anything with a scheme is handed over as-is; Coil resolves http,
+        // https, content and file itself.
+        s.startsWith("http://", ignoreCase = true) ||
+            s.startsWith("https://", ignoreCase = true) ||
+            s.startsWith("content://", ignoreCase = true) ||
+            s.startsWith("file://", ignoreCase = true) -> s
+        else -> File(s)
+    }
+}
+
 @Composable
 fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
     // Why Coil gave up on this cover, if it did. Keyed on the model so a
