@@ -1,31 +1,48 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.51 / `3052571`**, after the Tachiyomi-import and scaling session
-(supersedes the earlier version of this file).
+at **0.54 / `62e7267`**, after the library-screen session (supersedes the
+earlier version of this file).
+
+**The library screen was rebuilt and every part of it is verified on device**
+(builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
+editing, search, a four-tab options sheet, and a post-update "What's new"
+dialog. §4 "The library screen" is the account; the tab-sync bug in §5 is the
+one worth reading even if you never touch this screen again.
 
 **The manhwatoon 400s are fixed.** That thread had been open across several
-handoffs. It is not in §0 any more; the account is in §5, and it is worth
-reading even if you never touch that source, because the fix was the opposite of
-every previous attempt.
+handoffs. The account is in §5, and it is worth reading even if you never touch
+that source, because the fix was the opposite of every previous attempt.
 
-**The app now runs against a real library** — 3567 series, imported from
-Tachiyomi. That single event exposed nine performance bugs and two correctness
-bugs in code that had been fine for months at ~40 series. If you read one thing
-in §5, read "An import is a load test".
+**The app runs against a real library** — 3567 series, imported from Tachiyomi.
+That single event exposed nine performance bugs and two correctness bugs in code
+that had been fine for months at ~40 series. If you read one thing in §5, read
+"An import is a load test". Its constraint shaped this session too: half of what
+a library options sheet normally offers is not affordable here, and §4 records
+exactly which half and why.
 
 ---
 
 ## 0. Where this was left — read this first
 
-The last session built the Settings screen and everything under it: a real
-backup and restore, a user-chosen storage location, and a readable download
-tree. **All of that is verified on device** (builds #121–#125), which makes it
-the first stretch of work in several sessions that isn't carrying an untested
-tail. Two older threads are still open and neither was touched.
+The last session rebuilt the library screen across three releases, and **all of
+it is verified on device** — the user confirmed each build before the next was
+written. That makes two sessions running that aren't carrying an untested tail.
 
-One thing the new work quietly created: the app now has a **light theme**, and
-the reader was written against dark only. See thread 2.
+What shipped, in order: 0.52 category tabs with swipe, multi-select, search and
+an options menu, read entries dimmed, and the "What's new" dialog; 0.53 bulk
+category editing plus a tab-sync fix; 0.54 the full Filter / Sort / Display /
+Group sheet.
+
+**The two older threads below are still open and neither was touched.** They
+have now survived four sessions. The reader is still the largest untested
+surface in the app.
+
+**The named next piece of work** is a per-series chapter/read count index — see
+"What the library can't do yet" in §4. It is the single thing standing between
+this app and unread counts, unread/started/completed filters, chapter-count
+sorts, and the badge overlays Mihon shows. One index unlocks all of them at
+once; without it each is independently impossible.
 
 ### Open thread 1 — the reader rewrite is barely tested
 
@@ -61,7 +78,32 @@ Also unaddressed: `AndroidManifest.xml` still declares
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
 
-### Closed this session — the Tachiyomi import, and scaling to it
+### Closed this session — the library screen
+
+Every item verified on device. The design notes are in §4 "The library screen";
+what matters here is that none of it is outstanding.
+
+- **Category tabs replaced the filter chips.** No "All" tab — the tabs are
+  exactly the groups. `ScrollableTabRow` over a `HorizontalPager`, so they swipe.
+- **The active tab survives opening a series.** It was a `remember` inside
+  `LibraryTab`, which the routing chain destroys the moment a series opens; it
+  now lives in `YomuApp` as a `rememberSaveable`. Backing out returns to the tab
+  you left.
+- **Multi-select.** Long press starts it, tap toggles, back exits. The
+  contextual bar selects all in the tab, edits categories, or removes — the last
+  two through batched writes (`Library.removeAll`, `Categories.applyCategories`)
+  rather than a loop of the per-series call, which is the quadratic write §5
+  keeps finding.
+- **Bulk category editing is tri-state.** A mixed selection starts a category
+  Indeterminate meaning *leave alone*, so saving doesn't silently rewrite the
+  entries that were already right.
+- **Search and an options sheet** in the bar. Four tabs, all settings in
+  `LibraryPrefs`, written on tap rather than on dismiss.
+- **Read entries are dimmed** everywhere, not only in the Read tab.
+- **"What's new" after an update.** `WhatsNew.kt`. Newest release expanded,
+  intermediate ones collapsed behind a chevron.
+
+### Closed earlier — the Tachiyomi import, and scaling to it
 
 A whole Tachiyomi/SY backup now imports: 3567 series, 19001 chapters, read
 state, saved pages, history and categories. Architecture in §4, and **the
@@ -85,7 +127,7 @@ Then everything else that broke because of it:
 
 All verified on device. The perf work is the bulk of §5's new material.
 
-### Closed earlier this session — the manhwatoon 400s, and how
+### Closed earlier — the manhwatoon 400s, and how
 
 `cdn.manhwatoon.me` now downloads whole chapters with **zero failed pages**,
 which was the stated bar and had never been met. The fix was to **delete**
@@ -135,7 +177,7 @@ to fix in this app. `fakkuonion.airdns.org:4096` serves titles and the same
 loopback image URLs, which the repoint now handles. **Leave the mirror on
 `hentalk.pw`.**
 
-### Still open from this session
+### Still open from earlier sessions
 
 - **Re-verify manhwatoon.** One clean chapter is not proof at a 3-8% failure
   rate; two or three more closes it.
@@ -148,6 +190,15 @@ loopback image URLs, which the repoint now handles. **Leave the mirror on
 
 Failed-download retry is only lightly exercised. The reader (thread 1) is the
 largest untested surface in the app and has been for several sessions.
+
+Two more, both small and both isolated to one file:
+
+- **The library options icon is a hamburger**, because `material-icons-core` has
+  no `FilterList` and the extended pack isn't a dependency. Adding
+  `androidx.compose.material:material-icons-extended` fixes it at roughly a
+  megabyte of APK — a judgement call, not a bug.
+- **The `cover_size` pref is now dead.** Items-per-row in the Display tab
+  replaced it. Nothing reads it; nothing removes it either.
 
 ---
 
@@ -172,6 +223,17 @@ Edit → push → GitHub Actions builds the APK and publishes it to the `latest`
 prerelease → install on the phone.
 
 **They ask for a ready-to-paste push command at the end of any change.**
+
+**Every push now carries three things, not one:** the changed files, a
+`versionCode`/`versionName` bump in `app/build.gradle.kts`, and a matching
+`ReleaseNote` in `Changelog.notes` (`WhatsNew.kt`). The bump is not optional —
+Android refuses an APK whose code doesn't increase, so it silently leaves the
+old build on the phone. The `sed` for it belongs in the push command, because
+`build.gradle.kts` is not a `.kt` and the Termux copy loop will not pick it up:
+
+```
+sed -i 's/versionCode = N/versionCode = N+1/; s/versionName = "0.N"/versionName = "0.N+1"/' app/build.gradle.kts
+```
 
 Windows:
 ```
@@ -236,6 +298,13 @@ As of the source-visibility commit, verified on device:
   offline.
 - **A Tachiyomi/SY backup imports** — 3567 series with read state, saved pages,
   history and categories (`931cf5f` and after). See §4.
+- **The library screen is complete** (`62e7267`) — category tabs with swipe,
+  multi-select with batched bulk category editing, in-library search, four
+  display modes, sorting, tri-state filtering, and grouping. Verified on device
+  across 0.52–0.54. What it deliberately doesn't do, and the one index that
+  would change that, is in §4.
+- **Updates announce themselves** — a "What's new" dialog on the first launch
+  after a version bump, newest release expanded and intermediate ones collapsed.
 - **The app is usable at that scale** — category filtering, list scrolling, the
   Downloads tab and opening a series were all rebuilt around it (`0810bed`
   through `3052571`).
@@ -371,7 +440,9 @@ implementation("com.squareup.logcat:logcat:0.1")
 | `SourcePrefs.kt` | Pinned source ids, last-used source id, pinned-only-search flag. |
 | `App.kt` | `Application` subclass; registers Injekt bindings. |
 | `Library.kt` | Saved-series store (JSON in SharedPreferences). |
-| `Categories.kt` | Categories + series→category assignments. |
+| `Categories.kt` | Categories + series→category assignments. `applyCategories()` is the batched add/remove used by bulk editing. |
+| `LibraryPrefs.kt` | Library sort / display / group / filter settings, and the `LibrarySort`, `LibraryDisplay`, `LibraryGroup`, `FilterState` enums. |
+| `WhatsNew.kt` | The changelog (`Changelog.notes`), the seen-version marker, and the post-update dialog. |
 | `SourceSettings.kt` | Reads `ConfigurableSource` preferences into a Compose-renderable model. |
 | `Downloads.kt` | Page store on disk (cache vs download) + `ChapterCache` + `formatBytes()`. |
 | `DownloadQueue.kt` | Process-wide download queue: Compose state + JSON persistence. |
@@ -398,7 +469,8 @@ things between them needs no imports — only visibility changes (see §5).
 | `SourceSettingsUi.kt` | `SourceSettingsDialog`, `SourcePrefRow` |
 | `GlobalSearchScreen.kt` | `GlobalSearchScreen` |
 | `SourceBrowseScreens.kt` | `LibraryScreen` (the **per-source browse** screen), `SeriesScreen` |
-| `LibraryScreens.kt` | `LibraryTab`, `AddToLibraryDialog`, `CategoryAssignDialog` |
+| `LibraryScreens.kt` | `LibraryTab`, `LibraryGrid`, `LibraryEmpty`, `MiniBadge`, `AddToLibraryDialog`, `CategoryAssignDialog`, `BulkCategoryDialog` |
+| `LibraryOptions.kt` | `LibraryOptionsSheet` — the Filter / Sort / Display / Group bottom sheet, and its row composables |
 | `ReaderScreen.kt` | `ReaderScreen`, its overlay bars, chapter picker and settings sheet |
 | `ReaderPrefs.kt` | `ReaderSettings` + the enums + load/save. Not a screen |
 | `WebViewScreen.kt` | `ChallengeWebViewScreen` — the visible Cloudflare WebView |
@@ -797,6 +869,89 @@ cover back the first time a series is opened — it fires only when there is no
 cover or a loopback one, because every write rewrites the whole library JSON and
 doing that per series open would be a real cost for no gain.
 
+### The library screen
+
+Four axes, all stored in `LibraryPrefs` and all read once per tick in
+`LibraryTab`:
+
+| Axis | Values |
+|---|---|
+| Group | Categories, Ungrouped |
+| Sort | Alphabetical, Date added, Last read, Random — each reversible |
+| Display | Compact grid, Comfortable grid, Cover-only grid, List; Auto or fixed 1–10 columns |
+| Filter | Downloaded, Local source, Read — tri-state (off / require / exclude) |
+
+`LibraryTab` builds a `List<Group>` of `(key, label, items)` and the pager runs
+off that, so grouping mode changes the tab set without any other code caring.
+The group key is a category id under Categories and the literal `"all"` under
+Ungrouped; `activeCategory` in `YomuApp` holds whichever, and a key that no
+longer resolves falls back to index 0.
+
+**Filtering and sorting happen per group**, inside the same `remember` that
+builds them, so each tab sorts within itself and the whole thing is one pass per
+tick rather than one per page. Random is seeded from a stored int rather than
+shuffled: a random order that reshuffles on every recomposition isn't a sort.
+
+**The expensive reads are conditional.** `DownloadIndex.list()` walks the
+download tree on a cold cache, so it is only called when the Downloaded badge or
+the Downloaded filter is actually on. `History` is only grouped by series when
+the sort is Last read.
+
+**Dimming "read" is category membership**, matched on the category *name*, not a
+new field. It costs one `seriesIn()` set lookup. The alternative — a real
+"every chapter read" test — is in the next section.
+
+#### What the library can't do yet, and the one thing that would fix it
+
+Mihon's options sheet also offers Unread / Started / Completed / Bookmarked
+filters, and sorts by total chapters, unread count, latest chapter, last update
+check and fetch date, plus per-cover unread and downloaded *chapter* badges.
+**None of those are implementable in this app today**, and they were left out
+rather than shipped as switches that do nothing — the same call §4 records for
+the reader's crop-borders and split-page toggles, for the same reason: a dead
+toggle costs a build cycle to discover.
+
+The blocker is uniform. Every one of them needs a chapter list per series, and
+the only chapter store here is `ChapterCache` — one JSON file per series,
+written when that series is opened. So for a 3567-entry library most series have
+no file at all, and answering "how many unread" across the library means
+thousands of file reads on every grid draw.
+
+**The fix is one aggregate index**, not one per feature: a single JSON keyed by
+series id holding `{ total, read, latestChapterDate, fetchedAt }`, written
+whenever a series screen resolves its chapter list (the same call site that
+already feeds `ChapterCache`), cached in memory on the same raw-string key as
+`Library.list()` and `Categories.assignments()`. Read as one file, it makes all
+of the above cheap simultaneously. Note the invalidation path up front, per the
+cache table — a stale entry here is data that is silently wrong rather than
+slow.
+
+Two smaller absences, unrelated to that index:
+
+- **Bookmarked, Lewd, Language, and Group → Status** have no backing field
+  anywhere in the app. They need a data model decision first, not an index.
+- **Group → Sources** is blocked on names, not counts: `LibraryEntry` stores the
+  `sourceId` it came from and never the source's display name, so the tabs would
+  read `tachi:2499283573021220255`. `SourceManager.listAllSources()` has the
+  names but classloads extension APKs, which is not something to do
+  synchronously in composition. A `sourceId → name` map written whenever sources
+  are listed would close it.
+
+### The "What's new" dialog
+
+`Changelog.notes` in `WhatsNew.kt` is the changelog, newest first, as Kotlin
+source — so it ships with the APK it describes and can never disagree with it or
+fail because the phone is offline. **Add a `ReleaseNote` in the same commit that
+bumps `versionCode`.** A release with no entry isn't an error, it is just
+invisible.
+
+`WhatsNew.pending()` compares a stored marker against `BuildConfig.VERSION_CODE`
+and has three cases: marker present is the normal diff; no marker but a
+`library_json` exists means an existing install upgrading into the feature, so
+it shows the running build's note only; no marker and no library is a fresh
+install, which records and shows nothing. The marker is moved even when an
+update has no note, or the next update would replay both.
+
 ### "Default" is not a category
 
 Tachiyomi shows uncategorised series under **Default**. It is not a category
@@ -1148,6 +1303,34 @@ is this proportional to, and how often does it run?"
 Worth knowing the library is still **one JSON string**. Reads are cached now, but
 every write rewrites all 3567 entries. If a single add or remove ever feels slow,
 that is the cause, and the fix is a different storage shape — not another cache.
+
+### Two things driving one position will fight, and the symptom lies
+
+Tapping library tab 4 from tab 1 landed on tab 3. Tapping tab 1 from tab 4
+landed on tab 2. Always one short, always on the side it came from — which reads
+like an off-by-one in an index and is nothing of the kind.
+
+The tab row and the pager were synced both ways: an effect on
+`pagerState.currentPage` pushed the position out to `activeCategory`, and an
+effect on `activeCategory` pulled the pager to match. `animateScrollToPage(3)`
+from page 0 animates *through* pages 1 and 2, and `currentPage` updates at each
+one. Each intermediate value was reported outward, moved `activeCategory`, and
+tripped the second effect into issuing its own `animateScrollToPage` — which
+cancelled the first mid-flight. The distance never mattered; the animation was
+being shot down as it passed.
+
+The fix is not a guard flag. It is deciding which side owns the value: the pager
+owns it, tab taps only call `animateScrollToPage`, and the one remaining effect
+reads **`settledPage`** rather than `currentPage`, so a jump reports once, at the
+end. The inward effect was deleted outright — restoring the tab after backing out
+of a series is what `initialPage` is for, and that is read once, before any
+effect runs.
+
+Generalise it: if two `LaunchedEffect`s can each cause the other to fire, they
+are one feedback loop wearing two hats, and no amount of comparing "is it already
+equal" fixes it — the values genuinely differ at every intermediate step. Look
+for a settled/committed variant of whatever state is being observed, and if the
+API doesn't have one, the loop is the design and it needs cutting, not guarding.
 
 ### `remember(key)` is not a cache
 
