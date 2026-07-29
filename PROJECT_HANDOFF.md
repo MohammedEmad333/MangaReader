@@ -1,8 +1,8 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-29
-at **0.59**. **0.55 through 0.58 are all verified on device.** 0.59 adds the
-first two items off the Trello backlog and is unverified.
+at **0.60**. **0.55 through 0.58 are all verified on device.** 0.59 and 0.60
+work through the Trello backlog and are unverified.
 (Supersedes the earlier version of this file.)
 
 **The library screen was rebuilt and every part of it is verified on device**
@@ -46,8 +46,11 @@ shipped a regression inside that run — chapters marking themselves read on ope
 — which 0.58 fixed; both entries are in §5 and the pair is worth reading
 together, because the second was caused by the first.
 
-**0.59 is the untested tail**, and it is small on purpose: an uninstall button
-and the reader's back arrow. The rest of the backlog is in §7.
+**0.59 and 0.60 are the untested tail**, kept small on purpose: an uninstall
+button, the reader's back arrow, a tag menu on the series screen, and a
+swipeable Browse. Nothing in either touches the reader's page indexing or the
+library — the two remaining backlog items that do are being taken one per build.
+Thread 3 has the list.
 
 **The two older threads below are still open and neither was touched.** They
 have now survived four sessions. The reader is still the largest untested
@@ -59,10 +62,19 @@ this app and unread counts, unread/started/completed filters, chapter-count
 sorts, and the badge overlays Mihon shows. One index unlocks all of them at
 once; without it each is independently impossible.
 
-### Open thread 3 — 0.59 is written, not run
+### Open thread 3 — 0.59 and 0.60 are written, not run
 
-Two backlog items, deliberately kept apart from each other and from anything
+Backlog items, deliberately kept apart from each other and from anything
 load-bearing:
+
+- **Tag menu** on the series screen. Genre chips had an empty `onClick`; they
+  now open a menu offering a source search, a global search, or copy. Both
+  searches clear `activeSeries` so the chain falls through to a branch that can
+  show results — the source search *keeps* the adopted source, unlike `onBack`,
+  because searching that source is the entire request.
+- **Browse swipes.** `TabRow` over a `HorizontalPager`. No outward report of the
+  position exists here, so the feedback loop §5 records could not be recreated:
+  the pager owns it, tabs only call `animateScrollToPage`.
 
 - **Uninstall button** on installed extension rows. `ExtensionManager.uninstall`
   fires `ACTION_DELETE`, so the system prompts and this app holds no

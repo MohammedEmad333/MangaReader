@@ -975,6 +975,28 @@ fun YomuApp() {
             readTick = readTick,
             onOpen = { openChapter(it) },
             onLibraryChanged = { libraryTick++ },
+            // Both leave the series behind deliberately: a tag search is a
+            // request to go and look at other things, and the results have to
+            // land on a branch below this one to be visible at all.
+            onSearchTag = { tag ->
+                activeSource?.let { src ->
+                    activeSeries = null
+                    chapterList = emptyList()
+                    errorMessage = null
+                    // Keeps the adopted source rather than dropping it the way
+                    // onBack does for a non-BROWSE origin — searching *this*
+                    // source is the whole request, so the browse screen it falls
+                    // through to is the destination, not a stranding.
+                    openSource(src, tag, browseMode)
+                }
+            },
+            onGlobalSearchTag = { tag ->
+                activeSeries = null
+                chapterList = emptyList()
+                errorMessage = null
+                globalSearchOpen = true
+                runGlobalSearch(tag)
+            },
             onSolveChallenge = solveFromSeries,
             onBack = {
                 activeSeries = null

@@ -56,7 +56,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -396,10 +398,15 @@ internal fun SeriesScreen(
     readTick: Int,
     onOpen: (Int) -> Unit,
     onLibraryChanged: () -> Unit,
+    /** Runs [String] as a search of this series' own source. */
+    onSearchTag: (String) -> Unit,
+    /** Runs [String] across every searchable source. */
+    onGlobalSearchTag: (String) -> Unit,
     onSolveChallenge: (() -> Unit)?,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
@@ -600,7 +607,43 @@ internal fun SeriesScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         series.genres.forEach { genre ->
-                            SuggestionChip(onClick = { }, label = { Text(genre) })
+                            // A tag was decoration until now — a chip with an
+                            // empty onClick. What it actually is is a query, so
+                            // tapping one offers the three things you can do
+                            // with a query rather than picking one and hoping.
+                            Box {
+                                var tagMenu by remember(genre) { mutableStateOf(false) }
+                                SuggestionChip(
+                                    onClick = { tagMenu = true },
+                                    label = { Text(genre) }
+                                )
+                                DropdownMenu(
+                                    expanded = tagMenu,
+                                    onDismissRequest = { tagMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Search $sourceName") },
+                                        onClick = {
+                                            tagMenu = false
+                                            onSearchTag(genre)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Global search") },
+                                        onClick = {
+                                            tagMenu = false
+                                            onGlobalSearchTag(genre)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Copy to clipboard") },
+                                        onClick = {
+                                            tagMenu = false
+                                            clipboard.setText(AnnotatedString(genre))
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }

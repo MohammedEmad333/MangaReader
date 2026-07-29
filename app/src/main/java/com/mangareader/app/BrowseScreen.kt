@@ -284,7 +284,14 @@ internal fun BrowseTab(
     onExtensionsChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    // The pager owns the position and nothing drives it back the other way —
+    // see §5, "Two things driving one position will fight". Tabs only ask it to
+    // animate; `tab` is read out of it. There is no outward report to make here,
+    // so there is no second driver to introduce.
+    val pagerState = rememberPagerState(initialPage = 0) { 2 }
+    val tab = pagerState.currentPage
 
     // Both re-read from prefs whenever this tab re-enters the composition, which
     // a bottom-nav switch or backing out of a source always causes.
@@ -371,107 +378,113 @@ internal fun BrowseTab(
             }
         )
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sources") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Extensions") })
+            listOf("Sources", "Extensions").forEachIndexed { index, label ->
+                Tab(
+                    selected = tab == index,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                    text = { Text(label) }
+                )
+            }
         }
 
-        if (tab == 0) {
-            val openRow: (BrowseRow) -> Unit = { row ->
-                row.config?.let { onOpenConfig(it) }
-                row.source?.let { onOpenExtension(it) }
-            }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                if (lastUsedRow != null) {
-                    item { SectionHeader("Last used") }
-                    item {
-                        BrowseSourceRow(
-                            row = lastUsedRow,
-                            pinned = lastUsedRow.id in pinnedIds,
-                            onOpen = { openRow(lastUsedRow) },
-                            onTogglePin = {
-                                pinnedIds = SourcePrefs.togglePin(context, lastUsedRow.id)
-                            },
-                            onEditConfig = onEdit,
-                            onDeleteConfig = onDelete,
-                            onOpenSettings = { settingsFor = it }
-                        )
-                    }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f)
+        ) { page ->
+            if (page == 0) {
+                val openRow: (BrowseRow) -> Unit = { row ->
+                    row.config?.let { onOpenConfig(it) }
+                    row.source?.let { onOpenExtension(it) }
                 }
 
-                if (pinnedRows.isNotEmpty()) {
-                    item { SectionHeader("Pinned") }
-                    items(pinnedRows) { row ->
-                        BrowseSourceRow(
-                            row = row,
-                            pinned = true,
-                            onOpen = { openRow(row) },
-                            onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
-                            onEditConfig = onEdit,
-                            onDeleteConfig = onDelete,
-                            onOpenSettings = { settingsFor = it }
-                        )
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (lastUsedRow != null) {
+                        item { SectionHeader("Last used") }
+                        item {
+                            BrowseSourceRow(
+                                row = lastUsedRow,
+                                pinned = lastUsedRow.id in pinnedIds,
+                                onOpen = { openRow(lastUsedRow) },
+                                onTogglePin = {
+                                    pinnedIds = SourcePrefs.togglePin(context, lastUsedRow.id)
+                                },
+                                onEditConfig = onEdit,
+                                onDeleteConfig = onDelete,
+                                onOpenSettings = { settingsFor = it }
+                            )
+                        }
                     }
-                }
 
-                groups.forEach { (lang, rowsInGroup) ->
-                    item { SectionHeader(lang) }
-                    items(rowsInGroup.sortedBy { it.name.lowercase() }) { row ->
-                        BrowseSourceRow(
-                            row = row,
-                            pinned = false,
-                            onOpen = { openRow(row) },
-                            onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
-                            onEditConfig = onEdit,
-                            onDeleteConfig = onDelete,
-                            onOpenSettings = { settingsFor = it }
-                        )
+                    if (pinnedRows.isNotEmpty()) {
+                        item { SectionHeader("Pinned") }
+                        items(pinnedRows) { row ->
+                            BrowseSourceRow(
+                                row = row,
+                                pinned = true,
+                                onOpen = { openRow(row) },
+                                onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
+                                onEditConfig = onEdit,
+                                onDeleteConfig = onDelete,
+                                onOpenSettings = { settingsFor = it }
+                            )
+                        }
                     }
-                }
 
-                if (visibleRows.isEmpty()) {
+                    groups.forEach { (lang, rowsInGroup) ->
+                        item { SectionHeader(lang) }
+                        items(rowsInGroup.sortedBy { it.name.lowercase() }) { row ->
+                            BrowseSourceRow(
+                                row = row,
+                                pinned = false,
+                                onOpen = { openRow(row) },
+                                onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
+                                onEditConfig = onEdit,
+                                onDeleteConfig = onDelete,
+                                onOpenSettings = { settingsFor = it }
+                            )
+                        }
+                    }
+
+                    if (visibleRows.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No sources yet. Add a local folder, or install " +
+                                        "extensions from the Extensions tab.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
                     item {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
+                                .padding(16.dp)
                         ) {
-                            Text(
-                                "No sources yet. Add a local folder, or install " +
-                                    "extensions from the Extensions tab.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
+                            OutlinedButton(
+                                onClick = onAdd,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Add a local source") }
                         }
                     }
                 }
-
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onAdd,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Add a local source") }
-                    }
-                }
+            } else {
+                ExtensionsScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onInstalled = onExtensionsChanged
+                )
             }
-        } else {
-            ExtensionsScreen(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                onInstalled = onExtensionsChanged
-            )
         }
     }
 
