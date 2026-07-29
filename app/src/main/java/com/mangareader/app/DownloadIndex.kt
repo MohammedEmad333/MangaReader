@@ -94,7 +94,7 @@ object DownloadIndex {
         val known = live.map { it.chapterId }.toMutableSet()
 
         val recovered = mutableListOf<Record>()
-        for (entry in Library.list(context)) {
+        if (needsRecovery(context, known)) for (entry in Library.list(context)) {
             for (chapter in ChapterCache.load(context, entry.seriesId)) {
                 if (chapter.id in known) continue
                 if (!Downloads.isComplete(context, chapter.id)) continue
@@ -126,6 +126,28 @@ object DownloadIndex {
                 )
             }
             .sortedByDescending { it.sizeBytes }
+    }
+
+    /**
+     * Whether the scan below is worth running at all.
+     *
+     * That scan reads the chapter cache off disk for every series in the
+     * library. At forty series it was free; at several thousand it's thousands
+     * of file reads and JSON parses before the Downloads tab can draw, every
+     * single time it's opened. It's a repair for an index that has lost track of
+     * folders that are still on disk, and normally there's nothing to repair.
+     *
+     * So: ask the path index whether it knows of any downloaded chapter this
+     * one doesn't, and check whether the old flat layout — whose folder names
+     * are hashes and can't be mapped back to chapter ids, making a scan the only
+     * way to find them — has anything in it. If neither, there is nothing the
+     * scan could turn up.
+     */
+    private fun needsRecovery(context: Context, known: Set<String>): Boolean {
+        if (DownloadPaths.knownChapterIds(context).any { it !in known }) return true
+        return StorageLocation.legacyRoots(context).any { root ->
+            root.listFiles()?.any { it.isDirectory } == true
+        }
     }
 
     // ---------- deleting ----------
