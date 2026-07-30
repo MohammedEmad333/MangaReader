@@ -12,6 +12,9 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -239,8 +242,10 @@ abstract class HttpSource : CatalogueSource {
      * @return the updated manga.
      */
     override suspend fun getMangaDetails(manga: SManga): SManga =
-        getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false)
-            .manga ?: manga
+        withMangaUpdateLock(manga) {
+            getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false)
+                .manga ?: manga
+        }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getMangaDetails"))
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
@@ -280,9 +285,43 @@ abstract class HttpSource : CatalogueSource {
         if (manga.status == SManga.LICENSED) {
             throw LicensedMangaChaptersException()
         }
-        return getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true)
-            .chapters ?: emptyList()
+        return withMangaUpdateLock(manga) {
+            getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true)
+                .chapters ?: emptyList()
+        }
     }
+
+    /**
+     * Per-series lock around [getMangaUpdate].
+     *
+     * **An extension is entitled to refuse two concurrent updates for the same
+     * manga, and one does.** Elite Babes 1.6.3 guards with
+     * "getMangaUpdate must not be called concurrently for same manga", which is
+     * reasonable: the whole point of the call is that details and chapters come
+     * off one request, so two overlapping calls are the app asking for the same
+     * page twice at once.
+     *
+     * This app does exactly that. Opening a series fetches details and the
+     * chapter list together, and before this lock the two raced — the same
+     * series would show its chapters or an IllegalStateException depending on
+     * which call happened to arrive first. That is why some series worked and
+     * some didn't, with no pattern.
+     *
+     * Keyed on `url`, which identifies a series within a source; the map is
+     * per-source because [HttpSource] is per-source. Entries are left behind
+     * deliberately — a `Mutex` with no waiters is a few dozen bytes, and
+     * removing one that another coroutine is about to lock is a race in itself.
+     *
+     * **The better fix is one call, not two.** Asking for details and chapters
+     * in a single `getMangaUpdate(fetchDetails = true, fetchChapters = true)`
+     * is what the API is shaped for and would halve the requests. It needs the
+     * app's `Source` interface to have a way to ask for both at once, which it
+     * doesn't yet. This is the version that fits in the interface as it stands.
+     */
+    private val mangaUpdateLocks = ConcurrentHashMap<String, Mutex>()
+
+    private suspend fun <T> withMangaUpdateLock(manga: SManga, block: suspend () -> T): T =
+        mangaUpdateLocks.getOrPut(manga.url) { Mutex() }.withLock { block() }
 
     /**
      * Details and chapters in one call. **This is the entry point current
