@@ -586,8 +586,11 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         try {
             available = ExtensionManager.fetchAvailable(context)
             if (available.isEmpty()) error = "No extensions found in the configured repos."
-        } catch (e: Exception) {
-            error = e.message ?: "Could not reach the repository"
+        } catch (e: Throwable) {
+            // Throwable: this path classloads extension packages to resolve
+            // install state, so it can surface the same LinkageError family a
+            // source call can. See sourceFailureMessage.
+            error = sourceFailureMessage(e, "Could not reach the repository")
         }
         loading = false
     }

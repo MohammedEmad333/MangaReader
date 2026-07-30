@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 75,
+            name = "0.75",
+            header = "A broken extension can no longer close the app",
+            body = "An extension built against a newer version of the source " +
+                "API than this app provides could take the whole app down \u2014 " +
+                "no message, no error, just gone. Opening Elite Babes did " +
+                "exactly that.\n\n" +
+                "Source failures of that kind are now caught and shown like any " +
+                "other error, and the message names the missing piece rather " +
+                "than saying something generic. That does not make such an " +
+                "extension work; it means you can see why it doesn't, and the " +
+                "rest of the app keeps running.",
+        ),
+        ReleaseNote(
             code = 74,
             name = "0.74",
             header = "Elite Babes works again, and the Downloads tab stops freezing",

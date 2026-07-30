@@ -118,6 +118,53 @@ internal class ResumeTarget(
 internal fun diagnoseExtensions(context: Context): String =
     ExtensionLoader.diagnose(context)
 
+/**
+ * The message to show when a call into an extension fails.
+ *
+ * **Every source call catches [Throwable], not [Exception], and this is why.**
+ * An extension is a separately-compiled APK loaded through a `PathClassLoader`
+ * against a *vendored* copy of the Tachiyomi source API. When the extension was
+ * built against a newer API than this app ships, the mismatch does not arrive as
+ * an exception — it arrives as a [LinkageError]: `NoClassDefFoundError` for a
+ * model class that doesn't exist here, `NoSuchMethodError` for a method that
+ * does exist but changed shape, `AbstractMethodError` for an interface that grew
+ * a member. Those are `Error`, not `Exception`, so `catch (e: Exception)` lets
+ * them straight through and **the app closes**.
+ *
+ * That is not hypothetical. An updated Elite Babes took the app down on every
+ * open, and the only symptom was a process that vanished — no message, nothing
+ * to read, and nothing to distinguish it from a source that was simply broken.
+ *
+ * Two things are deliberately still rethrown:
+ *
+ * - [CancellationException], because a cancelled coroutine has to finish
+ *   cancelled. Closing the reader mid-load cancels a page fetch, and reporting
+ *   that as a failed chapter is a bug this codebase has already had once.
+ * - [VirtualMachineError] — out of memory, stack overflow. The process is
+ *   already in trouble and dressing it up as "this source didn't work" hides a
+ *   real problem behind a plausible-looking one.
+ *
+ * A version gate cannot replace this. `ExtensionLoader` does check the lib
+ * version, but it reads what the extension *claims*, so it can only refuse
+ * extensions that declare themselves out of range — not ones that declare a
+ * version this app says it supports and then reach for something it doesn't
+ * have. The honest gate is the failure itself, named and shown.
+ */
+internal fun sourceFailureMessage(t: Throwable, fallback: String): String {
+    if (t is CancellationException) throw t
+    if (t is VirtualMachineError) throw t
+    if (t is LinkageError) {
+        // Named rather than summarised: the class or method in the message is
+        // the exact piece of API the vendored source-api is missing, which is
+        // the one fact needed to decide whether to implement it or to stop
+        // claiming support for that lib version.
+        return "This extension was built against a newer source API than this " +
+            "app provides \u2014 ${t.javaClass.simpleName}: " +
+            "${t.message ?: "missing symbol"}"
+    }
+    return t.message ?: fallback
+}
+
 // ---------- activity ----------
 
 class MainActivity : ComponentActivity() {
@@ -373,8 +420,8 @@ fun YomuApp() {
                 }
                 seriesList = page.series
                 browseHasNext = page.hasNext
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not scan this source"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not scan this source")
                 seriesList = emptyList()
             }
             isLoading = false
@@ -400,8 +447,8 @@ fun YomuApp() {
                 seriesList = (seriesList ?: emptyList()) + page.series
                 browsePage = next
                 browseHasNext = page.hasNext
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not load more"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not load more")
                 browseHasNext = false
             }
             loadingMore = false
@@ -558,8 +605,8 @@ fun YomuApp() {
                 chapterList = withContext(Dispatchers.IO) {
                     src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
                 }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not list chapters"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not list chapters")
             }
             isLoading = false
         }
@@ -626,8 +673,8 @@ fun YomuApp() {
                 // Closing the reader cancels this. Rethrow so the coroutine ends
                 // as cancelled rather than being reported as a failed chapter.
                 throw e
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not open this chapter"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not open this chapter")
             } finally {
                 // finally, not a trailing statement: cancellation skips the tail
                 // of the block and would otherwise leave the spinner up forever.
@@ -755,8 +802,8 @@ fun YomuApp() {
                     chapterList = result.second
                     enrichSeries(src, result.first)
                 }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not open this series"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not open this series")
             }
             isLoading = false
         }
@@ -828,8 +875,8 @@ fun YomuApp() {
                     chapterList = result.second
                     enrichSeries(src, result.first)
                 }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not open this series"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not open this series")
             }
             isLoading = false
         }
@@ -871,8 +918,8 @@ fun YomuApp() {
                 // Hands off to openChapter so resuming streams its pages the same
                 // way opening one does, instead of blocking on the whole chapter.
                 openChapter(target.index)
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Could not resume"
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not resume")
             }
             isLoading = false
         }
