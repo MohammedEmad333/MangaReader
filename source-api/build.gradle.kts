@@ -10,7 +10,8 @@ plugins {
 
 android {
     namespace = "eu.kanade.tachiyomi.source"
-    compileSdk = 34
+    // 36, in step with :app. See the note there.
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
