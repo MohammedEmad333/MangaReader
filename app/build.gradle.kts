@@ -16,8 +16,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 75
-        versionName = "0.75"
+        versionCode = 76
+        versionName = "0.76"
     }
 
     signingConfigs {
@@ -66,7 +66,16 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Through the BOM rather than a hard 4.12.0 pin, and the same BOM version
+    // :source-api declares — keep the two in step.
+    //
+    // The old pin was a floor, not a ceiling: Gradle resolves version conflicts
+    // to the highest, and :source-api's 5.0.0-alpha.12 already outranked
+    // 4.12.0, so this module has in practice been running OkHttp 5 for a long
+    // time while its build file claimed 4. That is worth knowing before reading
+    // any of the network code against the 4.x docs.
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:5.4.0"))
+    implementation("com.squareup.okhttp3:okhttp")
     implementation("androidx.documentfile:documentfile:1.0.1")
     // Automatic backups. Self-initialises through androidx.startup, so there is
     // no Configuration.Provider or manifest entry to add - the only reason it's

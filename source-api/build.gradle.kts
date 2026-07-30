@@ -40,7 +40,16 @@ dependencies {
     api("io.reactivex:rxjava:1.3.8")
     api("org.jsoup:jsoup:1.17.2")
 
-    api(platform("com.squareup.okhttp3:okhttp-bom:5.0.0-alpha.12"))
+    // 5.4.0, not 5.0.0-alpha.12. Extensions built for current Mihon construct
+    // okhttp3.CompressionInterceptor, which landed in OkHttp 5.2.0 (2025-10-07)
+    // alongside the zstd module. On alpha.12 the class does not exist, the
+    // extension's lazy `client` throws NoClassDefFoundError, and — before 0.76 —
+    // that closed the app rather than failing the source.
+    //
+    // **This version is duplicated in app/build.gradle.kts. Change both.** The
+    // app module pins the same BOM so its own okhttp usage can't silently
+    // resolve to something older than what extensions are compiled against.
+    api(platform("com.squareup.okhttp3:okhttp-bom:5.4.0"))
     api("com.squareup.okhttp3:okhttp")
     api("com.squareup.okhttp3:logging-interceptor")
     api("com.squareup.okhttp3:okhttp-brotli")

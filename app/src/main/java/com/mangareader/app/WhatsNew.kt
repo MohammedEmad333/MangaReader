@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 76,
+            name = "0.76",
+            header = "The network library is current again",
+            body = "Elite Babes needed a piece of the HTTP library newer than " +
+                "the one this app shipped, and asking for it took the whole " +
+                "app down. The library is now up to date, so the source should " +
+                "work.\n\n" +
+                "The crash could also happen with no Elite Babes screen open " +
+                "at all: a queued download reaching the same source did it on " +
+                "startup. Downloads and the library refresh now survive a " +
+                "failure like that instead of ending the app, which was the " +
+                "half of 0.75 that didn't go far enough.",
+        ),
+        ReleaseNote(
             code = 75,
             name = "0.75",
             header = "A broken extension can no longer close the app",
