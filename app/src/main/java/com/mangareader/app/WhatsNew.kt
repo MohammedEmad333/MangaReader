@@ -43,6 +43,21 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 80,
+            name = "0.80",
+            header = "Sources that fetch chapters and details together",
+            body = "Newer extensions can get a series' details and its chapter " +
+                "list in a single request, and some of them now do that and " +
+                "nothing else. This app only knew how to ask for the two " +
+                "separately, so those sources browsed normally and then " +
+                "failed on every series with \"Could not list chapters\".\n\n" +
+                "It can now ask the new way, and still asks the old way for " +
+                "extensions that expect it.\n\n" +
+                "0.79 changed how every source was fetched while chasing this. " +
+                "That change has been undone \u2014 it was based on a wrong " +
+                "guess and only this part was needed.",
+        ),
+        ReleaseNote(
             code = 79,
             name = "0.79",
             header = "Sources that browsed but wouldn't open anything",

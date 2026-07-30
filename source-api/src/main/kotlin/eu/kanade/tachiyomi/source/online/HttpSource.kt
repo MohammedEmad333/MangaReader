@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -109,35 +110,27 @@ abstract class HttpSource : CatalogueSource {
      * @param page the page number to retrieve.
      */
     // ---------------------------------------------------------------------
-    // The suspend API is the implementation. The Rx API is the shim.
+    // How current extensions differ from the ones this API was vendored for.
     //
-    // It used to be the other way round: every `getX` below was
-    // `fetchX(...).awaitSingle()`. That is how Tachiyomi 0.15 wrote it and it
-    // was fine for years, because extensions of that era implemented `fetchX`.
+    // Tachiyomi 0.15-era extensions implement the request/parse pairs below and
+    // the deprecated Rx `fetchX` methods. Current ones implement the suspend
+    // API, and where a source can fetch details and chapters in one request
+    // they implement `getMangaUpdate` *only* — declaring the legacy pairs as
+    // `throw UnsupportedOperationException()`.
     //
-    // Current extensions do the opposite. They implement the suspend method (or
-    // the request/parse pair beneath it) and stub the deprecated Rx method with
-    // `throw UnsupportedOperationException()`. Routing `getChapterList` through
-    // `fetchChapterList` therefore called a method the extension had
-    // deliberately disabled — Elite Babes browsed fine and answered
-    // "Could not list chapters — UnsupportedOperationException" on every series,
-    // because it stubs fetchChapterList, fetchMangaDetails, fetchPageList and
-    // fetchImageUrl but not fetchPopularManga or fetchLatestUpdates. The set of
-    // things that worked was exactly the set it hadn't stubbed.
+    // Elite Babes 1.6.3 does exactly that: chapterListRequest, chapterListParse,
+    // mangaDetailsRequest and mangaDetailsParse are all stubs. So it browsed
+    // perfectly (popular and latest are still normal overrides) and failed on
+    // every series.
     //
-    // So each `getX` now does the work itself: request, await, parse. The
-    // request/parse pair is what extensions of *both* eras override, so this is
-    // correct for old and new alike, and it is the shape upstream Mihon uses.
-    //
-    // The `fetchX` methods below are kept and unchanged. An extension that
-    // overrides one still has it called by anything asking for the Rx API, and
-    // removing them would break every extension that implements that side.
+    // 0.79 tried to fix that by having getChapterList call the request/parse
+    // pair directly instead of going through fetchChapterList. That was the
+    // wrong diagnosis — both routes end at the same stub — and it also changed
+    // the fetch path for every other source on a hypothesis, which is why it
+    // was reverted. The entry points below are back to their vendored shape
+    // except getMangaDetails and getChapterList, which now go through
+    // getMangaUpdate.
     // ---------------------------------------------------------------------
-
-    override suspend fun getPopularManga(page: Int): MangasPage {
-        val response = client.newCall(popularMangaRequest(page)).awaitSuccess()
-        return popularMangaParse(response)
-    }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPopularManga"))
     override fun fetchPopularManga(page: Int): Observable<MangasPage> {
@@ -170,15 +163,6 @@ abstract class HttpSource : CatalogueSource {
      * @param query the search query.
      * @param filters the list of filters to apply.
      */
-    override suspend fun getSearchManga(
-        page: Int,
-        query: String,
-        filters: FilterList,
-    ): MangasPage {
-        val response = client.newCall(searchMangaRequest(page, query, filters)).awaitSuccess()
-        return searchMangaParse(response)
-    }
-
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getSearchManga"))
     override fun fetchSearchManga(
         page: Int,
@@ -224,11 +208,6 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    override suspend fun getLatestUpdates(page: Int): MangasPage {
-        val response = client.newCall(latestUpdatesRequest(page)).awaitSuccess()
-        return latestUpdatesParse(response)
-    }
-
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getLatestUpdates"))
     override fun fetchLatestUpdates(page: Int): Observable<MangasPage> {
         return client.newCall(latestUpdatesRequest(page))
@@ -259,10 +238,9 @@ abstract class HttpSource : CatalogueSource {
      * @param manga the manga to update.
      * @return the updated manga.
      */
-    override suspend fun getMangaDetails(manga: SManga): SManga {
-        val response = client.newCall(mangaDetailsRequest(manga)).awaitSuccess()
-        return mangaDetailsParse(response).apply { initialized = true }
-    }
+    override suspend fun getMangaDetails(manga: SManga): SManga =
+        getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false)
+            .manga ?: manga
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getMangaDetails"))
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
@@ -302,8 +280,41 @@ abstract class HttpSource : CatalogueSource {
         if (manga.status == SManga.LICENSED) {
             throw LicensedMangaChaptersException()
         }
-        val response = client.newCall(chapterListRequest(manga)).awaitSuccess()
-        return chapterListParse(response)
+        return getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true)
+            .chapters ?: emptyList()
+    }
+
+    /**
+     * Details and chapters in one call. **This is the entry point current
+     * extensions implement, and for some sources it is the only one.**
+     *
+     * Elite Babes 1.6.3 declares `chapterListRequest`, `chapterListParse`,
+     * `mangaDetailsRequest` and `mangaDetailsParse` and every one of them is
+     * `throw UnsupportedOperationException()`. It overrides this instead. So
+     * [getChapterList] and [getMangaDetails] route through here rather than
+     * calling the request/parse pair themselves — otherwise they walk straight
+     * into a stub, which is exactly what "Could not list chapters —
+     * UnsupportedOperationException" was.
+     *
+     * The default below is the legacy path, so an extension that has never
+     * heard of this method keeps working unchanged: it overrides the
+     * request/parse pair, and this calls them.
+     *
+     * [chapters] is what the caller already holds, so a source can return only
+     * what changed. Nothing in this app passes anything but an empty list yet;
+     * the parameter exists because the signature is fixed by the extensions
+     * that implement it.
+     */
+    @Suppress("DEPRECATION")
+    open suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate {
+        val details = if (fetchDetails) fetchMangaDetails(manga).awaitSingle() else null
+        val chapterList = if (fetchChapters) fetchChapterList(manga).awaitSingle() else null
+        return SMangaUpdate(details, chapterList)
     }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getChapterList"))
@@ -350,9 +361,9 @@ abstract class HttpSource : CatalogueSource {
      * @param chapter the chapter.
      * @return the pages for the chapter.
      */
+    @Suppress("DEPRECATION")
     override suspend fun getPageList(chapter: SChapter): List<Page> {
-        val response = client.newCall(pageListRequest(chapter)).awaitSuccess()
-        return pageListParse(response)
+        return fetchPageList(chapter).awaitSingle()
     }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPageList"))
@@ -388,9 +399,9 @@ abstract class HttpSource : CatalogueSource {
      * @since extensions-lib 1.5
      * @param page the page whose source image has to be fetched.
      */
+    @Suppress("DEPRECATION")
     open suspend fun getImageUrl(page: Page): String {
-        val response = client.newCall(imageUrlRequest(page)).awaitSuccess()
-        return imageUrlParse(response)
+        return fetchImageUrl(page).awaitSingle()
     }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getImageUrl"))
