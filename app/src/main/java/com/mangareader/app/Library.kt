@@ -51,16 +51,24 @@ object Library {
     private var listCache: List<LibraryEntry>? = null
 
     fun list(context: Context): List<LibraryEntry> {
-        val raw = prefs(context).getString(KEY, null) ?: return emptyList()
+        // Two marks on purpose. "Prefs first read" is Android loading and
+        // parsing the whole shared_prefs XML — a cost this call pays on behalf
+        // of all twelve call sites, and one no amount of memoising here avoids.
+        // The parse below is this object's own.
+        val raw = StartupTimings.once("Prefs first read") {
+            prefs(context).getString(KEY, null)
+        } ?: return emptyList()
         val hit = listCache
         if (hit != null && listRaw == raw) return hit
         return try {
-            val arr = JSONArray(raw)
-            (0 until arr.length()).map { LibraryEntry.fromJson(arr.getJSONObject(it)) }
-                .also {
-                    listCache = it
-                    listRaw = raw
-                }
+            StartupTimings.once("Library parse") {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).map { LibraryEntry.fromJson(arr.getJSONObject(it)) }
+                    .also {
+                        listCache = it
+                        listRaw = raw
+                    }
+            }
         } catch (e: Exception) {
             emptyList()
         }
