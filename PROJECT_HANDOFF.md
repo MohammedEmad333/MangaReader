@@ -1,11 +1,16 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-30
-at **0.70**. **0.55 through 0.65 and 0.67 through 0.69 are verified on device;
-0.70 is written, uncompiled and untested; 0.66 is unaccounted for** — see §0.
-**0.70's main claim — that missing `Referer` headers are why some sources show
-no covers — is a hypothesis that has not been tested**, and the test is two
-minutes: see `SESSION_HANDOFF_0.70.md` §1. Two full library sweeps ran on the night
+at **0.72**. **0.55 through 0.65 and 0.67 through 0.72 are verified on device;
+0.66 is unaccounted for** — see §0. **The app now opens in about three seconds.**
+It was taking around thirty, that item had been on the board for five sessions,
+and 0.71 measured it and 0.72 fixed it: the library screen was asking the
+Downloads tab's question to decide which covers get a download badge, which cost
+19.9 seconds of every cold start. See `SESSION_HANDOFF_0.72.md`.
+**The library refresh has been deprioritised** — it has already delivered its
+capability and what remains on it is accounting; `SESSION_HANDOFF_0.72.md` §5 is
+the new ordering and §5.1 is the consequence that isn't obvious.
+Two full library sweeps ran on the night
 of 2026-07-29/30, the first to completion, which is what exercised 0.67's
 machinery end to end. **The second sweep's end-of-sweep arithmetic came up 547
 short** — the first measurement of bugs 3 and 6; see `SESSION_HANDOFF_0.69.md` §2.
@@ -50,18 +55,32 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-**Newest first: 0.70 is verified on device and 0.71 is the startup measurement.**
-`SESSION_HANDOFF_0.71.md` is the current record and supersedes 0.70's on every
-point they overlap. In short: 0.70's two fixes — covers on hotlink-protected
-sources, and the Extensions tab refetching on every visit — were both installed
-and confirmed working, closing two board items. The cover fix is confirmed *by
+**Newest first: 0.72 is verified on device and the slow open is closed.**
+`SESSION_HANDOFF_0.72.md` is the current record and supersedes 0.70's, 0.71's and
+0.71_RESULT's on every point they overlap.
+
+In short. **0.70's two fixes are verified** — covers on hotlink-protected sources
+and the Extensions tab refetching on every visit were both installed and
+confirmed working, closing two board items. The cover fix is confirmed *by
 effect*; the 403 it was aimed at was never actually observed, which matters if
-grey covers turn up on another source later. 0.71 changes no behaviour: it adds
-a Startup timings report under Settings › Advanced, because "the app takes some
-time to open" is about thirty seconds of blank screen and four sessions have
-described it without measuring it. The suspect is now one rather than two — the
-single shared `manga_reader` prefs XML and the main-thread parse of the 3571-entry
-library at `LibraryScreens.kt:99` — and 0.71 exists to settle it with numbers.
+grey covers turn up on another source later. **0.71 added a Startup timings
+report** under Settings › Advanced and changed no behaviour, because four
+sessions had described the slow open without measuring it. **0.71's report did
+not name the culprit and its offsets did** — two marks 19.9 seconds apart bounded
+the cost to fifty lines of `LibraryScreens.kt`, and turning one setting off on
+the device confirmed it with no build at all. **0.72 fixed it**:
+`DownloadIndex.seriesIds()` replaces the `DownloadIndex.list()` call that was
+sizing every downloaded chapter and scanning the whole library before the first
+frame could draw. Cold start went from about thirty seconds to three, verified
+with badges on. 0.72 also puts the app icon on the startup screen instead of a
+blank rectangle.
+
+**The library refresh is now low priority.** It shipped across 0.67–0.68 and was
+the centre of five consecutive releases; two full sweeps have run and the index
+answers for roughly 3024 of 3571 series, so what is left on it is accounting
+rather than capability. The new order is Elite Babes, then the reader, then the
+manifest theme, then the refresh backlog — with the Feed / Updates tab coming
+down alongside the refresh it depends on. `SESSION_HANDOFF_0.72.md` §5.
 
 The library screen was rebuilt across three releases and **all of that is
 verified on device** — the user confirmed each build before the next was
@@ -120,9 +139,15 @@ as an import-scale operation rather than a loop, exactly as §5's "An import is 
 load test" and §7 item 1 required, and both of those entries have been rewritten
 to describe what exists instead of instructing someone to build it.
 
-**The named next piece of work** — proposed this session rather than inherited,
-so override it if something else is louder — is a **Feed / Updates tab**, §7 item
-17's remaining half. It is on this list now because the sweep changed its price.
+**The named next piece of work is now "Elite Babes chapters have no pages"** —
+the only open item on the bug board and the only one never investigated at all.
+See `SESSION_HANDOFF_0.72.md` §5 for the full ordering.
+
+**The Feed / Updates tab was the named next piece of work for three handoffs and
+has been moved down**, because it needs a diff of what a sweep changed and is
+therefore built on the refresh, which cannot be less important than the thing
+built on it. The rest of this paragraph is why it was chosen and stays true —
+§7 item 17's remaining half. It is on this list now because the sweep changed its price.
 The reason a "recently updated" view was expensive was that nothing in the app
 knew the whole library's chapter counts; the refresh now produces exactly that,
 and `latestChapterAt` is already in the index. What is still missing is a *diff*:
@@ -131,11 +156,59 @@ chapters, so this needs somewhere to put "what changed in this sweep" and is a
 genuine piece of work rather than a wiring job. It is nonetheless the largest
 remaining gap between what the app knows and what it can tell you.
 
-**Before that, four small refresh bugs are still open** — §0's "Closed — 0.68"
-section lists them with their fixes, and three of the four are one or two lines
-each. And **finish a full sweep before writing anything**: as of this writing no
-sweep has ever reached its own end, and the numbers it prints when one does are
-how bugs 3, 4 and 6 announce themselves.
+**Two refresh bugs are still open** — bug 3 (the counter race) and bug 6 (`done`
+doesn't reconcile), on the seven-item numbering in `SESSION_HANDOFF_0.68.md` §5.
+Sweep 2's arithmetic is short by **547**, split between them in unknown
+proportion. Both are now at the bottom of the list, not the top; the sweeps have
+run and the capability they were blocking is delivered.
+
+### Closed — 0.72, the slow open
+
+**Six device checks passed.** `dd2e00e`, 13 files. Full detail in
+`SESSION_HANDOFF_0.72.md`; this is the part that belongs in the project's memory.
+
+- **The cause was a badge.** `LibraryScreens.kt` asked
+  `DownloadIndex.list()` for a set of series ids. `list()` is the Downloads
+  tab's question — it sizes every downloaded chapter, sorts size-descending, and
+  runs an O(library) `ChapterCache` scan looking for downloads the index may
+  have lost track of. All on the composition thread before the first frame, and
+  it ran for everybody because `badgeDownloaded` defaults to true.
+- **`DownloadIndex.seriesIds()` is the same answer without that work.** It keeps
+  the `isComplete` check per record and drops sizing, sorting and recovery.
+- **Keeping `isComplete` is load-bearing, not conservatism.** `Downloads.delete`
+  → `forget()` invalidates the memo but never prunes the record from
+  `downloads_index.json`; only `deleteSeries` prunes and only
+  `DownloadQueueScreen` calls it. Without the disk check, deleting a series'
+  downloads from the series screen would leave its badge behind.
+- **Measured free.** Badge off on 0.71 was 3 s; badge on on 0.72 is 3 s. So
+  `seriesIds` costs nothing perceptible at this download volume, the unmeasured
+  tail after `LibraryScreens.kt:152` is about a second, and moving the lookup to
+  `produceState` on IO is struck from the plan rather than deferred.
+- **The sweep made the old cost worse and nothing would have connected them.**
+  0.67 step 6 writes a chapter list to `ChapterCache` for every series it counts,
+  so after the two sweeps the recovery scan read ~2900 files instead of the
+  handful that had ever been opened. A feature in one subsystem multiplying a
+  cost in another, two releases later.
+- **Also in it:** the app icon on the startup screen (the project's first
+  `res/values/themes.xml` — see Open thread 2), a mark in `onCreate` around the
+  true first prefs touch, entry counts in the Startup timings report, the sweep
+  summary persisted across process death, `resumed` shown in the finished row,
+  and a per-source failure tally. The tally does **not** fix bug 3; it means the
+  tally doesn't race even though `failed++` still does, so a disagreement
+  between them measures bug 3 for free.
+
+### Closed — 0.71, measuring instead of arguing
+
+`1595fe4`. One diagnostic screen, no behaviour change. Two lessons outlived it:
+
+- **The offset mattered more than the duration.** Both marks were cheap — 62 ms
+  and 64–80 ms — and the report never named the culprit. What did was the gap
+  between one mark finishing and the next beginning, which bounded 19.9 seconds
+  to fifty lines of one file. Duration alone would only have said "it's
+  elsewhere". **Keep the offset on every mark.**
+- **`Prefs first read: 0 ms` did not mean free.** `MainActivity.onCreate` touches
+  prefs before `setContent`, so the marks inside `Library` and `SeriesIndex`
+  recorded a cost already paid. 0.72 added the mark that can actually see it.
 
 ### Closed — 0.68, resuming a stopped refresh
 
@@ -477,12 +550,25 @@ Still unaddressed: `AndroidManifest.xml` declares
 light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
 
-**It is line 65, it is still one line, and it has now survived three sessions
-after the one that found it.** 0.67's `dbbe38a` edited that same file to add a
-service declaration and left the theme alone; 0.68 didn't open it. The reason it
-keeps surviving is that the test device runs in dark mode, where the bug is
-invisible — which is worth knowing about every other appearance-in-light-mode
-item too.
+**It is not one line, and four handoffs said it was.**
+`SESSION_HANDOFF_0.69.md` §4 is the account: light/dark here is an in-app
+preference (`AppPrefs.ThemeMode`, defaulting to `DARK`), not the system setting,
+so `Theme.Material.Light` breaks the default case and `DayNight` follows the
+system and is wrong for anyone who chose against it.
+
+**0.72 made it cheaper without fixing it.** The splash needed somewhere to hang a
+window background, so `res/values/themes.xml` now exists and the manifest points
+at `@style/Theme.Yomu` rather than straight at a platform style. The parent is
+still the dark variant, which is what the default `ThemeMode` already produced,
+so nothing changed for anyone. What changed is the shape of the eventual fix:
+adding `values-night/themes.xml` is one file rather than a file plus a manifest
+restructure. The status-bar half is still separately fixable at runtime through
+the insets controller, from the answer `AppTheme.load` already has in
+`onCreate`.
+
+The reason it keeps surviving is that the test device runs in dark mode, where
+the bug is invisible — which is worth knowing about every other
+appearance-in-light-mode item too.
 
 ### Closed — 0.52–0.54, the library screen
 
@@ -661,6 +747,21 @@ pushing nothing.
 **Careful with the glob**: `*.kt` takes *everything* in Downloads, including
 stale files from an earlier session, which would quietly revert them. Check the
 `cp -v` list.
+
+**Resource files can't come through the loop**, and 0.72 was the first release to
+need any. `res/` and `AndroidManifest.xml` are outside
+`app/src/main/java/com/mangareader/app/`, so they are written in place — a
+`cat > file <<'EOF'` block for a new file, a `sed` for a one-line edit to an
+existing one — exactly as `build.gradle.kts` already is.
+
+**A heredoc ends an `&&` chain, so keep them in a separate paste.** After the
+first `EOF` the shell starts a fresh command list, which means everything after
+it runs whether the earlier steps succeeded or not — including
+`git add -A && git commit && git push`, which would then push a half-applied
+tree. 0.72 was delivered as three pastes for this reason: `git pull`, then the
+heredoc block, then one real `&&` chain for the copy loop, the `sed`s and the
+commit. Note also that `sed -i` edits are not idempotent; a retry wants
+`git checkout <file>` first.
 
 **Whichever copy wasn't used last is now behind — `git pull` before editing there.**
 
