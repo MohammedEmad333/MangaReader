@@ -14,6 +14,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,7 +44,24 @@ import kotlinx.coroutines.launch
  */
 class DownloadService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * Note the handler: this is the scope the crash of 0.75 came out of.
+     *
+     * `scope.launch` here makes a `StandaloneCoroutine` on `Dispatchers.IO`,
+     * which is exactly what the crash report named. An extension built against
+     * a newer API throws a [LinkageError], not an [Exception], so the
+     * `catch (e: Exception)` in [runItem] let it past, nothing else was
+     * listening, and the process died — from a *download*, with no download
+     * screen open, because the queue restarts itself from `MainActivity`.
+     *
+     * The catch in [runItem] is the real fix. This is the net under it: any
+     * throwable that escapes a `launch` in this scope stops the service instead
+     * of taking the app with it.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, _ -> runCatching { stopEverything() } }
+    )
     private var worker: Job? = null
     private var itemJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -193,8 +211,12 @@ class DownloadService : Service() {
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            failure = e.message ?: e.javaClass.simpleName
+        } catch (e: Throwable) {
+            // Throwable, not Exception. This calls into an extension, so it can
+            // raise a LinkageError rather than an exception — see
+            // sourceFailureMessage, which names the missing symbol instead of
+            // letting the failure reach the default handler.
+            failure = sourceFailureMessage(e, e.javaClass.simpleName)
         } finally {
             DownloadQueue.finish(this, item, failure)
         }

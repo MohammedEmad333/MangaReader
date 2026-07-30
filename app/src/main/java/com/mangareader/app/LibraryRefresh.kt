@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -333,7 +334,14 @@ object RefreshCursor {
  */
 class LibraryRefreshService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Same shape and same exposure as DownloadService's — see the note there. */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, t ->
+                LibraryRefresh.noteFailure(SWEEP_ITSELF, t.javaClass.simpleName)
+                runCatching { stopEverything() }
+            }
+    )
     private var worker: Job? = null
 
     /** Set only when a sweep actually reached the end. Gates clearing the cursor. */
@@ -395,7 +403,7 @@ class LibraryRefreshService : Service() {
                 sweep()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // Not attributable to a source: this is the sweep itself
                 // falling over, not one extension misbehaving. Filed under a
                 // name no sourceId can collide with so it can't be mistaken for
@@ -521,7 +529,10 @@ class LibraryRefreshService : Service() {
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable: a sweep calls listChapters on every installed
+                // source, so one extension built against a newer API would
+                // otherwise take the whole sweep — and the app — down partway.
                 LibraryRefresh.noteFailure(
                     entry.sourceId,
                     "${entry.title} — ${e.message ?: e.javaClass.simpleName}"
