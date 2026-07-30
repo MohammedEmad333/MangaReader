@@ -50,6 +50,19 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
+**Newest first: 0.70 is verified on device and 0.71 is the startup measurement.**
+`SESSION_HANDOFF_0.71.md` is the current record and supersedes 0.70's on every
+point they overlap. In short: 0.70's two fixes — covers on hotlink-protected
+sources, and the Extensions tab refetching on every visit — were both installed
+and confirmed working, closing two board items. The cover fix is confirmed *by
+effect*; the 403 it was aimed at was never actually observed, which matters if
+grey covers turn up on another source later. 0.71 changes no behaviour: it adds
+a Startup timings report under Settings › Advanced, because "the app takes some
+time to open" is about thirty seconds of blank screen and four sessions have
+described it without measuring it. The suspect is now one rather than two — the
+single shared `manga_reader` prefs XML and the main-thread parse of the 3571-entry
+library at `LibraryScreens.kt:99` — and 0.71 exists to settle it with numbers.
+
 The library screen was rebuilt across three releases and **all of that is
 verified on device** — the user confirmed each build before the next was
 written. What shipped, in order: 0.52 category tabs with swipe, multi-select,
@@ -2789,3 +2802,13 @@ library, then fix everything the real library broke.
 
 Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.
+
+The 0.67–0.71 run is recorded in the per-session files rather than here:
+`SESSION_HANDOFF_0.67.md` through `SESSION_HANDOFF_0.71.md`. Two entries in it
+are worth carrying forward as commit-history annotations. `1595fe4` (0.71) was
+pushed to a branch called `startup-timings` before being merged to `main`, and
+built nothing until the merge — CI is `on: push: branches: [main]` and a branch
+push is silent, not red. And 0.70's covers fix is marked verified on the strength
+of the symptom disappearing rather than the error being read; the debug overlay
+in `Ui.kt`'s `CoverImage` is still the only thing that distinguishes a 403 from a
+missing `thumbnail_url`, and it was never made to speak.
