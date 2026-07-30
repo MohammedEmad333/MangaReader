@@ -1,10 +1,11 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-30
-at **0.69**. **0.55 through 0.65, 0.67 and 0.68 are verified on device. 0.69 is
-pushed and unverified, and 0.66 is unaccounted for** — see §0. A full library
-sweep ran to completion on the night of 2026-07-29/30, which is what exercised
-0.67's machinery end to end.
+at **0.69**. **0.55 through 0.65 and 0.67 through 0.69 are verified on device,
+and 0.66 is unaccounted for** — see §0. Two full library sweeps ran on the night
+of 2026-07-29/30, the first to completion, which is what exercised 0.67's
+machinery end to end. **The second sweep's end-of-sweep arithmetic came up 547
+short** — the first measurement of bugs 3 and 6; see `SESSION_HANDOFF_0.69.md` §2.
 0.63 shipped the vertical page slider rotated the wrong way, 0.64 fixed it, 0.65
 landed the per-series chapter index that four backlog items were all waiting on,
 and 0.67–0.68 made it answer for the whole library instead of your browsing
@@ -179,33 +180,49 @@ stopped. **The wake lock also held across the full run** — comfortably, as it
 turns out: the run took about 79 minutes against a 4-hour timeout, not the ~3
 hours an earlier revision of this file wrongly calculated.
 
-What was *not* captured is the summary's three numbers — the row was tapped before
-anyone read them, and `finishedAt` and the counters are process-lifetime state
-with nothing persisting them. So the arithmetic below is still unmeasured; it is
-not blocked on anything but a screenshot of the next sweep to finish.
+Sweep 1's summary was *not* captured — the row was tapped before anyone read it,
+and `finishedAt` and the counters are process-lifetime state with nothing
+persisting them. **Sweep 2's was**, at 01:45: `2902 counted • 22 failed •
+100 skipped` = 3024 against 3571, from a `resumed = 0` run. **The arithmetic is
+short by 547.**
 
-**Four bugs from the 0.67 review are still open**, all in files that session had
-open:
+**Two bugs from the 0.67 review are still open** (numbering below is the
+canonical seven-item scheme from `SESSION_HANDOFF_0.68.md` §5 — an earlier
+revision of this file renumbered the then-open four as 1–4, which collided with
+it and produced at least one mislabelled diagnosis):
 
-1. **`recordAll` is not atomic** — `all()` → merge → `save()` with no lock, and
-   `flush()` is reachable from three coroutines. Two can interleave and one loses
-   a hundred series' counts *and* their `sweptAt`. Self-healing on a stop (they
-   get re-fetched), silent on a completion. `@Synchronized` on `recordAll` and
-   `save`. Described as free in four consecutive handoffs.
-2. **`clearSummary()` has no callers** — the post-sweep summary and `firstError`
-   persist for the process lifetime. One call from `start()`.
-3. **The counters race** — `done++`, `counted++`, `failed++`, `skipped++` from up
-   to three coroutines. Display only, but it is what makes the end-of-sweep
-   arithmetic unreadable, which is how bug 4 below would announce itself.
-4. **`done` doesn't reconcile** — an empty chapter list lands in `done` and in
-   none of the other three. *Not writing* on an empty list stays correct (a stored
-   `total = 0` reads as "completed" in every filter); only the accounting is
-   wrong. Count it as a failure — from a live source it usually is a broken parse.
+- **Bug 3 — the counters race.** `done++`, `counted++`, `failed++`, `skipped++`
+  from up to three coroutines. Display only, but it is what makes the end-of-sweep
+  arithmetic unreadable, and it is one of the two contributors to the 547.
+- **Bug 6 — `done` doesn't reconcile.** An empty chapter list lands in `done` and
+  in none of the other three. *Not writing* on an empty list stays correct (a
+  stored `total = 0` reads as "completed" in every filter); only the accounting is
+  wrong. Count it as a failure — from a live source it usually is a broken parse,
+  and sweep 2's first-error note (a spyfakku `kotlinx.serialization` missing-field
+  error) is that exact shape. **This is the only silent path in `refreshSource`**;
+  the neighbouring `counts != null` guard is dead code, since `countsFor`'s sole
+  null return is the empty-list case the outer `isNotEmpty()` already excludes.
+
+Bug 6's share of the 547 is countable directly — it is the number of library
+series whose source returns an empty chapter list. The remainder is bug 3.
+
+**Closed in 0.69:** bug 4 (`recordAll` atomicity — a `writeLock` now covers
+`record`, `recordAll`, `forget` and `save`; `all()` and `countsFor` stay outside
+it deliberately), bug 5 (`clearSummary()` now called from
+`LibraryRefreshService.start()`, plus a Dismiss button), and bug 7 (the memo is
+one `@Volatile` field).
 
 **The arithmetic to check at the end of a sweep changed in 0.68**:
 `counted + failed + skipped` against **`total − resumed`**, not against `total`.
 `done` is seeded from `resumed`, so checking against 3571 looks wrong on every
 resumed run even when nothing is broken.
+
+**`resumed` must come from outside the three counters.** It is not rendered in
+the finished summary — only in the in-progress note — so it is tempting to
+recover it as `total − (counted + failed + skipped)`. Don't: that makes the
+identity `x == x` and it will balance on any sweep no matter how broken. Read it
+off while the sweep runs, or derive it from cursor state. Surfacing it in the
+finished row is a one-line fix and is item 1 of `SESSION_HANDOFF_0.69.md` §7.
 
 ### Closed — 0.67, the library refresh
 

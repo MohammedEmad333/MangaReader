@@ -1,8 +1,11 @@
 # Session handoff — 0.69, and the first completed sweep
 
-Written overnight on 2026-07-30. The first full library refresh **completed** —
-§1 is the verdict and it is the good one. A second, accidental full sweep is
-running as this is written. **0.69 is pushed, unverified and not installed.**
+Written overnight on 2026-07-30, **amended the same day after sweep 2 finished
+and 0.69 was installed.** The first full library refresh **completed** — §1 is
+the verdict and it is the good one. **0.69 is now installed and its three checks
+pass** (§3). **Sweep 2's summary was captured, and the §2 arithmetic came up 547
+short** — the first real measurement of bugs 3 and 6, and the headline of this
+amendment.
 
 Companion to `SESSION_HANDOFF_0.68.md`, which covers the release this one fixes.
 
@@ -52,6 +55,11 @@ The sweep that was lost had `resumed = 193`, so its arithmetic needed the
 installing 0.69 or tapping anything**, then do §2. Installing restarts the process
 and destroys the summary a second time.
 
+**Done — the capture was made.** Sweep 2's finished row read
+`2902 counted • 22 failed • 100 skipped` at 01:45, with the first-error note
+showing a spyfakku `kotlinx.serialization` missing-field error. See §2 for what
+those numbers say.
+
 ### Two costs of the restart
 
 - **The `dataSync` budget is fine.** Two full sweeps at ~1h25m is under three
@@ -64,6 +72,16 @@ and destroys the summary a second time.
   it over — 0.69 fixes the race regardless, and a filled index is the point of the
   feature.
 
+  **Amended — that fingerprint was probably never bug 4's.** Sweep 2 reported
+  `skipped = 100`, and `skipped` is incremented on exactly one path: `src == null`,
+  an uninstalled extension. `remaining` is grouped by `sourceId`, so a missing
+  extension takes out a *contiguous block* of series by construction. A clustered
+  ~100 un-counted gap is what an uninstalled extension looks like, with no race
+  required. Both mechanisms produce the same shape, the innocent one is confirmed
+  present at exactly the right magnitude, and **the race was never independently
+  evidenced.** Don't cite clustered gaps as proof of bug 4 again; check `skipped`
+  first, and identify which source those 100 belong to.
+
 ---
 
 ## 2. The arithmetic, and what it diagnoses
@@ -74,36 +92,85 @@ If you have the summary numbers, check:
 counted + failed + skipped  ==  total - resumed
 ```
 
-**Tonight the running sweep starts from zero, so this is simply `== 3571`.** In general it is against `total − resumed`, not against 3571. `done` is seeded from `resumed`,
-so measuring against the library size looks wrong on every resumed run even when
-nothing is broken. Tonight's run inherited 193.
+**Sweep 2 started from zero, so this was simply `== 3571`.** In general it is
+against `total − resumed`, not against 3571. `done` is seeded from `resumed`, so
+measuring against the library size looks wrong on every resumed run even when
+nothing is broken. (An earlier revision of this section said "tonight's run
+inherited 193" — that was the *lost* sweep, contradicting §1 two paragraphs
+above. Sweep 2's `resumed` is 0: the cursor was cleared, `beginOrResume` stamped
+a new timestamp, `sweptSince` matched nothing, and all 3571 went into
+`remaining`, giving `alreadyDone = entries.size - remaining.size = 0`.)
+
+### The result: 547 short
+
+```
+2902 + 22 + 100  ==  3024        against 3571        →  short by 547
+```
+
+Per the branches below, that is **bug 3 and/or bug 6**. Both are still open, and
+this is the first time either has been quantified.
 
 - **Comes up short** → bug 3 (lost `++` increments across three coroutines) or
-  bug 4 (an empty chapter list lands in `done` and in none of the other three),
-  or both. The number alone won't say which; that is why those two fixes were
-  deliberately not written tonight.
+  **bug 6** (an empty chapter list lands in `done` and in none of the other
+  three), or both. The number alone won't say which; that is why those two fixes
+  were deliberately not written that night.
+  *(This bullet previously said "bug 4" for the empty-list case. Wrong — bug 4 is
+  `recordAll` atomicity, closed in 0.69. §6 of this file had it right. The
+  canonical numbering is the 0.67 review's seven, used in `SESSION_HANDOFF_0.68.md`
+  §5; note that `PROJECT_HANDOFF.md` renumbers a four-item subset 1–4 and the two
+  schemes disagree. See §7 below.)*
 - **Series with no count while `failed = 0` and `skipped = 0`**, especially a
-  clustered ~100 of them → the interleaved `recordAll` race. 0.69 fixes it, so
-  this is the last sweep that can show it.
+  clustered ~100 of them → the interleaved `recordAll` race. **Superseded — see
+  the amendment in §1.** `skipped = 100` on this sweep means the innocent
+  explanation is confirmed present, so clustering is no longer evidence of bug 4.
 
-**If the summary is gone**, this measurement moves to the next full sweep — which
-will be running 0.69, so it becomes a check on the fixed code rather than a
-diagnosis of the broken code. Not a disaster; it just means bugs 3 and 4 stay
-unquantified for another cycle.
+### There is exactly one silent path, and it is reachable
+
+Confirmed by reading `refreshSource` against `SeriesIndex.countsFor`:
+
+- `chapters.isEmpty()` → the `if (chapters.isNotEmpty())` block is skipped
+  entirely, `done++` runs at the bottom, and none of counted/failed/skipped move.
+  **This is bug 6, and it is the only silent path.**
+- The inner `if (counts != null)` guard is **dead code**. `countsFor` returns null
+  on exactly one condition — `if (chapters.isEmpty()) return null`, line 195 — and
+  that case can't reach the guard because the outer `isNotEmpty()` check already
+  excluded it. Harmless, but it reads as a second failure mode and isn't one;
+  either drop it or turn it into the empty-list accounting fix.
+
+So the 547 splits between bug 3 and bug 6 with no third contributor. Bug 6's share
+is countable directly: it is the number of library series whose source returns an
+empty chapter list. Whatever is left over is bug 3.
+
+### Do not back-solve `resumed` — the check will always pass if you do
+
+**`resumed` is not rendered in the finished summary.** In `SettingsScreens.kt` it
+appears only inside the in-progress branch (`if (LibraryRefresh.resumed > 0)`,
+line 251). The finished row — headline "Refresh library", supporting text
+`N counted • M failed • K skipped` — has no path that prints it. So after a sweep
+ends, the one input this check needs is invisible.
+
+That makes it very easy to "verify" the identity by computing `resumed` as
+`total − (counted + failed + skipped)` and observing that it balances. It will
+always balance. That substitution turns the equation into `x == x` and destroys
+the entire diagnostic value of §2. `resumed` must come from **outside** the three
+counters: either read off the in-progress note while the sweep is running, or
+derived from the cursor state as §1 does.
+
+**This is a real gap, not just a discipline problem** — see §7 item 1 for the fix.
 
 ---
 
-## 3. 0.69 — pushed, compiled by nobody
+## 3. 0.69 — pushed, installed, three checks pass
 
 `76bd284` — "Serialise index writes; dismiss the refresh summary". Five files,
 131 insertions, 53 deletions, versionCode 68 → 69.
 
-**Check CI before installing:** github.com/MohammedEmad333/MangaReader/actions,
-or `gh run list --limit 3`. The `latest` release being replaced means it built.
-This matters more than usual — `SeriesIndex.kt` took 147 changed lines including
-a new nested class and five `synchronized` blocks, and it was verified by brace
-counting and identifier greps, not by a type-checker. If anything broke, it broke
-there.
+**It built and it runs.** CI is at
+github.com/MohammedEmad333/MangaReader/actions or `gh run list --limit 3`. The
+compile was the live question — `SeriesIndex.kt` took 147 changed lines including
+a new nested class and five `synchronized` blocks, verified by brace counting and
+identifier greps rather than by a type-checker — and it passed, so that risk is
+retired.
 
 **What it changes:**
 
@@ -131,11 +198,28 @@ there.
 - **A 0.69 changelog entry**, because `WhatsNew.kt`'s own KDoc says to add one in
   the commit that bumps `versionCode`, and the 0.66 gap is what happens otherwise.
 
-**Untested, all of it.** Nothing in 0.69 has been run. The three things to try
-after installing: a series opened during a sweep still gets its count; the
-Dismiss button clears the row and the first-error note; and a sweep still writes
-counts at all — the lock is on the only write path, so a mistake there is not
-subtle.
+**Tested — all three checks pass.** Run after installing 0.69:
+
+1. **A series opened during a sweep still gets its count.** Opened a
+   previously-unopened series mid-sweep, backed out, count present.
+2. **Dismiss works.** The row returns to "Fetch chapter lists for all 3571
+   series" and the first-error note clears with it.
+3. **A sweep still writes counts.** `counted` climbs mid-sweep rather than
+   sitting at 0. This was the one that mattered — the lock is on the only write
+   path — and it holds.
+
+**What check 1 does not cover.** It is the only one of the three that creates
+contention, and it confirms the *series screen's* write landed — not that the
+sweep's concurrent flush survived. Bug 4's shape was `record` and `recordAll`
+both doing `all()` → merge → `save()`, and the batch that gets clobbered is the
+**sweep's**, silently, a hundred series at a time. A pass on "my series got its
+count" is consistent with the sweep's batch having been eaten.
+
+To actually close it: note the series the sweep is displaying at the moment you
+open one by hand, let the sweep finish, then check the index for a gap around
+that title. Until then 0.69's lock is verified as *not obviously broken* rather
+than verified as correct — which, given `SeriesIndex.kt` took 147 lines checked
+by brace-counting and not a type-checker, is worth keeping straight.
 
 ---
 
@@ -219,6 +303,23 @@ sweep 1. Too loose to call: "roughly 50%" spans a wide range, and the cache abov
 could account for part of it. If it matters, time it properly rather than
 reconstructing it afterwards.
 
+**Amended — there is now a bound, and it is a bound, not a rate.** The 01:45
+screenshot shows sweep 2 already finished, so it ran 3571 series in **at most 53
+minutes: ≥67/min**, against sweep 1's 42.7/min. Note what this is: 01:45 is when
+the screenshot was taken, which caps the finish time without dating it. Quoting
+"53 minutes" as sweep 2's duration would repeat this section's own mistake in the
+opposite direction.
+
+The bound agrees with the 01:16 half-done reading (~74/min), so the speedup is
+real even if its size isn't pinned. Candidate causes, none confirmed: the HTTP
+cache (weak — the 10-minute window and 5 MiB can only cover the tail of sweep 1),
+the 100 skipped series (2.8%, no request at all, so also small), and **the
+empty-list returns behind bug 6** — a source failing fast returns quicker than one
+serving a full chapter list, so a run with 547 unaccounted series would finish
+early for a reason that is a defect rather than a speedup. That last one is the
+interesting hypothesis, and it predicts the rate falls back toward 42.7/min once
+bug 6 is fixed. Worth timing sweep 3 properly to find out.
+
 ---
 
 ## 6. State of the tree
@@ -228,14 +329,16 @@ reconstructing it afterwards.
 - `5ac4ebe` — docs: handoff brought up to date through 0.68, `SESSION_HANDOFF_0.68.md`
   added.
 - `76bd284` — 0.69, index write serialisation and the summary dismiss.
-  **Unverified.**
+  **Installed; three checks pass (§3), with the contention gap noted there.**
 
 Library is **3571** entries. Most of `PROJECT_HANDOFF.md` says 3567, which is the
 import figure and still correct in every sentence about the import.
 
 **Still open from the 0.67 review:** bug 3 (counter race) and bug 6 (`done`
-doesn't reconcile), both deliberately left until tonight's arithmetic says which
-is which. Bugs 1, 2, 4, 5 and 7 are closed.
+doesn't reconcile). Bugs 1, 2, 4, 5 and 7 are closed. The arithmetic has now run
+and says **547 combined** — it still doesn't split them, but bug 6's share is
+directly countable (§2), so subtracting gives bug 3's. Sweep 3 is no longer
+needed to *find* this; it is needed to attribute it.
 
 **Still open, older:** the manifest theme (§4 above), and open thread 1 — the
 reader is barely tested and has now survived six sessions untouched.
@@ -243,3 +346,51 @@ reader is barely tested and has now survived six sessions untouched.
 **Named next piece of work** stays the Feed / Updates tab, per
 `PROJECT_HANDOFF.md` §0: the sweep now produces the whole library's chapter
 counts, so the only missing input is a diff of what changed during a sweep.
+
+---
+
+## 7. Opened by this amendment
+
+Three items, all small, all found while checking §2 rather than while writing
+code.
+
+**1. The finished summary should show `resumed`.** §2's whole check needs it and
+the finished row doesn't print it, so the number has to be remembered from the
+in-progress note or reconstructed from the cursor — and the tempting
+reconstruction is the circular one. Fix is one `listOfNotNull` entry in
+`SettingsScreens.kt` beside the existing three, guarded on `resumed > 0` the same
+way `failed` and `skipped` are. Cheap, and it makes the arithmetic
+self-contained: `2902 counted • 22 failed • 100 skipped • 0 resumed` would have
+been unambiguous with no reasoning required.
+
+While in there: **the counters don't survive process death** (`finishedAt` and
+all five are Compose state with nothing persisting them), which is what lost
+sweep 1's summary and nearly lost sweep 2's. If §2 is going to stay the standing
+end-of-sweep check, the five numbers belong in prefs next to the cursor.
+
+**2. Dead `counts != null` guard** in `refreshSource` — see §2. Unreachable
+because `countsFor`'s only null return is the empty-list case the outer
+`isNotEmpty()` already excludes. Resolve it as part of the bug 6 fix rather than
+separately, since that fix has to decide what an empty list counts as anyway
+(`PROJECT_HANDOFF.md` says count it as a failure, on the grounds that from a live
+source it usually means a broken parse — the spyfakku error in sweep 2's
+first-error note is that exact shape).
+
+**3. Two incompatible bug numberings are in circulation.** The canonical one is
+the 0.67 review's seven, used in `SESSION_HANDOFF_0.68.md` §5 and in §3/§6 here:
+
+| # | Bug | State |
+|---|---|---|
+| 1 | `updated` counted fetches, not changes | closed (renamed) |
+| 2 | Stop could strand the notification | closed |
+| 3 | The counters race | **open** |
+| 4 | `recordAll` not atomic | closed in 0.69 |
+| 5 | `clearSummary()` has no callers | closed in 0.69 |
+| 6 | `done` doesn't reconcile (empty list) | **open** |
+| 7 | Memo seeded in two steps | closed in 0.69 |
+
+`PROJECT_HANDOFF.md` used to renumber the then-open four as 1–4, so its "bug 4"
+was this table's bug 6 and its "bug 1" was this table's bug 4. That collision
+produced the wrong label in §2 of this file. **Use the seven-item numbering
+everywhere**; `PROJECT_HANDOFF.md` has been updated to match and now carries a
+note saying so.
