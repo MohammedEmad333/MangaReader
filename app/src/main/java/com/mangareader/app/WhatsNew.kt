@@ -43,6 +43,24 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 70,
+            name = "0.70",
+            header = "Covers on protected sources, and a quieter Extensions tab",
+            body = "Some sources listed every title correctly and then showed a " +
+                "grid of grey boxes where the covers should be. Page images " +
+                "already went out carrying the details the source needs to " +
+                "recognise its own request; cover images did not, so sites " +
+                "that check turned them away. Covers now go out the same way " +
+                "pages do.\n\n" +
+                "The Extensions tab re-downloaded the full extension list " +
+                "every time it was opened, which on a large repository is a " +
+                "few megabytes and a visible wait. The list is now kept for " +
+                "ten minutes and reused, while still checking what is " +
+                "installed each time you look. A repository that can't be " +
+                "reached falls back to the last list it gave instead of " +
+                "emptying the screen.",
+        ),
+        ReleaseNote(
             code = 69,
             name = "0.69",
             header = "Chapter counts hold up under a refresh",

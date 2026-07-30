@@ -55,22 +55,84 @@ object ExtensionManager {
     private const val EXTENSION_ACTION = "com.mangareader.app.EXTENSION"
 
     /**
-     * 1. FETCH: Reads the JSON lists from your saved repository URLs.
+     * How long a downloaded repo index is reused before being re-fetched.
+     * Matches the `maxAge` `Requests.kt` puts on ordinary GETs, so the two
+     * caches agree about how stale a catalogue is allowed to be.
      */
-    suspend fun fetchAvailable(context: Context): List<Extension> = withContext(Dispatchers.IO) {
+    private const val INDEX_TTL_MS = 10 * 60 * 1000L
+
+    private class CachedIndex(val json: String, val fetchedAt: Long)
+
+    @Volatile
+    private var indexCache: Map<String, CachedIndex> = emptyMap()
+
+    /** Drops the cached indexes, so the next fetch goes to the network. */
+    fun invalidateIndexCache() {
+        indexCache = emptyMap()
+    }
+
+    /**
+     * 1. FETCH: Reads the JSON lists from your saved repository URLs.
+     *
+     * **The download is cached; the parse is not.** `available` in
+     * `BrowseScreen` is composable-local state, so leaving the Extensions tab
+     * drops it and returning re-runs this — which meant re-downloading the full
+     * Keiyoushi `index.json`, well over a thousand entries, on every single
+     * visit. That is the "why does it load whenever I open the extensions tab"
+     * report. Note this path uses a bare [HttpURLConnection] rather than the
+     * shared OkHttp client, so it does not get the 10-minute response cache the
+     * rest of the app has; the cache below is that cache, by hand.
+     *
+     * Re-parsing every time is deliberate and is what makes caching safe here.
+     * [Extension.isInstalled] and [Extension.installedVersion] are resolved
+     * against the [PackageManager] inside [parseIndex], so a cached *parse*
+     * would keep claiming an extension is installed after it was removed.
+     * Caching the raw text and re-parsing keeps install state exact while still
+     * removing the network round trip, and parsing a few thousand entries is
+     * milliseconds against a multi-megabyte download.
+     *
+     * @param force skips the cache — for an explicit user-initiated refresh.
+     *   Install and uninstall do **not** need it: those change install state,
+     *   which the re-parse already picks up.
+     */
+    suspend fun fetchAvailable(
+        context: Context,
+        force: Boolean = false
+    ): List<Extension> = withContext(Dispatchers.IO) {
         val repos = ExtensionRepos.list(context)
         val available = mutableListOf<Extension>()
         val pm = context.packageManager
+        val now = System.currentTimeMillis()
+        val cache = HashMap(indexCache)
 
         for (repoUrl in repos) {
             try {
-                val conn = URL(repoUrl).openConnection() as HttpURLConnection
-                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val cached = cache[repoUrl]
+                val fresh = !force &&
+                    cached != null &&
+                    now - cached.fetchedAt < INDEX_TTL_MS
+
+                val jsonStr = if (fresh) {
+                    cached!!.json
+                } else {
+                    val conn = URL(repoUrl).openConnection() as HttpURLConnection
+                    val downloaded = conn.inputStream.bufferedReader().use { it.readText() }
+                    cache[repoUrl] = CachedIndex(downloaded, now)
+                    downloaded
+                }
+
                 available += parseIndex(jsonStr, repoUrl, pm)
             } catch (e: Exception) {
+                // A repo that fails now keeps whatever it last served, so one
+                // unreachable repo doesn't empty the screen of the others.
                 e.printStackTrace()
+                cache[repoUrl]?.let { stale ->
+                    runCatching { available += parseIndex(stale.json, repoUrl, pm) }
+                }
             }
         }
+
+        indexCache = cache
         available
     }
 
