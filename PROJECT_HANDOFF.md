@@ -1,8 +1,11 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-30
-at **0.69**. **0.55 through 0.65 and 0.67 through 0.69 are verified on device,
-and 0.66 is unaccounted for** — see §0. Two full library sweeps ran on the night
+at **0.70**. **0.55 through 0.65 and 0.67 through 0.69 are verified on device;
+0.70 is written, uncompiled and untested; 0.66 is unaccounted for** — see §0.
+**0.70's main claim — that missing `Referer` headers are why some sources show
+no covers — is a hypothesis that has not been tested**, and the test is two
+minutes: see `SESSION_HANDOFF_0.70.md` §1. Two full library sweeps ran on the night
 of 2026-07-29/30, the first to completion, which is what exercised 0.67's
 machinery end to end. **The second sweep's end-of-sweep arithmetic came up 547
 short** — the first measurement of bugs 3 and 6; see `SESSION_HANDOFF_0.69.md` §2.
