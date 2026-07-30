@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 81,
+            name = "0.81",
+            header = "Series that loaded chapters only sometimes",
+            body = "0.80 got chapters working on the newer extensions, but " +
+                "opening a series asks for its details and its chapter list " +
+                "at the same time, and some extensions refuse two overlapping " +
+                "requests for the same series. Whichever arrived second " +
+                "failed, so the same source would work on one series and not " +
+                "the next with no pattern to it.\n\n" +
+                "The two requests are now ordered rather than simultaneous.",
+        ),
+        ReleaseNote(
             code = 80,
             name = "0.80",
             header = "Sources that fetch chapters and details together",
