@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -33,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The Downloads tab: series with chapters saved to permanent storage.
@@ -57,7 +60,25 @@ internal fun DownloadsTab(
 
     // Keyed on the revision so a chapter finishing, or a delete from anywhere
     // else, re-reads rather than showing a stale list.
-    val series = remember(revision) { DownloadIndex.list(context) }
+    //
+    // On IO, not in composition. `DownloadIndex.list` is the expensive one: a
+    // directory walk per downloaded chapter for the sizes this screen shows,
+    // plus — when the recovery gate is open — a ChapterCache read per library
+    // entry. Every stat crosses FUSE on external storage.
+    //
+    // It was survivable before 0.72 only by accident: the library screen asked
+    // for the same thing at startup, so by the time this tab was opened the
+    // memos were warm and someone else had already paid. 0.72 stopped the
+    // library asking, which was right, and left this screen paying it cold and
+    // on the main thread — where it presents as the app not responding.
+    //
+    // `null` means "still working", which is what the empty state below reads
+    // to tell loading apart from genuinely nothing downloaded. Those looked
+    // identical before and one of them is not an answer.
+    val loaded by produceState<List<DownloadedSeries>?>(null, revision) {
+        value = withContext(Dispatchers.IO) { DownloadIndex.list(context) }
+    }
+    val series = loaded ?: emptyList()
     val totalSize = remember(series) { series.sumOf { it.sizeBytes } }
     var confirmDelete by remember { mutableStateOf<DownloadedSeries?>(null) }
 
@@ -95,7 +116,17 @@ internal fun DownloadsTab(
         }
         HorizontalDivider()
 
-        if (series.isEmpty()) {
+        if (loaded == null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Reading the download folder\u2026",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        } else if (series.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     "Nothing downloaded yet.",
