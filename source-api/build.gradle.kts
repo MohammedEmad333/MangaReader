@@ -4,7 +4,8 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.20"
+    // Lockstep with the Kotlin version in the root build file. See the note there.
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.21"
 }
 
 android {
@@ -23,7 +24,15 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        // OkHttpExtensions.kt uses context receivers.
+        // OkHttpExtensions.kt's parseAs/decodeFromJsonResponse are `context(Json)`.
+        //
+        // Kotlin 2.2 deprecated context receivers in favour of context
+        // parameters (-Xcontext-parameters), so this flag is living on borrowed
+        // time and is the most likely thing to break on the next Kotlin bump.
+        // If it stops being accepted, the two functions are the entire usage in
+        // the tree and both take Json — converting them to a plain first
+        // parameter or a Json receiver is a smaller change than migrating to
+        // context parameters.
         freeCompilerArgs += "-Xcontext-receivers"
     }
 
