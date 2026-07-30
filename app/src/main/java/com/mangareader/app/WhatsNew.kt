@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 79,
+            name = "0.79",
+            header = "Sources that browsed but wouldn't open anything",
+            body = "Elite Babes listed its catalogue perfectly and then failed " +
+                "on every series with \"Could not list chapters\". The cause was " +
+                "in this app: it was asking extensions for chapters, details, " +
+                "pages and images through an old interface that modern " +
+                "extensions no longer implement \u2014 they answer on the " +
+                "current one, and switch the old one off.\n\n" +
+                "The app now uses the current interface throughout. This may " +
+                "well fix other sources that half-worked in the same way: " +
+                "browsing fine, failing the moment you opened something.",
+        ),
+        ReleaseNote(
             code = 78,
             name = "0.78",
             header = "Source errors say what actually went wrong",
