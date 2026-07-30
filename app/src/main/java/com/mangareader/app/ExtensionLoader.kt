@@ -32,6 +32,23 @@ object ExtensionLoader {
 
     // Which extensions-lib versions your host implements. Widen only once
     // you've actually implemented the API surface those versions require.
+    //
+    // 1.6 is currently claimed and not fully implemented, and that was found
+    // the hard way: an Elite Babes build declaring 1.6 loaded cleanly, passed
+    // this gate, and then closed the app on every open by reaching for a model
+    // class the vendored source-api doesn't have.
+    //
+    // It is deliberately still 1.6, for two reasons. Narrowing to 1.5 would
+    // also refuse 1.6 extensions that work — most of them never touch the parts
+    // that are missing, and at least one on this device updated to 1.6 and was
+    // fine. And this gate is the wrong instrument regardless: `versionName` is
+    // what the extension *claims*, so it can refuse an honest mismatch and
+    // cannot see a dishonest one. What catches the real failure is
+    // `sourceFailureMessage`, which turns the LinkageError into a message
+    // naming the missing symbol instead of a process that vanishes.
+    //
+    // Before widening past 1.6, implement the surface first and check it
+    // against a real extension's dex rather than against this constant.
     private const val LIB_VERSION_MIN = 1.4
     private const val LIB_VERSION_MAX = 1.6
 
