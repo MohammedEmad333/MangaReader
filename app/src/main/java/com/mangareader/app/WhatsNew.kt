@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 73,
+            name = "0.73",
+            header = "Sources that stopped working after an extension update",
+            body = "Updating an extension could leave its source unable to " +
+                "load anything, with an error about a missing interceptor. " +
+                "The extension was right and the app was at fault: a piece of " +
+                "the network stack that newer extensions expect had been " +
+                "present in the code but never actually switched on.\n\n" +
+                "It is switched on now. If a source stopped working after you " +
+                "updated its extension, it should work again.",
+        ),
+        ReleaseNote(
             code = 72,
             name = "0.72",
             header = "The app opens in about three seconds",
