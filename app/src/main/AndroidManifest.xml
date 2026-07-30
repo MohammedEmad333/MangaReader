@@ -62,7 +62,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Yomu"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.Yomu">
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -95,7 +95,8 @@
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.Yomu.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

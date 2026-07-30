@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light/dark is an in-app pref (AppPrefs.ThemeMode, default DARK), not the
+     system setting, so this file existing does NOT make the light-mode flash a
+     one-line fix. Parent stays dark, which is what the default already gives. -->
+<resources>
+    <style name="Theme.Yomu" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+    <!-- Swapped for Theme.Yomu by setTheme() in MainActivity.onCreate. -->
+    <style name="Theme.Yomu.Splash" parent="Theme.Yomu">
+        <item name="android:windowBackground">@drawable/splash_yomu</item>
+    </style>
+</resources>

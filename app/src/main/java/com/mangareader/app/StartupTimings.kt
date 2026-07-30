@@ -109,21 +109,48 @@ object StartupTimings {
         }
         append("manga_reader.xml: ").append(formatSize(file.length())).append("\n\n")
 
-        val biggest = runCatching {
-            context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
-                .all
-                .entries
-                .map { it.key to ((it.value as? String)?.length ?: 0) }
-                .sortedByDescending { it.second }
-                .take(5)
-        }.getOrDefault(emptyList())
+        val all = runCatching {
+            context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE).all
+        }.getOrNull()
+
+        if (all == null) {
+            append("Couldn't read the prefs map.\n")
+            return
+        }
+
+        // Counts first, because they are the thing that actually makes a
+        // SharedPreferences file slow to load and the largest-keys list below
+        // cannot show them.
+        //
+        // That list ranks String values only, so ReadState's per-chapter
+        // booleans — one `read:<chapterKey>` entry each, several thousand of
+        // them — all rank at zero and are invisible in it. Reading it alone
+        // suggests "split the big blobs into plain files", which would leave the
+        // entry count untouched. Android builds a HashMap of every entry on
+        // first access; five large strings are five entries.
+        val strings = all.values.count { it is String }
+        append("Entries: ").append(all.size)
+        append("  (").append(strings).append(" strings, ")
+        append(all.size - strings).append(" other)\n\n")
+
+        val biggest = all.entries
+            .map { it.key to ((it.value as? String)?.length ?: 0) }
+            .sortedByDescending { it.second }
+            .take(5)
 
         if (biggest.isNotEmpty()) {
-            append("Largest keys:\n")
+            append("Largest string keys:\n")
+            var sum = 0L
             for ((key, chars) in biggest) {
+                sum += chars
                 append("    ").append(key).append("  ")
                 append(formatSize(chars.toLong())).append('\n')
             }
+            // The gap between this and the file size is XML escaping plus every
+            // entry the ranking above can't see. Printed rather than left to be
+            // worked out by hand, because working it out by hand is what turned
+            // up the flaw in the first place.
+            append("    \u2014 these five: ").append(formatSize(sum)).append('\n')
         }
     }
 

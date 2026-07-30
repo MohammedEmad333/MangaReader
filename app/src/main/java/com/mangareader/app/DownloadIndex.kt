@@ -101,13 +101,81 @@ object DownloadIndex {
     @Volatile
     private var cached: List<DownloadedSeries>? = null
 
+    /**
+     * The answer to [seriesIds], cached separately.
+     *
+     * Separate because it can be filled by the cheap path *or* by the expensive
+     * one. [seriesIds] populates it without sizing or recovering; [list]
+     * overwrites it with the fuller answer as a side effect, so opening the
+     * Downloads tab once upgrades every later badge lookup for the rest of the
+     * process. Both are dropped together by [invalidate].
+     */
+    @Volatile
+    private var cachedIds: Set<String>? = null
+
     fun invalidate() {
         cached = null
+        cachedIds = null
     }
 
     fun list(context: Context): List<DownloadedSeries> {
         cached?.let { return it }
-        return build(context).also { cached = it }
+        return build(context).also {
+            cached = it
+            cachedIds = it.mapTo(mutableSetOf()) { series -> series.seriesId }
+        }
+    }
+
+    /**
+     * Which series have at least one complete download — and nothing else.
+     *
+     * The library screen wants a set of ids to decide which covers get a
+     * download badge. It used to get them from [list], which meant that drawing
+     * the library paid for a size walk per downloaded chapter, a size-descending
+     * sort, and — through [needsRecovery] — a `ChapterCache` read for every
+     * entry in the library. On a 3571-entry library that measured **19.9
+     * seconds of a cold start** (`SESSION_HANDOFF_0.71_RESULT.md` §2). It was the
+     * whole of the "app takes some time to open" board item: turning the badge
+     * off took the open from about thirty seconds to three.
+     *
+     * So this is the same question asked without the Downloads tab's answer
+     * attached. What it drops:
+     *
+     * - **Sizes.** `Downloads.sizeOf` walks every page file in a chapter folder.
+     *   Nothing on the library screen shows a size.
+     * - **The sort.** Ordering by size to build a `Set` is wasted twice over.
+     * - **Recovery.** The O(library) scan for downloads made before this index
+     *   existed. Its cost belongs to the Downloads tab, which is where the user
+     *   would notice something missing. See the note below.
+     *
+     * **What it keeps, and this is the part not to optimise away:** the
+     * `isComplete` check per record. `Downloads.delete` → `forget()` calls
+     * [invalidate] but **never prunes the record** from `downloads_index.json` —
+     * only [deleteSeries] does, and only `DownloadQueueScreen` calls that. The
+     * series-screen delete paths in `MainActivity` are the un-pruning kind. So a
+     * version of this that trusted the records without checking disk would leave
+     * a download badge on a series whose downloads you had just deleted, and it
+     * would stay until something else rebuilt the file. The self-healing filter
+     * is load-bearing for an in-app path, not only for out-of-band deletes.
+     *
+     * **The one behaviour change.** Downloads made before this index existed are
+     * only recoverable by the scan, so until the Downloads tab is opened once in
+     * a given process, those series get no badge here. That is a badge appearing
+     * late rather than a wrong badge, and it is the trade the measurement asks
+     * for. Opening the Downloads tab fills [cachedIds] with the full answer.
+     *
+     * Still O(downloaded chapters) in filesystem stats, because `isComplete`
+     * misses hit `dirFor`, which probes the tree path and then every legacy
+     * root. That is bounded by how much has been downloaded rather than by the
+     * size of the library, which is the difference that matters — and it is
+     * marked at the call site so the next report says what it costs.
+     */
+    fun seriesIds(context: Context): Set<String> {
+        cachedIds?.let { return it }
+        return read(context)
+            .filter { Downloads.isComplete(context, it.chapterId) }
+            .mapTo(mutableSetOf()) { it.seriesId }
+            .also { cachedIds = it }
     }
 
     private fun build(context: Context): List<DownloadedSeries> {

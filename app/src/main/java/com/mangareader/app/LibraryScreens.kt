@@ -130,11 +130,16 @@ internal fun LibraryTab(
         if (readCat == null) emptySet<String>() else Categories.seriesIn(context, readCat.id)
     }
 
-    // DownloadIndex.list() walks the download tree when its cache is cold, so it
-    // is only asked for when something on screen actually depends on it.
+    // Asked for only when something on screen depends on it — and that gate was
+    // never enough on its own, because the thing that depends on it (the
+    // Downloaded badge) is on by default for everybody on every cold start.
+    // This used to call DownloadIndex.list(), which sizes every downloaded
+    // chapter, sorts by size, and runs an O(library) recovery scan to answer a
+    // question about ids. Measured at 19.9 s of a cold start on this library.
+    // seriesIds() is the same answer without the Downloads tab's work attached.
     val downloadedIds = remember(tick, badgeDl, fDownloaded) {
         if (!badgeDl && fDownloaded == FilterState.OFF) emptySet()
-        else DownloadIndex.list(context).map { it.seriesId }.toSet()
+        else StartupTimings.once("Downloaded ids") { DownloadIndex.seriesIds(context) }
     }
 
     // Chapter counts per series. Unlike DownloadIndex this is a single string
