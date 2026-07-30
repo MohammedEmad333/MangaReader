@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 71,
+            name = "0.71",
+            header = "Finding out why the app is slow to open",
+            body = "No change to how the app behaves. Opening it has been slow " +
+                "for a while, and until now the only evidence was that it felt " +
+                "slow \u2014 which is not enough to fix the right thing.\n\n" +
+                "Settings \u203a Advanced now has a Startup timings report, " +
+                "next to the extension diagnostics. It shows how long the app " +
+                "spent reading its saved data before it could draw anything, " +
+                "and how large that saved data has grown. The next release can " +
+                "then fix whichever part is actually the problem instead of " +
+                "the part that looked likeliest.",
+        ),
+        ReleaseNote(
             code = 70,
             name = "0.70",
             header = "Covers on protected sources, and a quieter Extensions tab",

@@ -1176,6 +1176,7 @@ private fun AdvancedSettings() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var diagnostics by remember { mutableStateOf<String?>(null) }
+    var diagnosticsTitle by remember { mutableStateOf("Extension diagnostics") }
     var running by remember { mutableStateOf(false) }
     var confirmCookies by remember { mutableStateOf(false) }
 
@@ -1198,8 +1199,31 @@ private fun AdvancedSettings() {
                         runCatching { diagnoseExtensions(context) }
                             .getOrElse { "Diagnostics failed: ${it.message ?: it::class.java.simpleName}" }
                     }
+                    diagnosticsTitle = "Extension diagnostics"
                     diagnostics = report
                     running = false
+                }
+            }
+        )
+        HorizontalDivider()
+
+        ListItem(
+            headlineContent = { Text("Startup timings") },
+            supportingContent = {
+                Text("What the first frame waited on, and the size of the prefs file")
+            },
+            modifier = Modifier.clickable {
+                scope.launch {
+                    // Stats a file and reads the whole prefs map. Warm by now,
+                    // but still not a main-thread job.
+                    val report = withContext(Dispatchers.IO) {
+                        runCatching { StartupTimings.report(context) }
+                            .getOrElse {
+                                "Timings failed: ${it.message ?: it::class.java.simpleName}"
+                            }
+                    }
+                    diagnosticsTitle = "Startup timings"
+                    diagnostics = report
                 }
             }
         )
@@ -1236,7 +1260,7 @@ private fun AdvancedSettings() {
     if (report != null) {
         AlertDialog(
             onDismissRequest = { diagnostics = null },
-            title = { Text("Extension diagnostics") },
+            title = { Text(diagnosticsTitle) },
             text = {
                 SelectionContainer {
                     Column(

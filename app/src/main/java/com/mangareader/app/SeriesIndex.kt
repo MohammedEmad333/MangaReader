@@ -124,9 +124,15 @@ object SeriesIndex {
     private var memo: Memo? = null
 
     fun all(context: Context): Map<String, SeriesCounts> {
-        val raw = prefs(context).getString(KEY, null) ?: return emptyMap()
+        // Same mark name as Library's, deliberately: whichever of the two runs
+        // first pays the file load and `once` records only that one. Which name
+        // carries the cost is itself the answer to "who paid for it".
+        val raw = StartupTimings.once("Prefs first read") {
+            prefs(context).getString(KEY, null)
+        } ?: return emptyMap()
         memo?.let { if (it.raw == raw) return it.items }
         return try {
+            StartupTimings.once("SeriesIndex parse") {
             val root = JSONObject(raw)
             val out = HashMap<String, SeriesCounts>(root.length())
             val keys = root.keys()
@@ -142,6 +148,7 @@ object SeriesIndex {
                 )
             }
             out.also { memo = Memo(raw, it) }
+            }
         } catch (e: Exception) {
             emptyMap()
         }
