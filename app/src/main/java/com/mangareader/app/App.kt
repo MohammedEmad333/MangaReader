@@ -43,12 +43,26 @@ class App : Application(), ImageLoaderFactory {
      * anything else Coil fetches, and it costs nothing: the connection pool and
      * cache are shared rather than duplicated.
      *
+     * **The shared client was necessary and not sufficient.** It carries the
+     * User-Agent, the cookie jar and the Cloudflare interceptor, but `Referer`
+     * comes from the *source*, not the client — see [CoverHeaders], which adds
+     * it per host. Without that, a hotlink-protected source still 403s every
+     * cover while its page images load fine, because those go out through
+     * `HttpSource.getImage`.
+     *
      * The lambda form defers building [NetworkHelper] until the first image is
      * actually requested, so this doesn't drag network setup into onCreate.
+     * [CoverHeaders] is built inside the same lambda for the same reason — it
+     * classloads extensions on first use.
      */
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .okHttpClient { Injekt.get<NetworkHelper>().client }
+            .okHttpClient {
+                Injekt.get<NetworkHelper>().client
+                    .newBuilder()
+                    .addInterceptor(CoverHeaders.interceptor(this))
+                    .build()
+            }
             .build()
 }
 

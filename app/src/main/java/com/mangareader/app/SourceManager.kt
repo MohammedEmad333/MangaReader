@@ -116,6 +116,11 @@ object SourceManager {
         cachedAdapters = null
         cachedFrom = null
         ExtensionLoader.invalidate()
+        // The cover header table is keyed on the hosts of these sources, so it
+        // is stale for exactly as long as this cache is. Dropping it here means
+        // a newly installed extension's covers carry its Referer immediately
+        // rather than after the next process start.
+        CoverHeaders.invalidate()
     }
 
     /**
