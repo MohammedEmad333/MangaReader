@@ -182,7 +182,7 @@ class TachiyomiSourceAdapter(
      */
     override suspend fun restoreSeries(id: String, title: String): Series? =
         onSourceThread {
-            val url = urlFromId(id) ?: return@withContext null
+            val url = urlFromId(id) ?: return@onSourceThread null
             SMangaImpl().apply {
                 this.url = url
                 this.title = title
@@ -198,7 +198,7 @@ class TachiyomiSourceAdapter(
      * The id format is "<sourceId>:<url>", and url is all HttpSource needs.
      */
     override suspend fun getSeries(id: String): Series? = onSourceThread {
-        val url = urlFromId(id) ?: return@withContext null
+        val url = urlFromId(id) ?: return@onSourceThread null
 
         // Both fields are lateinit on SMangaImpl, so the stub has to initialise
         // them up front: if getMangaDetails below fails, this object is what gets
@@ -221,10 +221,10 @@ class TachiyomiSourceAdapter(
      * it fails — metadata is a bonus, not a precondition for reading.
      */
     override suspend fun loadDetails(series: Series): Series = onSourceThread {
-        val manga = series.handle as? SManga ?: return@withContext series
+        val manga = series.handle as? SManga ?: return@onSourceThread series
         val full = runCatching { delegate.getMangaDetails(manga) }
             .onFailure { Log.w(TAG, "getMangaDetails failed for ${series.id}", it) }
-            .getOrNull() ?: return@withContext series
+            .getOrNull() ?: return@onSourceThread series
         if (full.safeUrl().isBlank()) full.url = manga.safeUrl()
         val enriched = full.toSeries()
         // Keep whatever we already had if the details response omits it.
@@ -251,7 +251,7 @@ class TachiyomiSourceAdapter(
     }
 
     override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
-        val manga = series.handle as? SManga ?: return@withContext emptyList()
+        val manga = series.handle as? SManga ?: return@onSourceThread emptyList()
         // Extensions return newest-first; this interface wants reading order.
         delegate.getChapterList(manga).asReversed().map { it.toChapter() }
     }
@@ -277,14 +277,14 @@ class TachiyomiSourceAdapter(
         // image requests. This is what makes offline reading work.
         if (Downloads.isComplete(context, chapter.id)) {
             onUpdate(Downloads.pages(context, chapter.id))
-            return@withContext
+            return@onSourceThread
         }
 
         val sChapter = chapter.handle as? SChapter
         if (sChapter == null) {
             onUpdate(emptyList())
             if (persist) throw ChapterDownloadException(0, 0, IllegalStateException("No chapter handle"))
-            return@withContext
+            return@onSourceThread
         }
         val pages = delegate.getPageList(sChapter)
         val dir = if (persist) Downloads.dirFor(context, chapter.id)
@@ -321,7 +321,7 @@ class TachiyomiSourceAdapter(
             }
         }
 
-        if (!persist) return@withContext
+        if (!persist) return@onSourceThread
 
         // Only a chapter with every page present counts as downloaded; a partial
         // one stays unmarked so it can be resumed rather than trusted.
@@ -334,11 +334,11 @@ class TachiyomiSourceAdapter(
     }
 
     override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {
-        val sChapter = chapter.handle as? SChapter ?: return@withContext emptyList()
+        val sChapter = chapter.handle as? SChapter ?: return@onSourceThread emptyList()
         val pages = delegate.getPageList(sChapter)
 
         if (Downloads.isComplete(context, chapter.id)) {
-            return@withContext Downloads.pages(context, chapter.id)
+            return@onSourceThread Downloads.pages(context, chapter.id)
         }
         val dir = Downloads.cacheDirFor(context, chapter.id).apply { mkdirs() }
 
