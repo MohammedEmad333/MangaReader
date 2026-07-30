@@ -58,6 +58,22 @@ android {
         buildConfig = true
     }
 
+    packaging {
+        resources {
+            // logging-interceptor, okhttp-brotli and okhttp-dnsoverhttps each
+            // ship an identical copy of this, and the merge task refuses to
+            // pick one. It is OSGi bundle metadata for a Java 9 multi-release
+            // jar — it describes the artifact to an OSGi container, and there
+            // is no OSGi container in an APK, so dropping it costs nothing.
+            //
+            // Excluded by exact path rather than a glob over META-INF: this is
+            // the only collision, and a broad exclude here would silently drop
+            // service-loader registrations or license files the next time a
+            // dependency is added.
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
