@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.network
 
 import android.content.Context
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
+import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import java.io.File
@@ -21,6 +22,22 @@ class NetworkHelper(context: Context) {
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
+        // First in the chain, which is what its own KDoc asks for. It turns a
+        // non-IOException thrown later in the chain into an IOException, so a
+        // misbehaving interceptor or extension surfaces as a failed call
+        // instead of taking the process down.
+        //
+        // It was vendored when the API was imported and then never wired up —
+        // zero references anywhere in the tree until now. That went unnoticed
+        // because nothing checked. Newer extensions do: an updated Elite Babes
+        // refused to browse at all with "UncaughtExceptionInterceptor must be
+        // present in default client", which is an assertion about this client
+        // and not a fault in the extension.
+        //
+        // Do not reorder this below the two interceptors that follow. Being
+        // first is both what the assertion is likely testing and what makes it
+        // useful, since it can only catch what happens after it.
+        .addInterceptor(UncaughtExceptionInterceptor())
         // HTTP/1.1 was forced here, globally, and has been removed. The history
         // is worth keeping because both halves of it are instructive.
         //
