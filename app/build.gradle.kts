@@ -6,7 +6,18 @@ plugins {
 
 android {
     namespace = "com.mangareader.app"
-    compileSdk = 34
+    // 36 because okhttp-android 5.4.0's AAR metadata demands it — "requires
+    // libraries and applications that depend on it to compile against version
+    // 36 or later". compileSdk only says which android.jar we compile against;
+    // targetSdk stays 34, so no runtime behaviour changes.
+    //
+    // AGP 8.5.2's max *recommended* compileSdk is 34, which is a warning rather
+    // than a limit, suppressed in gradle.properties. If this build fails inside
+    // AAPT2 or resource linking rather than in our own code, that suppression is
+    // being asked to cover something it can't, and the answer is the real
+    // upgrade: AGP 8.11+ with Gradle 8.13+ (and the gradle-version pin in
+    // .github/workflows moves too).
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mangareader.app"
