@@ -183,7 +183,8 @@ object DownloadIndex {
         val known = live.map { it.chapterId }.toMutableSet()
 
         val recovered = mutableListOf<Record>()
-        if (needsRecovery(context, known)) for (entry in Library.list(context)) {
+        val scanned = needsRecovery(context, known)
+        if (scanned) for (entry in Library.list(context)) {
             for (chapter in ChapterCache.load(context, entry.seriesId)) {
                 if (chapter.id in known) continue
                 if (!Downloads.isComplete(context, chapter.id)) continue
@@ -198,6 +199,10 @@ object DownloadIndex {
                 )
             }
         }
+
+        // The scan has now run to completion, so the one-time migration it
+        // performs is done. See RECOVERY_DONE.
+        if (scanned) runCatching { prefs(context).edit().putBoolean(RECOVERY_DONE, true).apply() }
 
         return (live + recovered)
             .groupBy { it.seriesId }
@@ -233,10 +238,45 @@ object DownloadIndex {
      * scan could turn up.
      */
     private fun needsRecovery(context: Context, known: Set<String>): Boolean {
+        if (prefs(context).getBoolean(RECOVERY_DONE, false)) return false
         if (DownloadPaths.knownChapterIds(context).any { it !in known }) return true
         return StorageLocation.legacyRoots(context).any { root ->
             root.listFiles()?.any { it.isDirectory } == true
         }
+    }
+
+    /**
+     * Marks the recovery scan as having happened, so it never runs again.
+     *
+     * The gate above leaks, and it leaks permanently. `knownChapterIds` holds
+     * every chapter that was ever assigned a path, so **one cancelled download
+     * makes the first condition true forever** — that id is known to the path
+     * index and will never be a completed download. Behind the gate is a read
+     * of `ChapterCache` for every entry in the library, which on this library
+     * is thousands of files, on the composition thread, every time the memo is
+     * cold.
+     *
+     * What the scan recovers is downloads made before this index existed. That
+     * is a **migration**, not a routine check: there is a fixed, finite set of
+     * them and once they are found they are recorded. Re-deciding it on every
+     * cold cache is re-running a migration because a boolean happened to be
+     * true.
+     *
+     * Stamped after a build that ran the scan, not after every build, so a
+     * process that never reached the scan doesn't claim it happened.
+     *
+     * **If the download tree ever moves** — a storage-location change, or
+     * `DownloadPaths.rebuild` — this stamp should be cleared, because a fresh
+     * tree can hold folders this index has never seen. Nothing does that today;
+     * `invalidate()` deliberately doesn't, since dropping a memo is not the
+     * same event as relocating the files.
+     */
+    private const val RECOVERY_DONE = "download_index_recovered"
+
+    /** Clears the stamp, so the next [list] scans again. For a moved tree. */
+    fun forgetRecovery(context: Context) {
+        invalidate()
+        runCatching { prefs(context).edit().remove(RECOVERY_DONE).apply() }
     }
 
     // ---------- deleting ----------

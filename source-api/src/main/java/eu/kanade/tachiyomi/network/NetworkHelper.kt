@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.network
 import android.content.Context
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
+import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import java.io.File
@@ -77,8 +78,9 @@ class NetworkHelper(context: Context) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(2, TimeUnit.MINUTES)
-        // Inlined rather than using UserAgentInterceptor, so this file doesn't
-        // depend on that class's exact constructor signature.
+        // Clearance UA and the browser-ish headers. Deliberately *not* the
+        // default User-Agent — that moved to the real UserAgentInterceptor
+        // below, and this runs first so the two compose correctly.
         //
         // Accept and Accept-Language ride along because a request carrying a
         // browser's User-Agent and nothing else a browser sends is a fairly
@@ -99,9 +101,6 @@ class NetworkHelper(context: Context) {
             if (clearanceUserAgent != null) {
                 patched.header("User-Agent", clearanceUserAgent)
                 changed = true
-            } else if (request.header("User-Agent").isNullOrEmpty()) {
-                patched.header("User-Agent", defaultUserAgentProvider())
-                changed = true
             }
             if (request.header("Accept").isNullOrEmpty()) {
                 patched.header("Accept", DEFAULT_ACCEPT)
@@ -114,6 +113,28 @@ class NetworkHelper(context: Context) {
 
             chain.proceed(if (changed) patched.build() else request)
         }
+        // The default User-Agent, as a real UserAgentInterceptor rather than
+        // more inline lambda — and the distinction is load-bearing.
+        //
+        // Extensions built against extensions-lib 1.6 assert the shape of this
+        // client by class *name*: UserAgentInterceptor, CloudflareInterceptor
+        // and UncaughtExceptionInterceptor must be present, BrotliInterceptor
+        // and IgnoreGzipInterceptor must not. The check is on
+        // `javaClass.simpleName`, so a lambda doing exactly the same work is
+        // invisible to it and the extension refuses to make a single request.
+        // That is what "UserAgentInterceptor must be present in default client"
+        // means, and it is an assertion about this file, not a fault in the
+        // extension.
+        //
+        // This class was previously inlined to avoid depending on its
+        // constructor signature. That worry is void: it is vendored in this
+        // module, so nothing upstream can change it underneath us.
+        //
+        // Order matters. It only fills in a User-Agent when none is set, so the
+        // interceptor above has already applied any clearance UA by the time
+        // this runs and it leaves that alone — which is the behaviour the two
+        // used to have as one lambda.
+        .addInterceptor(UserAgentInterceptor { defaultUserAgentProvider() })
         // After the UA interceptor, not before: the challenge is solved in a
         // WebView set to the same User-Agent the request carries, and cf_clearance
         // is rejected if a later request presents a different one.

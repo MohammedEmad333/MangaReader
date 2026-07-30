@@ -43,6 +43,22 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 74,
+            name = "0.74",
+            header = "Elite Babes works again, and the Downloads tab stops freezing",
+            body = "0.73 fixed one half of why some updated extensions refused " +
+                "to load anything. This is the other half \u2014 newer " +
+                "extensions check the app's network setup by name, and one " +
+                "piece of it was written in a way they couldn't recognise " +
+                "even though it did the right job.\n\n" +
+                "Opening the Downloads tab could also hang the app. It was " +
+                "measuring every downloaded chapter, and scanning the whole " +
+                "library for old downloads it might have lost track of, " +
+                "before it drew anything. That scan is a one-time repair and " +
+                "now runs once instead of every time, and the rest happens in " +
+                "the background while the screen stays usable.",
+        ),
+        ReleaseNote(
             code = 73,
             name = "0.73",
             header = "Sources that stopped working after an extension update",
