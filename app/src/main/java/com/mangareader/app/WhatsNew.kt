@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 78,
+            name = "0.78",
+            header = "Source errors say what actually went wrong",
+            body = "When a source failed in a way that carried no message, the " +
+                "app showed a generic line like \"Could not list chapters\" \u2014 " +
+                "which reads the same as a series that genuinely has none. " +
+                "Errors now name the underlying failure, so a real problem is " +
+                "distinguishable from an empty result.",
+        ),
+        ReleaseNote(
             code = 77,
             name = "0.77",
             header = "An extension can no longer close the app, for real this time",

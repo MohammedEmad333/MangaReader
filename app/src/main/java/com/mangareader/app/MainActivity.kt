@@ -162,7 +162,17 @@ internal fun sourceFailureMessage(t: Throwable, fallback: String): String {
             "app provides \u2014 ${t.javaClass.simpleName}: " +
             "${t.message ?: "missing symbol"}"
     }
-    return t.message ?: fallback
+    // Name the type when there is no message. A bare "Could not list chapters"
+    // is indistinguishable from a source that legitimately has none, and it is
+    // what an exception carrying a null message produces — NoSuchElementException
+    // out of an empty stream, an NPE, a ClassCastException. Those are different
+    // bugs and they were all rendering as the same sentence.
+    //
+    // The cause is included when there is one, because the outer type is often
+    // a wrapper and the inner one is the answer.
+    val cause = t.cause?.takeIf { it !== t }?.javaClass?.simpleName
+    val type = t.javaClass.simpleName + if (cause != null) " \u2190 $cause" else ""
+    return t.message?.let { "$it ($type)" } ?: "$fallback \u2014 $type"
 }
 
 // ---------- activity ----------
