@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 77,
+            name = "0.77",
+            header = "An extension can no longer close the app, for real this time",
+            body = "Two previous releases tried to stop a broken extension " +
+                "taking the app down with it, and both missed a path. This one " +
+                "handles it where the app calls into an extension rather than " +
+                "at each of the places that might be affected, so there is no " +
+                "list of paths left to miss.\n\n" +
+                "Also adds another piece of the HTTP library that current " +
+                "extensions expect.",
+        ),
+        ReleaseNote(
             code = 76,
             name = "0.76",
             header = "The network library is current again",

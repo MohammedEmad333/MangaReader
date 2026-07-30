@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -97,18 +98,63 @@ class TachiyomiSourceAdapter(
     override val supportsDownload: Boolean = true
 
     /** First page of popular, for callers that just want a quick look. */
+    /**
+     * Runs [block] on IO and converts a [LinkageError] into an [IOException].
+     *
+     * **This is the boundary between this app and foreign code, and it is the
+     * right place to do this — not the call sites.**
+     *
+     * An extension is a separately-compiled APK loaded through a
+     * `PathClassLoader` against a vendored copy of the Tachiyomi API. When it
+     * was built against a newer API than this app ships, the mismatch arrives as
+     * an `Error`, not an `Exception`: `NoClassDefFoundError` for a class that
+     * isn't here, `NoSuchMethodError` for one that changed shape. Nothing in the
+     * app catches `Error`, and the ones that reach a coroutine with no handler
+     * take the process down.
+     *
+     * 0.75 and 0.76 chased that by widening catches — every source call site in
+     * `MainActivity`, then `DownloadService` and `LibraryRefreshService`. It
+     * still crashed, because there was another path neither release had found,
+     * and reading the tree for `launch` sites did not turn it up.
+     *
+     * So: stop enumerating the ways out and close the way in. Every call into an
+     * extension goes through this class, so converting here means an extension
+     * *cannot* raise a non-`Exception` into app code, and every ordinary
+     * `catch (e: Exception)` in the tree becomes correct again — including the
+     * one nobody has located.
+     *
+     * `IOException` specifically, because that is what a source failing to
+     * answer already looks like everywhere else, and it needs no new handling.
+     *
+     * [CancellationException] is untouched: it is an `Exception`, it passes
+     * straight through, and a cancelled coroutine still ends cancelled.
+     */
+    private suspend fun <T> onSourceThread(block: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO) {
+            try {
+                block()
+            } catch (e: LinkageError) {
+                throw IOException(
+                    "This extension was built against a newer source API than " +
+                        "this app provides \u2014 ${e.javaClass.simpleName}: " +
+                        "${e.message ?: "missing symbol"}",
+                    e
+                )
+            }
+        }
+
     override suspend fun listSeries(): List<Series> = browseSeries(1).series
 
-    override suspend fun browseSeries(page: Int): SeriesPage = withContext(Dispatchers.IO) {
+    override suspend fun browseSeries(page: Int): SeriesPage = onSourceThread {
         delegate.getPopularManga(page).toSeriesPage()
     }
 
-    override suspend fun latestSeries(page: Int): SeriesPage = withContext(Dispatchers.IO) {
+    override suspend fun latestSeries(page: Int): SeriesPage = onSourceThread {
         delegate.getLatestUpdates(page).toSeriesPage()
     }
 
     override suspend fun searchSeries(query: String, page: Int): SeriesPage =
-        withContext(Dispatchers.IO) {
+        onSourceThread {
             // The live list, not a fresh FilterList(): a typed query and the
             // filter sheet compose rather than replace each other, which is what
             // Tachiyomi's own UI does.
@@ -135,7 +181,7 @@ class TachiyomiSourceAdapter(
      * marks it initialized, and goes straight to the chapter list.
      */
     override suspend fun restoreSeries(id: String, title: String): Series? =
-        withContext(Dispatchers.IO) {
+        onSourceThread {
             val url = urlFromId(id) ?: return@withContext null
             SMangaImpl().apply {
                 this.url = url
@@ -151,7 +197,7 @@ class TachiyomiSourceAdapter(
      * library entry reopens even when the series has dropped off page one.
      * The id format is "<sourceId>:<url>", and url is all HttpSource needs.
      */
-    override suspend fun getSeries(id: String): Series? = withContext(Dispatchers.IO) {
+    override suspend fun getSeries(id: String): Series? = onSourceThread {
         val url = urlFromId(id) ?: return@withContext null
 
         // Both fields are lateinit on SMangaImpl, so the stub has to initialise
@@ -174,7 +220,7 @@ class TachiyomiSourceAdapter(
      * series screen can fill in once it arrives. Returns the series untouched if
      * it fails — metadata is a bonus, not a precondition for reading.
      */
-    override suspend fun loadDetails(series: Series): Series = withContext(Dispatchers.IO) {
+    override suspend fun loadDetails(series: Series): Series = onSourceThread {
         val manga = series.handle as? SManga ?: return@withContext series
         val full = runCatching { delegate.getMangaDetails(manga) }
             .onFailure { Log.w(TAG, "getMangaDetails failed for ${series.id}", it) }
@@ -204,7 +250,7 @@ class TachiyomiSourceAdapter(
         )
     }
 
-    override suspend fun listChapters(series: Series): List<Chapter> = withContext(Dispatchers.IO) {
+    override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
         val manga = series.handle as? SManga ?: return@withContext emptyList()
         // Extensions return newest-first; this interface wants reading order.
         delegate.getChapterList(manga).asReversed().map { it.toChapter() }
@@ -226,7 +272,7 @@ class TachiyomiSourceAdapter(
         chapter: Chapter,
         persist: Boolean,
         onUpdate: suspend (List<File?>) -> Unit
-    ) = withContext(Dispatchers.IO) {
+    ) = onSourceThread {
         // Already downloaded: serve straight off disk, no page list request, no
         // image requests. This is what makes offline reading work.
         if (Downloads.isComplete(context, chapter.id)) {
@@ -287,7 +333,7 @@ class TachiyomiSourceAdapter(
         }
     }
 
-    override suspend fun loadPages(chapter: Chapter): List<File> = withContext(Dispatchers.IO) {
+    override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {
         val sChapter = chapter.handle as? SChapter ?: return@withContext emptyList()
         val pages = delegate.getPageList(sChapter)
 

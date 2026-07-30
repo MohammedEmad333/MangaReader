@@ -63,6 +63,12 @@ dependencies {
     api("com.squareup.okhttp3:okhttp")
     api("com.squareup.okhttp3:logging-interceptor")
     api("com.squareup.okhttp3:okhttp-brotli")
+    // okhttp3.zstd.Zstd. Extensions build their own client as
+    // CompressionInterceptor(Zstd, Gzip), so Zstd has to be resolvable even
+    // though nothing in this app asks for zstd itself. Same story as
+    // CompressionInterceptor one release earlier: the missing class is not one
+    // we use, it is one an extension names.
+    api("com.squareup.okhttp3:okhttp-zstd")
     api("com.squareup.okhttp3:okhttp-dnsoverhttps")
     implementation("com.squareup.okio:okio:3.7.0")
 
