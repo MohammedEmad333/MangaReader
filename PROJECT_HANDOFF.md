@@ -1,8 +1,11 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-30
-at **0.72**. **0.55 through 0.65 and 0.67 through 0.72 are verified on device;
-0.66 is unaccounted for** — see §0. **The app now opens in about three seconds.**
+Context document for continuing work in a fresh chat. Last updated 2026-07-31
+at **0.78**. **0.55 through 0.65 and 0.67 through 0.78 are verified on device
+except 0.78 itself, whose CI result was never seen; 0.66 is unaccounted for** —
+see §0. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
+compileSdk 34 → 36, OkHttp → 5.4.0. None of that was a choice — one extension
+update forced all of it, and `SESSION_HANDOFF_0.78.md` §3 is the chain. **The app now opens in about three seconds.**
 It was taking around thirty, that item had been on the board for five sessions,
 and 0.71 measured it and 0.72 fixed it: the library screen was asking the
 Downloads tab's question to decide which covers get a download badge, which cost
@@ -55,9 +58,27 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-**Newest first: 0.72 is verified on device and the slow open is closed.**
-`SESSION_HANDOFF_0.72.md` is the current record and supersedes 0.70's, 0.71's and
-0.71_RESULT's on every point they overlap.
+**Newest first: 0.73–0.78 are one extension update and everything it moved.**
+`SESSION_HANDOFF_0.78.md` is the current record. The short version: the Elite
+Babes extension was updated, and the new build asserts the *shape* of the app's
+OkHttp client by class name, then reaches for OkHttp classes the app didn't
+ship. Satisfying it forced Kotlin 2.2.21, compileSdk 36 and OkHttp 5.4.0, across
+six releases and four red CI runs. **The app is in good shape and Elite Babes is
+still broken** — it browses now, and lists no chapters. It is one source out of
+95 and the only outstanding item on the board.
+
+Two things from that arc belong in anyone's working memory. **An extension's
+`classes.dex` lists every class it references**, so unzipping the APK and
+grepping it produces the whole gap in one pass instead of one crash at a time —
+`SESSION_HANDOFF_0.78.md` §4 has the commands, and not doing this first cost
+several hours. And **`LinkageError` is not an `Exception`**: extension code is
+compiled against a vendored API, so a mismatch arrives as an `Error` that
+`catch (e: Exception)` lets through. That is now converted to `IOException` at
+the one boundary every extension call crosses, `TachiyomiSourceAdapter`, after
+two releases spent widening catch sites and still missing a path (§5 there).
+
+**0.72 closed the slow open**, and `SESSION_HANDOFF_0.72.md` remains the record
+for it and supersedes 0.70's, 0.71's and 0.71_RESULT's where they overlap.
 
 In short. **0.70's two fixes are verified** — covers on hotlink-protected sources
 and the Extensions tab refetching on every visit were both installed and
@@ -139,9 +160,18 @@ as an import-scale operation rather than a loop, exactly as §5's "An import is 
 load test" and §7 item 1 required, and both of those entries have been rewritten
 to describe what exists instead of instructing someone to build it.
 
-**The named next piece of work is now "Elite Babes chapters have no pages"** —
-the only open item on the bug board and the only one never investigated at all.
-See `SESSION_HANDOFF_0.72.md` §5 for the full ordering.
+**The named next piece of work is still Elite Babes, and it is now two bugs
+deep.** Before the extension was updated it listed chapters and only pages were
+empty; now chapter listing fails too, so the original board item sits *behind* a
+newer one. The immediate step is one screenshot: 0.78 makes source errors name
+their exception type, and nobody has read the resulting string yet. The cheapest
+experiment nobody has run is downgrading the extension — if the old version
+lists chapters on 0.78, the fault is entirely in the new extension.
+`SESSION_HANDOFF_0.78.md` §6.
+
+After that, the ordering from `SESSION_HANDOFF_0.72.md` §5 stands: the reader
+(open thread 1, now eleven sessions untouched), the manifest theme, then the
+refresh backlog.
 
 **The Feed / Updates tab was the named next piece of work for three handoffs and
 has been moved down**, because it needs a diff of what a sweep changed and is
@@ -161,6 +191,51 @@ doesn't reconcile), on the seven-item numbering in `SESSION_HANDOFF_0.68.md` §5
 Sweep 2's arithmetic is short by **547**, split between them in unknown
 proportion. Both are now at the bottom of the list, not the top; the sweeps have
 run and the capability they were blocking is delivered.
+
+### 0.73–0.78 — one extension update, and the toolchain it dragged forward
+
+**Six releases, eleven commits, four red CI runs.** Full account in
+`SESSION_HANDOFF_0.78.md`; this is what belongs in the project's memory.
+
+- **Extensions assert the shape of the default OkHttp client, by class name.**
+  The updated Elite Babes requires `UserAgentInterceptor`,
+  `CloudflareInterceptor` and `UncaughtExceptionInterceptor` to be present and
+  `BrotliInterceptor` / `IgnoreGzipInterceptor` to be absent, checked on
+  `javaClass.simpleName`. Two of those were vendored in `:source-api` and never
+  wired up — `UncaughtExceptionInterceptor` had zero references in the tree
+  despite its own KDoc saying it should be first, and `UserAgentInterceptor`'s
+  logic had been inlined as a lambda, which the check cannot see. **A lambda
+  doing the same work is not the same class.**
+- **Then it reached for OkHttp classes the app didn't ship**, and each fix forced
+  the next: `okhttp3.CompressionInterceptor` needs OkHttp ≥ 5.2.0 → every OkHttp
+  from 5.2.0 is built with Kotlin 2.2.x, which a 2.0 compiler cannot read →
+  Kotlin 2.2.21 → `okhttp-android:5.4.0` demands compileSdk 36 → three OkHttp
+  jars collide on an OSGi metadata file → `okhttp3.zstd.Zstd` needs the
+  `okhttp-zstd` artifact. **None of it was optional.**
+- **`:app` had been running OkHttp 5 while claiming 4.** It declared
+  `okhttp:4.12.0`; `:source-api` declared `okhttp-bom:5.0.0-alpha.12`; Gradle
+  resolves conflicts to the highest. Anyone reading the network code against the
+  4.x docs was reading the wrong docs. Both modules now pin `5.4.0`.
+- **`LinkageError` is not an `Exception`, and that is now handled at the
+  boundary.** Extension code compiled against a newer API raises
+  `NoClassDefFoundError` / `NoSuchMethodError`, which `catch (e: Exception)`
+  lets straight through to a process death. 0.75 widened eight call sites; 0.76
+  widened both services and added `CoroutineExceptionHandler`s; **it still
+  crashed from a path neither found**. 0.77 converts `LinkageError` to
+  `IOException` inside `TachiyomiSourceAdapter.onSourceThread`, the one boundary
+  every extension call crosses, which makes an extension *unable* to raise a
+  non-`Exception` into app code. Enumerating the ways out was unbounded; closing
+  the one way in was a single edit.
+- **`LIB_VERSION_MAX` is 1.6 and the surface is not implemented.**
+  `SMangaUpdate` is referenced by the extension and absent from `:source-api`,
+  along with `getMangaUpdate`, `getMangaByUrl` and `fetchRelatedMangaList`. It
+  is deliberately left at 1.6 — narrowing would refuse 1.6 extensions that work,
+  and the gate reads what an extension claims anyway. The boundary conversion is
+  the real gate now.
+- **Also shipped and verified:** the Downloads tab no longer hangs (0.74 — a
+  0.72 regression, since the library screen had been warming those memos by
+  accident), and source errors now name their exception type instead of showing
+  a generic line indistinguishable from an empty result (0.78).
 
 ### Closed — 0.72, the slow open
 
@@ -754,6 +829,17 @@ need any. `res/` and `AndroidManifest.xml` are outside
 `cat > file <<'EOF'` block for a new file, a `sed` for a one-line edit to an
 existing one — exactly as `build.gradle.kts` already is.
 
+**Three Termux facts, each of which cost a round trip.** There is no `/tmp` —
+it is `$TMPDIR`, or just use `~`, and a failed `cd /tmp` leaves downloads sitting
+in the repo where `git add -A` will commit them. `pm list packages` returns
+nothing and `pm path` fails, because the shell's UID has no
+`QUERY_ALL_PACKAGES` — the app has it, the shell does not, so to inspect an
+extension download its APK from the repo instead. And **after any mechanical
+lambda rename, grep for `return@`**: 0.77 renamed nine
+`withContext(Dispatchers.IO)` headers and left ten `return@withContext` labels
+pointing at a builder that no longer existed, which is one grep and one CI round
+trip.
+
 **A heredoc ends an `&&` chain, so keep them in a separate paste.** After the
 first `EOF` the shell starts a fresh command list, which means everything after
 it runs whether the earlier steps succeeded or not — including
@@ -863,12 +949,30 @@ prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**, 
 
 | Thing | Version |
 |---|---|
-| Kotlin | 2.0.20 |
+| Kotlin | **2.2.21** |
 | AGP | 8.5.2 |
 | Gradle | 8.9 (via `gradle/actions/setup-gradle@v4`, no wrapper) |
 | JDK | 17 (temurin) |
-| compileSdk / targetSdk | 34 |
+| compileSdk | **36** |
+| targetSdk | 34 |
 | minSdk | 24 |
+
+**Kotlin, compileSdk and OkHttp all moved on 2026-07-31 and none of it was a
+choice** — see `SESSION_HANDOFF_0.78.md` §3. Three things follow from it:
+
+- **All three Kotlin plugin versions move together.** `kotlin.android` and
+  `kotlin.plugin.compose` are in the root build file; `kotlin.plugin.serialization`
+  is in `source-api/build.gradle.kts` and is easy to miss.
+- **compileSdk 36 exceeds what AGP 8.5.2 was tested against.** That is a warning,
+  not a limit, acknowledged by `android.suppressUnsupportedCompileSdk=36` in
+  `gradle.properties`. If a build ever fails inside AAPT2 or resource linking
+  rather than in our own code, the suppression has stopped covering it and the
+  real upgrade is AGP 8.11+ with Gradle 8.13+ — which also moves the
+  `gradle-version` pin in `.github/workflows`.
+- **`-Xcontext-receivers` is on borrowed time.** Kotlin 2.2 deprecated context
+  receivers in favour of context parameters. It still compiles; the entire usage
+  is `parseAs` and `decodeFromJsonResponse` in `OkHttpExtensions.kt`, both
+  `context(Json)`.
 
 Modules: `:app` and `:source-api`.
 
@@ -883,7 +987,9 @@ is behind a `workflow_dispatch` input to keep builds fast (~2–4 min warm).
 
 ### `:app` dependencies that constrain UI work
 Compose BOM `2024.09.03`, material3, **`material-icons-core` only** (see §5),
-coil `2.7.0`, telephoto zoomable-image, okhttp 4.12, documentfile,
+coil `2.7.0`, telephoto zoomable-image, **okhttp `5.4.0` via the BOM — pinned
+identically in `:app` and `:source-api`, and both must move together**,
+documentfile,
 **`androidx.work:work-runtime-ktx:2.9.1`**.
 
 WorkManager self-initialises through `androidx.startup` — there is no
@@ -1990,6 +2096,38 @@ Carry forward: **a position derived from "first visible" is not a position, it
 is a lower bound.** Anywhere a counter has to reach the end of a list — progress,
 read state, "did they finish it" — the first visible item cannot express it, and
 the honest test is whether there is anything left to scroll to.
+
+### A vendored API does not drift gently — it holds, then everything moves at once
+
+`:source-api` is a vendored copy of Tachiyomi 0.15's API, and for many releases
+that was free. On 2026-07-31 **one extension update** ended it, and the bill
+arrived in a single evening: five interceptor assertions the app didn't satisfy,
+two OkHttp classes it didn't ship, Kotlin 2.0.20 → 2.2.21, compileSdk 34 → 36, a
+packaging exclude, six releases and four red CI runs. Nothing had warned that
+any of it was pending, because nothing exercises a vendored API's *absence*
+until an extension asks for it.
+
+Three things follow, and they generalise past this incident.
+
+**Read the dex before writing code.** An extension APK's `classes.dex` lists
+every class it references. Unzip it and grep it — `SESSION_HANDOFF_0.78.md` §4
+has the commands — and the entire gap between what an extension wants and what
+the app ships appears in one pass. Discovering it one crash at a time is what
+turned one release into six.
+
+**An inference from evidence is not an observation.** `SMangaUpdate` was missing
+from the vendored API and referenced by the extension, so it was named as the
+cause with confidence. It was wrong; the actual stack trace said
+`CompressionInterceptor`. Both facts were true and only one was the bug. This is
+the same lesson as the covers fix in §0's 0.70 entry, arrived at from a
+different direction — and on Android the trace is one tap away, under **View
+summary** in the "keeps stopping" dialog.
+
+**Close the boundary rather than enumerating the exits.** See the 0.73–0.78
+entry in §0: two releases widened catch sites and still missed a path, and one
+conversion at `TachiyomiSourceAdapter` made the missed path irrelevant. When
+foreign code is involved, the set of places a failure can surface is unbounded
+and the set of places it can enter is one.
 
 ### A repository can change shape underneath you, and yours will not say so
 
