@@ -185,6 +185,11 @@ private fun LibrarySettings() {
     }
     val categoryCount = remember(categoryTick, showCategories) { Categories.list(context).size }
     val entryCount = remember { Library.list(context).size }
+    // The last sweep's numbers, if this process didn't run it. Here rather than
+    // in onCreate: this is the only screen that shows them, and the startup path
+    // is not the place for a read nothing on the first frame needs. Guarded
+    // internally, so calling it on every recomposition of this screen is free.
+    remember { LibraryRefresh.loadSummary(context) }
 
     SettingsColumn {
         SectionHeader("Display")
@@ -279,6 +284,14 @@ private fun LibrarySettings() {
                             unfinished ->
                                 "$alreadyCounted of $entryCount counted \u2014 " +
                                     "carries on from there"
+                            // `resumed` belongs here even though it is zero on
+                            // most runs. The end-of-sweep check is
+                            // `counted + failed + skipped == total - resumed`,
+                            // and with `resumed` absent from this row the one
+                            // input it needs is invisible after a sweep ends —
+                            // which makes the tempting move computing it from
+                            // the other three, turning the identity into x == x
+                            // and destroying the whole check.
                             LibraryRefresh.finishedAt > 0L -> listOfNotNull(
                                 "${LibraryRefresh.counted} counted",
                                 if (LibraryRefresh.failed > 0) {
@@ -286,6 +299,9 @@ private fun LibrarySettings() {
                                 } else null,
                                 if (LibraryRefresh.skipped > 0) {
                                     "${LibraryRefresh.skipped} skipped"
+                                } else null,
+                                if (LibraryRefresh.resumed > 0) {
+                                    "${LibraryRefresh.resumed} resumed"
                                 } else null
                             ).joinToString(" \u2022 ")
                             else -> "Fetch chapter lists for all $entryCount series"
@@ -313,12 +329,27 @@ private fun LibrarySettings() {
                 // copy never comes back. Clearing it is also what removes the
                 // first-error note below.
                 Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    TextButton(onClick = { LibraryRefresh.clearSummary() }) {
+                    TextButton(onClick = { LibraryRefresh.clearSummary(context) }) {
                         Text("Dismiss")
                     }
                 }
             }
             LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
+            // Which sources are failing, not just how many series did. One error
+            // string names one series; this names the thing to go and look at,
+            // across the whole library, in one pass. Sources are shown by id
+            // because a failing source is often one whose extension is the
+            // problem, and the id is what identifies it in the Extensions tab.
+            val failures = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
+                LibraryRefresh.failureCounts()
+            }
+            if (failures.isNotEmpty()) {
+                PrefNote(
+                    "Failures by source: " + failures.take(8).joinToString(" \u2022 ") {
+                        "${it.first} \u00d7${it.second}"
+                    } + if (failures.size > 8) " \u2026" else ""
+                )
+            }
             PrefNote(
                 "Unread counts, the unread badge and the Unread, Started and " +
                     "Completed filters only know about series you have opened. " +

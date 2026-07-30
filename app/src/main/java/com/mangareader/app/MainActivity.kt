@@ -122,8 +122,29 @@ internal fun diagnoseExtensions(context: Context): String =
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Back to the plain theme before the window is built. The manifest
+        // declares Theme.Yomu.Splash on this Activity so the app icon is on
+        // screen from the moment the process starts rather than a blank
+        // rectangle; leaving it in place would keep that icon as the window
+        // background behind the whole app for the rest of the session.
+        //
+        // Before super.onCreate, which is where the window gets its theme. On
+        // API 31+ the system draws its own splash from the same two attributes
+        // (see res/values-v31/themes.xml) and this call is simply harmless.
+        setTheme(R.style.Theme_Yomu)
         super.onCreate(savedInstanceState)
-        SourceManager.migrateLegacy(this)
+        // The first thing in the process to touch SharedPreferences, so it is
+        // the one that pays for loading and parsing the whole 2.5 MB
+        // manga_reader.xml — every one of the twelve stores that share the file
+        // is loaded by whoever asks first.
+        //
+        // The marks inside Library and SeriesIndex cannot see this. They run
+        // during composition, by which time the file is already in memory, so
+        // both report 0 ms for "Prefs first read" — recording a cost that has
+        // *already been paid*, not one that was free. That made row 1 of the
+        // 0.71 report's reading table unable to fire as written
+        // (`SESSION_HANDOFF_0.71_RESULT.md` §4). This is the mark that can.
+        StartupTimings.once("Prefs load (onCreate)") { SourceManager.migrateLegacy(this) }
         ensureNotificationPermission()
         // Both read SharedPreferences, so they have to happen before the first
         // composition rather than inside it: the theme decides the colour scheme

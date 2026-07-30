@@ -29,6 +29,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Progress of a library refresh, for anything on screen that wants to show it.
@@ -50,6 +53,14 @@ import kotlinx.coroutines.launch
  * that discarded the position capped how far the index could ever get at the
  * length of the longest uninterrupted run.
  */
+/**
+ * The tally key for a failure that belongs to no source.
+ *
+ * Source ids are `"tachi:<n>"` or a local uuid, so the parentheses make this
+ * unmistakable in the failure list and impossible to collide with.
+ */
+internal const val SWEEP_ITSELF = "(the sweep itself)"
+
 object LibraryRefresh {
     var running by mutableStateOf(false)
         internal set
@@ -100,6 +111,31 @@ object LibraryRefresh {
     var finishedAt by mutableStateOf(0L)
         internal set
 
+    /**
+     * Failures per source id.
+     *
+     * [firstError] keeps one string, deliberately and for a good reason, but one
+     * string cannot answer "which sources are failing" — and that is the
+     * question the end-of-sweep arithmetic exists to raise. Bug 6's fix turns
+     * 547 unaccounted series into a *count* of failures; without a tally the
+     * next step is still opening sources by hand to find the broken one, which
+     * is what the sweep was supposed to replace.
+     *
+     * A `ConcurrentHashMap` of `AtomicInteger` rather than the pattern the
+     * counters use, because `failed++` from up to `SOURCE_CONCURRENCY`
+     * coroutines is exactly bug 3 and loses increments. **This does not fix bug
+     * 3** — [failed] is untouched and still races. It means the *tally* doesn't,
+     * so if the two disagree at the end of a sweep, the tally is the one to
+     * believe and the size of the disagreement is a free measurement of bug 3.
+     */
+    private val failureTally = ConcurrentHashMap<String, AtomicInteger>()
+
+    /** A snapshot of [failureTally], worst first. Safe to call at any time. */
+    fun failureCounts(): List<Pair<String, Int>> =
+        failureTally.entries
+            .map { it.key to it.value.get() }
+            .sortedByDescending { it.second }
+
     internal fun begin(count: Int, alreadyDone: Int = 0) {
         running = true
         total = count
@@ -113,21 +149,24 @@ object LibraryRefresh {
         currentTitle = ""
         firstError = null
         finishedAt = 0L
+        failureTally.clear()
     }
 
-    internal fun end() {
+    internal fun end(context: Context) {
         running = false
         currentTitle = ""
         finishedAt = System.currentTimeMillis()
+        saveSummary(context)
     }
 
-    internal fun noteFailure(message: String?) {
+    internal fun noteFailure(sourceId: String, message: String?) {
         failed++
+        failureTally.computeIfAbsent(sourceId) { _ -> AtomicInteger(0) }.incrementAndGet()
         if (firstError == null) firstError = message ?: "Unknown error"
     }
 
     /** Everything zeroed, so a dismissed summary doesn't come back. */
-    fun clearSummary() {
+    fun clearSummary(context: Context) {
         if (running) return
         total = 0
         done = 0
@@ -137,6 +176,79 @@ object LibraryRefresh {
         skipped = 0
         firstError = null
         finishedAt = 0L
+        failureTally.clear()
+        loaded = true
+        runCatching { prefs(context).edit().remove(SUMMARY_KEY).apply() }
+    }
+
+    // ---------- persistence ----------
+
+    /**
+     * Where the finished summary lives between processes.
+     *
+     * One key holding one JSON object, not eight keys. The prefs file is 2.5 MB
+     * across several thousand entries and what makes it slow to load is the
+     * entry count rather than the byte size
+     * (`SESSION_HANDOFF_0.71_RESULT.md` §4), so adding eight entries to save six
+     * numbers would be paying in the currency that is actually scarce.
+     */
+    private const val SUMMARY_KEY = "refresh_last_summary"
+
+    @Volatile
+    private var loaded = false
+
+    /**
+     * Restores the last finished sweep's numbers, once per process.
+     *
+     * Called from the Settings screen rather than from `onCreate`, because that
+     * is the only screen that shows them and the startup path is not somewhere
+     * to add a read that nothing on the first frame needs.
+     *
+     * Why persist at all: every counter here is Compose state with nothing
+     * behind it, so installing a build — or anything else that ends the process
+     * — destroyed the summary. That is how sweep 1's numbers were lost and how
+     * sweep 2's were nearly lost, and those numbers are the whole input to the
+     * `counted + failed + skipped == total - resumed` check that bugs 3 and 6
+     * announce themselves through.
+     */
+    fun loadSummary(context: Context) {
+        if (loaded || running) return
+        loaded = true
+        runCatching {
+            val raw = prefs(context).getString(SUMMARY_KEY, null) ?: return
+            val o = JSONObject(raw)
+            total = o.optInt("total")
+            done = o.optInt("done")
+            counted = o.optInt("counted")
+            resumed = o.optInt("resumed")
+            failed = o.optInt("failed")
+            skipped = o.optInt("skipped")
+            finishedAt = o.optLong("finishedAt")
+            firstError = if (o.isNull("firstError")) null else o.optString("firstError")
+            o.optJSONObject("failures")?.let { f ->
+                failureTally.clear()
+                for (key in f.keys()) failureTally[key] = AtomicInteger(f.optInt(key))
+            }
+        }
+    }
+
+    private fun saveSummary(context: Context) {
+        loaded = true
+        runCatching {
+            val failures = JSONObject()
+            for ((key, value) in failureTally) failures.put(key, value.get())
+            val o = JSONObject()
+                .put("total", total)
+                .put("done", done)
+                .put("counted", counted)
+                .put("resumed", resumed)
+                .put("failed", failed)
+                .put("skipped", skipped)
+                .put("finishedAt", finishedAt)
+                .put("firstError", firstError ?: JSONObject.NULL)
+                .put("failures", failures)
+            prefs(context).edit().putString(SUMMARY_KEY, o.toString()).apply()
+        }
     }
 }
 
@@ -284,7 +396,11 @@ class LibraryRefreshService : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                LibraryRefresh.noteFailure(e.message ?: e.javaClass.simpleName)
+                // Not attributable to a source: this is the sweep itself
+                // falling over, not one extension misbehaving. Filed under a
+                // name no sourceId can collide with so it can't be mistaken for
+                // a badly-behaved source in the tally.
+                LibraryRefresh.noteFailure(SWEEP_ITSELF, e.message ?: e.javaClass.simpleName)
             } finally {
                 // Whatever is still in hand goes in, cancelled or not: these are
                 // counts already fetched, and throwing them away would mean a
@@ -292,7 +408,7 @@ class LibraryRefreshService : Service() {
                 flush()
                 // Only a sweep that finished gives up its resume point.
                 if (completed) RefreshCursor.clear(this@LibraryRefreshService)
-                LibraryRefresh.end()
+                LibraryRefresh.end(this@LibraryRefreshService)
                 releaseWakeLock()
                 stopEverything()
             }
@@ -407,6 +523,7 @@ class LibraryRefreshService : Service() {
                 throw e
             } catch (e: Exception) {
                 LibraryRefresh.noteFailure(
+                    entry.sourceId,
                     "${entry.title} — ${e.message ?: e.javaClass.simpleName}"
                 )
             }
@@ -579,7 +696,7 @@ class LibraryRefreshService : Service() {
             // entry parse each. Until it does, `running` is still false and the
             // Settings row is showing the *last* sweep's summary beside a refresh
             // that has already started.
-            LibraryRefresh.clearSummary()
+            LibraryRefresh.clearSummary(context)
             val intent = Intent(context, LibraryRefreshService::class.java)
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -43,6 +43,26 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 72,
+            name = "0.72",
+            header = "The app opens in about three seconds",
+            body = "It was taking around thirty. The cause turned out to be " +
+                "the download badge on library covers: to decide which " +
+                "covers get one, the library was asking the same question " +
+                "the Downloads tab asks \u2014 which measures every " +
+                "downloaded chapter and scans the whole library for " +
+                "downloads it might have lost track of. All of it before the " +
+                "first frame could be drawn, every single time.\n\n" +
+                "The library now asks a smaller question, and the badges are " +
+                "unchanged.\n\n" +
+                "The startup screen also shows the app icon now, instead of " +
+                "an empty rectangle.\n\n" +
+                "Two smaller things: the refresh summary survives closing the " +
+                "app, so its numbers aren't lost the moment you install an " +
+                "update, and it now lists which sources the failures came " +
+                "from rather than only how many there were.",
+        ),
+        ReleaseNote(
             code = 71,
             name = "0.71",
             header = "Finding out why the app is slow to open",
