@@ -1,9 +1,9 @@
 # Yomu / MangaReader — Project Handoff
 
 Context document for continuing work in a fresh chat. Last updated 2026-07-31
-at **0.78**. **0.55 through 0.65 and 0.67 through 0.78 are verified on device
-except 0.78 itself, whose CI result was never seen; 0.66 is unaccounted for** —
-see §0. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
+at **0.81**. **0.55 through 0.65 and 0.67 through 0.81 are verified on device;
+0.66 is unaccounted for** — see §0. **The bug board is empty**, for the first
+time in this project's recorded history. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
 compileSdk 34 → 36, OkHttp → 5.4.0. None of that was a choice — one extension
 update forced all of it, and `SESSION_HANDOFF_0.78.md` §3 is the chain. **The app now opens in about three seconds.**
 It was taking around thirty, that item had been on the board for five sessions,
@@ -58,7 +58,32 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-**Newest first: 0.73–0.78 are one extension update and everything it moved.**
+**Newest first: the board is clear, and 0.80 is the piece that matters.**
+`SESSION_HANDOFF_0.81.md` is the current record. The vendored API now implements
+`getMangaUpdate` — the single call current extensions use to fetch a series'
+details and chapter list together, returning both in an `SMangaUpdate`. Sources
+that adopt it were previously unusable: they browse perfectly and then fail on
+every series, because the legacy `chapterListRequest`/`chapterListParse` pair
+they declare is `throw UnsupportedOperationException()`. **This was never an
+Elite Babes problem** and more sources will move to it.
+
+**"Elite Babes chapters have no pages" is closed as an upstream extension bug.**
+It was reproduced by browsing Popular, whose first page fetches the site's
+homepage — where `.list-gallery` now holds category tiles rather than galleries.
+Every "series" opened that way was a category page with one chapter pointing back
+at itself, and category pages have no images. Reading works via Latest; browsing
+is capped by a stale pagination selector. `SESSION_HANDOFF_0.81.md` §3 has the
+full URL and selector table, which is a complete bug report for Keiyoushi.
+Nothing about it is fixable in this app.
+
+**Extension APKs can be decompiled, and doing that is how this was found.**
+`SESSION_HANDOFF_0.81.md` §4 has the commands. Grepping a dex shows which names
+are present; disassembling shows which methods are stubs, every selector and
+every URL. Two conclusions this session — "the parse returns nothing" and
+"Popular can't work" — were both wrong, and both times the extension's code was
+already on disk and unread.
+
+**0.73–0.78 were one extension update and everything it moved.**
 `SESSION_HANDOFF_0.78.md` is the current record. The short version: the Elite
 Babes extension was updated, and the new build asserts the *shape* of the app's
 OkHttp client by class name, then reaches for OkHttp classes the app didn't
@@ -160,8 +185,17 @@ as an import-scale operation rather than a loop, exactly as §5's "An import is 
 load test" and §7 item 1 required, and both of those entries have been rewritten
 to describe what exists instead of instructing someone to build it.
 
-**The named next piece of work is still Elite Babes, and it is now two bugs
-deep.** Before the extension was updated it listed chapters and only pages were
+**The named next piece of work is open thread 1 — the reader** — because the
+board is empty and it has now survived twelve sessions untouched. It is still the
+largest untested surface in the app.
+
+A smaller, contained alternative: replace 0.81's per-series lock with a single
+`getMangaUpdate(fetchDetails = true, fetchChapters = true)` call. Opening a
+series currently asks twice and serialises the two; asking once is what the API
+is shaped for and halves the requests. It needs the app's `Source` interface to
+grow a way to request both at once. See `SESSION_HANDOFF_0.81.md` §2.3.
+
+**Elite Babes, which held this slot, is closed — upstream.** Before the extension was updated it listed chapters and only pages were
 empty; now chapter listing fails too, so the original board item sits *behind* a
 newer one. The immediate step is one screenshot: 0.78 makes source errors name
 their exception type, and nobody has read the resulting string yet. The cheapest
@@ -191,6 +225,32 @@ doesn't reconcile), on the seven-item numbering in `SESSION_HANDOFF_0.68.md` §5
 Sweep 2's arithmetic is short by **547**, split between them in unknown
 proportion. Both are now at the bottom of the list, not the top; the sweeps have
 run and the capability they were blocking is delivered.
+
+### 0.79–0.81 — the API current extensions actually use
+
+**Three releases; one of them was wrong and was reverted.** Full account in
+`SESSION_HANDOFF_0.81.md`.
+
+- **Current extensions fetch details and chapters in one request.** They
+  implement `getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)` and
+  declare the legacy `chapterListRequest`/`chapterListParse` and
+  `mangaDetailsRequest`/`mangaDetailsParse` as
+  `throw UnsupportedOperationException()`. `HttpSource` now implements
+  `getMangaUpdate` with the old Rx path as its default body, so old extensions
+  are unaffected, and routes `getChapterList`/`getMangaDetails` through it.
+- **`SMangaUpdate(SManga?, List<SChapter>?)`'s constructor signature is fixed by
+  binary compatibility.** Extensions call it directly, so a changed shape means
+  `NoSuchMethodError` in every one of them. It was read out of a dex.
+- **An extension may refuse two concurrent updates for the same manga, and one
+  does.** This app fetches details and chapters simultaneously when opening a
+  series, so they raced — the same series worked or didn't depending on timing.
+  0.81 serialises them per series. Asking once for both is the better fix and is
+  the named alternative in §0.
+- **0.79 was a wrong diagnosis that shipped.** It changed the fetch path for all
+  seven entry points across every source on the theory that the request/parse
+  pair was what extensions override. Both routes end at the same stub, so it
+  fixed nothing and risked everything. **A change whose blast radius is every
+  source should not ride along with a fix for one source.**
 
 ### 0.73–0.78 — one extension update, and the toolchain it dragged forward
 
