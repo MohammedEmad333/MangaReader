@@ -2,16 +2,26 @@
 
 Context document for continuing work in a fresh chat. **The per-release
 `SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
-on 2026-07-31; `SESSION_HANDOFF_0.83.md` and `SESSION_HANDOFF_0.87.md` are the
-session files, and git history has the rest.** Last updated 2026-07-31
-at **0.87**. **0.55 through 0.65 and 0.67 through 0.87 are verified on device;
-0.66 is unaccounted for** — see §0.
+on 2026-07-31; `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md` and
+`SESSION_HANDOFF_0.90.md` are the session files, and git history has the rest.**
+Last updated 2026-07-31 at **0.90**. **0.55 through 0.65 and 0.67 through 0.89
+are verified on device; 0.66 is unaccounted for and 0.90 has never been
+installed** — see §0.
 
 **The bug board is not empty and this document claimed it was for four
-releases.** It stood at six when the 0.83 handoff was written, is at four now,
-and two of the four are new. `SESSION_HANDOFF_0.87.md` §6 is the current board
-and the reason two of its items are one bug. Treat "the board is empty" anywhere
-below as a statement about 2026-07-31 morning, not about now.
+releases.** `SESSION_HANDOFF_0.90.md` §6 is the current board. Treat "the board
+is empty" anywhere below as a statement about 2026-07-31 morning, and treat the
+four-item board in `SESSION_HANDOFF_0.87.md` §6 as superseded: its items 1 and 4
+have a fix shipped in 0.90 and unverified, its item 3 is half closed, and a new
+item — the Resume button opening the first chapter rather than the last one read
+— was found while testing.
+
+**Open thread 1 is closed, and this is the first time in thirteen sessions that
+sentence has been true.** The reader was the largest untested surface in the app.
+Paged right-to-left, grayscale and invert together, the chapter picker and
+settings surviving a reopen have now all been exercised on device; two were
+broken and are fixed. `SESSION_HANDOFF_0.90.md` §1. Whatever is chosen next is
+being chosen on its merits rather than because the reader was too large to face.
 
 **The headline of the 0.84–0.87 run is one character: `JsonObject?` where
 extensions-lib declares `JsonObject`.** 0.83 added `SManga.memo` /
@@ -85,6 +95,40 @@ exactly which half and why.
 ---
 
 ## 0. Where this was left — read this first
+
+### 0.88–0.90 — the reader, and covers
+
+Full account in `SESSION_HANDOFF_0.90.md`.
+
+- **Resuming a chapter loads from the page you are on.** `startAt` on
+  `loadPagesProgressively` reorders *indices*, never the page list — the index
+  addresses the slot and the filename, and batch count, `BATCH_GAP_MS` and the
+  recycle cadence are all untouched, because requests-per-connection is the
+  manhwatoon variable. `startAt = 0` reproduces the old sequence exactly, so the
+  download path is unchanged. The tail runs **descending**, so the page one flick
+  above the reader comes back early rather than last; 0.88 shipped it ascending.
+- **0.88 woke a race by making a job outlive the screen.** Reordering meant
+  backing out at page 40 left pages 0–39 outstanding, so leaving reliably
+  cancelled a *live* job — and a cancelled coroutine's `finally` runs after its
+  replacement has started. The old load cleared the flag the new one had set, and
+  every page read "couldn't be loaded" for five seconds. The reader now has its
+  own `pagesLoading` rather than sharing `isLoading` with five other operations,
+  and a token claimed before launch means only the load that set the flag may
+  clear it. §5 has the general form.
+- **The right-to-left slider ran backwards, and was then mirrored wrongly.**
+  `reverseLayout` flips the pager while `currentPage` stays logical. 0.88
+  mirrored the *value*: direction right, fill backwards. 0.89 mirrors the widget
+  with `LocalLayoutDirection provides Rtl` around that Slider alone.
+- **The chapter picker opens on the chapter being read**, seeded into the list
+  state rather than scrolled from an effect.
+- **Covers repair themselves during a sweep (0.90, unverified).** `CoverRepair.kt`
+  holds the candidate list; blank and loopback covers are free to find in stored
+  data, and stale ones are recorded by `CoverImage` when a draw returns a definite
+  404 or 410, so detection is paid by rendering that was happening anyway. Writes
+  batch through `Library.setCovers`. **`SESSION_HANDOFF_0.87.md` §6's premise was
+  wrong** — the sweep holds no fetched `SManga`, because `restoreSeries` makes no
+  network call, so a cover costs a real `loadDetails` and is spent only on
+  entries that need one.
 
 **Newest first: 0.84–0.87, and the board is at four.**
 `SESSION_HANDOFF_0.87.md`. `SManga.memo` and `SChapter.memo` are **non-null**,
@@ -244,9 +288,10 @@ down or the number went on a build fix. Recorded as a gap rather than guessed at
 if anyone remembers, fill it in, because the missing entry looks like a bug in
 `WhatsNew`'s ordering to whoever finds it next.
 
-**Thread 1 below is still open and has now survived five sessions.** The reader
-is still the largest untested surface in the app: 0.62 through 0.65 all touched
-it and were checked, but each check exercised the one path that release changed.
+**Thread 1 closed in 0.88–0.90, having survived thirteen sessions.** The
+paragraph below is the record of why it lasted, and the diagnosis in it was
+right: 0.62 through 0.65 all touched the reader and were checked, but each check
+exercised the one path that release changed.
 The list of things nobody has ever run — paged right-to-left, grayscale and
 invert together, the chapter picker, whether settings survive reopening — has
 not shrunk. **Thread 2 is now half closed**: 0.64 fixed the white-on-white text,
@@ -258,14 +303,15 @@ as an import-scale operation rather than a loop, exactly as §5's "An import is 
 load test" and §7 item 1 required, and both of those entries have been rewritten
 to describe what exists instead of instructing someone to build it.
 
-**The named next piece of work is still open thread 1 — the reader** — now
-thirteen sessions untouched and still the largest untested surface in the app.
-The reasoning has changed slightly: it is no longer "because the board is empty"
-(it isn't, see the top of this file), but because **board item 3 — resume and
-scroll should load the current page forward — lands squarely inside it**, so the
-reader can now be entered with a user-visible payoff attached rather than as
-speculative testing. `SESSION_HANDOFF_0.87.md` §7 has the shape of that item and
-why it was deliberately held back rather than bundled into 0.86.
+**~~The named next piece of work is still open thread 1 — the reader~~ — done in
+0.88–0.90.** It was named here for thirteen sessions. Entering it through board
+item 3, rather than as speculative testing, is what worked: the item forced the
+page-fetch path open, and the two bugs actually found — the RTL slider and the
+chapter picker — were found by *reading* the file while in there, not by the
+item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.90.md`
+§1. **Item 3's seek half is still open and this is the place it would be missed:**
+resume is done, reprioritising a fetch already in flight is not, and it needs a
+reorderable work queue rather than a parameter.
 
 A smaller, contained alternative: replace 0.81's per-series lock with a single
 `getMangaUpdate(fetchDetails = true, fetchChapters = true)` call. Opening a
@@ -744,7 +790,17 @@ its own search can't find it. Ruled out app-side — the filter list carried int
 nothing. Extension search endpoints commonly index differently from their
 listing pages. Don't spend another session on it without new evidence.
 
-### Open thread 1 — the reader rewrite is barely tested
+### Closed — open thread 1, the reader
+
+**Closed in 0.88–0.90 after thirteen sessions.** Everything the list below calls
+untried has now been run on device: paged right-to-left and its slider, grayscale
+and invert together, the chapter picker, and whether settings survive reopening a
+chapter. The colour filters and settings persistence were correct as written; the
+RTL slider and the picker were not, and both are fixed. The `configChanges`
+commit at the end of the list is also exercised — rotation no longer bounces the
+reader back to the Library. `SESSION_HANDOFF_0.90.md` §1. The rest of this entry
+is kept as the record of what was unknown, and what the cost of leaving it that
+way turned out to be.
 
 **Two of its bugs surfaced in 0.57** and both had been there since the rewrite:
 long strip could not report its last page, and undecoded pages measured zero
@@ -912,8 +968,8 @@ loopback image URLs, which the repoint now handles. **Leave the mirror on
 
 ### Cheap wins if you want something self-contained
 
-Failed-download retry is only lightly exercised. The reader (thread 1) is the
-largest untested surface in the app and has been for several sessions.
+Failed-download retry is only lightly exercised. (The reader was named here as
+the largest untested surface for several sessions; that closed in 0.88–0.90.)
 
 Two more, both small and both isolated to one file:
 
@@ -2096,6 +2152,74 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
+### A change that lengthens a job's lifetime wakes races that were always there
+
+0.88 reordered the reader's page fetch to start at the resume position. Nothing
+about concurrency changed. It nonetheless produced a reliable bug that had been
+latent for the whole life of the download path.
+
+The reason is that the reorder changed **what is still running when the user can
+act**. Before it, reading to page 40 meant pages 0–40 had long since arrived and
+the job was finished by the time anyone backed out. After it, being at page 40 is
+exactly the condition under which pages 0–39 are outstanding — so leaving now
+reliably cancels a *live* job.
+
+And cancelling a coroutine does not unwind it synchronously. Its `finally` runs
+whenever it next resumes, which is routinely after its replacement has started.
+The old load's `finally` cleared `isLoading`, the new load had already set it, and
+`stillLoading` is the only thing separating a pending page from a failed one — so
+every page rendered "couldn't be loaded" until it arrived.
+
+Three things carry:
+
+- **Ask of any change to ordering or duration: what used to be finished by the
+  time the user could act, and is it still?** The change itself need not touch
+  concurrency to change the answer.
+- **A flag must be cleared by the operation that set it.** The fix is a token
+  claimed *before* the launch and compared in `finally` — not a job reference
+  compared by identity, because the reference is assigned after the launch and
+  the race is about precisely that window.
+- **A shared flag cannot answer a question only one screen asks.** `isLoading` is
+  written by six launch blocks in `YomuApp`; the reader now owns `pagesLoading`.
+  This is "a lazily-populated store has three states" from the other end — the
+  store was never wrong, the consumer was asking it something it couldn't know.
+
+### A stated cost rots faster than a stated mechanism
+
+`SESSION_HANDOFF_0.87.md` §6 proposed putting cover repair in the refresh sweep,
+on the grounds that it "already visits every series and already holds the fetched
+`SManga`, so writing a corrected cover alongside the counts is close to free".
+
+The mechanism was right and the price was wrong. `LibraryRefresh` calls
+`restoreSeries`, which makes **no network request** — that is its entire purpose
+and it is documented three times in §4 of this file. The sweep holds a stub with
+a null `thumbnail_url`. A cover costs a second request per series, and the
+obvious implementation would have doubled a 79-minute sweep against a shared
+6-hour daily foreground budget in order to repair a minority of entries.
+
+- **Prices depend on what the surrounding code does today; mechanisms don't.**
+  When a note says something is free, that is the sentence to re-derive, and here
+  it was one `grep`.
+- **Two symptoms sharing a mechanism need not share a cost.** §6's "why 1 and 4
+  are one bug" was true and useful, and it hid the only fact that determined what
+  to build: blank covers are free to find in stored data, stale ones are not.
+- **Detection can sometimes be billed to work already happening.** The grid draws
+  every cover it shows and already holds Coil's error, so a 404 there is evidence
+  nobody has to pay for.
+
+### Mirroring has two halves, and they fail independently
+
+The right-to-left page slider ran backwards: `reverseLayout` flips the pager while
+`currentPage` stays logical, so the slider increased rightwards while the chapter
+advanced leftwards. 0.88 fixed it by mirroring the *value* — which corrected the
+direction and inverted the fill, leaving the track full at page one.
+
+Mirror the widget, not the number: `LocalLayoutDirection provides Rtl` scoped to
+the control, which Material3's Slider honours for track, thumb and drag-to-value
+at once. This is 0.64's "a symmetric mistake looks correct at rest" with a second
+edge on it — the first fix was verifiable by dragging and the fill needed looking
+at, so a partial fix passed the obvious test.
+
 ### A vendored API that relaxes a type deletes the other side's error handling
 
 `:source-api` declared `var memo: JsonObject?`. extensions-lib 1.6 declares
@@ -3018,7 +3142,14 @@ Roughly in order of value:
    one until the app restarts. Cheap to fix if it ever matters — drop the entry
    on the install broadcast.
 
-3. **Covers in the library go stale and nothing repairs them in bulk.**
+3. **Covers in the library go stale — fix shipped in 0.90, unverified.**
+   `CoverRepair.kt` and the repair step in `LibraryRefresh` are the answer this
+   entry asked for, built as described below except for the cost: the sweep does
+   *not* hold a fetched `SManga`, so a cover is a second request and is spent
+   only on candidates. `SESSION_HANDOFF_0.90.md` §2. The rest of this item is the
+   original analysis, kept until 0.90 is confirmed on device.
+
+   **Covers in the library go stale and nothing repairs them in bulk.**
    `healCover` fires on the first open of a series and **only when the stored
    cover is blank or loopback** — never when it is present and wrong. That
    narrowness is now two board items: SpyFakku entries stay grey until each is
@@ -3240,7 +3371,18 @@ Re-list a series when a rebuilt chapter handle isn't enough              4264dea
 Make memo non-null, as extensions-lib declares it                       21628af  verified OK
 Scope Stop to one series, keep Sources scroll, always offer Popular      0db1971  3 of 4 checks
 Keep lastUsedId out of the Sources scroll signature                     62f412d  verified OK
+Load a resumed chapter from the current page forward; RTL slider; picker bf2241d  3 of 6 checks
+Own the reader's loading flag per load; nearest-first wrap; RTL slider    1b358a2  verified OK
+Repair stale and missing library covers during the refresh sweep         3189c8d  UNVERIFIED
 ```
+
+`bf2241d` is a fourth entry in the pattern below: it shipped correct in
+isolation and broke something only in combination with what was already there —
+by making a job outlive the screen, it turned a latent cancellation race into a
+reliable one. `1b358a2` fixed that plus two things `bf2241d` got half right, and
+is the release that closed open thread 1. `3189c8d` was pushed while the sweep
+needed to test it was running, so it is on `main` and has never been installed;
+**do not record it as working**.
 
 The 0.84–0.87 run is `SESSION_HANDOFF_0.87.md`. Three annotations from it belong
 here. **`4264dea` is another commit that shipped correct and did nothing** — it
