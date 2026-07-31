@@ -191,6 +191,13 @@ private fun LibrarySettings() {
     }
     val categoryCount = remember(categoryTick, showCategories) { Categories.list(context).size }
     val entryCount = remember { Library.list(context).size }
+    // How many series the index still knows nothing about. Both reads are
+    // memoised on their raw pref strings, and this recomputes when a sweep ends
+    // — which is exactly when the answer changes.
+    val uncountedCount = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
+        val known = SeriesIndex.all(context).keys
+        Library.list(context).count { it.seriesId !in known }
+    }
     // The last sweep's numbers, if this process didn't run it. Here rather than
     // in onCreate: this is the only screen that shows them, and the startup path
     // is not the place for a read nothing on the first frame needs. Guarded
@@ -343,6 +350,21 @@ private fun LibrarySettings() {
             )
             // Offered only when nothing is running: two sweeps would fight over
             // the same counters and the same foreground service.
+            if (!LibraryRefresh.running && uncountedCount > 0) {
+                ListItem(
+                    headlineContent = { Text("Refresh what's missing") },
+                    supportingContent = {
+                        Text(
+                            "$uncountedCount series have no chapter count yet \u2014 " +
+                                "usually ones whose extension wasn't installed when " +
+                                "the last refresh ran, or ones it failed on."
+                        )
+                    },
+                    modifier = Modifier.clickable {
+                        LibraryRefreshService.startUncounted(context, uncountedCount)
+                    }
+                )
+            }
             if (!LibraryRefresh.running) {
                 ListItem(
                     headlineContent = { Text("Refresh some sources") },
