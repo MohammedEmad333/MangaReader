@@ -2,11 +2,28 @@
 
 Context document for continuing work in a fresh chat. **The per-release
 `SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
-on 2026-07-31; `SESSION_HANDOFF_0.83.md` is the only session file, and git
-history has the rest.** Last updated 2026-07-31
-at **0.83**. **0.55 through 0.65 and 0.67 through 0.83 are verified on device;
-0.66 is unaccounted for** — see §0. **The bug board is empty**, for the first
-time in this project's recorded history.
+on 2026-07-31; `SESSION_HANDOFF_0.83.md` and `SESSION_HANDOFF_0.87.md` are the
+session files, and git history has the rest.** Last updated 2026-07-31
+at **0.87**. **0.55 through 0.65 and 0.67 through 0.87 are verified on device;
+0.66 is unaccounted for** — see §0.
+
+**The bug board is not empty and this document claimed it was for four
+releases.** It stood at six when the 0.83 handoff was written, is at four now,
+and two of the four are new. `SESSION_HANDOFF_0.87.md` §6 is the current board
+and the reason two of its items are one bug. Treat "the board is empty" anywhere
+below as a statement about 2026-07-31 morning, not about now.
+
+**The headline of the 0.84–0.87 run is one character: `JsonObject?` where
+extensions-lib declares `JsonObject`.** 0.83 added `SManga.memo` /
+`SChapter.memo` and vendored them nullable. Every 1.6 extension is compiled
+against the non-null declaration, so extension code carries no null check and a
+null arrived as `NullPointerException` on `JsonObject.get` from inside the
+extension — after silently deleting the fallback its author had written for
+exactly that case. Asura Scans could be browsed but not opened from the Library,
+read but not downloaded. `SESSION_HANDOFF_0.87.md` is the full account and §5
+there is the generalisation, which is the most reusable thing in it: **a vendored
+API that relaxes a type is a contract change to everything compiled against it,
+and nothing reports it.**
 
 **The headline of 2026-07-31 is not any single bug: about one extension in eight
 had outgrown this app's vendored API.** A 23-extension sample of the 1365 in the
@@ -68,6 +85,51 @@ exactly which half and why.
 ---
 
 ## 0. Where this was left — read this first
+
+**Newest first: 0.84–0.87, and the board is at four.**
+`SESSION_HANDOFF_0.87.md`. `SManga.memo` and `SChapter.memo` are **non-null**,
+defaulting to `JsonObject(emptyMap())`, matching extensions-lib 1.6. 0.83
+vendored them nullable, which compiled clean and turned every guarded fallback in
+every extension that reads a memo into dead code. Nineteen of the 1367
+extensions read one; all nineteen index it directly, so all nineteen would have
+crashed. Binary compatible — the JVM signature is unchanged either way, since
+Kotlin nullability is metadata, not shape.
+
+**A rebuilt chapter handle is not always enough, and `DownloadService` now knows
+it.** The queue stores ids and reconstructs the `SChapter` when its turn comes,
+which yields url and name and nothing else. Asura builds its page URL from
+`chapter.memo["mangaSlug"]`, which only its own chapter-list parse produces, so
+no rebuild can ever supply it. `genuineChapter` re-lists the series and takes the
+matching entry — one extra request per series, cached per drain, and only on a
+failure at or before `getPageList`. **It shipped one release before the fix it
+depends on and was therefore inert**, which is worth knowing before trusting the
+next "the fallback didn't work" report.
+
+**Three board items closed in 0.86.** Stop on a series screen cancelled the whole
+queue and read "Stop" on every series screen while anything downloaded; it is now
+scoped by `DownloadQueue.hasSeries` / `removeSeries`. Roku Hentai had no Popular
+chip because it was nested inside `if (supportsLatest)`. The Sources list kept
+losing its scroll — fifth instance of the hoisting bug below.
+
+**0.86's scroll fix shipped broken and 0.87 fixed it, and the lesson is a rule.**
+The signature handed to `ScrollMemory.sync` included `lastUsedId`, and
+`openSource()` writes it — so the signature changed on exactly the trip the store
+exists to survive. Third scroll signature got wrong in this project, all three the
+same error. §5 has the rule.
+
+**Two new board items and they are one bug.** Library covers 404ing, and
+SpyFakku covers staying grey until each series is opened. `Library.healCover`
+fires only on a blank or loopback cover, never on a stale one, and nothing
+repairs the library in bulk. `SESSION_HANDOFF_0.87.md` §6 has the analysis and
+why the refresh sweep is where it belongs.
+
+**The "To add" column is now written down.** `SESSION_HANDOFF_0.87.md` §8
+records the eleven legible items and, more usefully, the reference UI on their
+attachments — the exact menu contents Mihon shows — which existed only as
+screenshots on Trello cards. Seven of the eleven are one pass over
+`SeriesScreen`. Two are already blocked by things recorded here: *Bookmarked*
+has no backing field (§4, "What the index still can't tell you") and *Migrate*
+is §7 item 17, not a menu row.
 
 **Newest first: the board is clear, and 0.80 is the piece that matters.**
 `SESSION_HANDOFF_0.83.md`. The vendored API now implements
@@ -196,9 +258,14 @@ as an import-scale operation rather than a loop, exactly as §5's "An import is 
 load test" and §7 item 1 required, and both of those entries have been rewritten
 to describe what exists instead of instructing someone to build it.
 
-**The named next piece of work is open thread 1 — the reader** — because the
-board is empty and it has now survived twelve sessions untouched. It is still the
-largest untested surface in the app.
+**The named next piece of work is still open thread 1 — the reader** — now
+thirteen sessions untouched and still the largest untested surface in the app.
+The reasoning has changed slightly: it is no longer "because the board is empty"
+(it isn't, see the top of this file), but because **board item 3 — resume and
+scroll should load the current page forward — lands squarely inside it**, so the
+reader can now be entered with a user-visible payoff attached rather than as
+speculative testing. `SESSION_HANDOFF_0.87.md` §7 has the shape of that item and
+why it was deliberately held back rather than bundled into 0.86.
 
 A smaller, contained alternative: replace 0.81's per-series lock with a single
 `getMangaUpdate(fetchDetails = true, fetchChapters = true)` call. Opening a
@@ -2029,6 +2096,73 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
+### A vendored API that relaxes a type deletes the other side's error handling
+
+`:source-api` declared `var memo: JsonObject?`. extensions-lib 1.6 declares
+`var memo: JsonObject`. Nullable is the *weaker* claim, it compiled clean, it
+looked like defensive vendoring, and it cost three releases.
+
+Extensions are compiled against the non-null declaration, so their bytecode
+carries no null check. Asura Scans' own line is
+
+```kotlin
+val randomSlug = manga.memo["slug"]?.string ?: run { /* recover the slug */ }
+```
+
+— a fallback written for precisely the case where the memo has nothing useful in
+it. The `?.` is on the *lookup result*. Against a null `memo` the whole
+expression is `getMemo().get("slug")` and it throws before the `?:` is reached.
+The author's recovery path was unreachable, in a build that compiled without a
+warning.
+
+What makes this class of bug expensive:
+
+- **Nothing reports it.** Not the compiler, not `ExtensionLoader`, not
+  `LIB_VERSION_MAX`. The symbol is present and the *shape* is right — nullability
+  is Kotlin metadata, not JVM signature, which is also why fixing it was binary
+  compatible with every installed extension.
+- **It surfaces as a platform NPE from inside the extension**, which reads as the
+  extension's bug rather than the host's. Two sessions blamed the extension.
+- **The direction matters and is easy to get backwards.** A type *we* hand to
+  extension code must be at least as strict as upstream declares. A type
+  extensions hand *us* can be safely widened — `SMangaUpdate` is nullable here
+  and non-null upstream, and that one is harmless because extensions construct it
+  and we only consume it. Ask which way the value flows before deciding a
+  mismatch is safe.
+
+**The check is minutes and should be routine after any vendoring change:** pull
+`keiyoushi/extensions-lib` at the version in the extensions-source
+`libs.versions.toml` (`tachiyomi-lib-v16`) and diff its declarations against
+`:source-api`'s. `SESSION_HANDOFF_0.87.md` §5 has the commands and what the diff
+turned up.
+
+Related and cheaper than the dex procedure in `SESSION_HANDOFF_0.83.md` §5:
+**the extension source itself is on `raw.githubusercontent.com`.** The dex tells
+you which symbols an extension touches; the source tells you why. Three `curl`s
+answered what two rounds of inference got wrong.
+
+### Nothing the act of leaving a screen can change belongs in its scroll signature
+
+Three scroll signatures have been got wrong in this project and all three were
+this error.
+
+`ScrollMemory.sync(ordering)` throws stored positions away when the ordering
+changes, which is right — a position means nothing against a different order. So
+the signature must not contain anything that the screen's *own primary action*
+mutates, or it clears itself on exactly the trip it exists to survive.
+
+- **The library grid** keeps `counts` out deliberately (§4): it moves whenever a
+  chapter is finished, so including it would throw the scroll away on every
+  return from the reader.
+- **The Sources list** shipped in 0.86 with `lastUsedId` in, and `openSource()`
+  calls `SourcePrefs.setLastUsed()`. The fix did nothing whatsoever; 0.87 removed
+  it.
+
+The test to apply before writing one: **what does opening a row from this screen
+write?** If the screen also displays that value, it is a signature trap. What it
+costs to leave out is a stale anchor — one or two rows moving — which is not the
+wholesale reorder a position genuinely can't survive.
+
 ### A lazily-populated store has three states, and the third one is invisible
 
 `SeriesIndex` (0.65) answers "how many unread chapters" for the library grid,
@@ -2884,9 +3018,23 @@ Roughly in order of value:
    one until the app restarts. Cheap to fix if it ever matters — drop the entry
    on the install broadcast.
 
-3. **A re-import is needed to fix covers on an already-imported library.**
-   `healCover` repairs a series when it's opened, but the wholesale fix is
-   running the import again.
+3. **Covers in the library go stale and nothing repairs them in bulk.**
+   `healCover` fires on the first open of a series and **only when the stored
+   cover is blank or loopback** — never when it is present and wrong. That
+   narrowness is now two board items: SpyFakku entries stay grey until each is
+   opened individually (the import blanked their loopback covers, so the heal is
+   working, one series at a time across 3571 entries), and other entries render
+   an HTTP 404 because the source moved the file and nothing ever re-asks.
+   The series screen looks correct throughout, because it draws the freshly
+   fetched `thumbnail_url` rather than the stored string.
+
+   **The library refresh sweep is where this belongs.** It already visits every
+   series and already holds the fetched `SManga`, so a corrected cover is nearly
+   free alongside the counts. Write it through a bulk path — `Library` is one
+   JSON string and a per-series `healCover` over a sweep is quadratic, the same
+   trap `recordAll` was built to avoid for `SeriesIndex` (item 1 above). Once
+   that exists, "a re-import is needed to fix covers" stops being true.
+   Analysis in `SESSION_HANDOFF_0.87.md` §6; unverified, read off the code.
 
 4. **The Downloads recovery scan is gated but not free.** It still runs once per
    process when legacy flat-layout folders exist, because their names are hashes
@@ -3088,7 +3236,23 @@ Add a per-series chapter index; outline the page number; keep the
 Refresh the whole library's chapter counts in a foreground service       dbbe38a  DID NOT COMPILE
 Add the library refresh service and the index bulk write                 8fcd519  builds; see §0
 Resume a stopped library refresh instead of restarting it                2bac449  verified OK
+Re-list a series when a rebuilt chapter handle isn't enough              4264dea  inert until 21628af
+Make memo non-null, as extensions-lib declares it                       21628af  verified OK
+Scope Stop to one series, keep Sources scroll, always offer Popular      0db1971  3 of 4 checks
+Keep lastUsedId out of the Sources scroll signature                     62f412d  verified OK
 ```
+
+The 0.84–0.87 run is `SESSION_HANDOFF_0.87.md`. Three annotations from it belong
+here. **`4264dea` is another commit that shipped correct and did nothing** — it
+depends on `21628af`, which landed a release later, so its fallback was reached
+and immediately defeated by the very bug it was meant to route around. A fix
+whose first action is the call that is failing cannot be verified before that
+call works, and nothing said so at the time. **`0db1971` shipped three fixes and
+one was inert for a reason one grep would have settled**: `openSource` writes
+`lastUsedId`, which was in the scroll signature it added — the same shape as
+`dbbe38a` and `c57a91d`, an identifier's behaviour assumed rather than checked.
+And **`21628af` is the best ratio in this list** — one character on four
+declarations, against three releases and two wrong diagnoses spent around it.
 
 `dbbe38a` and `8fcd519` are one piece of work split by an accident: the version
 bump landed on the commit that doesn't build, because the first `cp` loop found
