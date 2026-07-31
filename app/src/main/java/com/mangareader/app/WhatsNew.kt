@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 94,
+            name = "0.94",
+            header = "Group your library by source",
+            body = "The library can now be grouped by source, alongside " +
+                "categories and ungrouped \u2014 it is in the Group tab of the " +
+                "library's options sheet.\n\nThis needed the app to remember " +
+                "what each source is called, which also fixes the refresh " +
+                "summary: when a source fails repeatedly it now names it " +
+                "instead of printing an internal id.",
+        ),
+        ReleaseNote(
             code = 93,
             name = "0.93",
             header = "Marking a chapter unread forgets your page in it",

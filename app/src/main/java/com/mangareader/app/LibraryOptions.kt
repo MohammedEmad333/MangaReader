@@ -256,7 +256,9 @@ internal fun LibraryOptionsSheet(
                 }
 
                 else -> {
-                    listOf(LibraryGroup.CATEGORIES, LibraryGroup.UNGROUPED).forEach { option ->
+                    // Sources is offered now that library entries can be given
+                    // their source's name — see SourceNames.
+                    LibraryGroup.entries.forEach { option ->
                         SortRow(
                             label = option.label,
                             selected = group == option,

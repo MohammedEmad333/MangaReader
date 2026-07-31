@@ -142,7 +142,17 @@ object SourceManager {
         val extSources = extensionSources(context)
 
         // 3. Combine them together into a single list
-        return activeSources + extSources
+        val all = activeSources + extSources
+
+        // The one place in the app holding every source id next to its display
+        // name. Everything downstream — library entries, the download queue, the
+        // refresh's failure tally — stores the id alone, because the extension
+        // behind it may be gone by the time the record is read. Recording here
+        // costs nothing on the common path: `record` refuses a batch that says
+        // nothing new, so this is a write on install, uninstall and rename only.
+        runCatching { SourceNames.record(context, all.associate { it.id to it.name }) }
+
+        return all
     }
 
     fun save(context: Context, items: List<SourceConfig>) {
