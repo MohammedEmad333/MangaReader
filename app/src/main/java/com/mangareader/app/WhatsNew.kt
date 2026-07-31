@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 96,
+            name = "0.96",
+            header = "Search by title or author from the series page",
+            body = "Tapping a series' title, or its author, now searches every " +
+                "source for it \u2014 the quickest way to find the same series " +
+                "somewhere that is still updating it.\n\nAlso: a few sources " +
+                "can't be named by anything else \u2014 ones " +
+                "built into another app, or extensions delisted since your " +
+                "backup was made. The backup itself carries their names and " +
+                "they were being read and thrown away.\n\nIf your library " +
+                "still shows Unknown source tabs, re-import the same backup: " +
+                "it is a merge, so nothing else changes.",
+        ),
+        ReleaseNote(
             code = 95,
             name = "0.95",
             header = "Source tabs show names, not id numbers",

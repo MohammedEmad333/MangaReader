@@ -311,6 +311,25 @@ internal fun readTachiyomiBackup(file: File): TachiyomiBackup {
  * minutes; the same goes for a `SharedPreferences.apply()` per read chapter.
  */
 internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): String {
+    // Source names, before anything that files entries under a source id.
+    //
+    // Field 101 was already parsed and used only to count sources in the preview
+    // dialog. It is worth more than that: a backup is the **only** place some of
+    // these names survive. `SourceManager` can name what is installed and the
+    // repo index can name what is installable, and neither covers a source that
+    // is neither — a fork's built-in source, or an extension delisted since the
+    // backup was taken. Those entries sit in the library forever with nothing
+    // able to say what they are.
+    //
+    // The key format is the same one built below for every entry, so these land
+    // on exactly the ids the library grid groups by.
+    runCatching {
+        SourceNames.record(
+            context,
+            backup.sourceNames.entries.associate { (id, name) -> "tachi:$id" to name }
+        )
+    }
+
     // Categories first: everything else references them by id.
     val byOrder = mutableMapOf<Int, String>()
     backup.categories.forEach { (order, name) ->
