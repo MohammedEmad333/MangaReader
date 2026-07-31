@@ -121,13 +121,13 @@ object ExtensionManager {
                     downloaded
                 }
 
-                available += parseIndex(jsonStr, repoUrl, pm)
+                available += parseIndex(context, jsonStr, repoUrl, pm)
             } catch (e: Exception) {
                 // A repo that fails now keeps whatever it last served, so one
                 // unreachable repo doesn't empty the screen of the others.
                 e.printStackTrace()
                 cache[repoUrl]?.let { stale ->
-                    runCatching { available += parseIndex(stale.json, repoUrl, pm) }
+                    runCatching { available += parseIndex(context, stale.json, repoUrl, pm) }
                 }
             }
         }
@@ -158,6 +158,7 @@ object ExtensionManager {
      * changing by hand; this parser cannot conjure entries the stub omits.**
      */
     private fun parseIndex(
+        context: Context,
         json: String,
         repoUrl: String,
         pm: PackageManager
@@ -177,13 +178,43 @@ object ExtensionManager {
                 .optJSONObject("extensionList")
                 ?.optJSONArray("extensions")
                 ?: return emptyList()
+            // Every source in the catalogue, named, in one pass — including the
+            // ones that aren't installed. `SourceManager.listAllSources` can
+            // only name what is present, so a source whose extension was
+            // removed before 0.94 shipped would otherwise never be named by
+            // anything: nothing will ever list it again. This index is the only
+            // place those names still exist.
+            val names = HashMap<String, String>()
             for (i in 0 until arr.length()) {
-                runCatching { nestedEntry(arr.getJSONObject(i), pm) }
+                val obj = arr.getJSONObject(i)
+                runCatching { nestedEntry(obj, pm) }
                     .getOrNull()
                     ?.let(entries::add)
+                // Outside the runCatching above: a malformed entry that can't
+                // become an Extension may still carry usable source names, and
+                // one that can't is skipped here on its own.
+                runCatching { collectSourceNames(obj, names) }
             }
+            runCatching { SourceNames.record(context, names) }
         }
         return entries
+    }
+
+    /**
+     * Pulls `sources[].id` / `sources[].name` out of one index entry.
+     *
+     * The index gives a bare numeric id; this app prefixes every extension
+     * source with `tachi:`, matching `TachiyomiSourceAdapter.id`. Getting that
+     * wrong would store 1367 names under keys nothing ever looks up, silently.
+     */
+    private fun collectSourceNames(obj: JSONObject, into: MutableMap<String, String>) {
+        val srcs = obj.optJSONArray("sources") ?: return
+        for (i in 0 until srcs.length()) {
+            val src = srcs.optJSONObject(i) ?: continue
+            val id = src.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val name = src.optString("name").takeIf { it.isNotBlank() } ?: continue
+            into["tachi:$id"] = name
+        }
     }
 
     private fun flatEntry(obj: JSONObject, repoUrl: String, pm: PackageManager): Extension {
