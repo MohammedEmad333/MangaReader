@@ -28,7 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -190,6 +196,52 @@ internal fun ReaderScreen(
     // chapter" downwards in every mode, which right-to-left doesn't change.
     val rtl = settings.mode == ReaderMode.PAGED_RTL
 
+    /**
+     * Carries a scroll past the top or bottom of a strip into the neighbouring
+     * chapter.
+     *
+     * `onPostScroll` only sees a non-zero `available` when the list could not
+     * consume the gesture, which *is* the at-an-edge condition — so there is no
+     * separate "am I at the end" test to get wrong, and in particular none that
+     * can be answered before the first measure (§5's `canScrollForward` trap).
+     *
+     * Positive y is the finger travelling down, which reveals what is above:
+     * the previous chapter. Negative is the next one.
+     *
+     * **Long strip only.** In a paged mode the equivalent gesture belongs to the
+     * pager and would have to be mirrored for right-to-left — the exact shape
+     * this project has now shipped backwards twice, in 0.63 and again in 0.88.
+     * Paged mode has Prev and Next in the control bar.
+     */
+    val pull = remember(chapterIndex) { floatArrayOf(0f) }
+    val edgeTrigger = with(LocalDensity.current) { 140.dp.toPx() }
+    val edgeScroll = remember(chapterIndex, hasPrev, hasNext, edgeTrigger) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (available.y == 0f) return Offset.Zero
+                pull[0] += available.y
+                when {
+                    pull[0] > edgeTrigger && hasPrev -> { pull[0] = 0f; onPrev() }
+                    pull[0] < -edgeTrigger && hasNext -> { pull[0] = 0f; onNext() }
+                }
+                // Nothing consumed: the overscroll effect still gets to draw,
+                // so the edge keeps its usual stretch and the gesture doesn't
+                // feel swallowed on a chapter with no neighbour.
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // A drag that stopped short must not add to the next one.
+                pull[0] = 0f
+                return Velocity.Zero
+            }
+        }
+    }
+
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
 
     // Half the screen, so the whole chapter is a comfortable thumb-sweep. A
@@ -228,7 +280,10 @@ internal fun ReaderScreen(
         }
 
         if (settings.mode == ReaderMode.LONG_STRIP) {
-            LazyColumn(state = listState, modifier = stripModifier) {
+            LazyColumn(
+                state = listState,
+                modifier = stripModifier.nestedScroll(edgeScroll)
+            ) {
                 itemsIndexed(pages) { index, file ->
                     ReaderPage(
                         file = file,

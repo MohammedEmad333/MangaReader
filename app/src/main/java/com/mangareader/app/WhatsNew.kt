@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 101,
+            name = "0.101",
+            header = "Scroll past the end of a chapter to reach the next one",
+            body = "In long strip mode, keep scrolling past the bottom of a " +
+                "chapter and the next one opens; scroll up past the top for " +
+                "the previous one. Paged modes keep the Prev and Next buttons " +
+                "\u2014 the same gesture there belongs to page turning.\n\n" +
+                "Swipe-to-mark-read also needs a longer swipe now, so it stops " +
+                "firing by accident while scrolling.",
+        ),
+        ReleaseNote(
             code = 100,
             name = "0.100",
             header = "Swipe a chapter to mark it read",

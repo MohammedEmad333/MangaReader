@@ -833,7 +833,20 @@ internal fun SeriesScreen(
                             onSetRead(listOf(ch), !read)
                         }
                         false
-                    }
+                    },
+                    // Most of the row's width, against a default of half.
+                    // Reported as firing while scrolling a long chapter list,
+                    // where a fling carries enough sideways drift to cross a
+                    // shallow threshold — and as not firing when meant, which is
+                    // the same complaint from the other side: an inconsistent
+                    // trigger point reads as both. A deliberate swipe crosses
+                    // this and an incidental one doesn't.
+                    //
+                    // This is a tuning change, not a diagnosis. If it still
+                    // misfires the next thing to suspect is velocity-based
+                    // settling rather than distance, and the answer there is a
+                    // hand-rolled drag detector rather than SwipeToDismissBox.
+                    positionalThreshold = { distance -> distance * 0.75f }
                 )
                 SwipeToDismissBox(
                     state = swipeState,
