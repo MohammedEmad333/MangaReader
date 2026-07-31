@@ -1,27 +1,38 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. Last updated 2026-07-31
-at **0.81**. **0.55 through 0.65 and 0.67 through 0.81 are verified on device;
+Context document for continuing work in a fresh chat. **The per-release
+`SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
+on 2026-07-31; `SESSION_HANDOFF_0.83.md` is the only session file, and git
+history has the rest.** Last updated 2026-07-31
+at **0.83**. **0.55 through 0.65 and 0.67 through 0.83 are verified on device;
 0.66 is unaccounted for** — see §0. **The bug board is empty**, for the first
-time in this project's recorded history. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
+time in this project's recorded history.
+
+**The headline of 2026-07-31 is not any single bug: about one extension in eight
+had outgrown this app's vendored API.** A 23-extension sample of the 1365 in the
+Keiyoushi repo found 13% using `getMangaUpdate`, which this app did not
+implement — they browse perfectly and fail on every series. Four sources were
+recovered in one night (Elite Babes, SpyFakku, Asura Scans, and one crash that
+affected all of them), and the rest would have arrived one report at a time.
+`SESSION_HANDOFF_0.83.md` is the full account. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
 compileSdk 34 → 36, OkHttp → 5.4.0. None of that was a choice — one extension
-update forced all of it, and `SESSION_HANDOFF_0.78.md` §3 is the chain. **The app now opens in about three seconds.**
+update forced all of it, and `SESSION_HANDOFF_0.83.md` §3 is the chain. **The app now opens in about three seconds.**
 It was taking around thirty, that item had been on the board for five sessions,
 and 0.71 measured it and 0.72 fixed it: the library screen was asking the
 Downloads tab's question to decide which covers get a download badge, which cost
-19.9 seconds of every cold start. See `SESSION_HANDOFF_0.72.md`.
+19.9 seconds of every cold start. See `SESSION_HANDOFF_0.83.md`.
 **The library refresh has been deprioritised** — it has already delivered its
-capability and what remains on it is accounting; `SESSION_HANDOFF_0.72.md` §5 is
+capability and what remains on it is accounting; `SESSION_HANDOFF_0.83.md` §9 is
 the new ordering and §5.1 is the consequence that isn't obvious.
 Two full library sweeps ran on the night
 of 2026-07-29/30, the first to completion, which is what exercised 0.67's
 machinery end to end. **The second sweep's end-of-sweep arithmetic came up 547
-short** — the first measurement of bugs 3 and 6; see `SESSION_HANDOFF_0.69.md` §2.
+short** — the first measurement of bugs 3 and 6; see the sweep-2 arithmetic below.
 0.63 shipped the vertical page slider rotated the wrong way, 0.64 fixed it, 0.65
 landed the per-series chapter index that four backlog items were all waiting on,
 and 0.67–0.68 made it answer for the whole library instead of your browsing
 history. (Supersedes the earlier version of this file, and folds in
-`SESSION_HANDOFF_0.67.md`.)
+`SESSION_HANDOFF_0.83.md`.)
 
 **The index exists and is now filled by a sweep, not by browsing.**
 `SeriesIndex.kt` holds per-series chapter and read counts, and unread badges,
@@ -59,7 +70,7 @@ exactly which half and why.
 ## 0. Where this was left — read this first
 
 **Newest first: the board is clear, and 0.80 is the piece that matters.**
-`SESSION_HANDOFF_0.81.md` is the current record. The vendored API now implements
+`SESSION_HANDOFF_0.83.md`. The vendored API now implements
 `getMangaUpdate` — the single call current extensions use to fetch a series'
 details and chapter list together, returning both in an `SMangaUpdate`. Sources
 that adopt it were previously unusable: they browse perfectly and then fail on
@@ -72,19 +83,19 @@ It was reproduced by browsing Popular, whose first page fetches the site's
 homepage — where `.list-gallery` now holds category tiles rather than galleries.
 Every "series" opened that way was a category page with one chapter pointing back
 at itself, and category pages have no images. Reading works via Latest; browsing
-is capped by a stale pagination selector. `SESSION_HANDOFF_0.81.md` §3 has the
+is capped by a stale pagination selector. `SESSION_HANDOFF_0.83.md` §4 has the
 full URL and selector table, which is a complete bug report for Keiyoushi.
 Nothing about it is fixable in this app.
 
 **Extension APKs can be decompiled, and doing that is how this was found.**
-`SESSION_HANDOFF_0.81.md` §4 has the commands. Grepping a dex shows which names
+`SESSION_HANDOFF_0.83.md` §5 has the commands, and the result of running them. Grepping a dex shows which names
 are present; disassembling shows which methods are stubs, every selector and
 every URL. Two conclusions this session — "the parse returns nothing" and
 "Popular can't work" — were both wrong, and both times the extension's code was
 already on disk and unread.
 
 **0.73–0.78 were one extension update and everything it moved.**
-`SESSION_HANDOFF_0.78.md` is the current record. The short version: the Elite
+`SESSION_HANDOFF_0.83.md`. The short version: the Elite
 Babes extension was updated, and the new build asserts the *shape* of the app's
 OkHttp client by class name, then reaches for OkHttp classes the app didn't
 ship. Satisfying it forced Kotlin 2.2.21, compileSdk 36 and OkHttp 5.4.0, across
@@ -95,14 +106,14 @@ still broken** — it browses now, and lists no chapters. It is one source out o
 Two things from that arc belong in anyone's working memory. **An extension's
 `classes.dex` lists every class it references**, so unzipping the APK and
 grepping it produces the whole gap in one pass instead of one crash at a time —
-`SESSION_HANDOFF_0.78.md` §4 has the commands, and not doing this first cost
+`SESSION_HANDOFF_0.83.md` §5 has the commands, and not doing this first cost
 several hours. And **`LinkageError` is not an `Exception`**: extension code is
 compiled against a vendored API, so a mismatch arrives as an `Error` that
 `catch (e: Exception)` lets through. That is now converted to `IOException` at
 the one boundary every extension call crosses, `TachiyomiSourceAdapter`, after
 two releases spent widening catch sites and still missing a path (§5 there).
 
-**0.72 closed the slow open**, and `SESSION_HANDOFF_0.72.md` remains the record
+**0.72 closed the slow open**, and `SESSION_HANDOFF_0.83.md`
 for it and supersedes 0.70's, 0.71's and 0.71_RESULT's where they overlap.
 
 In short. **0.70's two fixes are verified** — covers on hotlink-protected sources
@@ -126,7 +137,7 @@ the centre of five consecutive releases; two full sweeps have run and the index
 answers for roughly 3024 of 3571 series, so what is left on it is accounting
 rather than capability. The new order is Elite Babes, then the reader, then the
 manifest theme, then the refresh backlog — with the Feed / Updates tab coming
-down alongside the refresh it depends on. `SESSION_HANDOFF_0.72.md` §5.
+down alongside the refresh it depends on. `SESSION_HANDOFF_0.83.md` §9.
 
 The library screen was rebuilt across three releases and **all of that is
 verified on device** — the user confirmed each build before the next was
@@ -193,7 +204,7 @@ A smaller, contained alternative: replace 0.81's per-series lock with a single
 `getMangaUpdate(fetchDetails = true, fetchChapters = true)` call. Opening a
 series currently asks twice and serialises the two; asking once is what the API
 is shaped for and halves the requests. It needs the app's `Source` interface to
-grow a way to request both at once. See `SESSION_HANDOFF_0.81.md` §2.3.
+grow a way to request both at once. See `SESSION_HANDOFF_0.83.md` §2.
 
 **Elite Babes, which held this slot, is closed — upstream.** Before the extension was updated it listed chapters and only pages were
 empty; now chapter listing fails too, so the original board item sits *behind* a
@@ -201,9 +212,9 @@ newer one. The immediate step is one screenshot: 0.78 makes source errors name
 their exception type, and nobody has read the resulting string yet. The cheapest
 experiment nobody has run is downgrading the extension — if the old version
 lists chapters on 0.78, the fault is entirely in the new extension.
-`SESSION_HANDOFF_0.78.md` §6.
+`SESSION_HANDOFF_0.83.md` §7.
 
-After that, the ordering from `SESSION_HANDOFF_0.72.md` §5 stands: the reader
+After that, the ordering from the ordering in `SESSION_HANDOFF_0.83.md` §9 stands: the reader
 (open thread 1, now eleven sessions untouched), the manifest theme, then the
 refresh backlog.
 
@@ -221,15 +232,34 @@ genuine piece of work rather than a wiring job. It is nonetheless the largest
 remaining gap between what the app knows and what it can tell you.
 
 **Two refresh bugs are still open** — bug 3 (the counter race) and bug 6 (`done`
-doesn't reconcile), on the seven-item numbering in `SESSION_HANDOFF_0.68.md` §5.
+doesn't reconcile), on the seven-item numbering in the seven-item numbering below.
 Sweep 2's arithmetic is short by **547**, split between them in unknown
 proportion. Both are now at the bottom of the list, not the top; the sweeps have
 run and the capability they were blocking is delivered.
 
+### 0.82–0.83 — two more dependencies, two more sources
+
+- **kotlinx-serialization 1.7.3 → 1.9.0.** From 1.8 the runtime gives
+  `GeneratedSerializer.typeParametersSerializers()` a default body, so the plugin
+  stopped emitting it; on 1.7.3 it is still abstract, and any extension built
+  since dies with `AbstractMethodError` the moment one of its `@Serializable`
+  classes is touched. That is most JSON-backed sources. Asura Scans and SpyFakku
+  were both dead on it. **1.9.0 specifically** — it is built on Kotlin 2.2.0 and
+  reads under 2.2.21, while 1.10.0 is built on Kotlin 2.3.0 and does not.
+- **`SManga.memo` and `SChapter.memo`**, `var memo: JsonObject?`. Scratch space
+  the extension owns and carries between its own calls — Asura stashes the JSON
+  it parsed a series from and reads it back in `getMangaUpdate`. Without it,
+  `NoSuchMethodError: No interface method setMemo(...)`. **Null is normal on
+  anything this app rebuilds rather than receives** (`restoreSeries`,
+  `rehydrateChapter`), so if a source works from Browse and fails from Library,
+  suspect this first.
+- **The API surface is now complete for the sampled ecosystem.** See
+  `SESSION_HANDOFF_0.83.md` §5 for the scan and how to widen it.
+
 ### 0.79–0.81 — the API current extensions actually use
 
 **Three releases; one of them was wrong and was reverted.** Full account in
-`SESSION_HANDOFF_0.81.md`.
+`SESSION_HANDOFF_0.83.md`.
 
 - **Current extensions fetch details and chapters in one request.** They
   implement `getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)` and
@@ -255,7 +285,7 @@ run and the capability they were blocking is delivered.
 ### 0.73–0.78 — one extension update, and the toolchain it dragged forward
 
 **Six releases, eleven commits, four red CI runs.** Full account in
-`SESSION_HANDOFF_0.78.md`; this is what belongs in the project's memory.
+`SESSION_HANDOFF_0.83.md`memory.
 
 - **Extensions assert the shape of the default OkHttp client, by class name.**
   The updated Elite Babes requires `UserAgentInterceptor`,
@@ -300,7 +330,7 @@ run and the capability they were blocking is delivered.
 ### Closed — 0.72, the slow open
 
 **Six device checks passed.** `dd2e00e`, 13 files. Full detail in
-`SESSION_HANDOFF_0.72.md`; this is the part that belongs in the project's memory.
+`SESSION_HANDOFF_0.83.md`roject's memory.
 
 - **The cause was a badge.** `LibraryScreens.kt` asked
   `DownloadIndex.list()` for a set of series ids. `list()` is the Downloads
@@ -348,7 +378,7 @@ run and the capability they were blocking is delivered.
 ### Closed — 0.68, resuming a stopped refresh
 
 **Seven device checks passed.** `2bac449`, five files. The full detail is in
-`SESSION_HANDOFF_0.68.md`; this is the part that belongs in the project's memory.
+`SESSION_HANDOFF_0.83.md`roject's memory.
 
 - **0.67 shipped a claim it hadn't implemented.** Its release notes said stopping
   a refresh was safe and that running it again would pick up the rest. The first
@@ -411,7 +441,7 @@ persisting them. **Sweep 2's was**, at 01:45: `2902 counted • 22 failed •
 short by 547.**
 
 **Two bugs from the 0.67 review are still open** (numbering below is the
-canonical seven-item scheme from `SESSION_HANDOFF_0.68.md` §5 — an earlier
+canonical seven-item scheme from the seven-item numbering below — an earlier
 revision of this file renumbered the then-open four as 1–4, which collided with
 it and produced at least one mislabelled diagnosis):
 
@@ -446,7 +476,7 @@ the finished summary — only in the in-progress note — so it is tempting to
 recover it as `total − (counted + failed + skipped)`. Don't: that makes the
 identity `x == x` and it will balance on any sweep no matter how broken. Read it
 off while the sweep runs, or derive it from cursor state. Surfacing it in the
-finished row is a one-line fix and is item 1 of `SESSION_HANDOFF_0.69.md` §7.
+finished row is a one-line fix and is item 1 of the seven-item table below.
 
 ### Closed — 0.67, the library refresh
 
@@ -686,7 +716,7 @@ light mode that means a dark flash on cold start before Compose paints, and a
 permanently dark status bar over a light app.
 
 **It is not one line, and four handoffs said it was.**
-`SESSION_HANDOFF_0.69.md` §4 is the account: light/dark here is an in-app
+the account below is the account: light/dark here is an in-app
 preference (`AppPrefs.ThemeMode`, defaulting to `DARK`), not the system setting,
 so `Theme.Material.Light` breaks the default case and `DayNight` follows the
 system and is wrong for anyone who chose against it.
@@ -1010,6 +1040,7 @@ prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**, 
 | Thing | Version |
 |---|---|
 | Kotlin | **2.2.21** |
+| kotlinx-serialization | **1.9.0** |
 | AGP | 8.5.2 |
 | Gradle | 8.9 (via `gradle/actions/setup-gradle@v4`, no wrapper) |
 | JDK | 17 (temurin) |
@@ -1018,7 +1049,7 @@ prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**, 
 | minSdk | 24 |
 
 **Kotlin, compileSdk and OkHttp all moved on 2026-07-31 and none of it was a
-choice** — see `SESSION_HANDOFF_0.78.md` §3. Three things follow from it:
+choice** — see `SESSION_HANDOFF_0.83.md` §3. Three things follow from it:
 
 - **All three Kotlin plugin versions move together.** `kotlin.android` and
   `kotlin.plugin.compose` are in the root build file; `kotlin.plugin.serialization`
@@ -2170,7 +2201,7 @@ until an extension asks for it.
 Three things follow, and they generalise past this incident.
 
 **Read the dex before writing code.** An extension APK's `classes.dex` lists
-every class it references. Unzip it and grep it — `SESSION_HANDOFF_0.78.md` §4
+every class it references. Unzip it and grep it — `SESSION_HANDOFF_0.83.md` §5
 has the commands — and the entire gap between what an extension wants and what
 the app ships appears in one pass. Discovering it one crash at a time is what
 turned one release into six.
@@ -3103,7 +3134,7 @@ Komga support was removed entirely (`KomgaSource.kt` deleted); only local
 folders and extensions remain as source types.
 
 The 0.67–0.71 run is recorded in the per-session files rather than here:
-`SESSION_HANDOFF_0.67.md` through `SESSION_HANDOFF_0.71.md`. Two entries in it
+`SESSION_HANDOFF_0.83.md`.71.md`. Two entries in it
 are worth carrying forward as commit-history annotations. `1595fe4` (0.71) was
 pushed to a branch called `startup-timings` before being merged to `main`, and
 built nothing until the merge — CI is `on: push: branches: [main]` and a branch
