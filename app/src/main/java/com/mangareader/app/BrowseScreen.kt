@@ -275,6 +275,7 @@ internal fun SourceFilterScreen(
 internal fun BrowseTab(
     configs: List<SourceConfig>,
     extensions: List<Source>,
+    scroll: ScrollMemory,
     onGlobalSearch: () -> Unit,
     onAdd: () -> Unit,
     onOpenConfig: (SourceConfig) -> Unit,
@@ -349,6 +350,26 @@ internal fun BrowseTab(
         .sortedBy { it.first.lowercase() }
         .sortedBy { langRank(it.first) }
 
+    // Opening a source sets `activeSource`, which hands the composition to the
+    // per-source browse branch and destroys this whole tab — so the list below
+    // loses its position on the way out and lands at the top on the way back.
+    // Fifth instance of the hoisting bug in §5.
+    //
+    // §5 says to enumerate every list under a destructive branch rather than
+    // only the reported one, so: `ExtensionsScreen` on page 1 has the same bug
+    // and is deliberately not fixed here. Its list is fetched async and is empty
+    // on first composition, so a `LazyListState` seeded with a stored index
+    // clamps to 0 before the data lands and restores nothing. It needs the state
+    // built after the first non-empty list rather than another parameter, which
+    // is a different piece of work — and shipping the parameter alone would look
+    // fixed while doing nothing.
+    //
+    // The signature is what the order is actually built from. Pinning, hiding a
+    // source or a language, or installing an extension all reorder the list, and
+    // a position from before that means nothing afterwards.
+    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs, lastUsedId)
+    scroll.sync(sourcesOrdering)
+
     if (showSourceFilter) {
         SourceFilterScreen(
             rows = rows,
@@ -398,6 +419,7 @@ internal fun BrowseTab(
                 }
 
                 LazyColumn(
+                    state = rememberRestoredListState(scroll, "sources", sourcesOrdering),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     if (lastUsedRow != null) {

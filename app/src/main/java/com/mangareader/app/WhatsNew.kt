@@ -43,6 +43,22 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 86,
+            name = "0.86",
+            header = "Three from the bug board",
+            body = "Stop on a series screen cancelled every download in the " +
+                "queue, not just that series \u2014 and it read \u201cStop\u201d " +
+                "on every series screen whenever anything anywhere was " +
+                "downloading. It now shows only when this series has chapters " +
+                "queued, and stops only those. Cancel all is still on the " +
+                "download queue screen.\n\n" +
+                "The Sources list keeps its place when you open a source and " +
+                "come back.\n\n" +
+                "Sources with filters but no Latest listing \u2014 Roku Hentai " +
+                "is one \u2014 showed a Filter chip and no Popular chip, so " +
+                "filtering was a one-way trip. Popular is always there now.",
+        ),
+        ReleaseNote(
             code = 85,
             name = "0.85",
             header = "Asura Scans from the library, and downloads",
