@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 99,
+            name = "0.99",
+            header = "Refresh only the series that were missed",
+            body = "A refresh skips series whose extension isn't installed. " +
+                "Install it later and the only way to pick them up was another " +
+                "full sweep of the whole library.\n\nSettings \u203a Library " +
+                "now offers Refresh what's missing, which fetches just the " +
+                "series that still have no chapter count \u2014 the skipped " +
+                "ones and the failed ones.",
+        ),
+        ReleaseNote(
             code = 98,
             name = "0.98",
             header = "Refresh one source, and separate credits",

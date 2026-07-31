@@ -388,6 +388,20 @@ class LibraryRefreshService : Service() {
      * the full sweep's resume machinery stays exactly as it was.
      */
     private var scopeIds: Set<String>? = null
+
+    /**
+     * Limits the run to series the index has no counts for.
+     *
+     * The case this exists for: a sweep *skips* every series whose extension
+     * isn't installed — 179 of them on the library this was built against — and
+     * a skipped series is deliberately never stamped, so it stays un-counted.
+     * Install the missing extensions and the only way to pick those up was a
+     * full sweep, three hours to fetch two hundred series.
+     *
+     * Un-counted also catches the ones that failed, which is the same question
+     * asked a different way: what does the index still not know?
+     */
+    private var scopeUncounted = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastNotifyAt = 0L
 
@@ -438,6 +452,7 @@ class LibraryRefreshService : Service() {
             scopeIds = intent?.getStringArrayListExtra(EXTRA_SOURCES)
                 ?.toSet()
                 ?.takeIf { it.isNotEmpty() }
+            scopeUncounted = intent?.getBooleanExtra(EXTRA_UNCOUNTED, false) == true
             LibraryRefresh.scopeLabel = intent?.getStringExtra(EXTRA_SCOPE_LABEL).orEmpty()
         }
 
@@ -490,12 +505,22 @@ class LibraryRefreshService : Service() {
     }
 
     /** True when this run may touch the shared resume point. See [scopeIds]. */
-    private val ownsCursor: Boolean get() = scopeIds == null
+    private val ownsCursor: Boolean get() = scopeIds == null && !scopeUncounted
 
     private suspend fun sweep() {
         val scope = scopeIds
         val entries = Library.list(this)
             .let { all -> if (scope == null) all else all.filter { it.sourceId in scope } }
+            .let { picked ->
+                if (!scopeUncounted) picked else {
+                    // Read once, outside the filter. `all()` is memoised on the
+                    // raw pref string and every flush below writes a new one, so
+                    // asking per series would re-parse the index thousands of
+                    // times — the same trap `alreadySwept` avoids just below.
+                    val known = SeriesIndex.all(this).keys
+                    picked.filterNot { it.seriesId in known }
+                }
+            }
         if (entries.isEmpty()) {
             LibraryRefresh.begin(0)
             if (ownsCursor) RefreshCursor.clear(this)
@@ -834,6 +859,7 @@ class LibraryRefreshService : Service() {
         const val ACTION_STOP = "com.mangareader.app.REFRESH_STOP"
         const val EXTRA_SOURCES = "com.mangareader.app.REFRESH_SOURCES"
         const val EXTRA_SCOPE_LABEL = "com.mangareader.app.REFRESH_SCOPE"
+        const val EXTRA_UNCOUNTED = "com.mangareader.app.REFRESH_UNCOUNTED"
 
         /**
          * Starts a refresh.
@@ -852,7 +878,23 @@ class LibraryRefreshService : Service() {
          * hour. This does not resume and cannot be resumed — see
          * `LibraryRefreshService.scopeIds`.
          */
-        fun start(context: Context, sourceIds: Set<String>?, scopeLabel: String) {
+        /**
+         * Refreshes only series the index has no counts for.
+         *
+         * What to reach for after installing an extension the library already
+         * had entries from: those were skipped, never stamped, and a full sweep
+         * is the wrong size of hammer.
+         */
+        fun startUncounted(context: Context, count: Int) {
+            start(context, null, "$count never counted", uncounted = true)
+        }
+
+        fun start(
+            context: Context,
+            sourceIds: Set<String>?,
+            scopeLabel: String,
+            uncounted: Boolean = false
+        ) {
             // Cleared here rather than left to begin(), which doesn't run until the
             // worker has read the library and the swept set — a several-thousand
             // entry parse each. Until it does, `running` is still false and the
@@ -862,6 +904,9 @@ class LibraryRefreshService : Service() {
             val intent = Intent(context, LibraryRefreshService::class.java)
             if (!sourceIds.isNullOrEmpty()) {
                 intent.putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sourceIds))
+            }
+            if (uncounted) intent.putExtra(EXTRA_UNCOUNTED, true)
+            if (!sourceIds.isNullOrEmpty() || uncounted) {
                 intent.putExtra(EXTRA_SCOPE_LABEL, scopeLabel)
             }
             runCatching {
