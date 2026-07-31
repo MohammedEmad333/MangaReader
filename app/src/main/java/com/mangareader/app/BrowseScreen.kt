@@ -367,7 +367,17 @@ internal fun BrowseTab(
     // The signature is what the order is actually built from. Pinning, hiding a
     // source or a language, or installing an extension all reorder the list, and
     // a position from before that means nothing afterwards.
-    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs, lastUsedId)
+    //
+    // `lastUsedId` is deliberately NOT in it, and 0.86 shipped with it in and
+    // did nothing at all as a result: `openSource` calls
+    // `SourcePrefs.setLastUsed`, so opening a source changes it, so the
+    // signature changed on exactly the trip this store exists to survive and
+    // cleared itself every time. This is the same call the library's `counts`
+    // already loses — see §4 — and it goes the same way: what it costs is one
+    // row moving between the Last used section and its language group, which is
+    // a stale anchor, not the wholesale reorder a position genuinely can't
+    // survive.
+    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs)
     scroll.sync(sourcesOrdering)
 
     if (showSourceFilter) {
