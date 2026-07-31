@@ -231,7 +231,12 @@ internal fun LibraryTab(
 
     val groups: List<Group> = remember(
         entries, categories, tick, search, grouping, sort, ascending,
-        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted, counts, randomSeed
+        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted, counts, randomSeed,
+        // Names are recorded from a background coroutine on ON_RESUME, so on a
+        // cold start this block runs before any of them exist. Without this key
+        // the source tabs would render as raw ids and stay that way until an
+        // unrelated setting changed.
+        SourceNames.version
     ) {
         when (grouping) {
             LibraryGroup.UNGROUPED -> listOf(Group("all", "All", arrange(entries)))
@@ -247,10 +252,8 @@ internal fun LibraryTab(
                     .map { (sourceId, items) ->
                         Group(
                             key = sourceId,
-                            // Falls back to the id rather than to "Unknown", so
-                            // a source no map ever recorded is still
-                            // distinguishable from the next one along.
-                            label = names[sourceId]?.takeIf { it.isNotBlank() } ?: sourceId,
+                            label = names[sourceId]?.takeIf { it.isNotBlank() }
+                                ?: SourceNames.unnamed(sourceId),
                             items = arrange(items)
                         )
                     }

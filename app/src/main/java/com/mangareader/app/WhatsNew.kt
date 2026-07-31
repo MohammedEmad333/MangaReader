@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 95,
+            name = "0.95",
+            header = "Source tabs show names, not id numbers",
+            body = "Grouping the library by source listed raw ids. Two things " +
+                "were wrong: names are learned in the background just after " +
+                "the app opens, and the library had already drawn itself by " +
+                "then \u2014 and a source whose extension you have since " +
+                "uninstalled had no name recorded anywhere at all. The " +
+                "extension list now names every source in the catalogue, so " +
+                "open Browse \u203a Extensions once and the rest fill in.",
+        ),
+        ReleaseNote(
             code = 94,
             name = "0.94",
             header = "Group your library by source",

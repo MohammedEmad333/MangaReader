@@ -1,6 +1,9 @@
 package com.mangareader.app
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONObject
 
 /**
@@ -33,6 +36,24 @@ object SourceNames {
     @Volatile
     private var cached: Map<String, String>? = null
 
+    /**
+     * Bumped whenever a name is learned, so a screen already on display can
+     * notice.
+     *
+     * Compose state in a process-wide object, the same shape `DownloadQueue`
+     * uses and for the same reason: the writer is a background coroutine and the
+     * reader is a composable in the same process, so there is nothing to plumb.
+     *
+     * This is load-bearing rather than a nicety. Names are recorded from
+     * `SourceManager.listAllSources`, which runs on `ON_RESUME` **on
+     * `Dispatchers.IO`** — so on a cold start the Library tab has already
+     * composed and grouped itself before a single name exists. Without a key
+     * that moves, the source tabs render as raw ids until something unrelated
+     * invalidates them.
+     */
+    var version by mutableIntStateOf(0)
+        private set
+
     fun all(context: Context): Map<String, String> {
         cached?.let { return it }
         val parsed = runCatching {
@@ -46,9 +67,24 @@ object SourceNames {
         return parsed
     }
 
-    /** The source's name, or the id itself when nothing has recorded one. */
+    /** The source's name, or [unnamed] when nothing has ever recorded one. */
     fun nameOf(context: Context, sourceId: String): String =
-        all(context)[sourceId]?.takeIf { it.isNotBlank() } ?: sourceId
+        all(context)[sourceId]?.takeIf { it.isNotBlank() } ?: unnamed(sourceId)
+
+    /**
+     * What to call a source no map has a name for.
+     *
+     * Happens for a source whose extension was uninstalled before its name was
+     * ever recorded — nothing will list it again, so nothing will ever learn it
+     * except the repo index. Nineteen digits is not a label, so this keeps the
+     * tail, which is enough to tell two of them apart and short enough to read
+     * on a tab.
+     */
+    fun unnamed(sourceId: String): String {
+        val digits = sourceId.removePrefix("tachi:")
+        return if (digits.length <= 6) "Unknown ($digits)"
+        else "Unknown (\u2026${digits.takeLast(6)})"
+    }
 
     /**
      * Records names for a batch of sources.
@@ -69,6 +105,7 @@ object SourceNames {
 
         val merged = current + fresh
         cached = merged
+        version++
         runCatching {
             val o = JSONObject()
             merged.forEach { (id, name) -> o.put(id, name) }

@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 94
-        versionName = "0.94"
+        versionCode = 95
+        versionName = "0.95"
     }
 
     signingConfigs {
