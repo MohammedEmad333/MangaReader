@@ -131,6 +131,20 @@ object LibraryRefresh {
      */
     private val failureTally = ConcurrentHashMap<String, AtomicInteger>()
 
+    /**
+     * Covers rewritten by the current sweep.
+     *
+     * An `AtomicInteger` rather than a plain `var` like [counted] and its
+     * neighbours, because this is incremented from up to `SOURCE_CONCURRENCY`
+     * coroutines at once and `n++` from three of them is exactly bug 3. Cheap
+     * to get right here because nothing existing depends on it.
+     *
+     * Deliberately not persisted into the saved summary: a restored summary
+     * describes a sweep that has already finished, and this counter exists to
+     * show that a running one is doing something.
+     */
+    internal val coversRepaired = AtomicInteger(0)
+
     /** A snapshot of [failureTally], worst first. Safe to call at any time. */
     fun failureCounts(): List<Pair<String, Int>> =
         failureTally.entries
@@ -151,6 +165,7 @@ object LibraryRefresh {
         firstError = null
         finishedAt = 0L
         failureTally.clear()
+        coversRepaired.set(0)
     }
 
     internal fun end(context: Context) {
@@ -178,6 +193,7 @@ object LibraryRefresh {
         firstError = null
         finishedAt = 0L
         failureTally.clear()
+        coversRepaired.set(0)
         loaded = true
         runCatching { prefs(context).edit().remove(SUMMARY_KEY).apply() }
     }
@@ -353,6 +369,16 @@ class LibraryRefreshService : Service() {
     private val pending = HashMap<String, SeriesCounts>()
     private val pendingLock = Any()
 
+    /**
+     * Fresh covers waiting to be written, keyed by series id.
+     *
+     * Held and flushed exactly like [pending], for the same reason: `Library` is
+     * a single JSON string, so writing one cover per series over a sweep would
+     * rewrite several thousand entries several thousand times.
+     */
+    private val pendingCovers = HashMap<String, String>()
+    private val coverLock = Any()
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -489,6 +515,12 @@ class LibraryRefreshService : Service() {
         entries: List<LibraryEntry>,
         startedAt: Long
     ) {
+        // Read once for the whole pass, not per entry. The set only shrinks, and
+        // only when this sweep writes a repaired cover, so a stale read here can
+        // at worst repeat one repair — while re-reading it 3571 times would be
+        // the per-row cost §5 keeps finding.
+        val reportedCovers = CoverRepair.reported(this)
+
         for (entry in entries) {
             if (!currentCoroutineIsActive()) return
 
@@ -527,6 +559,38 @@ class LibraryRefreshService : Service() {
                         LibraryRefresh.counted++
                     }
                 }
+
+                // The cover, but only where the stored one is known to be
+                // wrong. This is a *second* request for the series, which is
+                // exactly what the comment above says the sweep avoids — so it
+                // is spent on the entries that need it rather than all 3571.
+                // An earlier plan had this coming free from the SManga already
+                // in hand; it doesn't, because restoreSeries never fetched one.
+                if (CoverRepair.needsRepair(entry, reportedCovers)) {
+                    // Caught separately from the counts above. A cover repair
+                    // that fails says nothing about whether the chapter list
+                    // landed, and letting it fall into the handler below would
+                    // record a failure against a series that was counted
+                    // perfectly — inflating the one tally whose job is to point
+                    // at sources that are genuinely broken.
+                    try {
+                        val fresh = (src.loadDetails(series).cover as? String)
+                            ?.takeIf { it.isNotBlank() && !isLoopback(it) }
+                        if (fresh != null && fresh != entry.cover) {
+                            synchronized(coverLock) { pendingCovers[entry.seriesId] = fresh }
+                            LibraryRefresh.coversRepaired.incrementAndGet()
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                        // Stays on the repair list, so the next sweep retries it.
+                    }
+                    // A second request to the same host inside one iteration, so
+                    // it gets its own spacing. Per-host request volume is the
+                    // variable the manhwatoon 400s turned on, and a repair pass
+                    // is not a reason to halve the gap between requests.
+                    delay(REQUEST_SPACING_MS)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -541,20 +605,42 @@ class LibraryRefreshService : Service() {
 
             LibraryRefresh.done++
             notifyThrottled()
-            if (pendingSize() >= FLUSH_EVERY) flush()
+            if (pendingSize() >= FLUSH_EVERY || pendingCoverSize() >= FLUSH_EVERY) flush()
             delay(REQUEST_SPACING_MS)
         }
     }
 
     private fun pendingSize(): Int = synchronized(pendingLock) { pending.size }
 
-    /** One write for up to [FLUSH_EVERY] series. See [SeriesIndex.recordAll]. */
+    private fun pendingCoverSize(): Int = synchronized(coverLock) { pendingCovers.size }
+
+    /**
+     * One write for up to [FLUSH_EVERY] series, per store.
+     *
+     * Two stores now, and neither may return early on behalf of the other — an
+     * `if (empty) return` inside the first block would strand a batch of covers
+     * whenever the counts happened to be empty, which is every sweep of a
+     * library that has already been counted once.
+     */
     private fun flush() {
         val batch = synchronized(pendingLock) {
-            if (pending.isEmpty()) return
-            HashMap(pending).also { pending.clear() }
+            if (pending.isEmpty()) null else HashMap(pending).also { pending.clear() }
         }
-        runCatching { SeriesIndex.recordAll(this, batch) }
+        if (batch != null) runCatching { SeriesIndex.recordAll(this, batch) }
+
+        val covers = synchronized(coverLock) {
+            if (pendingCovers.isEmpty()) null
+            else HashMap(pendingCovers).also { pendingCovers.clear() }
+        }
+        if (covers != null) {
+            runCatching {
+                Library.setCovers(this, covers)
+                // Cleared only after the write lands. A repair that failed to
+                // save has to stay on the list, or the entry is never asked
+                // about again until it next fails to draw.
+                CoverRepair.clear(this, covers.keys)
+            }
+        }
     }
 
     /**

@@ -138,6 +138,39 @@ object Library {
     }
 
     /**
+     * Rewrites many entries' covers in one write.
+     *
+     * The bulk counterpart to [healCover], and unlike it this one *may* replace
+     * a cover that is present and looks fine — that is the whole point, since a
+     * stale cover is well-formed and simply 404s. [mergeAll] can't be reused:
+     * it replaces whole entries, and the caller here has a fresh cover and
+     * nothing else, so merging through it would blank `addedAt` and whatever
+     * title the user's library actually holds.
+     *
+     * One write for the batch, never one per series — `Library` is a single JSON
+     * string, so a per-series repair over a sweep is the quadratic write that
+     * `SeriesIndex.recordAll` exists to avoid, arriving from the other side.
+     *
+     * A batch that changes nothing is refused, for the same reason
+     * `SeriesIndex.record` refuses one: this runs from a sweep, and rewriting
+     * several thousand entries to store what they already say is pure cost.
+     */
+    fun setCovers(context: Context, covers: Map<String, String>) {
+        if (covers.isEmpty()) return
+        var changed = false
+        val next = list(context).map { entry ->
+            val fresh = covers[entry.seriesId]
+            if (fresh == null || fresh.isBlank() || fresh == entry.cover) {
+                entry
+            } else {
+                changed = true
+                entry.copy(cover = fresh)
+            }
+        }
+        if (changed) save(context, next)
+    }
+
+    /**
      * Removes many series in one write.
      *
      * The per-series [remove] rewrites the whole library JSON each call, so

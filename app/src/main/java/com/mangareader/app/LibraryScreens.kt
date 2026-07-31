@@ -566,6 +566,10 @@ private fun LibraryGrid(
                     CoverImage(
                         cover = entry.cover.ifBlank { null },
                         title = entry.title,
+                        // The library grid is where a stale cover is visible and
+                        // where the entry behind it is known, so this is the one
+                        // place a failed draw can be turned into a repair.
+                        seriesId = entry.seriesId,
                         modifier = Modifier
                             .width(44.dp)
                             .aspectRatio(0.7f)
@@ -626,6 +630,10 @@ private fun LibraryGrid(
                     CoverImage(
                         cover = entry.cover.ifBlank { null },
                         title = entry.title,
+                        // The library grid is where a stale cover is visible and
+                        // where the entry behind it is known, so this is the one
+                        // place a failed draw can be turned into a repair.
+                        seriesId = entry.seriesId,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(0.7f)

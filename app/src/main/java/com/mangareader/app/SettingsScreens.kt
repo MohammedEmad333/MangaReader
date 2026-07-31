@@ -302,7 +302,16 @@ private fun LibrarySettings() {
                                 } else null,
                                 if (LibraryRefresh.resumed > 0) {
                                     "${LibraryRefresh.resumed} resumed"
-                                } else null
+                                } else null,
+                                // Outside the arithmetic above, deliberately.
+                                // A repaired cover is not a fourth outcome
+                                // alongside counted/failed/skipped — the same
+                                // series is counted *and* possibly repaired, so
+                                // adding this to that sum would break the one
+                                // identity this row exists to let you check.
+                                LibraryRefresh.coversRepaired.get()
+                                    .takeIf { it > 0 }
+                                    ?.let { "$it covers fixed" }
                             ).joinToString(" \u2022 ")
                             else -> "Fetch chapter lists for all $entryCount series"
                         }
