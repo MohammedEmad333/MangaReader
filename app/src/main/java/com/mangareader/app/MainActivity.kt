@@ -690,7 +690,18 @@ fun YomuApp() {
         val src = activeSource ?: return
         val chapter = chapterList.getOrNull(index) ?: return
         errorMessage = null
-        pages = emptyList()
+        // `pages` is deliberately **not** cleared here.
+        //
+        // The reader's routing branch requires a non-empty page list, so
+        // emptying it drops the whole screen back to the series list until the
+        // next chapter's first publish lands — a visible flash of the wrong
+        // screen on every Prev, Next and chapter-picker tap. Holding the
+        // outgoing chapter's pages for that moment reads as the reader pausing,
+        // which is what it is doing. The first publish below replaces them
+        // wholesale, together with `activeChapterIdx`.
+        //
+        // The failure path clears them instead, so a chapter that can't be
+        // opened still falls back to the series screen where the error shows.
         // Whichever chapter was loading, it isn't wanted any more: this is
         // either a different chapter or a reopen of the same one.
         pageJob?.cancel()
@@ -733,6 +744,10 @@ fun YomuApp() {
                 throw e
             } catch (e: Throwable) {
                 errorMessage = sourceFailureMessage(e, "Could not open this chapter")
+                // Drop out of the reader so the error is somewhere it can be
+                // read. Without this the previous chapter stays on screen and
+                // the failure is silent.
+                pages = emptyList()
             } finally {
                 // finally, not a trailing statement: cancellation skips the tail
                 // of the block and would otherwise leave the spinner up forever.

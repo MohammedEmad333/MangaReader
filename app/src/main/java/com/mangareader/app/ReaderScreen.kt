@@ -217,20 +217,46 @@ internal fun ReaderScreen(
     val edgeTrigger = with(LocalDensity.current) { 140.dp.toPx() }
     val edgeScroll = remember(chapterIndex, hasPrev, hasNext, edgeTrigger) {
         object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (available.y == 0f) return Offset.Zero
-                pull[0] += available.y
+            /**
+             * **`onPreScroll`, not `onPostScroll`, and that was 0.101's bug.**
+             *
+             * Post-scroll looked ideal because a non-zero `available` there
+             * *is* the at-an-edge condition, with no separate test to get
+             * wrong. It never fires: the overscroll effect — the stretch at the
+             * end of a list — consumes the leftover delta before a parent
+             * connection is offered it, so `available` was always zero and the
+             * whole feature did nothing.
+             *
+             * Pre-scroll always fires, which means the edge has to be tested
+             * explicitly after all. `atStripEnd` is the one already used to
+             * decide the chapter is finished, so the two agree by construction,
+             * and it is layout-derived rather than a `canScrollForward` that
+             * lies before the first measure. Nothing is consumed here, so
+             * ordinary scrolling is untouched.
+             */
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val dy = available.y
+                // Drag only. A fling that merely reaches the end of a chapter
+                // arrives here carrying whatever momentum is left, which would
+                // turn "I flicked to the bottom" into "open the next chapter".
+                if (dy == 0f || source != NestedScrollSource.Drag) return Offset.Zero
+
+                val atTop = listState.firstVisibleItemIndex == 0 &&
+                    listState.firstVisibleItemScrollOffset == 0
                 when {
-                    pull[0] > edgeTrigger && hasPrev -> { pull[0] = 0f; onPrev() }
-                    pull[0] < -edgeTrigger && hasNext -> { pull[0] = 0f; onNext() }
+                    dy > 0f && atTop && hasPrev -> {
+                        pull[0] += dy
+                        if (pull[0] > edgeTrigger) { pull[0] = 0f; onPrev() }
+                    }
+                    dy < 0f && atStripEnd && hasNext -> {
+                        pull[0] += dy
+                        if (pull[0] < -edgeTrigger) { pull[0] = 0f; onNext() }
+                    }
+                    // Anywhere else in the chapter, including an edge with no
+                    // neighbour to go to. Reset rather than let a pull survive
+                    // being scrolled away from and resumed later.
+                    else -> pull[0] = 0f
                 }
-                // Nothing consumed: the overscroll effect still gets to draw,
-                // so the edge keeps its usual stretch and the gesture doesn't
-                // feel swallowed on a chapter with no neighbour.
                 return Offset.Zero
             }
 
