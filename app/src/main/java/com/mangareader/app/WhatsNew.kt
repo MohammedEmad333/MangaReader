@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 90,
+            name = "0.90",
+            header = "The library repairs its own covers",
+            body = "Covers were stored once, when a series was added, and never " +
+                "re-checked \u2014 so entries imported without one stayed grey " +
+                "until you opened them individually, and entries whose source " +
+                "later moved the file showed a broken image forever.\n\nA " +
+                "chapter-counts refresh now fixes both as it goes. It only " +
+                "spends a request on entries that need one: covers that are " +
+                "missing, and covers the library grid has actually watched " +
+                "fail. Settings \u203a Library \u203a Chapter counts, and the " +
+                "row reports how many it fixed.",
+        ),
+        ReleaseNote(
             code = 89,
             name = "0.89",
             header = "Fixes to yesterday's resume change",

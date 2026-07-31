@@ -88,7 +88,20 @@ internal fun coverModel(path: String?): Any? {
 }
 
 @Composable
-fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
+fun CoverImage(
+    cover: Any?,
+    title: String,
+    modifier: Modifier = Modifier,
+    /**
+     * The library entry this cover belongs to, where it is one.
+     *
+     * Only the library grid passes it, and only the library grid should: this is
+     * what turns a failed draw into a repair candidate, and a browse result or a
+     * search hit isn't something this app stores a cover for.
+     */
+    seriesId: String? = null
+) {
+    val coverContext = LocalContext.current
     // Why Coil gave up on this cover, if it did. Keyed on the model so a
     // recycled grid cell doesn't inherit the previous entry's failure.
     var failure by remember(cover) { mutableStateOf<String?>(null) }
@@ -106,6 +119,15 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
                 onError = { state ->
                     val cause = state.result.throwable
                     failure = cause.message ?: cause::class.java.simpleName
+                    // A stored cover that 404s is the only failure that says
+                    // anything about the *stored string*. A timeout, an
+                    // unresolvable host or a 403 is about the network or the
+                    // source, and treating those as staleness would have one
+                    // scroll in airplane mode queue the entire library for
+                    // repair. See CoverRepair.
+                    if (seriesId != null && isMissingImage(cause)) {
+                        CoverRepair.report(coverContext, seriesId)
+                    }
                 }
             )
             // Debug builds only.
@@ -147,6 +169,26 @@ fun CoverImage(cover: Any?, title: String, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+private val HTTP_STATUS = Regex("""HTTP\s+(?:error\s+)?(\d{3})""")
+
+/**
+ * Whether a Coil failure means the image is gone rather than unreachable.
+ *
+ * Read off the message rather than by catching Coil's own exception type. This
+ * file already proves `state.result.throwable.message` compiles; an unfamiliar
+ * import does not, and with no compiler in this loop that is a CI round trip for
+ * a detail this small.
+ *
+ * Tolerant on purpose, and the asymmetry is deliberate: a false positive costs
+ * one wasted details request inside a sweep that is already making thousands,
+ * while a false negative leaves a broken cover on screen indefinitely.
+ */
+private fun isMissingImage(cause: Throwable?): Boolean {
+    val message = cause?.message ?: return false
+    val code = HTTP_STATUS.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    return code == 404 || code == 410
 }
 
 /** Cached miss, so a package without an icon isn't looked up again either. */
