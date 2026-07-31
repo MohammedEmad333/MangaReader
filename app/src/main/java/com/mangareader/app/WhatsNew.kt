@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 92,
+            name = "0.92",
+            header = "The refresh reports repaired covers after a stop",
+            body = "It only showed how many covers it had fixed once a sweep " +
+                "ran all the way to the end, and the count was thrown away " +
+                "when the app closed \u2014 so stopping a refresh, which is " +
+                "when you would look, showed nothing. It is now saved with the " +
+                "rest of the summary and shown either way.",
+        ),
+        ReleaseNote(
             code = 91,
             name = "0.91",
             header = "Resume goes where you actually stopped",

@@ -284,9 +284,18 @@ private fun LibrarySettings() {
                 supportingContent = {
                     Text(
                         when {
-                            unfinished ->
-                                "$alreadyCounted of $entryCount counted \u2014 " +
-                                    "carries on from there"
+                            // The covers line belongs in *both* arms. It was
+                            // added to the finished one alone, and `unfinished`
+                            // wins this `when` after every stop — so the one
+                            // number that says whether a repair pass did
+                            // anything was unreachable in exactly the state you
+                            // read it from.
+                            unfinished -> listOfNotNull(
+                                "$alreadyCounted of $entryCount counted",
+                                LibraryRefresh.coversRepaired.get()
+                                    .takeIf { it > 0 }
+                                    ?.let { "$it covers fixed" }
+                            ).joinToString(" \u2022 ") + " \u2014 carries on from there"
                             // `resumed` belongs here even though it is zero on
                             // most runs. The end-of-sweep check is
                             // `counted + failed + skipped == total - resumed`,
