@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 103,
+            name = "0.103",
+            header = "The chapter swipe is smooth now",
+            body = "It was built on a component meant for deleting rows, which " +
+                "had to be talked out of deleting anything on every swipe \u2014 " +
+                "hence the misfires and the swipes that did nothing.\n\nIt now " +
+                "uses the same library Mihon and TachiyomiSY use for this exact " +
+                "row, so the icon follows your finger and the action fires once, " +
+                "at the point you'd expect.",
+        ),
+        ReleaseNote(
             code = 102,
             name = "0.102",
             header = "Chapter transitions actually work now",

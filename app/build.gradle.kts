@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 102
-        versionName = "0.102"
+        versionCode = 103
+        versionName = "0.103"
     }
 
     signingConfigs {
@@ -93,6 +93,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
+    implementation("me.saket.swipe:swipe:1.3.0")
     // Through the BOM rather than a hard 4.12.0 pin, and the same BOM version
     // :source-api declares — keep the two in step.
     //
