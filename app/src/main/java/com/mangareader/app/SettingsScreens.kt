@@ -358,16 +358,24 @@ private fun LibrarySettings() {
             LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
             // Which sources are failing, not just how many series did. One error
             // string names one series; this names the thing to go and look at,
-            // across the whole library, in one pass. Sources are shown by id
-            // because a failing source is often one whose extension is the
-            // problem, and the id is what identifies it in the Extensions tab.
+            // across the whole library, in one pass.
+            //
+            // Shown by name since 0.94. It read out raw ids before, and the
+            // justification written here — that the id is what identifies a
+            // source in the Extensions tab — was rationalising a limitation:
+            // `tachi:6202325652827735606 \u00d712` tells you a source is broken
+            // and gives you no way to find out which. Nothing stored a name
+            // anywhere until SourceNames.
             val failures = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
                 LibraryRefresh.failureCounts()
             }
             if (failures.isNotEmpty()) {
                 PrefNote(
+                    // Named, not `tachi:6202325652827735606`. The tally exists to
+                    // point at the source that is failing, and an id points at
+                    // nothing — SourceNames is the map that makes it legible.
                     "Failures by source: " + failures.take(8).joinToString(" \u2022 ") {
-                        "${it.first} \u00d7${it.second}"
+                        "${SourceNames.nameOf(context, it.first)} \u00d7${it.second}"
                     } + if (failures.size > 8) " \u2026" else ""
                 )
             }

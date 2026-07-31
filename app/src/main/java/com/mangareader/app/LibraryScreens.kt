@@ -219,9 +219,14 @@ internal fun LibraryTab(
         return if (ascending || sort == LibrarySort.RANDOM) ordered else ordered.reversed()
     }
 
-    // The tabs, and what each holds. Grouping by source is deliberately absent:
-    // a LibraryEntry stores the source id it came from and never the source's
-    // name, so those tabs would read as raw extension ids.
+    // The tabs, and what each holds.
+    //
+    // Grouping by source was absent for as long as this file has existed, and the
+    // reason was never the grouping: a LibraryEntry stores the source id it came
+    // from and never the source's name, so the tabs would have read as raw
+    // extension ids. `SourceNames` is that map, written wherever sources are
+    // listed for other reasons, so the tabs can be named without this screen
+    // classloading a single APK.
     data class Group(val key: String, val label: String, val items: List<LibraryEntry>)
 
     val groups: List<Group> = remember(
@@ -230,6 +235,30 @@ internal fun LibraryTab(
     ) {
         when (grouping) {
             LibraryGroup.UNGROUPED -> listOf(Group("all", "All", arrange(entries)))
+            LibraryGroup.SOURCES -> {
+                // One tab per source actually present in the library, rather
+                // than per installed source: a source with nothing saved from it
+                // would be an empty tab, and an entry whose extension has since
+                // been uninstalled still needs somewhere to live. Grouping on
+                // what the entries say satisfies both without asking
+                // SourceManager anything.
+                val names = SourceNames.all(context)
+                entries.groupBy { it.sourceId }
+                    .map { (sourceId, items) ->
+                        Group(
+                            key = sourceId,
+                            // Falls back to the id rather than to "Unknown", so
+                            // a source no map ever recorded is still
+                            // distinguishable from the next one along.
+                            label = names[sourceId]?.takeIf { it.isNotBlank() } ?: sourceId,
+                            items = arrange(items)
+                        )
+                    }
+                    // By label, so the tab order is the one the user can see.
+                    // Case-insensitive because extension names are not
+                    // consistently capitalised.
+                    .sortedBy { it.label.lowercase() }
+            }
             else -> {
                 val assigned by lazy { Categories.assignedSeries(context) }
                 categories.map { cat ->
@@ -566,10 +595,6 @@ private fun LibraryGrid(
                     CoverImage(
                         cover = entry.cover.ifBlank { null },
                         title = entry.title,
-                        // The library grid is where a stale cover is visible and
-                        // where the entry behind it is known, so this is the one
-                        // place a failed draw can be turned into a repair.
-                        seriesId = entry.seriesId,
                         modifier = Modifier
                             .width(44.dp)
                             .aspectRatio(0.7f)
@@ -630,10 +655,6 @@ private fun LibraryGrid(
                     CoverImage(
                         cover = entry.cover.ifBlank { null },
                         title = entry.title,
-                        // The library grid is where a stale cover is visible and
-                        // where the entry behind it is known, so this is the one
-                        // place a failed draw can be turned into a repair.
-                        seriesId = entry.seriesId,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(0.7f)
