@@ -52,6 +52,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -70,6 +71,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import dalvik.system.PathClassLoader
+import me.saket.swipe.SwipeAction
+import me.saket.swipe.SwipeableActionsBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -811,64 +814,43 @@ internal fun SeriesScreen(
                 val key = chapterKeyOf(sourceId, ch)
                 val read = remember(key, readTick) { ReadState.isRead(context, key) }
                 val resume = remember(key, readTick) { savedPage(context, key) }
-                // Swipe either way toggles read. `confirmValueChange` returning
-                // false is what makes this an *action* rather than a dismissal:
-                // the box refuses the new value and animates back, so the row
-                // stays where it is and the list never loses an item.
+                // `me.saket.swipe`, not Material3's SwipeToDismissBox — which
+                // this shipped on twice and which was unreliable both times.
                 //
-                // Disabled while selecting. A horizontal drag during multi-select
-                // is someone scrolling a list they are picking from, and marking
-                // one chapter read out from under a selection is not what it
-                // means.
-                val swipeState = rememberSwipeToDismissBoxState(
-                    confirmValueChange = { value ->
-                        // Ignored while selecting: a horizontal drag then is
-                        // someone scrolling a list they are picking from, and
-                        // marking one chapter read out from under a selection is
-                        // not what that means. Guarded here rather than with
-                        // `gesturesEnabled`, which is a parameter this Compose
-                        // version may not have — and with no compiler in the
-                        // loop, an uncertain parameter costs a CI round trip.
-                        if (!selecting && value != SwipeToDismissBoxValue.Settled) {
-                            onSetRead(listOf(ch), !read)
-                        }
-                        false
+                // The reason is structural rather than a threshold to tune.
+                // SwipeToDismissBox exists to *remove* a row, so using it as an
+                // action means refusing its own state change on every swipe and
+                // hoping it settles back cleanly. This library is built for the
+                // other thing: the row springs back by design, the action fires
+                // once at the threshold, and the icon tracks the finger.
+                //
+                // Mihon and TachiyomiSY both use it for exactly this row, which
+                // is where the smoothness being compared against comes from.
+                val toggleRead = SwipeAction(
+                    onSwipe = { if (!selecting) onSetRead(listOf(ch), !read) },
+                    icon = {
+                        Icon(
+                            // Reads as the outcome: a tick to finish an unread
+                            // chapter, a cross to undo a finished one.
+                            if (read) Icons.Default.Clear else Icons.Default.Check,
+                            contentDescription = if (read) "Mark unread" else "Mark read",
+                            modifier = Modifier.padding(16.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     },
-                    // Most of the row's width, against a default of half.
-                    // Reported as firing while scrolling a long chapter list,
-                    // where a fling carries enough sideways drift to cross a
-                    // shallow threshold — and as not firing when meant, which is
-                    // the same complaint from the other side: an inconsistent
-                    // trigger point reads as both. A deliberate swipe crosses
-                    // this and an incidental one doesn't.
-                    //
-                    // This is a tuning change, not a diagnosis. If it still
-                    // misfires the next thing to suspect is velocity-based
-                    // settling rather than distance, and the answer there is a
-                    // hand-rolled drag detector rather than SwipeToDismissBox.
-                    positionalThreshold = { distance -> distance * 0.75f }
+                    background = MaterialTheme.colorScheme.secondaryContainer,
+                    // Tells the library this swipe undoes something, which is
+                    // what drives its ripple running the other way.
+                    isUndo = read
                 )
-                SwipeToDismissBox(
-                    state = swipeState,
-                    backgroundContent = {
-                        // Reads as the outcome, not the gesture: swiping an
-                        // unread chapter says "Mark read", and the same swipe on
-                        // a read one says the opposite. Centred on both edges so
-                        // it is visible whichever way the finger goes.
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(horizontal = 24.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Text(
-                                if (read) "Mark unread" else "Mark read",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
+                SwipeableActionsBox(
+                    startActions = listOf(toggleRead),
+                    endActions = listOf(toggleRead),
+                    // Deliberately generous. The default 40dp is what made the
+                    // Material3 version fire on sideways drift while scrolling
+                    // a long chapter list.
+                    swipeThreshold = 96.dp,
+                    modifier = Modifier.clipToBounds()
                 ) {
                 ListItem(
                     headlineContent = {
