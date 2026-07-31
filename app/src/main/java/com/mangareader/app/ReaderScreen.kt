@@ -119,7 +119,27 @@ internal fun ReaderScreen(
     ReaderWindowEffects(settings, showControls)
 
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialPage)
+    /**
+     * How many rows sit above page 0 in the strip.
+     *
+     * The strip carries a transition row at each end — the shape TachiyomiSY's
+     * webtoon adapter uses, where they are real items in the list rather than a
+     * gesture to detect. That shifts every list index one past its page index,
+     * and **four places depend on the two being the same**: the seeded scroll
+     * position, the current-page read, seeking, and the end-of-chapter test that
+     * marks a chapter read. Each of them adds this, and the last one is the one
+     * that fails silently — get it wrong and chapters simply stop being marked
+     * read, which is §5's 0.57 bug arriving from a new direction.
+     *
+     * Zero outside long strip: the pager has no transition rows.
+     */
+    val headRows = if (settings.mode == ReaderMode.LONG_STRIP) 1 else 0
+
+    // Seeded past the header so a chapter opens on its first page, with the
+    // previous-chapter row above it rather than in front of it.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialPage + headRows
+    )
 
     // Whether the bottom of the last page is actually on screen.
     //
@@ -133,11 +153,13 @@ internal fun ReaderScreen(
     val atStripEnd by remember(pages.size) {
         derivedStateOf {
             val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()
+            // The *last page*, which is no longer the last item — a transition
+            // row follows it. Matching on the index rather than taking the last
+            // visible one is what keeps this honest as rows are added around the
+            // pages.
+            val last = info.visibleItemsInfo.lastOrNull { it.index == pages.lastIndex + headRows }
             pages.isNotEmpty() &&
-                info.totalItemsCount == pages.size &&
                 last != null &&
-                last.index == pages.lastIndex &&
                 last.offset + last.size <= info.viewportEndOffset
         }
     }
@@ -153,7 +175,7 @@ internal fun ReaderScreen(
         // marks a chapter read — could not fire.
         atStripEnd -> pages.lastIndex
 
-        else -> listState.firstVisibleItemIndex
+        else -> (listState.firstVisibleItemIndex - headRows).coerceIn(0, pages.lastIndex)
     }
     LaunchedEffect(currentPage) { onProgress(currentPage) }
 
@@ -173,7 +195,7 @@ internal fun ReaderScreen(
         seekTarget = null
         if (target == null || pages.isEmpty()) return
         scope.launch {
-            if (settings.mode == ReaderMode.LONG_STRIP) listState.scrollToItem(target)
+            if (settings.mode == ReaderMode.LONG_STRIP) listState.scrollToItem(target + headRows)
             else pagerState.scrollToPage(target)
         }
     }
@@ -310,6 +332,17 @@ internal fun ReaderScreen(
                 state = listState,
                 modifier = stripModifier.nestedScroll(edgeScroll)
             ) {
+                item {
+                    ChapterTransitionRow(
+                        topLabel = if (hasPrev) "Previous" else null,
+                        topName = if (hasPrev) chapters.getOrNull(chapterIndex - 1)?.name else null,
+                        bottomLabel = "Current",
+                        bottomName = chapterName,
+                        fallback = "There's no previous chapter",
+                        textColor = onBackground,
+                        onClick = if (hasPrev) onPrev else null
+                    )
+                }
                 itemsIndexed(pages) { index, file ->
                     ReaderPage(
                         file = file,
@@ -333,6 +366,17 @@ internal fun ReaderScreen(
                             .heightIn(min = 240.dp),
                         contentScale = ContentScale.FillWidth,
                         textColor = onBackground
+                    )
+                }
+                item {
+                    ChapterTransitionRow(
+                        topLabel = "Finished",
+                        topName = chapterName,
+                        bottomLabel = if (hasNext) "Next" else null,
+                        bottomName = if (hasNext) chapters.getOrNull(chapterIndex + 1)?.name else null,
+                        fallback = "There's no next chapter",
+                        textColor = onBackground,
+                        onClick = if (hasNext) onNext else null
                     )
                 }
             }
@@ -573,6 +617,67 @@ private fun ReaderPage(
                 "Page ${index + 1} couldn't be loaded",
                 color = textColor,
                 style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+/**
+ * The row between two chapters, at each end of a strip.
+ *
+ * Modelled on TachiyomiSY's `ChapterTransition`: two labelled lines, or a single
+ * fallback when there is nothing on the other side. It is an *item in the list*
+ * rather than an overscroll affordance, which is the whole point — it can be
+ * read, it can be tapped, and it cannot misfire.
+ *
+ * SY goes further and loads the neighbouring chapters' pages into the same list,
+ * so scrolling simply continues into them and this row is what you pass through.
+ * That needs a reader that holds three chapters at once; this one holds one, so
+ * here the row is the destination rather than a divider.
+ */
+@Composable
+private fun ChapterTransitionRow(
+    topLabel: String?,
+    topName: String?,
+    bottomLabel: String?,
+    bottomName: String?,
+    fallback: String,
+    textColor: Color,
+    onClick: (() -> Unit)?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable { onClick() })
+            .padding(horizontal = 32.dp, vertical = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        // Both sides absent means there is no neighbour in that direction, which
+        // is worth saying rather than leaving a blank gap at the end of a
+        // chapter that looks like something failed to load.
+        if (topName == null && bottomName == null) {
+            Text(fallback, color = textColor, style = MaterialTheme.typography.bodyMedium)
+            return@Column
+        }
+        listOfNotNull(
+            topLabel?.let { it to topName },
+            bottomLabel?.let { it to bottomName }
+        ).forEach { (label, name) ->
+            if (name == null) return@forEach
+            Column {
+                Text(
+                    label,
+                    color = textColor.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Text(name, color = textColor, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        if (onClick != null) {
+            Text(
+                "Tap to open",
+                color = textColor.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.labelSmall
             )
         }
     }
