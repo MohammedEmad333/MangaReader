@@ -99,6 +99,15 @@ object LibraryRefresh {
         internal set
 
     /**
+     * What this sweep is limited to, or blank for the whole library.
+     *
+     * Shown beside the progress, because "812 of 900" is otherwise
+     * indistinguishable from a full sweep on a library that shrank.
+     */
+    var scopeLabel by mutableStateOf("")
+        internal set
+
+    /**
      * The first failure, kept rather than the last.
      *
      * With a sweep this size the last error is whatever happened to finish
@@ -196,6 +205,7 @@ object LibraryRefresh {
         finishedAt = 0L
         failureTally.clear()
         coversRepaired.set(0)
+        scopeLabel = ""
         loaded = true
         runCatching { prefs(context).edit().remove(SUMMARY_KEY).apply() }
     }
@@ -366,6 +376,18 @@ class LibraryRefreshService : Service() {
 
     /** Set only when a sweep actually reached the end. Gates clearing the cursor. */
     private var completed = false
+
+    /**
+     * Source ids this run is limited to, or null for the whole library.
+     *
+     * **A targeted run deliberately does not touch [RefreshCursor].** The cursor
+     * records only a timestamp, not a filter, so a stopped targeted sweep and a
+     * stopped full one would be indistinguishable to Resume — it would offer to
+     * carry on with a scope it cannot know. A targeted run is short by
+     * construction, so the answer to interrupting one is to run it again, and
+     * the full sweep's resume machinery stays exactly as it was.
+     */
+    private var scopeIds: Set<String>? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastNotifyAt = 0L
 
@@ -409,6 +431,16 @@ class LibraryRefreshService : Service() {
             return START_NOT_STICKY
         }
 
+        // Before ensureWorker: the worker reads this on its first line, and a
+        // second start() while one is already running must not silently change
+        // the scope underneath it.
+        if (worker?.isActive != true) {
+            scopeIds = intent?.getStringArrayListExtra(EXTRA_SOURCES)
+                ?.toSet()
+                ?.takeIf { it.isNotEmpty() }
+            LibraryRefresh.scopeLabel = intent?.getStringExtra(EXTRA_SCOPE_LABEL).orEmpty()
+        }
+
         ensureWorker()
         // Still not sticky, unlike DownloadService, but for a different reason
         // than before: a refresh the *system* restarts after a process kill is
@@ -444,8 +476,12 @@ class LibraryRefreshService : Service() {
                 // counts already fetched, and throwing them away would mean a
                 // stopped refresh had done nothing but spend the requests.
                 flush()
-                // Only a sweep that finished gives up its resume point.
-                if (completed) RefreshCursor.clear(this@LibraryRefreshService)
+                // Only a *full* sweep that finished gives up its resume point.
+                // A targeted run never owned it, and clearing it here would
+                // silently discard a half-finished full sweep's progress.
+                if (completed && ownsCursor) {
+                    RefreshCursor.clear(this@LibraryRefreshService)
+                }
                 LibraryRefresh.end(this@LibraryRefreshService)
                 releaseWakeLock()
                 stopEverything()
@@ -453,18 +489,30 @@ class LibraryRefreshService : Service() {
         }
     }
 
+    /** True when this run may touch the shared resume point. See [scopeIds]. */
+    private val ownsCursor: Boolean get() = scopeIds == null
+
     private suspend fun sweep() {
+        val scope = scopeIds
         val entries = Library.list(this)
+            .let { all -> if (scope == null) all else all.filter { it.sourceId in scope } }
         if (entries.isEmpty()) {
             LibraryRefresh.begin(0)
-            RefreshCursor.clear(this)
+            if (ownsCursor) RefreshCursor.clear(this)
             completed = true
             return
         }
 
         // Resumes the sweep in progress, or opens a new one. Everything below
         // hangs off this timestamp.
-        val startedAt = RefreshCursor.beginOrResume(this)
+        //
+        // A targeted run takes a timestamp without recording it: it still stamps
+        // the series it counts, so a later full sweep correctly treats them as
+        // already done, but it leaves no resume point of its own to be confused
+        // with a full sweep's.
+        val startedAt =
+            if (scope == null) RefreshCursor.beginOrResume(this)
+            else System.currentTimeMillis()
         // Read once. Not `SeriesIndex.of` per series: the memo is keyed on the
         // raw pref string and every flush below writes a new one, so a lookup
         // in the loop would re-parse the whole index once per flush.
@@ -784,6 +832,8 @@ class LibraryRefreshService : Service() {
         private const val FLUSH_EVERY = 100
 
         const val ACTION_STOP = "com.mangareader.app.REFRESH_STOP"
+        const val EXTRA_SOURCES = "com.mangareader.app.REFRESH_SOURCES"
+        const val EXTRA_SCOPE_LABEL = "com.mangareader.app.REFRESH_SCOPE"
 
         /**
          * Starts a refresh.
@@ -791,7 +841,18 @@ class LibraryRefreshService : Service() {
          * Only ever called from a user action in a visible Activity, which is
          * what keeps the foreground-service start legal on Android 12+.
          */
-        fun start(context: Context) {
+        /** Every source in the library. */
+        fun start(context: Context) = start(context, null, "")
+
+        /**
+         * Refreshes only [sourceIds].
+         *
+         * Useful the moment the summary names a source that failed repeatedly:
+         * re-running the whole library to retry twelve series is most of an
+         * hour. This does not resume and cannot be resumed — see
+         * `LibraryRefreshService.scopeIds`.
+         */
+        fun start(context: Context, sourceIds: Set<String>?, scopeLabel: String) {
             // Cleared here rather than left to begin(), which doesn't run until the
             // worker has read the library and the swept set — a several-thousand
             // entry parse each. Until it does, `running` is still false and the
@@ -799,6 +860,10 @@ class LibraryRefreshService : Service() {
             // that has already started.
             LibraryRefresh.clearSummary(context)
             val intent = Intent(context, LibraryRefreshService::class.java)
+            if (!sourceIds.isNullOrEmpty()) {
+                intent.putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sourceIds))
+                intent.putExtra(EXTRA_SCOPE_LABEL, scopeLabel)
+            }
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)

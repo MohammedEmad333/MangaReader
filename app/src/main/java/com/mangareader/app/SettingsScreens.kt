@@ -25,7 +25,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -47,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -178,6 +182,7 @@ private fun AppearanceSettings() {
 private fun LibrarySettings() {
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
+    var sourcePickerOpen by remember { mutableStateOf(false) }
     var categoryTick by remember { mutableIntStateOf(0) }
     val sizes = listOf("small", "medium", "large")
     var coverSize by remember {
@@ -255,6 +260,10 @@ private fun LibrarySettings() {
                     Text("Stop")
                 }
             }
+            if (LibraryRefresh.scopeLabel.isNotBlank()) {
+                PrefNote("Only ${LibraryRefresh.scopeLabel}. This one can't be resumed " +
+                    "\u2014 it is short enough to just run again.")
+            }
             PrefNote(
                 if (LibraryRefresh.resumed > 0) {
                     "Resumed \u2014 ${LibraryRefresh.resumed} series were already " +
@@ -331,6 +340,21 @@ private fun LibrarySettings() {
                 },
                 modifier = Modifier.clickable { LibraryRefreshService.start(context) }
             )
+            // Offered only when nothing is running: two sweeps would fight over
+            // the same counters and the same foreground service.
+            if (!LibraryRefresh.running) {
+                ListItem(
+                    headlineContent = { Text("Refresh some sources") },
+                    supportingContent = {
+                        Text(
+                            "Pick which sources to fetch instead of the whole " +
+                                "library \u2014 useful when the summary above names " +
+                                "one that failed."
+                        )
+                    },
+                    modifier = Modifier.clickable { sourcePickerOpen = true }
+                )
+            }
             if (unfinished) {
                 Row(modifier = Modifier.padding(horizontal = 16.dp)) {
                     TextButton(onClick = { LibraryRefreshService.startOver(context) }) {
@@ -396,6 +420,94 @@ private fun LibrarySettings() {
             categoryTick++
         })
     }
+
+    if (sourcePickerOpen) {
+        RefreshSourcePicker(
+            onDismiss = { sourcePickerOpen = false },
+            onStart = { ids, label ->
+                sourcePickerOpen = false
+                LibraryRefreshService.start(context, ids, label)
+            }
+        )
+    }
+}
+
+/**
+ * Picks which sources a refresh should cover.
+ *
+ * Built from the *library*, not from `SourceManager`: a source with nothing
+ * saved from it has nothing to refresh, and an entry whose extension has since
+ * been uninstalled still needs to be listed — it is exactly the kind of thing
+ * someone comes here to retry. That also keeps this off the classloading path,
+ * which is not something to do from a dialog.
+ */
+@Composable
+private fun RefreshSourcePicker(
+    onDismiss: () -> Unit,
+    onStart: (Set<String>, String) -> Unit
+) {
+    val context = LocalContext.current
+    // One parse, not one per recomposition of a checkbox.
+    val rows = remember {
+        Library.list(context)
+            .groupingBy { it.sourceId }
+            .eachCount()
+            .map { (id, count) -> Triple(id, SourceNames.nameOf(context, id), count) }
+            .sortedByDescending { it.third }
+    }
+    var picked by remember { mutableStateOf(emptySet<String>()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Refresh some sources") },
+        text = {
+            if (rows.isEmpty()) {
+                Text("Nothing in the library yet.")
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                    items(rows) { (id, name, count) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    picked = if (id in picked) picked - id else picked + id
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = id in picked, onCheckedChange = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "$name ($count)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = picked.isNotEmpty(),
+                onClick = {
+                    val label = rows.filter { it.first in picked }
+                        .let { chosen ->
+                            if (chosen.size == 1) chosen.first().second
+                            else "${chosen.size} sources"
+                        }
+                    onStart(picked, label)
+                }
+            ) {
+                Text(
+                    if (picked.isEmpty()) "Refresh"
+                    else "Refresh ${rows.filter { it.first in picked }.sumOf { it.third }}"
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 // ---------- reader ----------

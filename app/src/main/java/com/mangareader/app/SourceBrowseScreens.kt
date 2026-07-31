@@ -606,29 +606,36 @@ internal fun SeriesScreen(
                                     modifier = Modifier
                                         .clickable { onGlobalSearchTag(series.title) }
                                 )
-                                if (!series.author.isNullOrBlank()) {
+                                // Author and artist on their own lines, each
+                                // searchable on its own. 0.96 had to guess at a
+                                // split because the adapter joined them; it
+                                // doesn't any more, so the value shown is the
+                                // value searched.
+                                //
+                                // The artist line is dropped when it repeats the
+                                // author, which is what most sources report — a
+                                // second identical name reads as a rendering bug
+                                // rather than as information.
+                                val credits = listOfNotNull(
+                                    series.author?.takeIf { it.isNotBlank() }
+                                        ?.let { "Story" to it },
+                                    series.artist?.takeIf {
+                                        it.isNotBlank() && !it.equals(series.author, true)
+                                    }?.let { "Art" to it }
+                                )
+                                credits.forEach { (role, name) ->
                                     Spacer(Modifier.height(6.dp))
-                                    // Guarded on the outside already, so the
-                                    // click can't search for an empty string —
-                                    // but a source that packs "Author, Artist"
-                                    // into one field would search for both at
-                                    // once and find nothing. Split on the
-                                    // separators sources actually use and search
-                                    // the first name, which is the one the row
-                                    // reads as.
-                                    val searchableAuthor = series.author
-                                        .split(',', '/', '&')
-                                        .first()
-                                        .trim()
-                                        .ifBlank { series.author }
                                     Text(
-                                        series.author,
+                                        // Unlabelled when there is only one
+                                        // name: "Story" on a series with no
+                                        // separate artist is a claim the source
+                                        // never made.
+                                        if (credits.size > 1) "$role \u00b7 $name" else name,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .clickable { onGlobalSearchTag(searchableAuthor) }
+                                        modifier = Modifier.clickable { onGlobalSearchTag(name) }
                                     )
                                 }
                                 Spacer(Modifier.height(4.dp))
