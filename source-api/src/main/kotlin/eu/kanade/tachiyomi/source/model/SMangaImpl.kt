@@ -24,5 +24,5 @@ class SMangaImpl : SManga {
 
     override var initialized: Boolean = false
 
-    override var memo: JsonObject? = null
+    override var memo: JsonObject = JsonObject(emptyMap())
 }

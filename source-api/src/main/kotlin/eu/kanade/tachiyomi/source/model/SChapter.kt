@@ -30,37 +30,31 @@ interface SChapter : Serializable {
     }
 
     /**
-     * Free-form scratch space for the extension, carried between its own calls.
+     * Extra metadata the extension attaches to this chapter and reads back on
+     * its own later calls.
      *
-     * Not used by this app and deliberately not persisted — it is the
-     * extension's, and it holds whatever that extension wants to remember about
-     * this object between the call that produced it and the calls that consume
-     * it. Asura Scans 1.6.66 stashes the raw JSON it parsed a series out of and
-     * reads it back in `getMangaUpdate`, which saves re-fetching and re-parsing.
+     * **Non-null, and that is load-bearing — it was `JsonObject?` until 0.85 and
+     * that was the bug.** extensions-lib 1.6 declares `var memo: JsonObject`,
+     * so an extension compiled against it emits no null check: Asura Scans'
+     * `getChapterUrl` is `chapter.memo["mangaSlug"]?.string ?: throw ...`, which
+     * compiles to a direct `getMemo().get(...)`. Handed a null it died with
+     * `NullPointerException: ... JsonObject.get(Object) on a null object
+     * reference` rather than reaching its own `?:`, and the fallback the
+     * extension author wrote never ran.
      *
-     * **It exists here because extensions call `setMemo`/`getMemo` directly.**
-     * Without it they die with
-     * `NoSuchMethodError: No interface method setMemo(...)` the moment they
-     * parse anything, which presents as a source that lists nothing at all.
+     * An empty object is therefore the correct absent value, not null. It lets
+     * the extension's own missing-key handling do its job — a legible
+     * "Refresh Chapter List" instead of a platform NPE.
      *
-     * Nullable, and null is normal: anything this app rebuilds rather than
-     * receives — `restoreSeries` for a library entry, `rehydrateChapter` for a
-     * queued download — has no memo, because only the extension can set one.
+     * The JVM signature is the same either way (`getMemo()` returns
+     * `JsonObject` in both), so this is binary compatible with every extension
+     * already installed; Kotlin nullability is metadata, not shape.
      *
-     * **That case has now been observed, on the download path** (0.84). Chapters
-     * read perfectly and every queued download of them failed with
-     * `NullPointerException` on `JsonObject.get`, because the queue stores ids
-     * and rebuilds the SChapter when its turn comes, and the rebuild has no
-     * memo to hand back. It is not fixed by persisting this field — a memo is
-     * only one of the things a rebuilt handle is missing — but by
-     * `DownloadService.genuineChapter`, which re-lists the series and uses the
-     * chapter the extension itself produced. Anything else that consumes a
-     * rebuilt handle needs the same escape hatch.
-     *
-     * The SManga side is the same shape and is **not** covered: `restoreSeries`
-     * still hands back a memo-less stub, so an extension that requires one in
-     * `getMangaUpdate` would fail from Library while working from Browse. Not
-     * observed yet.
+     * Still not persisted: a chapter this app rebuilds — `rehydrateChapter` for
+     * a queued download — gets the empty default, and for Asura that is not
+     * enough to build a page URL. `DownloadService.genuineChapter` re-lists the
+     * series and uses the chapter the extension itself produced, which is the
+     * only way to get a real one.
      */
-    var memo: JsonObject?
+    var memo: JsonObject
 }

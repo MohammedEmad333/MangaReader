@@ -14,5 +14,5 @@ class SChapterImpl : SChapter {
 
     override var scanlator: String? = null
 
-    override var memo: JsonObject? = null
+    override var memo: JsonObject = JsonObject(emptyMap())
 }

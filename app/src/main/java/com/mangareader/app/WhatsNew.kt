@@ -43,6 +43,21 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 85,
+            name = "0.85",
+            header = "Asura Scans from the library, and downloads",
+            body = "Opening an Asura Scans series from the library showed a " +
+                "long error about a null object and an out-of-date chapter " +
+                "list, and downloading anything from it failed the same way. " +
+                "From Browse the same series was fine.\n\n" +
+                "The scratch note 0.83 added was allowed to be absent, and " +
+                "extensions are built expecting it never to be. Every one of " +
+                "them reads it without checking, so \u201cabsent\u201d " +
+                "crashed instead of taking the fallback the extension had " +
+                "written for exactly that case. It is now empty rather than " +
+                "missing, and those fallbacks run.",
+        ),
+        ReleaseNote(
             code = 84,
             name = "0.84",
             header = "Chapters that read fine but wouldn't download",
