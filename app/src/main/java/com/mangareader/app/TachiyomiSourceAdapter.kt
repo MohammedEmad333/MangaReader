@@ -351,10 +351,17 @@ class TachiyomiSourceAdapter(
     }
 
     /**
-     * Page indices ordered from [startAt] to the end, then 0 up to [startAt].
+     * Page indices ordered from [startAt] to the end, then backwards from
+     * [startAt] to the first page.
      *
      * A permutation of `0 until count`, always — the caller relies on every page
      * being requested exactly once, and on the count of batches being unchanged.
+     *
+     * The tail runs *descending* so the pages immediately behind the reader come
+     * back first. Ascending was the obvious way to write it and it puts the page
+     * one flick above you last in the queue, which makes scrolling back the
+     * slowest thing in the chapter — the exact move someone resuming is most
+     * likely to make.
      *
      * [startAt] is clamped rather than trusted: it comes from a stored resume
      * position, and a chapter that lost pages since it was last read will hand
@@ -366,7 +373,7 @@ class TachiyomiSourceAdapter(
         // Not merely an optimisation — it is the guarantee that the download
         // path, which never passes a start, behaves exactly as it did before.
         if (start == 0) return (0 until count).toList()
-        return (start until count) + (0 until start)
+        return (start until count) + (start - 1 downTo 0)
     }
 
     override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {

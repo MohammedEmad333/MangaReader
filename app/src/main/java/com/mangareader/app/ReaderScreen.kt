@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -172,22 +174,21 @@ internal fun ReaderScreen(
 
     // Right-to-left runs the pager the other way (`reverseLayout` below), but
     // `currentPage` stays logical — page 0 is still the first page, it is simply
-    // drawn on the right. So the horizontal slider, left to itself, increases
-    // rightwards while the chapter advances leftwards: dragging the thumb the
+    // drawn on the right. Left alone, the horizontal slider then increases
+    // rightwards while the chapter advances leftwards, so dragging the thumb the
     // way the pages are going walks *backwards*. That is the 0.63 vertical
     // slider one axis over, and it is invisible until someone drags it.
     //
-    // The mapping is applied to the value rather than the widget. A Slider whose
-    // range counts down is not a legal Slider, and mirroring it with a negative
-    // scale flips its touch handling with its pixels, so the thumb would follow
-    // the finger the wrong way. `seekTarget` therefore stays a page number
-    // throughout and only the bottom bar sees a mirrored one.
+    // 0.88 mirrored the value and got the direction right and the fill wrong:
+    // page 1 arrived as the maximum, so the track was full at the start of the
+    // chapter and empty at the end. Mirroring the *widget* is the whole fix —
+    // Material3's Slider reads the layout direction for its track, its thumb and
+    // its drag-to-value mapping alike, so under RTL all three turn over together
+    // and the value handed to it stays an ordinary page number.
     //
     // Only the horizontal one. The vertical slider means "further into the
     // chapter" downwards in every mode, which right-to-left doesn't change.
     val rtl = settings.mode == ReaderMode.PAGED_RTL
-    fun toSlider(page: Float): Float = if (rtl) lastPage - page else page
-    fun fromSlider(value: Float): Float = if (rtl) lastPage - value else value
 
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
 
@@ -339,8 +340,9 @@ internal fun ReaderScreen(
                 // keeps its buttons either way.
                 showSlider = settings.sliderPosition == ReaderSliderPosition.HORIZONTAL &&
                     pages.size > 1,
-                sliderValue = toSlider(seekTarget ?: currentPage.toFloat()),
-                onSliderChange = { seekTarget = fromSlider(it) },
+                sliderValue = seekTarget ?: currentPage.toFloat(),
+                onSliderChange = { seekTarget = it },
+                mirrorSlider = rtl,
                 onSliderCommit = { commitSeek() },
                 hasPrev = hasPrev,
                 hasNext = hasNext,
@@ -541,6 +543,8 @@ private fun ReaderBottomBar(
     sliderValue: Float,
     onSliderChange: (Float) -> Unit,
     onSliderCommit: () -> Unit,
+    /** Lay the slider out right-to-left, for a right-to-left reading mode. */
+    mirrorSlider: Boolean,
     hasPrev: Boolean,
     hasNext: Boolean,
     onPrev: () -> Unit,
@@ -570,13 +574,22 @@ private fun ReaderBottomBar(
             // The caller has already ruled out a one-page chapter: a Slider whose
             // range starts and ends at the same value is not a legal Slider.
             if (showSlider) {
-                Slider(
-                    value = sliderValue,
-                    onValueChange = onSliderChange,
-                    onValueChangeFinished = onSliderCommit,
-                    valueRange = 0f..(total - 1).toFloat(),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Scoped to the slider alone. The button row below keeps its
+                // reading order — Prev stays on the left, where the hand that
+                // has been tapping it expects it, and only the control whose
+                // geometry means something is turned over.
+                CompositionLocalProvider(
+                    LocalLayoutDirection provides
+                        if (mirrorSlider) LayoutDirection.Rtl else LayoutDirection.Ltr
+                ) {
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = onSliderChange,
+                        onValueChangeFinished = onSliderCommit,
+                        valueRange = 0f..(total - 1).toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             Row(

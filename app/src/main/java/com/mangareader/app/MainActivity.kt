@@ -319,6 +319,27 @@ fun YomuApp() {
     var activeChapterIdx by remember { mutableStateOf<Int?>(null) }
     var pages by remember { mutableStateOf<List<File?>>(emptyList()) }
 
+    /**
+     * Whether the *current* page load is still running.
+     *
+     * Separate from `isLoading`, which five other operations also write, because
+     * this one answers a question only the reader asks: is a blank page still
+     * coming, or did it fail? A flag shared with series opening and library
+     * restoring cannot answer that, and a wrong answer here paints every page
+     * that hasn't arrived yet as broken.
+     */
+    var pagesLoading by remember { mutableStateOf(false) }
+
+    /**
+     * Identifies the newest page load, so an older one can't clear the flag.
+     *
+     * Cancelling a job does not unwind it synchronously — `finally` runs whenever
+     * the coroutine next resumes, which is routinely *after* its replacement has
+     * started and set the flag. Comparing tokens is what makes the clear belong
+     * to the load that set it. Not a `mutableStateOf`: nothing composes on it.
+     */
+    val pageLoadSeq = remember { intArrayOf(0) }
+
     // global search state — hoisted here (not inside the screen) so results survive
     // navigating into a series and coming back
     var globalSearchOpen by remember { mutableStateOf(false) }
@@ -667,10 +688,14 @@ fun YomuApp() {
         // reader doesn't exist yet — it opens on the first publish. Same key the
         // reader's `initialPage` reads, so the two cannot disagree.
         val resumeAt = savedPage(context, chapterKeyOf(src.id, chapter))
+        // Claimed before the job is launched, so the comparison in `finally`
+        // never depends on when `pageJob` happens to be assigned.
+        val token = ++pageLoadSeq[0]
         // Local to this load, so a stale job can't touch the reader after the
         // user has left it.
         var opened = false
         pageJob = scope.launch {
+            pagesLoading = true
             isLoading = true
             try {
                 src.loadPagesProgressively(chapter, persist = false, startAt = resumeAt) { partial ->
@@ -699,7 +724,16 @@ fun YomuApp() {
             } finally {
                 // finally, not a trailing statement: cancellation skips the tail
                 // of the block and would otherwise leave the spinner up forever.
-                isLoading = false
+                //
+                // Guarded, because a cancelled load unwinds here *after* its
+                // replacement has already started. Backing out of a chapter
+                // mid-fetch and reopening it did exactly that: the old job put
+                // the light out on the new one, so every page that hadn't landed
+                // yet read "couldn't be loaded" until it did.
+                if (token == pageLoadSeq[0]) {
+                    pagesLoading = false
+                    isLoading = false
+                }
             }
         }
     }
@@ -1007,7 +1041,7 @@ fun YomuApp() {
         key(chKey) {
             ReaderScreen(
                 pages = pages,
-                stillLoading = isLoading,
+                stillLoading = pagesLoading,
                 initialPage = savedPage(context, chKey).coerceIn(0, total - 1),
                 seriesTitle = series?.title ?: "",
                 chapterName = readerChapter.name,
@@ -1047,6 +1081,10 @@ fun YomuApp() {
                     // job outlives the screen and keeps publishing into it.
                     pageJob?.cancel()
                     pageJob = null
+                    // Retire the token with the job. The cancelled load's
+                    // `finally` is still to come and must not touch either flag.
+                    pageLoadSeq[0]++
+                    pagesLoading = false
                     activeChapterIdx = null
                     pages = emptyList()
                     history = History.list(context)
