@@ -158,6 +158,56 @@ internal fun ReaderScreen(
         }
     }
 
+    /**
+     * Whether a transition row has been scrolled fully into view.
+     *
+     * This is how scrolling reaches the next chapter, and it is **not** a
+     * gesture. Two attempts at detecting an overscroll — one on each
+     * nested-scroll phase — never fired once. Asking the layout whether a
+     * particular item is fully on screen is the same question `atStripEnd`
+     * answers, and that one demonstrably works: it is what marks a chapter read.
+     *
+     * TachiyomiSY reaches the same place from the other end. Its list already
+     * holds the neighbouring chapters' pages, so scrolling *into* them is the
+     * whole mechanism. Here the row is the end of the list, so its arrival is
+     * the signal instead.
+     */
+    fun rowFullyVisible(index: Int): Boolean {
+        val info = listState.layoutInfo
+        val row = info.visibleItemsInfo.lastOrNull { it.index == index }
+        return row != null &&
+            row.offset >= info.viewportStartOffset &&
+            row.offset + row.size <= info.viewportEndOffset
+    }
+
+    val atTailRow by remember(pages.size, headRows) {
+        derivedStateOf { pages.isNotEmpty() && rowFullyVisible(pages.size + headRows) }
+    }
+    val atHeadRow by remember(pages.size, headRows) {
+        derivedStateOf { headRows > 0 && pages.isNotEmpty() && rowFullyVisible(0) }
+    }
+
+    /**
+     * A row must have been *off* screen before its arrival counts.
+     *
+     * Without this, a chapter short enough to fit its transition row on the
+     * first frame would open and immediately jump onward, and a one-page chapter
+     * would be unreadable. Requiring the false state first makes the trigger a
+     * scroll rather than a coincidence of layout. Reset per chapter, because
+     * each one starts the argument again.
+     */
+    val leftTail = remember(chapterIndex) { booleanArrayOf(false) }
+    val leftHead = remember(chapterIndex) { booleanArrayOf(false) }
+
+    LaunchedEffect(atTailRow) {
+        if (!atTailRow) leftTail[0] = true
+        else if (leftTail[0] && hasNext) onNext()
+    }
+    LaunchedEffect(atHeadRow) {
+        if (!atHeadRow) leftHead[0] = true
+        else if (leftHead[0] && hasPrev) onPrev()
+    }
+
     val currentPage = when {
         settings.mode != ReaderMode.LONG_STRIP -> pagerState.currentPage
 
@@ -610,7 +660,7 @@ private fun ChapterTransitionRow(
         }
         if (onClick != null) {
             Text(
-                "Tap to open",
+                "Keep scrolling, or tap",
                 color = textColor.copy(alpha = 0.6f),
                 style = MaterialTheme.typography.labelSmall
             )
