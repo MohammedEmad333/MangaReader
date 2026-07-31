@@ -170,6 +170,25 @@ internal fun ReaderScreen(
         }
     }
 
+    // Right-to-left runs the pager the other way (`reverseLayout` below), but
+    // `currentPage` stays logical — page 0 is still the first page, it is simply
+    // drawn on the right. So the horizontal slider, left to itself, increases
+    // rightwards while the chapter advances leftwards: dragging the thumb the
+    // way the pages are going walks *backwards*. That is the 0.63 vertical
+    // slider one axis over, and it is invisible until someone drags it.
+    //
+    // The mapping is applied to the value rather than the widget. A Slider whose
+    // range counts down is not a legal Slider, and mirroring it with a negative
+    // scale flips its touch handling with its pixels, so the thumb would follow
+    // the finger the wrong way. `seekTarget` therefore stays a page number
+    // throughout and only the bottom bar sees a mirrored one.
+    //
+    // Only the horizontal one. The vertical slider means "further into the
+    // chapter" downwards in every mode, which right-to-left doesn't change.
+    val rtl = settings.mode == ReaderMode.PAGED_RTL
+    fun toSlider(page: Float): Float = if (rtl) lastPage - page else page
+    fun fromSlider(value: Float): Float = if (rtl) lastPage - value else value
+
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
 
     // Half the screen, so the whole chapter is a comfortable thumb-sweep. A
@@ -320,8 +339,8 @@ internal fun ReaderScreen(
                 // keeps its buttons either way.
                 showSlider = settings.sliderPosition == ReaderSliderPosition.HORIZONTAL &&
                     pages.size > 1,
-                sliderValue = seekTarget ?: currentPage.toFloat(),
-                onSliderChange = { seekTarget = it },
+                sliderValue = toSlider(seekTarget ?: currentPage.toFloat()),
+                onSliderChange = { seekTarget = fromSlider(it) },
                 onSliderCommit = { commitSeek() },
                 hasPrev = hasPrev,
                 hasNext = hasNext,
@@ -665,13 +684,27 @@ private fun ChapterPickerSheet(
     current: Int,
     onSelect: (Int) -> Unit
 ) {
+    // Opens on the chapter being read instead of at the top of the series. A
+    // 400-chapter list in a 420dp window shows about eight rows, so the picker
+    // was landing hundreds of rows from anything the reader could want, and the
+    // one thing it is for — stepping to a neighbouring chapter — was the hardest
+    // thing to do with it.
+    //
+    // Seeded into the state rather than scrolled to from an effect: an effect
+    // runs after the first composition, so the list would be drawn at the top
+    // and then jump. Two rows of lead-in, so the current chapter isn't jammed
+    // against the top edge with nothing above it to show there is more.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = (current - 2).coerceAtLeast(0)
+    )
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "Chapters",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
         )
-        LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
             itemsIndexed(chapters) { index, chapter ->
                 val selected = index == current
                 Text(

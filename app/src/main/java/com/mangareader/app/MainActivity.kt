@@ -661,13 +661,19 @@ fun YomuApp() {
         // Whichever chapter was loading, it isn't wanted any more: this is
         // either a different chapter or a reopen of the same one.
         pageJob?.cancel()
+        // Where the reader is about to open, so the fetch can start there instead
+        // of at page 1. Read here rather than in the reader because the order
+        // requests go out in is settled before the first one is sent, and the
+        // reader doesn't exist yet — it opens on the first publish. Same key the
+        // reader's `initialPage` reads, so the two cannot disagree.
+        val resumeAt = savedPage(context, chapterKeyOf(src.id, chapter))
         // Local to this load, so a stale job can't touch the reader after the
         // user has left it.
         var opened = false
         pageJob = scope.launch {
             isLoading = true
             try {
-                src.loadPagesProgressively(chapter, persist = false) { partial ->
+                src.loadPagesProgressively(chapter, persist = false, startAt = resumeAt) { partial ->
                     // Hop to main: the adapter publishes from its IO context.
                     withContext(Dispatchers.Main) {
                         pages = partial

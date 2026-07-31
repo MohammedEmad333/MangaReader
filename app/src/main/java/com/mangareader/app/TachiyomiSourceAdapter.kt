@@ -264,13 +264,23 @@ class TachiyomiSourceAdapter(
      * alone — previously nothing was shown until the last byte of the last page
      * had landed, which on a 30MB chapter is a long stare at a blank screen.
      *
-     * In source order rather than starting from the resume position: the adapter
-     * isn't told where the reader will open, and reading is overwhelmingly
-     * front-to-back.
+     * Fetched from [startAt] forward, then wrapping to the pages before it, so a
+     * chapter resumed at page 40 doesn't download 39 pages nobody is waiting for
+     * first. Only the *order requests go out in* changes: [done] is indexed by
+     * page number throughout and every file is written under its own index, so
+     * the published list and the files on disk are identical either way. At
+     * `startAt = 0` the order is the plain front-to-back sequence this used to
+     * have, which is what keeps the download path unchanged.
+     *
+     * The batching is deliberately untouched. Requests still go out
+     * [PAGE_CONCURRENCY] at a time with the same gap and the same recycle
+     * cadence, because requests-per-connection is the variable the manhwatoon
+     * 400s turned on and reordering must not disturb it.
      */
     override suspend fun loadPagesProgressively(
         chapter: Chapter,
         persist: Boolean,
+        startAt: Int,
         onUpdate: suspend (List<File?>) -> Unit
     ) = onSourceThread {
         // Already downloaded: serve straight off disk, no page list request, no
@@ -299,19 +309,26 @@ class TachiyomiSourceAdapter(
         // and the download path had nothing to report but "some pages failed".
         val firstError = AtomicReference<Throwable?>(null)
 
-        pages.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
-            val base = batch * PAGE_CONCURRENCY
-            chunk.mapIndexed { offset, page ->
+        // Page indices in the order they'll be requested. Every index appears
+        // exactly once, so this is the same work in a different sequence.
+        val order = fetchOrder(pages.size, startAt)
+
+        order.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
+            chunk.map { index ->
                 async {
-                    runCatching { downloadPage(page, dir, base + offset) }
+                    // The index is carried through rather than recomputed from
+                    // the batch, because it is no longer the position in the
+                    // sequence — it is the page's own number, and it addresses
+                    // both the slot below and the file on disk.
+                    index to runCatching { downloadPage(pages[index], dir, index) }
                         .onFailure { firstError.compareAndSet(null, it) }
                         .getOrNull()
                 }
-            }.awaitAll().forEachIndexed { offset, file ->
-                done[base + offset] = file
+            }.awaitAll().forEach { (index, file) ->
+                done[index] = file
             }
             onUpdate(done.toList())
-            if (base + PAGE_CONCURRENCY < pages.size) {
+            if ((batch + 1) * PAGE_CONCURRENCY < order.size) {
                 // Cap how many requests any one connection carries. This is the
                 // preventative half of recycleConnections() — retrying on a fresh
                 // socket fixes a failure after the fact, this stops the pooled
@@ -331,6 +348,25 @@ class TachiyomiSourceAdapter(
         } else {
             throw ChapterDownloadException(failed, pages.size, firstError.get())
         }
+    }
+
+    /**
+     * Page indices ordered from [startAt] to the end, then 0 up to [startAt].
+     *
+     * A permutation of `0 until count`, always — the caller relies on every page
+     * being requested exactly once, and on the count of batches being unchanged.
+     *
+     * [startAt] is clamped rather than trusted: it comes from a stored resume
+     * position, and a chapter that lost pages since it was last read will hand
+     * this a number past the end.
+     */
+    private fun fetchOrder(count: Int, startAt: Int): List<Int> {
+        if (count <= 0) return emptyList()
+        val start = startAt.coerceIn(0, count - 1)
+        // Not merely an optimisation — it is the guarantee that the download
+        // path, which never passes a start, behaves exactly as it did before.
+        if (start == 0) return (0 until count).toList()
+        return (start until count) + (0 until start)
     }
 
     override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {
