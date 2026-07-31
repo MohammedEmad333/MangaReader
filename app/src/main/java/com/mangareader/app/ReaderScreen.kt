@@ -28,13 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -218,78 +212,19 @@ internal fun ReaderScreen(
     // chapter" downwards in every mode, which right-to-left doesn't change.
     val rtl = settings.mode == ReaderMode.PAGED_RTL
 
-    /**
-     * Carries a scroll past the top or bottom of a strip into the neighbouring
-     * chapter.
-     *
-     * `onPostScroll` only sees a non-zero `available` when the list could not
-     * consume the gesture, which *is* the at-an-edge condition — so there is no
-     * separate "am I at the end" test to get wrong, and in particular none that
-     * can be answered before the first measure (§5's `canScrollForward` trap).
-     *
-     * Positive y is the finger travelling down, which reveals what is above:
-     * the previous chapter. Negative is the next one.
-     *
-     * **Long strip only.** In a paged mode the equivalent gesture belongs to the
-     * pager and would have to be mirrored for right-to-left — the exact shape
-     * this project has now shipped backwards twice, in 0.63 and again in 0.88.
-     * Paged mode has Prev and Next in the control bar.
-     */
-    val pull = remember(chapterIndex) { floatArrayOf(0f) }
-    val edgeTrigger = with(LocalDensity.current) { 140.dp.toPx() }
-    val edgeScroll = remember(chapterIndex, hasPrev, hasNext, edgeTrigger) {
-        object : NestedScrollConnection {
-            /**
-             * **`onPreScroll`, not `onPostScroll`, and that was 0.101's bug.**
-             *
-             * Post-scroll looked ideal because a non-zero `available` there
-             * *is* the at-an-edge condition, with no separate test to get
-             * wrong. It never fires: the overscroll effect — the stretch at the
-             * end of a list — consumes the leftover delta before a parent
-             * connection is offered it, so `available` was always zero and the
-             * whole feature did nothing.
-             *
-             * Pre-scroll always fires, which means the edge has to be tested
-             * explicitly after all. `atStripEnd` is the one already used to
-             * decide the chapter is finished, so the two agree by construction,
-             * and it is layout-derived rather than a `canScrollForward` that
-             * lies before the first measure. Nothing is consumed here, so
-             * ordinary scrolling is untouched.
-             */
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val dy = available.y
-                // Drag only. A fling that merely reaches the end of a chapter
-                // arrives here carrying whatever momentum is left, which would
-                // turn "I flicked to the bottom" into "open the next chapter".
-                if (dy == 0f || source != NestedScrollSource.Drag) return Offset.Zero
-
-                val atTop = listState.firstVisibleItemIndex == 0 &&
-                    listState.firstVisibleItemScrollOffset == 0
-                when {
-                    dy > 0f && atTop && hasPrev -> {
-                        pull[0] += dy
-                        if (pull[0] > edgeTrigger) { pull[0] = 0f; onPrev() }
-                    }
-                    dy < 0f && atStripEnd && hasNext -> {
-                        pull[0] += dy
-                        if (pull[0] < -edgeTrigger) { pull[0] = 0f; onNext() }
-                    }
-                    // Anywhere else in the chapter, including an edge with no
-                    // neighbour to go to. Reset rather than let a pull survive
-                    // being scrolled away from and resumed later.
-                    else -> pull[0] = 0f
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // A drag that stopped short must not add to the next one.
-                pull[0] = 0f
-                return Velocity.Zero
-            }
-        }
-    }
-
+    // A gesture that carried a scroll past the end of a strip into the next
+    // chapter lived here across 0.101 and 0.102 and never fired once, on two
+    // different nested-scroll phases. It is deleted rather than attempted a
+    // third time.
+    //
+    // The reason it was the wrong shape is worth keeping: **TachiyomiSY does not
+    // detect an edge at all.** Its webtoon adapter builds one list spanning
+    // three chapters — previous pages, a transition row, current pages, a
+    // transition row, next pages — so scrolling simply continues into the
+    // neighbour. There is no gesture to get right because there is no gesture.
+    // The transition rows below are the visible half of that design; the other
+    // half needs a reader that holds three chapters at once, which this one
+    // does not. See §7 of the handoff.
     val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
 
     // Half the screen, so the whole chapter is a comfortable thumb-sweep. A
@@ -330,7 +265,7 @@ internal fun ReaderScreen(
         if (settings.mode == ReaderMode.LONG_STRIP) {
             LazyColumn(
                 state = listState,
-                modifier = stripModifier.nestedScroll(edgeScroll)
+                modifier = stripModifier
             ) {
                 item {
                     ChapterTransitionRow(
