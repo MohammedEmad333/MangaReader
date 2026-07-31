@@ -60,12 +60,23 @@ interface Source {
      * the evictable cache. Either way a chapter already downloaded is served
      * from disk without touching the network.
      *
+     * [startAt] is where the reader is going to open. Pages from there to the end
+     * are fetched first and the ones before it afterwards, so resuming halfway
+     * through a chapter doesn't spend the first minute downloading pages that
+     * have already been read. It only reorders *fetching* — the published list is
+     * always in page order, and a slot is filled at its own index whenever it
+     * lands. Defaulted to 0 because the download path wants the whole chapter
+     * regardless of where anyone stopped reading, and 0 reproduces the old
+     * front-to-back sequence exactly.
+     *
      * Defaults to the all-at-once [loadPages], which is right for sources that
-     * produce every page in one operation, like a local CBZ.
+     * produce every page in one operation, like a local CBZ — there is no fetch
+     * order to reorder, so [startAt] is ignored.
      */
     suspend fun loadPagesProgressively(
         chapter: Chapter,
         persist: Boolean = false,
+        startAt: Int = 0,
         onUpdate: suspend (List<File?>) -> Unit
     ) {
         onUpdate(loadPages(chapter))

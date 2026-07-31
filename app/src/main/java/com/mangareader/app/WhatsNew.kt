@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 88,
+            name = "0.88",
+            header = "Resuming a chapter loads the page you're on first",
+            body = "Picking a chapter back up used to start downloading from " +
+                "page 1, so resuming at page 40 meant waiting through 39 pages " +
+                "nobody was looking at. It now fetches from where you stopped " +
+                "to the end of the chapter, then goes back for the earlier " +
+                "pages.\n\nAlso: in right-to-left mode the page slider was " +
+                "mirrored \u2014 dragging it the way the pages turn moved " +
+                "backwards through the chapter. And the chapter list in the " +
+                "reader now opens at the chapter you're reading instead of at " +
+                "the top of the series.",
+        ),
+        ReleaseNote(
             code = 87,
             name = "0.87",
             header = "The Sources list actually keeps its place now",
