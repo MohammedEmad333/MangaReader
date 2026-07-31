@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 84,
+            name = "0.84",
+            header = "Chapters that read fine but wouldn't download",
+            body = "On some sources every queued chapter failed with a long " +
+                "error about a null object, while the same chapters opened " +
+                "and read perfectly.\n\n" +
+                "The download queue stores chapters by id and rebuilds them " +
+                "when its turn comes, and the rebuilt version was missing the " +
+                "scratch note 0.83 added \u2014 the extension had one when you " +
+                "opened the series and not when the queue got there. The " +
+                "queue now asks the source for the real chapter when its own " +
+                "copy isn't enough.",
+        ),
+        ReleaseNote(
             code = 83,
             name = "0.83",
             header = "Asura Scans, and sources like it",

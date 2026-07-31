@@ -45,10 +45,22 @@ interface SChapter : Serializable {
      *
      * Nullable, and null is normal: anything this app rebuilds rather than
      * receives — `restoreSeries` for a library entry, `rehydrateChapter` for a
-     * queued download — has no memo, because only the extension can set one. An
-     * extension that requires its own memo to be present will not work through
-     * those paths. Nothing observed needs that yet; if a source works from
-     * Browse and fails from Library, this is the first thing to suspect.
+     * queued download — has no memo, because only the extension can set one.
+     *
+     * **That case has now been observed, on the download path** (0.84). Chapters
+     * read perfectly and every queued download of them failed with
+     * `NullPointerException` on `JsonObject.get`, because the queue stores ids
+     * and rebuilds the SChapter when its turn comes, and the rebuild has no
+     * memo to hand back. It is not fixed by persisting this field — a memo is
+     * only one of the things a rebuilt handle is missing — but by
+     * `DownloadService.genuineChapter`, which re-lists the series and uses the
+     * chapter the extension itself produced. Anything else that consumes a
+     * rebuilt handle needs the same escape hatch.
+     *
+     * The SManga side is the same shape and is **not** covered: `restoreSeries`
+     * still hands back a memo-less stub, so an extension that requires one in
+     * `getMangaUpdate` would fail from Library while working from Browse. Not
+     * observed yet.
      */
     var memo: JsonObject?
 }
