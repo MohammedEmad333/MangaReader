@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 104,
+            name = "0.104",
+            header = "Chapter transitions at each end of a strip",
+            body = "Long strip mode now ends with a row telling you what you " +
+                "just finished and what's next, and starts with one for the " +
+                "previous chapter. Tap it, or keep scrolling past it.\n\nIt " +
+                "says so when there isn't a next chapter, rather than just " +
+                "stopping.",
+        ),
+        ReleaseNote(
             code = 103,
             name = "0.103",
             header = "The chapter swipe is smooth now",
