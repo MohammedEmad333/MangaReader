@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 83,
+            name = "0.83",
+            header = "Asura Scans, and sources like it",
+            body = "Newer extensions keep a scratch note attached to each " +
+                "series and chapter \u2014 usually the raw data they parsed it " +
+                "from \u2014 so they can reuse it later instead of fetching " +
+                "the same page twice. This app had nowhere to put it, so those " +
+                "sources listed nothing at all.\n\n" +
+                "They have somewhere to put it now.",
+        ),
+        ReleaseNote(
             code = 82,
             name = "0.82",
             header = "Sources that showed nothing at all",
