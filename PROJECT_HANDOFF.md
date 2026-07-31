@@ -977,8 +977,12 @@ Two more, both small and both isolated to one file:
   no `FilterList` and the extended pack isn't a dependency. Adding
   `androidx.compose.material:material-icons-extended` fixes it at roughly a
   megabyte of APK — a judgement call, not a bug.
-- **The `cover_size` pref is now dead.** Items-per-row in the Display tab
-  replaced it. Nothing reads it; nothing removes it either.
+- **The `cover_size` pref is *not* dead — an earlier revision of this file said
+  so and was wrong.** Items-per-row in the Display tab replaced it for the
+  library grid, but `SourceBrowseScreens.kt:124` still reads it for per-source
+  browsing. The Settings row's note claimed both until 0.91 corrected it, which
+  is the more useful lesson: a control that half works reads as broken, and
+  "nothing reads it" is a claim one `grep` settles.
 
 ---
 

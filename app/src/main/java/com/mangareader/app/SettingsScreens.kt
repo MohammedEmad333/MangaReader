@@ -204,7 +204,10 @@ private fun LibrarySettings() {
                 }
             )
         }
-        PrefNote("Applies to the library grid and to per-source browsing.")
+        PrefNote(
+            "Applies to per-source browsing. The library grid has its own "
+                + "columns setting, under Display in the library's options sheet."
+        )
 
         SectionHeader("Categories")
         ListItem(

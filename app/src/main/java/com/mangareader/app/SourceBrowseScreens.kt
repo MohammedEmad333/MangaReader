@@ -449,10 +449,50 @@ internal fun SeriesScreen(
     }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
-    // First unread chapter drives the Start/Resume button. Recomputed on readTick
-    // so marking something read moves the target without reopening the screen.
+    /**
+     * Where the Start/Resume button goes. Recomputed on readTick so marking
+     * something read moves the target without reopening the screen.
+     *
+     * **This used to be the first unread chapter, and that is not what Resume
+     * means.** On an imported library, read state arrives from the backup and is
+     * routinely full of holes — a series read to chapter 50 with a few early
+     * ones never marked leaves "first unread" pointing at chapter 3, so a button
+     * labelled Resume opened the beginning of the series.
+     *
+     * The furthest chapter with *any* progress is the honest anchor: part-way
+     * through it means resume there, finished means the next one along. Progress
+     * is read state or a stored page, the same pair `anyProgress` uses, because
+     * a chapter opened and abandoned is progress even though nothing marked it.
+     *
+     * `History` would be the obvious source and cannot answer this: it is capped
+     * at 40 entries for the whole app, so on a 3575-entry library almost no
+     * series has one. `ReadState` and `savedPage` are per chapter and uncapped.
+     *
+     * One pass, and the read flags are kept rather than re-queried — this runs
+     * over every chapter of the series and both lookups are a prefs read each.
+     */
     val resumeIndex = remember(chapters, readTick, sourceId) {
-        chapters.indexOfFirst { !ReadState.isRead(context, chapterKeyOf(sourceId, it)) }
+        val read = BooleanArray(chapters.size)
+        var lastTouched = -1
+        chapters.forEachIndexed { index, chapter ->
+            val key = chapterKeyOf(sourceId, chapter)
+            read[index] = ReadState.isRead(context, key)
+            if (read[index] || savedPage(context, key) > 0) lastTouched = index
+        }
+        when {
+            // Started and not finished: this is the chapter, and the reader's
+            // own saved page puts you back on the right page of it.
+            lastTouched >= 0 && !read[lastTouched] -> lastTouched
+            // Nothing touched, or the furthest one is done: the next unread
+            // after it, falling back to the first unread anywhere for a series
+            // whose later chapters were read out of order.
+            else -> {
+                val from = lastTouched + 1
+                (from until chapters.size).firstOrNull { !read[it] }
+                    ?: read.indices.firstOrNull { !read[it] }
+                    ?: -1
+            }
+        }
     }
     val downloadedCount = remember(chapters, downloadTick) {
         chapters.count { Downloads.isComplete(context, it.id) }

@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 91,
+            name = "0.91",
+            header = "Resume goes where you actually stopped",
+            body = "The Resume button aimed at the first chapter you hadn't " +
+                "read, which on an imported library is usually near the start " +
+                "\u2014 so a series you were 50 chapters into opened at chapter " +
+                "3. It now goes to the furthest chapter you've made progress " +
+                "in, or the next one after it if you finished it.\n\nCover " +
+                "size in Settings also stops claiming it affects the library " +
+                "grid; the grid's columns are set in its own options sheet.",
+        ),
+        ReleaseNote(
             code = 90,
             name = "0.90",
             header = "The library repairs its own covers",
