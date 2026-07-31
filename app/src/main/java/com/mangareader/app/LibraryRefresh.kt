@@ -139,9 +139,11 @@ object LibraryRefresh {
      * coroutines at once and `n++` from three of them is exactly bug 3. Cheap
      * to get right here because nothing existing depends on it.
      *
-     * Deliberately not persisted into the saved summary: a restored summary
-     * describes a sweep that has already finished, and this counter exists to
-     * show that a running one is doing something.
+     * Persisted into the saved summary alongside the other counters. An earlier
+     * revision left it out, reasoning that a restored summary describes a sweep
+     * that has already ended — which got it exactly backwards. A *stopped* sweep
+     * is when this number is most wanted and least recoverable: it is
+     * process-lifetime state, and the run that produced it is over.
      */
     internal val coversRepaired = AtomicInteger(0)
 
@@ -241,6 +243,7 @@ object LibraryRefresh {
             failed = o.optInt("failed")
             skipped = o.optInt("skipped")
             finishedAt = o.optLong("finishedAt")
+            coversRepaired.set(o.optInt("coversRepaired"))
             firstError = if (o.isNull("firstError")) null else o.optString("firstError")
             o.optJSONObject("failures")?.let { f ->
                 failureTally.clear()
@@ -263,6 +266,7 @@ object LibraryRefresh {
                 .put("skipped", skipped)
                 .put("finishedAt", finishedAt)
                 .put("firstError", firstError ?: JSONObject.NULL)
+                .put("coversRepaired", coversRepaired.get())
                 .put("failures", failures)
             prefs(context).edit().putString(SUMMARY_KEY, o.toString()).apply()
         }
