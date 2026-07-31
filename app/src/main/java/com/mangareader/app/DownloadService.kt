@@ -256,9 +256,8 @@ class DownloadService : Service() {
      * network problem, and re-running the whole fetch for it is the mistake §5
      * records against the manhwatoon retries. Anything else failed at or before
      * `getPageList`, which is where a handle missing the extension's own state
-     * shows up: `NullPointerException` on a null `memo`, a `NoSuchElementException`
-     * out of a lookup keyed on a field the rebuild didn't carry, or the adapter's
-     * own "no chapter handle".
+     * shows up — on Asura that is `getChapterUrl` refusing an empty `memo` with
+     * "Refresh Chapter List", which is exactly a chapter this app rebuilt.
      */
     private fun blamesTheHandle(t: Throwable): Boolean =
         t !is ChapterDownloadException || t.totalPages == 0
@@ -282,11 +281,12 @@ class DownloadService : Service() {
      * [Source.rehydrateChapter] reconstructs an SChapter from the id, which is
      * url and name and nothing else. That was enough for as long as extensions
      * only read the url, and it stopped being enough when they started keeping
-     * their own state on the object: `SChapter.memo` is the documented case —
-     * an extension stashes the JSON it parsed a chapter out of and reads it back
-     * in `getPageList` — and `chapter_number` and `date_upload` are lost the same
-     * way. Only the extension can produce any of it, so the only way to get one
-     * is to ask the source for its chapter list again and take the matching entry.
+     * their own state on the object. The confirmed case is Asura Scans, whose
+     * `getPageList` builds its URL from `chapter.memo["mangaSlug"]` — a value
+     * only its own chapter-list parse produces, so no rebuild can supply it and
+     * `chapter_number` and `date_upload` are lost the same way. The only way to
+     * get one is to ask the source for its chapter list again and take the
+     * matching entry.
      *
      * Deliberately a fallback rather than the normal path: it costs a request per
      * series, and the overwhelming majority of sources never need it. Returns

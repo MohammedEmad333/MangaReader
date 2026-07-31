@@ -58,25 +58,26 @@ interface SManga : Serializable {
     }
 
     /**
-     * Free-form scratch space for the extension, carried between its own calls.
+     * Extra metadata the extension attaches to this series and reads back on
+     * its own later calls.
      *
-     * Not used by this app and deliberately not persisted — it is the
-     * extension's, and it holds whatever that extension wants to remember about
-     * this object between the call that produced it and the calls that consume
-     * it. Asura Scans 1.6.66 stashes the raw JSON it parsed a series out of and
-     * reads it back in `getMangaUpdate`, which saves re-fetching and re-parsing.
+     * **Non-null. See the twin note on [SChapter.memo] for why that is the whole
+     * fix** — extensions-lib 1.6 declares it non-null, so extension code carries
+     * no null check and a null here is an immediate `NullPointerException` on
+     * `JsonObject.get`.
      *
-     * **It exists here because extensions call `setMemo`/`getMemo` directly.**
-     * Without it they die with
-     * `NoSuchMethodError: No interface method setMemo(...)` the moment they
-     * parse anything, which presents as a source that lists nothing at all.
+     * This side is what made a library entry unopenable on Asura Scans while
+     * Browse worked. `restoreSeries` builds an SManga from a stored url, so it
+     * has no memo to offer; Asura's `getMangaUrl` reads
+     * `manga.memo["slug"]?.string` and *does* have a fallback — it looks the
+     * slug up in its own stored map, or derives it from the url — but a null
+     * memo threw before that fallback could run. With an empty object it runs,
+     * `getMangaUpdate` fetches, and the chapter list comes back.
      *
-     * Nullable, and null is normal: anything this app rebuilds rather than
-     * receives — `restoreSeries` for a library entry, `rehydrateChapter` for a
-     * queued download — has no memo, because only the extension can set one. An
-     * extension that requires its own memo to be present will not work through
-     * those paths. Nothing observed needs that yet; if a source works from
-     * Browse and fails from Library, this is the first thing to suspect.
+     * The general form, worth keeping: **when a vendored API relaxes a type the
+     * real one declares strictly, every carefully written fallback on the other
+     * side of the boundary is dead code.** Nullability that costs nothing to
+     * widen locally is a contract change to the code compiled against it.
      */
-    var memo: JsonObject?
+    var memo: JsonObject
 }
