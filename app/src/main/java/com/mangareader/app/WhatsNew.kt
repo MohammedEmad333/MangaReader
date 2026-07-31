@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 97,
+            name = "0.97",
+            header = "Restores two fixes that went missing",
+            body = "0.94 and 0.96 each quietly undid an earlier fix. Resume " +
+                "went back to opening the first unread chapter instead of the " +
+                "one you were on, and the library stopped noticing covers that " +
+                "fail to load, which is half of what repairs them. Both are " +
+                "back.",
+        ),
+        ReleaseNote(
             code = 96,
             name = "0.96",
             header = "Search by title or author from the series page",
