@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 93,
+            name = "0.93",
+            header = "Marking a chapter unread forgets your page in it",
+            body = "It only cleared the read tick and kept the page you had " +
+                "reached, so a chapter you had deliberately reset still " +
+                "counted as the furthest one you had started \u2014 and Resume " +
+                "sent you back to it.",
+        ),
+        ReleaseNote(
             code = 92,
             name = "0.92",
             header = "The refresh reports repaired covers after a stop",
