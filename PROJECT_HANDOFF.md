@@ -3,24 +3,25 @@
 Context document for continuing work in a fresh chat. **The per-release
 `SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
 on 2026-07-31; `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md` and
-`SESSION_HANDOFF_0.90.md` are the session files, and git history has the rest.**
-Last updated 2026-07-31 at **0.90**. **0.55 through 0.65 and 0.67 through 0.89
-are verified on device; 0.66 is unaccounted for and 0.90 has never been
-installed** — see §0.
+`SESSION_HANDOFF_0.93.md` are the session files, and git history has the rest.**
+Last updated 2026-07-31 at **0.93**, head `ba1fd5d`. **0.55 through 0.65 and 0.67
+through 0.93 are verified on device; only 0.66 is unaccounted for, and nothing in
+the tree is unverified** — see §0.
 
 **The bug board is not empty and this document claimed it was for four
-releases.** `SESSION_HANDOFF_0.90.md` §6 is the current board. Treat "the board
+releases.** `SESSION_HANDOFF_0.93.md` §6 is the current board. Treat "the board
 is empty" anywhere below as a statement about 2026-07-31 morning, and treat the
 four-item board in `SESSION_HANDOFF_0.87.md` §6 as superseded: its items 1 and 4
-have a fix shipped in 0.90 and unverified, its item 3 is half closed, and a new
-item — the Resume button opening the first chapter rather than the last one read
-— was found while testing.
+were **fixed and verified** in 0.90, and its item 3 is half closed. Three items
+found while testing have replaced them — BeeHentai (upstream, its domain now
+serves a different site), the failure tally printing raw source ids, and
+`CoverRepair` having no "asked and got nothing" state.
 
 **Open thread 1 is closed, and this is the first time in thirteen sessions that
 sentence has been true.** The reader was the largest untested surface in the app.
 Paged right-to-left, grayscale and invert together, the chapter picker and
 settings surviving a reopen have now all been exercised on device; two were
-broken and are fixed. `SESSION_HANDOFF_0.90.md` §1. Whatever is chosen next is
+broken and are fixed. `SESSION_HANDOFF_0.93.md` §1. Whatever is chosen next is
 being chosen on its merits rather than because the reader was too large to face.
 
 **The headline of the 0.84–0.87 run is one character: `JsonObject?` where
@@ -96,9 +97,9 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-### 0.88–0.90 — the reader, and covers
+### 0.88–0.93 — the reader, and covers that repair themselves
 
-Full account in `SESSION_HANDOFF_0.90.md`.
+Full account in `SESSION_HANDOFF_0.93.md`.
 
 - **Resuming a chapter loads from the page you are on.** `startAt` on
   `loadPagesProgressively` reorders *indices*, never the page list — the index
@@ -121,7 +122,9 @@ Full account in `SESSION_HANDOFF_0.90.md`.
   with `LocalLayoutDirection provides Rtl` around that Slider alone.
 - **The chapter picker opens on the chapter being read**, seeded into the list
   state rather than scrolled from an effect.
-- **Covers repair themselves during a sweep (0.90, unverified).** `CoverRepair.kt`
+- **Covers repair themselves during a sweep (0.90). Verified: 233 fixed across
+  510 series visited, a 46% yield**, which is what justifies the doubled sweep
+  cost — the run measured 21.5/min against the 42.7/min on record. `CoverRepair.kt`
   holds the candidate list; blank and loopback covers are free to find in stored
   data, and stale ones are recorded by `CoverImage` when a draw returns a definite
   404 or 410, so detection is paid by rendering that was happening anyway. Writes
@@ -129,6 +132,24 @@ Full account in `SESSION_HANDOFF_0.90.md`.
   wrong** — the sweep holds no fetched `SManga`, because `restoreSeries` makes no
   network call, so a cover costs a real `loadDetails` and is spent only on
   entries that need one.
+
+- **Resume aimed at the wrong chapter, and fixing it exposed a second bug
+  (0.91, 0.93).** `resumeIndex` was the first *unread* chapter; with imported
+  read state full of holes that is usually near the start, so a series read to
+  chapter 50 opened at chapter 3. It now takes the furthest chapter with any
+  progress — read state *or* a stored page. `History` cannot answer this: it is
+  capped at 40 entries for the whole app. **That promotion is what made
+  mark-unread a bug**: nothing had ever cleared `pos:`, which was harmless while
+  a saved page only fed the reader, and became wrong the moment Resume read it as
+  progress. `ReadState.setRead(false)` now clears it. §5 has the general form.
+- **The covers count was unreadable in the state you read it from (0.92).** It
+  was surfaced only in the `finishedAt > 0` arm of the settings row, and
+  `unfinished` precedes it — so every *stopped* sweep hid it. It was also
+  process-lifetime, so the first run's number was lost to an update. Now in both
+  arms and persisted with the other counters.
+- **BeeHentai is dead upstream and the probe proved it in one run.** 200, h2, no
+  `cf-mitigated` — and the body is ToonTop. `beehentai.com` now serves
+  `toontop.io`, so the extension's selectors match nothing.
 
 **Newest first: 0.84–0.87, and the board is at four.**
 `SESSION_HANDOFF_0.87.md`. `SManga.memo` and `SChapter.memo` are **non-null**,
@@ -308,7 +329,7 @@ to describe what exists instead of instructing someone to build it.
 item 3, rather than as speculative testing, is what worked: the item forced the
 page-fetch path open, and the two bugs actually found — the RTL slider and the
 chapter picker — were found by *reading* the file while in there, not by the
-item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.90.md`
+item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.93.md`
 §1. **Item 3's seek half is still open and this is the place it would be missed:**
 resume is done, reprioritising a fetch already in flight is not, and it needs a
 reorderable work queue rather than a parameter.
@@ -798,7 +819,7 @@ and invert together, the chapter picker, and whether settings survive reopening 
 chapter. The colour filters and settings persistence were correct as written; the
 RTL slider and the picker were not, and both are fixed. The `configChanges`
 commit at the end of the list is also exercised — rotation no longer bounces the
-reader back to the Library. `SESSION_HANDOFF_0.90.md` §1. The rest of this entry
+reader back to the Library. `SESSION_HANDOFF_0.93.md` §1. The rest of this entry
 is kept as the record of what was unknown, and what the cost of leaving it that
 way turned out to be.
 
@@ -2188,6 +2209,31 @@ Three things carry:
   This is "a lazily-populated store has three states" from the other end — the
   store was never wrong, the consumer was asking it something it couldn't know.
 
+### Repurposing a signal gives it obligations it never had
+
+Nothing in this app has ever cleared a chapter's stored `pos:` page. That was
+harmless for the whole life of the code, because a saved page only fed the
+reader: reopening a chapter you had marked unread put you back where you were,
+which is arguably what you wanted.
+
+0.91 made `savedPage(...) > 0` one of two *progress* signals driving the
+Start/Resume button. From that moment the same untouched line was a bug —
+marking a chapter unread to read it again left it as the furthest chapter
+touched, so Resume aimed straight back at the page you had asked it to forget. No
+code changed underneath it; its meaning did.
+
+**When promoting an incidental value to a decision input, enumerate what is
+supposed to reset it and check that anything actually does.** The question is not
+"is this value correct" but "who is now responsible for keeping it correct, and
+did they know". Here read state and resume position were two halves of one answer
+to "where am I" that had never been written down as such, so 0.93 sets them
+together in `ReadState.setRead` rather than at each call site — a third call site
+cannot then miss it.
+
+Note also what the fix does **not** do: existing stale positions stay until each
+chapter is marked unread again. Same as the 0.57 reader bug — correcting a writer
+never corrects what it already wrote.
+
 ### A stated cost rots faster than a stated mechanism
 
 `SESSION_HANDOFF_0.87.md` §6 proposed putting cover repair in the refresh sweep,
@@ -3146,12 +3192,14 @@ Roughly in order of value:
    one until the app restarts. Cheap to fix if it ever matters — drop the entry
    on the install broadcast.
 
-3. **Covers in the library go stale — fix shipped in 0.90, unverified.**
+3. **Covers in the library go stale — fixed and verified in 0.90.**
    `CoverRepair.kt` and the repair step in `LibraryRefresh` are the answer this
    entry asked for, built as described below except for the cost: the sweep does
    *not* hold a fetched `SManga`, so a cover is a second request and is spent
-   only on candidates. `SESSION_HANDOFF_0.90.md` §2. The rest of this item is the
-   original analysis, kept until 0.90 is confirmed on device.
+   only on candidates. **233 covers repaired across 510 series in one partial
+   sweep, a 46% yield.** `SESSION_HANDOFF_0.93.md` §3, which also records what
+   that number does *not* count. The rest of this item is the original analysis,
+   kept because it is still the clearest statement of why the bug existed.
 
    **Covers in the library go stale and nothing repairs them in bulk.**
    `healCover` fires on the first open of a series and **only when the stored
@@ -3377,7 +3425,11 @@ Scope Stop to one series, keep Sources scroll, always offer Popular      0db1971
 Keep lastUsedId out of the Sources scroll signature                     62f412d  verified OK
 Load a resumed chapter from the current page forward; RTL slider; picker bf2241d  3 of 6 checks
 Own the reader's loading flag per load; nearest-first wrap; RTL slider    1b358a2  verified OK
-Repair stale and missing library covers during the refresh sweep         3189c8d  UNVERIFIED
+Repair stale and missing library covers during the refresh sweep         3189c8d  verified OK
+Fold the 0.88-0.90 run into the handoffs; close open thread 1            6dcc166  docs
+Resume from the furthest chapter with progress; cover size note          5d26494  verified OK
+Report repaired covers after a stop, and persist the count               fca3ca3  verified OK
+Clear the resume position when a chapter is marked unread                ba1fd5d  verified OK
 ```
 
 `bf2241d` is a fourth entry in the pattern below: it shipped correct in
@@ -3385,8 +3437,10 @@ isolation and broke something only in combination with what was already there �
 by making a job outlive the screen, it turned a latent cancellation race into a
 reliable one. `1b358a2` fixed that plus two things `bf2241d` got half right, and
 is the release that closed open thread 1. `3189c8d` was pushed while the sweep
-needed to test it was running, so it is on `main` and has never been installed;
-**do not record it as working**.
+needed to test it was running, and was confirmed on the resume afterwards.
+**The whole 0.88–0.93 run carries no untested tail**, which is not this project's
+base rate — each release was small and each was pushed while something slow was
+already running, so there was nothing to do but exercise the last one.
 
 The 0.84–0.87 run is `SESSION_HANDOFF_0.87.md`. Three annotations from it belong
 here. **`4264dea` is another commit that shipped correct and did nothing** — it
