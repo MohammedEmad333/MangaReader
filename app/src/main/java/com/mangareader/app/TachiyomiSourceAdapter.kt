@@ -233,6 +233,7 @@ class TachiyomiSourceAdapter(
             cover = enriched.cover ?: series.cover,
             handle = full,
             author = enriched.author ?: series.author,
+            artist = enriched.artist ?: series.artist,
             description = enriched.description ?: series.description,
             genres = enriched.genres.ifEmpty { series.genres },
             status = enriched.status ?: series.status,
@@ -560,11 +561,10 @@ class TachiyomiSourceAdapter(
         title = safeTitle(),
         cover = thumbnail_url?.repointFromLoopback(),
         handle = this,
-        author = listOfNotNull(author, artist)
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString(", ")
-            .takeIf { it.isNotBlank() },
+        // Kept apart. Joining them with ", " lost which was which, and the
+        // series screen then had to guess at a split to search for one of them.
+        author = author?.takeIf { it.isNotBlank() },
+        artist = artist?.takeIf { it.isNotBlank() },
         description = description?.takeIf { it.isNotBlank() },
         genres = getGenres().orEmpty(),
         status = statusLabel(status),

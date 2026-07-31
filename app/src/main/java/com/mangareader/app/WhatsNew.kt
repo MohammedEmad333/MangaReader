@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 98,
+            name = "0.98",
+            header = "Refresh one source, and separate credits",
+            body = "A refresh can now cover just the sources you pick rather " +
+                "than all 3575 series \u2014 Settings \u203a Library \u203a " +
+                "Refresh some sources. Handy when the summary names one that " +
+                "failed.\n\nSeries also keep the writer and the artist apart " +
+                "instead of running them together, and tapping either one " +
+                "searches for that person alone.",
+        ),
+        ReleaseNote(
             code = 97,
             name = "0.97",
             header = "Restores two fixes that went missing",

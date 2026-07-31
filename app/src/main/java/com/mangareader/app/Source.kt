@@ -196,6 +196,13 @@ data class Series(
     val cover: Any?,
     val handle: Any? = null,
     val author: String? = null,
+    /**
+     * Separate from [author] because sources report them separately and many
+     * series have two different people in them. They were joined into one
+     * string at the boundary, which made "who drew this" unanswerable and made
+     * searching for either of them search for both at once.
+     */
+    val artist: String? = null,
     val description: String? = null,
     val genres: List<String> = emptyList(),
     val status: String? = null
