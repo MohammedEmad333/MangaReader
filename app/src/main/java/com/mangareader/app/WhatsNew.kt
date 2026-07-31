@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 87,
+            name = "0.87",
+            header = "The Sources list actually keeps its place now",
+            body = "0.86 said it did and it didn't. Opening a source records " +
+                "it as the last one used, which is part of how that list is " +
+                "ordered \u2014 so the app decided the order had changed and " +
+                "threw the position away, on exactly the trip it was meant to " +
+                "survive.",
+        ),
+        ReleaseNote(
             code = 86,
             name = "0.86",
             header = "Three from the bug board",
