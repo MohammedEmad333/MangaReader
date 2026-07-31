@@ -155,6 +155,35 @@ object DownloadQueue {
         save(context)
     }
 
+    /**
+     * Drops every queued chapter belonging to one series, and reports which.
+     *
+     * The series screen's Stop used to call [clear], which emptied the whole
+     * queue — stopping one series' downloads also threw away every other
+     * series waiting behind it, with no warning and no undo. The caller needs
+     * the returned ids to work out whether the chapter currently being fetched
+     * was one of them, since that one is held by the service and has to be
+     * skipped rather than merely delisted.
+     *
+     * A blank [seriesId] matches nothing on purpose: items queued before the
+     * field was stored carry "", and those must not all be treated as one
+     * series. They are unreachable from this path and only [clear] removes them.
+     */
+    @Synchronized
+    fun removeSeries(context: Context, seriesId: String): Set<String> {
+        if (seriesId.isBlank()) return emptySet()
+        val hit = items.filter { it.seriesId == seriesId }.map { it.chapterId }.toSet()
+        if (hit.isEmpty()) return emptySet()
+        items = items.filterNot { it.chapterId in hit }
+        progress = progress - hit
+        save(context)
+        return hit
+    }
+
+    /** True when any queued chapter belongs to [seriesId]. */
+    fun hasSeries(seriesId: String): Boolean =
+        seriesId.isNotBlank() && items.any { it.seriesId == seriesId }
+
     @Synchronized
     fun clear(context: Context) {
         items = emptyList()

@@ -281,6 +281,11 @@ fun YomuApp() {
     // position while opening a different series starts at the top.
     val seriesScroll = remember { ScrollMemory() }
 
+    // And the Sources list its own again, for the same reason: its signature is
+    // the pin/hidden/language set, which has nothing to do with either of the
+    // above and would clear them on every pin toggle if shared.
+    val sourcesScroll = remember { ScrollMemory() }
+
     // Read once per process. Empty on a fresh install and on a launch that
     // isn't an update, so this is normally a single getInt.
     val releaseNotes = remember { WhatsNew.pending(context) }
@@ -743,13 +748,27 @@ fun YomuApp() {
     /** Queues every not-yet-downloaded chapter, oldest first. */
     fun downloadAll(src: Source, chapters: List<Chapter>) = queueDownloads(src, chapters)
 
-    fun cancelDownloads() {
-        // Clearing the queue isn't enough on its own: the chapter already in
-        // flight is held by the service, so it has to be told. Checked first so
-        // an empty queue doesn't start the service purely to stop it again.
-        val wasRunning = DownloadQueue.items.isNotEmpty()
-        DownloadQueue.clear(context)
-        if (wasRunning) DownloadService.start(context, DownloadService.ACTION_CANCEL_ALL)
+    /**
+     * Stops the downloads for one series, leaving the rest of the queue alone.
+     *
+     * This is what the series screen's Stop calls. It used to clear the whole
+     * queue — so stopping one series silently discarded every other series
+     * queued behind it. Cancelling everything is still reachable, from the
+     * download queue screen's "Cancel all", which is where it belongs.
+     *
+     * The chapter being fetched right now is held by the service rather than by
+     * the queue, so delisting it is not enough; it gets an explicit skip, and
+     * only when it was one of ours. `ACTION_SKIP` re-checks the id against
+     * `activeId` on the service side, so a chapter that finished in the gap
+     * between these two lines is not cancelled by mistake.
+     */
+    fun cancelSeriesDownloads(seriesId: String) {
+        val active = DownloadQueue.activeId
+        val removed = DownloadQueue.removeSeries(context, seriesId)
+        if (removed.isEmpty()) return
+        if (active != null && active in removed) {
+            DownloadService.start(context, DownloadService.ACTION_SKIP, active)
+        }
         downloadTick++
     }
 
@@ -1047,10 +1066,14 @@ fun YomuApp() {
             // Either side can invalidate the on-disk reads in the chapter list:
             // the service finishing a chapter, or this screen deleting them.
             downloadTick = downloadTick + DownloadQueue.tick,
-            downloadingAll = DownloadQueue.items.isNotEmpty(),
+            // Scoped to this series, not "is the queue busy". It read
+            // DownloadQueue.items.isNotEmpty(), so every series screen showed
+            // Stop while any download anywhere was running — and tapping it
+            // cancelled all of them.
+            downloadingAll = DownloadQueue.hasSeries(activeSeries!!.id),
             onDownload = { ch -> activeSource?.let { downloadChapter(it, ch) } },
             onDownloadAll = { activeSource?.let { downloadAll(it, chapterList) } },
-            onCancelDownloads = { cancelDownloads() },
+            onCancelDownloads = { cancelSeriesDownloads(activeSeries?.id ?: "") },
             onDeleteDownloads = {
                 chapterList.forEach { Downloads.delete(context, it.id) }
                 downloadTick++
@@ -1280,6 +1303,7 @@ fun YomuApp() {
                     1 -> BrowseTab(
                         configs = configs,
                         extensions = extensionSources,
+                        scroll = sourcesScroll,
                         onGlobalSearch = {
                             globalSearchOpen = true
                             if (globalQuery.isNotBlank() &&

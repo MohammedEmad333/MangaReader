@@ -216,23 +216,30 @@ internal fun LibraryScreen(
             }
         )
 
-        // Only where there's a choice to make. A source declaring supportsLatest
-        // false would show two chips that fetch the same listing.
+        // Only where there's a choice to make: a source with neither a Latest
+        // listing nor filters would get a single chip that does nothing.
+        //
+        // Popular sits outside the `supportsLatest` guard on purpose. It used to
+        // be inside it, which meant a source declaring `supportsLatest = false`
+        // while offering filters — Roku Hentai is one — rendered a Filter chip
+        // and nothing else, so applying a filter was a one-way trip with no
+        // visible way back to the plain listing. Whenever this row exists at
+        // all, the default listing has to be reachable from it.
         if (supportsLatest || supportsFilters) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Neither listing chip reads as selected while a search is
+                // showing: the grid is neither listing at that point, and
+                // claiming otherwise is the kind of small lie that makes a
+                // screen feel broken.
+                FilterChip(
+                    selected = query.isBlank() && mode == BrowseMode.POPULAR,
+                    onClick = { onModeChange(BrowseMode.POPULAR) },
+                    label = { Text("Popular") }
+                )
                 if (supportsLatest) {
-                    // Neither reads as selected while a search is showing: the
-                    // grid is neither listing at that point, and claiming
-                    // otherwise is the kind of small lie that makes a screen
-                    // feel broken.
-                    FilterChip(
-                        selected = query.isBlank() && mode == BrowseMode.POPULAR,
-                        onClick = { onModeChange(BrowseMode.POPULAR) },
-                        label = { Text("Popular") }
-                    )
                     FilterChip(
                         selected = query.isBlank() && mode == BrowseMode.LATEST,
                         onClick = { onModeChange(BrowseMode.LATEST) },
