@@ -77,6 +77,18 @@ internal fun savePage(context: Context, key: String, page: Int) {
     prefs(context).edit().putInt("pos:$key", page).apply()
 }
 
+/**
+ * Forgets where a chapter was left off.
+ *
+ * Removed rather than written as 0, so `savedPage(...) > 0` keeps meaning
+ * "started" — the distinction the Start/Resume button reads, and the reason
+ * marking a chapter unread has to come through here rather than only clearing
+ * the read flag.
+ */
+internal fun clearPage(context: Context, key: String) {
+    prefs(context).edit().remove("pos:$key").apply()
+}
+
 /** [savePage] for a whole batch, in one edit. Used by the Tachiyomi import. */
 internal fun savePageBulk(context: Context, pages: Map<String, Int>) {
     if (pages.isEmpty()) return

@@ -13,8 +13,22 @@ object ReadState {
     fun isRead(context: Context, chapterKey: String): Boolean =
         prefs(context).getBoolean("read:" + chapterKey, false)
 
+    /**
+     * Marking a chapter **unread also forgets the page it was left on**.
+     *
+     * Those were separate stores and nothing connected them, so a chapter marked
+     * unread kept its resume position — which was merely untidy until the
+     * Start/Resume button started treating a stored page as progress. After
+     * that, marking a chapter unread to read it again left it as the furthest
+     * chapter touched, and Resume aimed straight back at the page you had asked
+     * it to forget.
+     *
+     * Read state and resume position are two halves of one answer to "where am
+     * I", so they are set together here rather than at each call site.
+     */
     fun setRead(context: Context, chapterKey: String, read: Boolean) {
         prefs(context).edit().putBoolean("read:" + chapterKey, read).apply()
+        if (!read) clearPage(context, chapterKey)
     }
 
     /**
