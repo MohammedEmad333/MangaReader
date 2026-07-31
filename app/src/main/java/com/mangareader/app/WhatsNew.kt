@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 106,
+            name = "0.106",
+            header = "Scroll on to the next chapter",
+            body = "Scroll a strip past its last page and through the row at " +
+                "the end, and the next chapter opens \u2014 scroll up past the " +
+                "first page for the previous one. Tapping the row still works.",
+        ),
+        ReleaseNote(
             code = 105,
             name = "0.105",
             header = "Chapter transitions at each end of a strip",
