@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 100,
+            name = "0.100",
+            header = "Swipe a chapter to mark it read",
+            body = "Swipe a chapter row either way to mark it read, or unread " +
+                "if it already was. The row springs back \u2014 nothing is " +
+                "removed.\n\nAlso fixed: Refresh what's missing left the " +
+                "library looking as though a " +
+                "full refresh had been stopped part way, offering to resume " +
+                "something that never ran. It no longer claims the resume " +
+                "point.\n\nIf your Chapter counts row is offering Resume " +
+                "refresh and you didn't stop one, that's this \u2014 resuming " +
+                "is harmless and will simply refresh the rest of the library.",
+        ),
+        ReleaseNote(
             code = 99,
             name = "0.99",
             header = "Refresh only the series that were missed",

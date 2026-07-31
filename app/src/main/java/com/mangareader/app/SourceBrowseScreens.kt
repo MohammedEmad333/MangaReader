@@ -811,6 +811,52 @@ internal fun SeriesScreen(
                 val key = chapterKeyOf(sourceId, ch)
                 val read = remember(key, readTick) { ReadState.isRead(context, key) }
                 val resume = remember(key, readTick) { savedPage(context, key) }
+                // Swipe either way toggles read. `confirmValueChange` returning
+                // false is what makes this an *action* rather than a dismissal:
+                // the box refuses the new value and animates back, so the row
+                // stays where it is and the list never loses an item.
+                //
+                // Disabled while selecting. A horizontal drag during multi-select
+                // is someone scrolling a list they are picking from, and marking
+                // one chapter read out from under a selection is not what it
+                // means.
+                val swipeState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        // Ignored while selecting: a horizontal drag then is
+                        // someone scrolling a list they are picking from, and
+                        // marking one chapter read out from under a selection is
+                        // not what that means. Guarded here rather than with
+                        // `gesturesEnabled`, which is a parameter this Compose
+                        // version may not have — and with no compiler in the
+                        // loop, an uncertain parameter costs a CI round trip.
+                        if (!selecting && value != SwipeToDismissBoxValue.Settled) {
+                            onSetRead(listOf(ch), !read)
+                        }
+                        false
+                    }
+                )
+                SwipeToDismissBox(
+                    state = swipeState,
+                    backgroundContent = {
+                        // Reads as the outcome, not the gesture: swiping an
+                        // unread chapter says "Mark read", and the same swipe on
+                        // a read one says the opposite. Centred on both edges so
+                        // it is visible whichever way the finger goes.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                                .padding(horizontal = 24.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                if (read) "Mark unread" else "Mark read",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                ) {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -924,6 +970,7 @@ internal fun SeriesScreen(
                         onLongClick = { selectedIds = selectedIds.toggle(ch.id) }
                     )
                 )
+                }
                 HorizontalDivider()
             }
 

@@ -535,8 +535,15 @@ class LibraryRefreshService : Service() {
         // the series it counts, so a later full sweep correctly treats them as
         // already done, but it leaves no resume point of its own to be confused
         // with a full sweep's.
+        // `ownsCursor`, not `scope == null`. 0.99 added a second kind of scoped
+        // run — un-counted-only — which leaves `scopeIds` null, so this line
+        // handed it the shared cursor while `ownsCursor` correctly refused to
+        // let it clear one. The result was a resume point for a full sweep that
+        // never ran, left behind permanently.
+        //
+        // Two predicates for one question is the bug. There is now one.
         val startedAt =
-            if (scope == null) RefreshCursor.beginOrResume(this)
+            if (ownsCursor) RefreshCursor.beginOrResume(this)
             else System.currentTimeMillis()
         // Read once. Not `SeriesIndex.of` per series: the memo is keyed on the
         // raw pref string and every flush below writes a new one, so a lookup
