@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 81
-        versionName = "0.81"
+        versionCode = 82
+        versionName = "0.82"
     }
 
     signingConfigs {
@@ -114,5 +114,23 @@ dependencies {
     // ConfigurableSource.setupPreferenceScreen() populates.
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation(project(":source-api"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // 1.9.0, not 1.7.3. Extensions built with a newer serialization plugin emit
+    // @Serializable classes whose generated serializers do NOT override
+    // `GeneratedSerializer.typeParametersSerializers()`, because from 1.8 the
+    // runtime supplies a default body. On 1.7.3 that method is still abstract,
+    // so the first time such a serializer is touched the call dies with
+    // `AbstractMethodError: abstract method
+    // "KSerializer[] GeneratedSerializer.typeParametersSerializers()"`.
+    //
+    // Asura Scans 1.6.66 and SpyFakku 1.4.16 both hit it: the source browses
+    // nothing and reports that error. Anything using kotlinx.serialization for
+    // its API responses is exposed, which is most JSON-backed sources.
+    //
+    // **1.9.0 specifically, not the newest.** Releases are pinned to a Kotlin
+    // version — 1.9.0 is built on Kotlin 2.2.0 and this project is on 2.2.21,
+    // so its metadata is readable. 1.10.0 is built on Kotlin 2.3.0 and a 2.2
+    // compiler refuses 2.3 metadata outright, which is the same wall OkHttp
+    // 5.2+ put in front of Kotlin 2.0.20 earlier tonight. Moving past 1.9.x
+    // means moving Kotlin first.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 }

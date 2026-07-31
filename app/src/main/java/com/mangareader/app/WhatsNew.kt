@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 82,
+            name = "0.82",
+            header = "Sources that showed nothing at all",
+            body = "Some sources \u2014 Asura Scans and SpyFakku among them \u2014 " +
+                "listed nothing and reported being built against a newer API " +
+                "than the app provides. The cause was a library this app " +
+                "shipped, several versions behind what extensions are now " +
+                "compiled against, and it affected any source that reads JSON " +
+                "from its site.\n\n" +
+                "That library is up to date now.",
+        ),
+        ReleaseNote(
             code = 81,
             name = "0.81",
             header = "Series that loaded chapters only sometimes",

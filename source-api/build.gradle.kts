@@ -72,9 +72,14 @@ dependencies {
     api("com.squareup.okhttp3:okhttp-dnsoverhttps")
     implementation("com.squareup.okio:okio:3.7.0")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // 1.9.0 in lockstep with :app — see the long note there. Short version:
+    // extensions built with a newer serialization plugin omit
+    // GeneratedSerializer.typeParametersSerializers(), which is abstract before
+    // 1.8, and 1.10+ is built on Kotlin 2.3 whose metadata this project's 2.2.21
+    // compiler cannot read. **Both modules and both artifacts move together.**
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     // OkHttpExtensions.kt calls decodeFromBufferedSource, which lives here.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
