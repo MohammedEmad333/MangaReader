@@ -159,6 +159,23 @@ object LibraryPrefs {
 
     // ---- group ----
 
+    /**
+     * The category tab last looked at, so the Library opens where it was left.
+     *
+     * A pref rather than `rememberSaveable` alone. Saveable state is restored
+     * from the Activity's saved bundle, which exists across a rotation or a
+     * low-memory kill — and is **null on an ordinary cold start from the
+     * launcher**, which is the case anyone actually notices. The saveable stays
+     * as well; it is what covers a recreation without a disk read.
+     *
+     * Null means "never chosen", which resolves to the first tab. A key that no
+     * longer matches any group falls back to index 0 on its own, so a deleted
+     * category needs no cleanup here.
+     */
+    fun lastCategory(c: Context): String? = p(c).getString("lib_last_category", null)
+    fun setLastCategory(c: Context, v: String?) =
+        p(c).edit().putString("lib_last_category", v).apply()
+
     fun group(c: Context) = LibraryGroup.from(p(c).getString("lib_group", null))
     fun setGroup(c: Context, v: LibraryGroup) = p(c).edit().putString("lib_group", v.key).apply()
 
