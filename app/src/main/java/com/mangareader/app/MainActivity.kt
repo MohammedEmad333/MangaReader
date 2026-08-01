@@ -660,6 +660,36 @@ fun YomuApp() {
         }
     }
 
+    /**
+     * Re-fetches the open series' chapter list.
+     *
+     * Deliberately **not** `openSeries(activeSeries!!)`: that resets
+     * `seriesOrigin` to BROWSE and clears `tagSearchReturn`, so refreshing a
+     * series reached from the Library would send Back to an empty browse screen
+     * — the adopted-source trap, arrived at from a new direction.
+     *
+     * `chapterList` is also left alone until the new one lands, so the list
+     * stays on screen and readable while the request runs. Clearing it first is
+     * what 0.102 had to undo in the reader for the same reason.
+     */
+    fun refreshChapters() {
+        val src = activeSource ?: return
+        val series = activeSeries ?: return
+        errorMessage = null
+        enrichSeries(src, series)
+        scope.launch {
+            isLoading = true
+            try {
+                chapterList = withContext(Dispatchers.IO) {
+                    src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
+                }
+            } catch (e: Throwable) {
+                errorMessage = sourceFailureMessage(e, "Could not list chapters")
+            }
+            isLoading = false
+        }
+    }
+
     /** Tapping a cover in global search: adopt that source, then open the series. */
     fun openGlobalResult(source: Source, series: Series) {
         activeSource = source
@@ -1182,6 +1212,14 @@ fun YomuApp() {
             onOpen = { chapterId ->
                 val index = chapterList.indexOfFirst { it.id == chapterId }
                 if (index >= 0) openChapter(index)
+            },
+            onRefresh = { refreshChapters() },
+            // Resolved here rather than inside the screen: `Series.handle` is
+            // the extension's own object and asking the source for a url is a
+            // call across the adapter boundary, which is not a thing to do from
+            // inside a composable.
+            seriesUrl = remember(activeSeries?.id, activeSourceId) {
+                activeSeries?.let { s -> activeSource?.seriesUrl(s) }
             },
             onLibraryChanged = { libraryTick++ },
             // Both leave the series behind deliberately: a tag search is a

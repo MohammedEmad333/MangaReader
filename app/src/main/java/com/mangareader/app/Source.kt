@@ -182,6 +182,13 @@ interface Source {
      * "no metadata", never as a failure to open the series. Defaults to no-op.
      */
     suspend fun loadDetails(series: Series): Series = series
+
+    /**
+     * A page on the source's own site for [series], for sharing or opening in a
+     * browser. Null when there is nothing to point at — local folders, and any
+     * source whose handle didn't survive.
+     */
+    fun seriesUrl(series: Series): String? = null
 }
 
 /**

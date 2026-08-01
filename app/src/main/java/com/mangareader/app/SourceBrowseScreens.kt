@@ -455,6 +455,10 @@ internal fun SeriesScreen(
     /** Runs [String] across every searchable source. */
     onGlobalSearchTag: (String) -> Unit,
     onSolveChallenge: (() -> Unit)?,
+    /** Re-fetches the chapter list without disturbing where Back goes. */
+    onRefresh: () -> Unit,
+    /** The series' page on its source's site, or null when there isn't one. */
+    seriesUrl: String?,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -528,6 +532,7 @@ internal fun SeriesScreen(
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
     var showDownloadMenu by remember { mutableStateOf(false) }
+    var showOptionsMenu by remember { mutableStateOf(false) }
     // Bumped when the sheet writes a pref, so the derived list below recomputes.
     // The prefs are the store; this is only the signal that they moved.
     var optionsTick by remember { mutableIntStateOf(0) }
@@ -1144,6 +1149,58 @@ internal fun SeriesScreen(
                         tint = if (filtersActive) MaterialTheme.colorScheme.primary
                         else LocalContentColor.current
                     )
+                }
+                Box {
+                    IconButton(onClick = { showOptionsMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                    }
+                    DropdownMenu(
+                        expanded = showOptionsMenu,
+                        onDismissRequest = { showOptionsMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Refresh") },
+                            onClick = {
+                                showOptionsMenu = false
+                                onRefresh()
+                            }
+                        )
+                        // Only in the library: categories are a library concept
+                        // and the dialog writes an assignment for a series that
+                        // isn't saved, which nothing would ever read.
+                        if (inLibrary) {
+                            DropdownMenuItem(
+                                text = { Text("Edit categories") },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    showCategories = true
+                                }
+                            )
+                        }
+                        // Absent rather than disabled when there is no url: a
+                        // greyed row invites a tap and explains nothing. Local
+                        // folders and any source whose handle didn't survive
+                        // simply have nothing to share.
+                        if (!seriesUrl.isNullOrBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("Share") },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, series.title)
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "${series.title}\n$seriesUrl"
+                                        )
+                                    }
+                                    context.startActivity(
+                                        Intent.createChooser(send, "Share series")
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(

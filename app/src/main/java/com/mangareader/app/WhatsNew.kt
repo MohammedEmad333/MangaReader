@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 116,
+            name = "0.116",
+            header = "An options menu on the series screen",
+            body = "The last of the series screen work. The \u22ee in the top bar " +
+                "holds Refresh, Edit categories and Share.\n\nRefresh re-asks " +
+                "the source for the chapter list and leaves the list on screen " +
+                "while it does. Share offers the series' page on its own site, " +
+                "and only appears when there is one.\n\nThat completes the top " +
+                "bar: download, filter and options, all where Mihon puts them.",
+        ),
+        ReleaseNote(
             code = 115,
             name = "0.115",
             header = "Download the next few chapters",
