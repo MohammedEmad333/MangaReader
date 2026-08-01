@@ -645,12 +645,21 @@ private fun LibraryGrid(
         return
     }
 
+    // Hoisted out of the LazyVerticalGrid call so the scroll handle beside it
+    // reads the same state object. Two would give the handle a state that never
+    // scrolls, and the symptom is a handle that never moves — which reads as the
+    // arithmetic being wrong rather than as two objects. That is the 0.109 top
+    // bar, one screen over.
+    val gridState = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering)
+    val gridScope = rememberCoroutineScope()
+
+    Box(modifier = modifier.fillMaxSize()) {
     LazyVerticalGrid(
         // A fixed count when the user has set one, otherwise size-driven.
         columns = if (perRow > 0) GridCells.Fixed(perRow)
         else GridCells.Adaptive(minSize = 110.dp),
-        state = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering),
-        modifier = modifier
+        state = gridState,
+        modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -752,6 +761,21 @@ private fun LibraryGrid(
                 }
             }
         }
+    }
+
+        // Seeks by item index rather than by pixel, because a grid's rows are
+        // not a fixed height — a Comfortable cell carries a title and a
+        // Cover-only one doesn't, and Adaptive columns change how many items a
+        // row holds. Index is the one unit that means the same thing in every
+        // display mode.
+        ScrollHandle(
+            firstVisibleIndex = gridState.firstVisibleItemIndex,
+            visibleItems = gridState.layoutInfo.visibleItemsInfo.size,
+            totalItems = shown.size,
+            isScrolling = gridState.isScrollInProgress,
+            onSeek = { index -> gridScope.launch { gridState.scrollToItem(index) } },
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 

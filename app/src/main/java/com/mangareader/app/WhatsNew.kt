@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 133,
+            name = "0.133",
+            header = "A scroll handle in the library, and free-angle panning",
+            body = "The library grid has a scroll handle. It appears while " +
+                "you're scrolling and you can drag it to move through a long " +
+                "library quickly. It's hidden the rest of the time \u2014 on a " +
+                "screen of cover art a permanent one is clutter.\n\nIn long " +
+                "strip, dragging diagonally while zoomed now pans sideways " +
+                "and scrolls at the same time, instead of ignoring the " +
+                "up-and-down half of the drag.",
+        ),
+        ReleaseNote(
             code = 132,
             name = "0.132",
             header = "Better zoom in long strip",
