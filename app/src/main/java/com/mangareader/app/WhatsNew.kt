@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 122,
+            name = "0.122",
+            header = "Undoing 0.121",
+            body = "0.121 would not start at all. The size change stripped " +
+                "something the app needs to wire itself up on launch, and it " +
+                "did so in a way the build could not see \u2014 it compiled " +
+                "cleanly and then failed on the phone.\n\nThis release puts " +
+                "it back. The app is the size it was before, and everything " +
+                "works again. Sorry about that.",
+        ),
+        ReleaseNote(
             code = 121,
             name = "0.121",
             header = "A smaller app",

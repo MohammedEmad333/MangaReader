@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 121
-        versionName = "0.121"
+        versionCode = 122
+        versionName = "0.122"
     }
 
     signingConfigs {
@@ -69,8 +69,30 @@ android {
         // isShrinkResources is deliberately NOT on. It is a separate pass with
         // its own failure mode (resources looked up by name), the win here is
         // code rather than resources, and one new thing per release.
+        // ---------------------------------------------------------------
+        // TURNED BACK OFF IN 0.122. 0.121 shipped this as `true` and the app
+        // would not start:
+        //
+        //   java.lang.RuntimeException: Unable to create application
+        //   com.mangareader.app.App: java.lang.IllegalArgumentException:
+        //   Internal error: TypeReference constructed without actual type
+        //   information
+        //     at uy.kohesive.injekt.api.FullTypeReference.<init>
+        //     at AppModule$registerInjectables$$inlined$addSingleton$1.<init>
+        //
+        // Injekt's reified helpers work by creating an anonymous subclass of
+        // FullTypeReference<T> and reading T back out of
+        // javaClass.genericSuperclass at runtime. That only works while the
+        // class keeps its Signature attribute. proguard-rules.pro asks for
+        // -keepattributes Signature and it was not enough, and the reason is
+        // not yet established — see the note at the bottom of that file.
+        //
+        // Do not set this true again until an APK has been launched on a
+        // device. CI going green proves nothing here: this crashes at
+        // Application.onCreate, which no build step reaches.
+        // ---------------------------------------------------------------
         getByName("debug") {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
