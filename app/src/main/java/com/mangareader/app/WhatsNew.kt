@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 124,
+            name = "0.124",
+            header = "Swipe a chapter to bookmark it",
+            body = "Swiping right to left on a chapter row now adds or removes " +
+                "a bookmark. Swiping left to right still marks it read or " +
+                "unread.\n\nBoth directions used to do the same thing, so if " +
+                "you were swiping either way to mark chapters read, the " +
+                "leftward one has changed under you. The two have different " +
+                "colours behind them to tell them apart.",
+        ),
+        ReleaseNote(
             code = 123,
             name = "0.123",
             header = "Filter and download by bookmark",

@@ -940,9 +940,37 @@ internal fun SeriesScreen(
                     // what drives its ripple running the other way.
                     isUndo = read
                 )
+                // Right-to-left is its own action now. Both directions used to
+                // mark read, so anyone in the habit of swiping left for that
+                // will bookmark instead — worth a line in the release note, and
+                // the reason the two carry different container colours rather
+                // than only different glyphs.
+                //
+                // Mihon makes both directions configurable and defaults them to
+                // exactly this pair. Not copying the setting: a preference for
+                // which of two actions sits on which side is a settings row and
+                // a store for a choice nobody has asked to make yet.
+                val toggleBookmark = SwipeAction(
+                    onSwipe = { if (!selecting) onSetBookmarked(listOf(ch), !bookmarked) },
+                    icon = {
+                        Icon(
+                            // Outcome again, matching the read swipe: a filled
+                            // bookmark when the swipe will add one, an outline
+                            // when it will take it away.
+                            if (bookmarked) Icons.Default.BookmarkBorder
+                            else Icons.Default.Bookmark,
+                            contentDescription =
+                                if (bookmarked) "Remove bookmark" else "Bookmark",
+                            modifier = Modifier.padding(16.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    },
+                    background = MaterialTheme.colorScheme.tertiaryContainer,
+                    isUndo = bookmarked
+                )
                 SwipeableActionsBox(
                     startActions = listOf(toggleRead),
-                    endActions = listOf(toggleRead),
+                    endActions = listOf(toggleBookmark),
                     // Deliberately generous. The default 40dp is what made the
                     // Material3 version fire on sideways drift while scrolling
                     // a long chapter list.
