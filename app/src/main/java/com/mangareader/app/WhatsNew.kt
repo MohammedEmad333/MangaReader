@@ -43,6 +43,21 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 127,
+            name = "0.127",
+            header = "An 18+ filter in the library",
+            body = "The library's Filter tab has an 18+ row. Tap once to show " +
+                "only those, twice to hide them, three times to clear \u2014 the " +
+                "same as every other filter there.\n\nIt goes by the source a " +
+                "series came from rather than by the series itself, because " +
+                "that is the only thing a saved entry records. So a source " +
+                "carrying both marks everything saved from it, and a source " +
+                "nothing has classified yet is left in when you exclude.\n\n" +
+                "Separate from the Browse setting on purpose: that one " +
+                "shortens the lists you browse, this one filters the library " +
+                "you already have.",
+        ),
+        ReleaseNote(
             code = 126,
             name = "0.126",
             header = "Hide 18+ sources",

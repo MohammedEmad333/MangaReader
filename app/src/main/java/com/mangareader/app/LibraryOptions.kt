@@ -42,9 +42,16 @@ import kotlin.math.roundToInt
  * that is most of the library and an Unread tab showing four entries would
  * otherwise look like a broken filter rather than a cold index.
  *
- * **Still not here:** Lewd and Language filters, and Group → Status. Those
- * aren't blocked on an index — they have no backing field anywhere in the app
- * and need a data-model decision first.
+ * **Still not here:** a Language filter and Group → Status. Those aren't blocked
+ * on an index — they have no backing field anywhere in the app and need a
+ * data-model decision first.
+ *
+ * **Lewd shipped in 0.127 as the 18+ row, and how is worth a line.** It is
+ * classified by the entry's *source* through [SourceNsfw], not by the series,
+ * because `LibraryEntry` holds no content field to classify on. That keeps it a
+ * lookup in one memoised map rather than the per-entry work §5 warns about, and
+ * it costs granularity: a mixed-content source marks everything saved from it.
+ * A series-level answer is still the data-model decision this one sidesteps.
  *
  * **Bookmarked has moved between those two categories and is worth a line.**
  * 0.120 gave chapters a bookmark field, so it is no longer a model decision —
@@ -85,6 +92,7 @@ internal fun LibraryOptionsSheet(
     var fUnread by remember { mutableStateOf(LibraryPrefs.filterUnread(context)) }
     var fStarted by remember { mutableStateOf(LibraryPrefs.filterStarted(context)) }
     var fCompleted by remember { mutableStateOf(LibraryPrefs.filterCompleted(context)) }
+    var fNsfw by remember { mutableStateOf(LibraryPrefs.filterNsfw(context)) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         TabRow(selectedTabIndex = tab) {
@@ -135,6 +143,11 @@ internal fun LibraryOptionsSheet(
                         LibraryPrefs.setFilterCompleted(context, it)
                         onChanged()
                     }
+                    TriFilterRow("18+", fNsfw) {
+                        fNsfw = it
+                        LibraryPrefs.setFilterNsfw(context, it)
+                        onChanged()
+                    }
                     SheetNote(
                         "Tap once to require, twice to exclude, three times to clear. " +
                             "\u201cRead\u201d is the category of that name."
@@ -144,6 +157,12 @@ internal fun LibraryOptionsSheet(
                             "know about series you have opened at least once. Anything " +
                             "not yet counted stays out of those views rather than being " +
                             "guessed at \u2014 open a series once and it joins them."
+                    )
+                    SheetNote(
+                        "18+ goes by the source a series came from, not by the series " +
+                            "itself, so a source carrying both marks everything saved " +
+                            "from it. A source nothing has classified yet is left in " +
+                            "when you exclude."
                     )
                 }
 
