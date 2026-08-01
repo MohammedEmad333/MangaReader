@@ -1241,6 +1241,7 @@ fun YomuApp() {
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
             onOpenSeries = { src, s -> openGlobalResult(src, s) },
+            libraryTick = libraryTick,
             onBack = {
                 cancelGlobalSearch()
                 globalSearchOpen = false
@@ -1305,6 +1306,11 @@ fun YomuApp() {
                     activeSourceId = null
                 }
             },
+            libraryTick = libraryTick,
+            // Local folder sources carry their own ids; everything loaded from
+            // an extension is prefixed, which is the same test the library grid
+            // uses for its Local chip.
+            isLocalSource = !(activeSourceId ?: "").startsWith("tachi:"),
             scroll = browseScroll,
             onSolveChallenge = startChallenge
         )

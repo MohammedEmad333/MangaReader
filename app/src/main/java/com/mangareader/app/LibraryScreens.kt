@@ -742,39 +742,6 @@ private fun LibraryGrid(
 }
 
 /**
- * The corner markers. Nothing is drawn when all are off, so there is no box.
- *
- * [unread] is null for a series `SeriesIndex` has no counts for, which is not
- * the same as zero and must not render as "0" — after an import that is most of
- * the library, and a grid of zeroes would read as "you have read everything"
- * rather than "nothing has been counted yet". Null draws nothing; the count
- * appears the first time the series is opened.
- */
-@Composable
-private fun EntryBadges(downloaded: Boolean, local: Boolean, unread: Int? = null) {
-    val showUnread = unread != null && unread > 0
-    if (!downloaded && !local && !showUnread) return
-    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        // First, because it's the one that changes and the one being looked for.
-        if (showUnread) MiniBadge("$unread", MaterialTheme.colorScheme.primary)
-        if (downloaded) MiniBadge("DL", MaterialTheme.colorScheme.tertiary)
-        if (local) MiniBadge("Local", MaterialTheme.colorScheme.secondary)
-    }
-}
-
-@Composable
-private fun MiniBadge(text: String, colour: Color) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onPrimary,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(colour)
-            .padding(horizontal = 4.dp, vertical = 1.dp)
-    )
-}
-/**
  * Category editor for a selection of any size.
  *
  * The checkboxes are tri-state because a selection usually isn't uniform: with
