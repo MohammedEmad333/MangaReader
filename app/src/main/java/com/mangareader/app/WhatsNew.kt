@@ -43,6 +43,19 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 132,
+            name = "0.132",
+            header = "Better zoom in long strip",
+            body = "Double tap to zoom to 2x on the spot you tapped, and " +
+                "double tap again to go back.\n\nDragging at an angle works " +
+                "now. 0.131 ignored any drag that was more vertical than " +
+                "horizontal, which meant diagonal drags did nothing; it now " +
+                "takes the sideways part and leaves the rest to " +
+                "scrolling.\n\nPanning is still one-to-one with your finger, " +
+                "so crossing a page at 3x takes a couple of drags. Flicking " +
+                "to coast is a separate job.",
+        ),
+        ReleaseNote(
             code = 131,
             name = "0.131",
             header = "Pinch to zoom in long strip",
