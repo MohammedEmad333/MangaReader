@@ -69,6 +69,15 @@ import kotlin.math.roundToInt
 private const val MAX_STRIP_ZOOM = 3f
 
 /**
+ * Where a double tap lands, matching SY's `onDoubleTapConfirmed`.
+ *
+ * 2x rather than the 3x maximum: a double tap is meant to be one step to a
+ * readable size and one step back, and jumping straight to the ceiling leaves
+ * no room to pinch further without first pinching out.
+ */
+private const val DOUBLE_TAP_ZOOM = 2f
+
+/**
  * The reader.
  *
  * Controls are hidden until a tap. Tapping raises a top bar carrying the series
@@ -366,13 +375,15 @@ internal fun ReaderScreen(
             .fillMaxSize()
             .padding(horizontal = sidePadding)
 
-        // Long strip can keep one tap detector over the whole list, because
+        // Long strip can keep its tap detector over the whole list, because
         // nothing inside it handles gestures. Paged mode can't: a zoomable page
         // consumes its own pointer events, so a detector up here would never
         // see a tap on an image. The tap is handed to the pages instead.
-        val stripModifier = pageModifier.pointerInput(Unit) {
-            detectTapGestures(onTap = { showControls = !showControls })
-        }
+        //
+        // The strip's detector now lives further down, on the zoomed modifier,
+        // because it also has to handle double-tap-to-zoom and therefore needs
+        // the zoom state.
+        val stripModifier = pageModifier
 
         // Long-strip zoom scales the WHOLE LIST, not a page.
         //
@@ -386,26 +397,79 @@ internal fun ReaderScreen(
         // the control bars.
         var stripScale by remember(chapterIndex) { mutableFloatStateOf(1f) }
         var stripPanX by remember(chapterIndex) { mutableFloatStateOf(0f) }
+        var stripPanY by remember(chapterIndex) { mutableFloatStateOf(0f) }
         val viewportWidthPx = with(LocalDensity.current) {
             LocalConfiguration.current.screenWidthDp.dp.toPx()
         }
+        val viewportHeightPx = with(LocalDensity.current) {
+            LocalConfiguration.current.screenHeightDp.dp.toPx()
+        }
+        // Clamped to the overhang the zoom actually creates — `halfWidth *
+        // (scale - 1)`, which is SY's `getPositionX` exactly. Without it the
+        // content can be pushed off screen and left there, and a blank reader
+        // that needs a pinch to recover reads as a crash.
+        fun clampX(v: Float) =
+            v.coerceIn(-viewportWidthPx * (stripScale - 1f) / 2f, viewportWidthPx * (stripScale - 1f) / 2f)
+        fun clampY(v: Float) =
+            v.coerceIn(-viewportHeightPx * (stripScale - 1f) / 2f, viewportHeightPx * (stripScale - 1f) / 2f)
+
         val stripTransform = rememberTransformableState { zoomChange, panChange, _ ->
             stripScale = (stripScale * zoomChange).coerceIn(1f, MAX_STRIP_ZOOM)
-            // Horizontal only. Vertical movement is the chapter, and panning it
-            // would mean the reader had two different answers to "drag up".
+            stripPanX = clampX(stripPanX + panChange.x)
+            // **The vertical component is discarded mid-chapter, not the
+            // gesture.** This is SY's rule, read out of `WebtoonRecyclerView`:
+            // `dy = if (atFirstPosition || atLastPosition) y - downY else 0`.
             //
-            // Clamped to the overhang the zoom actually creates, so the content
-            // cannot be pushed off screen and left there — a blank reader that
-            // needs a pinch to recover reads as a crash.
-            val maxPan = viewportWidthPx * (stripScale - 1f) / 2f
-            stripPanX = (stripPanX + panChange.x).coerceIn(-maxPan, maxPan)
+            // 0.131 refused the whole drag whenever it was more vertical than
+            // horizontal, which meant a diagonal drag did nothing at all. Taking
+            // only the axis that has somewhere to go gives angled drags their
+            // horizontal half and leaves scrolling alone, because in the middle
+            // of a chapter there is no vertical overhang to pan into anyway —
+            // the list scrolls there instead.
+            val atListEdge = !listState.canScrollBackward || !listState.canScrollForward
+            if (atListEdge) stripPanY = clampY(stripPanY + panChange.y)
         }
         val zoomedStripModifier = stripModifier
+            // Tap and double-tap share one detector, because they have to: a
+            // detector that knows about a double tap must wait out the
+            // double-tap timeout before it can call a single one, so declaring
+            // them separately would give the bars a delay AND a second detector
+            // racing the first.
+            //
+            // That delay is the real cost of this feature and it is paid on
+            // every tap in long strip. SY pays it too. If raising the bars comes
+            // to feel sluggish, this is why, and the honest fix is to drop
+            // double-tap rather than to tune the timeout.
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { showControls = !showControls },
+                    onDoubleTap = { offset ->
+                        if (stripScale > 1f) {
+                            // Already zoomed: back to fit, centred.
+                            stripScale = 1f
+                            stripPanX = 0f
+                            stripPanY = 0f
+                        } else {
+                            // SY's arithmetic, from `onDoubleTapConfirmed`:
+                            // toX = (halfWidth - tapX) * (toScale - 1). It puts
+                            // the point you tapped in the middle of the screen
+                            // rather than zooming the centre and leaving you to
+                            // pan to what you were looking at.
+                            stripScale = DOUBLE_TAP_ZOOM
+                            stripPanX =
+                                (viewportWidthPx / 2f - offset.x) * (DOUBLE_TAP_ZOOM - 1f)
+                            stripPanY =
+                                (viewportHeightPx / 2f - offset.y) * (DOUBLE_TAP_ZOOM - 1f)
+                        }
+                    }
+                )
+            }
             .clipToBounds()
             .graphicsLayer {
                 scaleX = stripScale
                 scaleY = stripScale
                 translationX = stripPanX
+                translationY = stripPanY
             }
             // `canPan` is the whole reason this can live on a scrollable list.
             // At rest it refuses every pan, so the LazyColumn keeps its drags
@@ -420,7 +484,12 @@ internal fun ReaderScreen(
             // built for the job, rather than to guess at a phase.
             .transformable(
                 state = stripTransform,
-                canPan = { pan -> stripScale > 1f && abs(pan.x) > abs(pan.y) }
+                // Widened from `abs(x) > abs(y)`, which only admitted drags
+                // within 45 degrees of horizontal and so ignored anything
+                // diagonal. This admits anything within about 68 degrees, and a
+                // near-vertical drag still falls through to the list — which is
+                // what keeps a zoomed chapter readable.
+                canPan = { pan -> stripScale > 1f && abs(pan.x) > abs(pan.y) * 0.4f }
             )
 
         if (settings.mode == ReaderMode.LONG_STRIP) {
