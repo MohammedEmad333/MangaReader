@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 118,
+            name = "0.118",
+            header = "Bigger cards in History and Downloads",
+            body = "Both tabs now use the same larger cover, and Remove and " +
+                "Delete are icons rather than words \u2014 the word was wider " +
+                "than the thing it acted on and pushed titles onto two " +
+                "lines.\n\nBoth ask before they act now, including Clear all " +
+                "in History, which wiped the whole list on a single tap.",
+        ),
+        ReleaseNote(
             code = 117,
             name = "0.117",
             header = "Share works from the library too",
