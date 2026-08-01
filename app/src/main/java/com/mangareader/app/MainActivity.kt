@@ -270,7 +270,13 @@ fun YomuApp() {
     // routing chain below replaces that whole branch when a series opens, which
     // destroyed the state and dumped the user back on the first tab every time
     // they backed out. rememberSaveable so it also survives a config change.
-    var libraryCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    // Seeded from prefs, not from null. `rememberSaveable` alone only restores
+    // from the Activity's saved bundle, which a cold start from the launcher
+    // doesn't have — so the tab survived rotation and was lost every time the
+    // app was actually reopened, which is the case anyone notices.
+    var libraryCategory by rememberSaveable {
+        mutableStateOf<String?>(LibraryPrefs.lastCategory(context))
+    }
 
     // The library's search, hoisted for exactly the same reason and with the
     // same symptom when it wasn't: typing a query, opening a result and backing
@@ -1420,7 +1426,10 @@ fun YomuApp() {
                         libraryTick = libraryTick,
                         error = errorMessage,
                         activeCategory = libraryCategory,
-                        onCategoryChange = { libraryCategory = it },
+                        onCategoryChange = {
+                            libraryCategory = it
+                            LibraryPrefs.setLastCategory(context, it)
+                        },
                         search = librarySearch,
                         onSearchChange = { librarySearch = it },
                         searchOpen = librarySearchOpen,

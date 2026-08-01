@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 119,
+            name = "0.119",
+            header = "The Library opens on the tab you left",
+            body = "It survived rotating the phone but not closing the app, " +
+                "which is the case that actually comes up. The tab is " +
+                "remembered properly now.",
+        ),
+        ReleaseNote(
             code = 118,
             name = "0.118",
             header = "Bigger cards in History and Downloads",
