@@ -1218,7 +1218,17 @@ fun YomuApp() {
             // the extension's own object and asking the source for a url is a
             // call across the adapter boundary, which is not a thing to do from
             // inside a composable.
-            seriesUrl = remember(activeSeries?.id, activeSourceId) {
+            // Keyed on the **handle**, not just the id. `openFromLibrary` puts
+            // a stub on screen first — title and cover, no handle (§4) — and
+            // replaces it with the fetched series a moment later under the same
+            // id. Keyed on the id alone this resolved against the stub, got
+            // null because there was no `SManga` to ask, and never ran again:
+            // Share was simply missing on every series opened from the Library.
+            //
+            // The general form: an id is stable across exactly the transition
+            // that fills the object in, so it is the wrong key for anything
+            // derived from the object's contents.
+            seriesUrl = remember(activeSeries?.handle, activeSourceId) {
                 activeSeries?.let { s -> activeSource?.seriesUrl(s) }
             },
             onLibraryChanged = { libraryTick++ },
