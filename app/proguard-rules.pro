@@ -71,6 +71,23 @@
 -keepclassmembers class **$$serializer { *; }
 
 # ---------------------------------------------------------------------------
+# Missing classes
+# ---------------------------------------------------------------------------
+# R8 fails the build on a class that is referenced but absent, even from an
+# annotation that has no runtime effect. jsoup 1.17.2's package-info files
+# carry JSpecify nullness annotations, and jspecify is a compile-only
+# dependency that never reaches the APK:
+#
+#   Missing class org.jspecify.annotations.NullMarked
+#   (referenced from: org.jsoup.helper.package-info and 9 other contexts)
+#
+# This was the whole of 0.121's first red CI run. If another one of these
+# appears, R8 writes the exact rule it wants to
+# app/build/outputs/mapping/debug/missing_rules.txt — take it from there
+# rather than guessing at the package.
+-dontwarn org.jspecify.annotations.**
+
+# ---------------------------------------------------------------------------
 # Not kept, deliberately
 # ---------------------------------------------------------------------------
 # androidx.compose.material.icons.** — the whole point. Every icon actually
@@ -79,3 +96,18 @@
 #
 # eu.kanade.tachiyomi.** is kept by :source-api's consumer-proguard.pro rather
 # than here, because it belongs with the module it describes.
+#
+# ---------------------------------------------------------------------------
+# What a debuggable build actually does with this file
+# ---------------------------------------------------------------------------
+# AGP prints, for this configuration:
+#
+#   BuildType 'debug' is both debuggable and has 'isMinifyEnabled' set to true.
+#   Debuggable builds are no longer name minified and all code optimizations
+#   and obfuscation will be disabled.
+#
+# So -dontobfuscate above is belt and braces — AGP has already forced it — and
+# the optimiser is off. Shrinking still runs, which is the part that matters
+# here, but the size win is smaller than an optimised release build's would be.
+# Compare the published APK size against 24 MB before concluding this file is
+# doing its job.
