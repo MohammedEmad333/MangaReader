@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -407,10 +407,11 @@ internal fun LibraryTab(
                         )
                     }
                     IconButton(onClick = { optionsOpen = true }) {
-                        // Menu, not a funnel: material-icons-core has no
-                        // FilterList and the extended pack isn't a dependency.
+                        // A funnel at last. This was a hamburger because
+                        // material-icons-core has no FilterList; the extended
+                        // pack landed in 0.108.
                         Icon(
-                            Icons.Default.Menu,
+                            Icons.Default.FilterList,
                             contentDescription = "Filter, sort and display options",
                             tint = if (LibraryPrefs.anyFilterActive(context))
                                 MaterialTheme.colorScheme.primary

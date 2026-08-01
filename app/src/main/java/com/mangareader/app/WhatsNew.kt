@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 108,
+            name = "0.108",
+            header = "Real icons",
+            body = "Three buttons have been wearing the wrong glyph because the " +
+                "icon pack this app shipped with only has about forty of them. " +
+                "Download is a download arrow, pinning a source is a pin " +
+                "instead of a star, and the library's filter button is a " +
+                "funnel instead of a hamburger.\n\nCosts about a megabyte of " +
+                "app size, which is why it waited for a reason to be worth it.",
+        ),
+        ReleaseNote(
             code = 107,
             name = "0.107",
             header = "Groundwork for chapter sorting",

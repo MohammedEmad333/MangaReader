@@ -36,7 +36,10 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -123,13 +126,17 @@ internal fun BrowseSourceRow(
                 }
                 IconButton(onClick = onTogglePin) {
                     Icon(
-                        Icons.Default.Star,
+                        // A real pin, filled when pinned and outlined when
+                        // not. This was a filled-vs-dimmed Star for six releases
+                        // because material-icons-core has ~40 glyphs and no
+                        // PushPin; the extended pack is now a dependency and the
+                        // dimming workaround goes with it. The tint still moves
+                        // as well as the glyph — outlined-and-grey vs filled-and-
+                        // primary is legible at a glance where shape alone isn't.
+                        if (pinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
                         contentDescription = if (pinned) "Unpin" else "Pin",
-                        // Filled vs dimmed rather than filled vs outlined: the
-                        // outlined variants live in material-icons-extended and
-                        // this module only pulls in material-icons-core.
                         tint = if (pinned) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (cfg != null) {
@@ -403,7 +410,10 @@ internal fun BrowseTab(
                         Icon(Icons.Default.Search, contentDescription = "Search all sources")
                     }
                     IconButton(onClick = { showSourceFilter = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Choose which sources show")
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = "Choose which sources show"
+                        )
                     }
                 }
             }
