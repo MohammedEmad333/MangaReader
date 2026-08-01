@@ -240,6 +240,24 @@ class TachiyomiSourceAdapter(
         )
     }
 
+    /**
+     * `HttpSource.getMangaUrl` — the extension's own idea of where this series
+     * lives on its site.
+     *
+     * `runCatching` is not decoration. Asura Scans builds this from
+     * `manga.memo["slug"]` and throws when the memo has nothing useful in it,
+     * which is exactly the shape of the 0.85 bug; a share button is not worth
+     * a crash, so a failure here simply means nothing to share.
+     */
+    override fun seriesUrl(series: Series): String? {
+        val manga = series.handle as? SManga ?: return null
+        // getMangaUrl is HttpSource's, not CatalogueSource's — a local or
+        // non-HTTP source has no site to point at.
+        val http = delegate as? HttpSource ?: return null
+        return runCatching { http.getMangaUrl(manga) }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
     override fun rehydrateChapter(chapter: Chapter): Chapter {
         if (chapter.handle is SChapter) return chapter
         val url = urlFromId(chapter.id) ?: return chapter
