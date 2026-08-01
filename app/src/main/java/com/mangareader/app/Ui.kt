@@ -14,7 +14,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -49,11 +54,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -455,3 +463,84 @@ internal fun MiniBadge(text: String, colour: Color) {
             .padding(horizontal = 4.dp, vertical = 1.dp)
     )
 }
+
+/**
+ * A draggable scroll handle for a long lazy list or grid.
+ *
+ * **Deliberately takes numbers, not a state object.** A `LazyGridState` and a
+ * `LazyListState` share no supertype that exposes what this needs, so a version
+ * written against one would have to be duplicated for the other — and the card
+ * this comes from is "*all* scrolls should have a scroll handle". Handing it
+ * four integers and a callback means the second caller is three lines rather
+ * than a second copy of this file.
+ *
+ * **The thumb is derived from the scroll, never driven alongside it.** Dragging
+ * calls [onSeek] and then waits to be told where it ended up, exactly like the
+ * library tab row does with `settledPage`. Keeping a private thumb position and
+ * a scroll position in step is two things driving one value, which §5 records
+ * as a feedback loop that no amount of "is it already equal" fixes.
+ *
+ * Hidden until something moves. A permanent handle on a screen of cover art is
+ * clutter, and on a 3575-entry library it is also a lie about precision — one
+ * pixel of track is several series.
+ */
+@Composable
+internal fun ScrollHandle(
+    firstVisibleIndex: Int,
+    visibleItems: Int,
+    totalItems: Int,
+    isScrolling: Boolean,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Nothing to seek through: the whole list is on screen.
+    if (totalItems <= visibleItems || totalItems <= 0) return
+
+    var dragging by remember { mutableStateOf(false) }
+    // -1 means "not dragging". Held only for the duration of a drag, to carry
+    // the sub-item remainder between deltas — without it a slow drag rounds to
+    // the same index every frame and the handle sticks.
+    var dragIndex by remember { mutableFloatStateOf(-1f) }
+
+    val visible = isScrolling || dragging
+    val handleAlpha by animateFloatAsState(if (visible) 1f else 0f, label = "handleAlpha")
+
+    BoxWithConstraints(modifier = modifier.fillMaxHeight().width(HANDLE_WIDTH)) {
+        val density = LocalDensity.current
+        val trackPx = with(density) { maxHeight.toPx() }
+        val thumbPx = with(density) { HANDLE_HEIGHT.toPx() }
+        val usable = (trackPx - thumbPx).coerceAtLeast(1f)
+        val span = (totalItems - visibleItems).coerceAtLeast(1)
+
+        val position = (if (dragIndex >= 0f) dragIndex else firstVisibleIndex.toFloat()) / span
+        val offsetY = (position.coerceIn(0f, 1f) * usable).roundToInt()
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset { IntOffset(0, offsetY) }
+                .width(HANDLE_WIDTH)
+                .height(HANDLE_HEIGHT)
+                .alpha(handleAlpha)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        val base = if (dragIndex >= 0f) dragIndex else firstVisibleIndex.toFloat()
+                        val next = (base + delta / usable * span).coerceIn(0f, span.toFloat())
+                        dragIndex = next
+                        onSeek(next.roundToInt())
+                    },
+                    onDragStarted = { dragging = true },
+                    onDragStopped = {
+                        dragging = false
+                        dragIndex = -1f
+                    }
+                )
+        )
+    }
+}
+
+private val HANDLE_WIDTH = 10.dp
+private val HANDLE_HEIGHT = 48.dp

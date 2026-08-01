@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -426,8 +427,29 @@ internal fun ReaderScreen(
             // horizontal half and leaves scrolling alone, because in the middle
             // of a chapter there is no vertical overhang to pan into anyway —
             // the list scrolls there instead.
+            // The vertical half of a drag goes to whichever thing can use it.
+            //
+            // SY discards it mid-chapter because its RecyclerView is still
+            // scrolling underneath — the gesture is shared. Here `transformable`
+            // has *claimed* the gesture, so discarding it means a diagonal drag
+            // moves horizontally only, which is what 0.132 did and what it felt
+            // like. Handing it to the list instead gives the same result SY
+            // gets: sideways pans, up and down scrolls, and a diagonal does
+            // both at once.
+            //
+            // Panning wins at the ends of the list, because that is the only
+            // place there is vertical overhang to pan into and the list has
+            // nothing left to give.
             val atListEdge = !listState.canScrollBackward || !listState.canScrollForward
-            if (atListEdge) stripPanY = clampY(stripPanY + panChange.y)
+            if (atListEdge) {
+                stripPanY = clampY(stripPanY + panChange.y)
+            } else {
+                // Negated: dragging up is a negative delta and has to scroll the
+                // list forward. Launched rather than awaited — this callback is
+                // not suspending and the scroll is fire-and-forget, the same
+                // shape `commitSeek` already uses.
+                scope.launch { listState.scrollBy(-panChange.y) }
+            }
         }
         val zoomedStripModifier = stripModifier
             // Tap and double-tap share one detector, because they have to: a
