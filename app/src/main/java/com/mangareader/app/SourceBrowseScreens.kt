@@ -52,6 +52,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+// PullToRefreshBox lives in a SUB-PACKAGE of material3, which the wildcard
+// above does not reach. Needs naming explicitly or it resolves to nothing.
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -624,6 +627,26 @@ internal fun SeriesScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Pull down to re-fetch the chapter list — the same `onRefresh` the
+        // Options menu calls, so there is one refresh path rather than two.
+        //
+        // `isRefreshing` is the app-wide `loading` flag, gated on already having
+        // chapters. That gate is doing real work: without it the indicator would
+        // appear on every ordinary open, because opening a series sets the same
+        // flag. It is also why this is not simply `loading` — that flag is
+        // written by six launch blocks in `YomuApp`, and 0.89 is the release
+        // that had to stop the reader sharing it. Here the blast radius is a
+        // spinner rather than a page of failures, so it is not worth a second
+        // flag; if it ever spins when it shouldn't, this is the line.
+        //
+        // The LazyColumn body below is deliberately NOT re-indented under this
+        // wrapper: Kotlin doesn't care, and re-indenting 490 lines would bury a
+        // four-line change in a diff nobody could read.
+        PullToRefreshBox(
+            isRefreshing = loading && chapters.isNotEmpty(),
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize()
+        ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize()
@@ -1116,6 +1139,7 @@ internal fun SeriesScreen(
             // Clearance so the last row isn't trapped under the button.
             item { Spacer(Modifier.height(88.dp)) }
         }
+        } // PullToRefreshBox
 
         if (selecting) {
             ChapterSelectionBar(

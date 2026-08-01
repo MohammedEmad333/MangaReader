@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 129,
+            name = "0.129",
+            header = "Pull down to refresh a series",
+            body = "Drag down on a series' chapter list to re-fetch it. Same " +
+                "thing the Refresh row in the \u22ee menu does \u2014 this is just the " +
+                "gesture for it.\n\nOther screens don't have it yet.",
+        ),
+        ReleaseNote(
             code = 128,
             name = "0.128",
             header = "Classify sources nothing else can",
