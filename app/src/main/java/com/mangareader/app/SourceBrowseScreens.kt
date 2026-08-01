@@ -514,6 +514,12 @@ internal fun SeriesScreen(
             }
         }
     }
+    var coverOpen by remember(series.id) { mutableStateOf(false) }
+    var showChapterOptions by remember { mutableStateOf(false) }
+    // Bumped when the sheet writes a pref, so the derived list below recomputes.
+    // The prefs are the store; this is only the signal that they moved.
+    var optionsTick by remember { mutableIntStateOf(0) }
+
     /**
      * What the list below draws — filtered and sorted. **Not** what anything
      * indexes: see `onOpen`.
@@ -529,11 +535,6 @@ internal fun SeriesScreen(
     val downloadedCount = remember(chapters, downloadTick) {
         chapters.count { Downloads.isComplete(context, it.id) }
     }
-    var coverOpen by remember(series.id) { mutableStateOf(false) }
-    var showChapterOptions by remember { mutableStateOf(false) }
-    // Bumped when the sheet writes a pref, so the derived list below recomputes.
-    // The prefs are the store; this is only the signal that they moved.
-    var optionsTick by remember { mutableIntStateOf(0) }
 
     // The one place in the app that has a chapter list, its source and the
     // series id in hand at the same time, which is exactly what the index needs
