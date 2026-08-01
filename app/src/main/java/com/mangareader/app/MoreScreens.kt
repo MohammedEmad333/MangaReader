@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -77,6 +78,8 @@ internal fun HistoryScreen(
     // be survivable here, which is exactly the reasoning that put an O(library)
     // read inside a row three times already — the shared helper is free.
     val marks = rememberEntryMarks(libraryTick)
+    var confirmRemove by remember { mutableStateOf<HistoryEntry?>(null) }
+    var confirmClearAll by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -87,7 +90,7 @@ internal fun HistoryScreen(
         ) {
             Text("History", style = MaterialTheme.typography.titleLarge)
             if (history.isNotEmpty()) {
-                TextButton(onClick = onClearAll) { Text("Clear all") }
+                TextButton(onClick = { confirmClearAll = true }) { Text("Clear all") }
             }
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -110,7 +113,7 @@ internal fun HistoryScreen(
                                 cover = coverModel(entry.coverPath),
                                 title = entry.title,
                                 modifier = Modifier
-                                    .width(40.dp)
+                                    .width(64.dp)
                                     .aspectRatio(0.7f)
                                     .alpha(if (dim) 0.4f else 1f)
                             )
@@ -145,13 +148,73 @@ internal fun HistoryScreen(
                         },
                         modifier = Modifier.clickable { onOpen(entry) },
                         trailingContent = {
-                            TextButton(onClick = { onDelete(entry) }) { Text("Remove") }
+                            // An icon, matching the Downloads tab and the chapter
+                            // rows. The word was wider than the thing it acted on
+                            // and pushed the title into two lines on most entries.
+                            IconButton(onClick = { confirmRemove = entry }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Remove from history",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     )
                     HorizontalDivider()
                 }
             }
         }
+    }
+
+    // Both of these ask first. Removing one entry is small and recoverable only
+    // by re-reading the chapter; Clear all wipes the lot and had no guard at
+    // all, which made the most destructive control on the screen the one that
+    // needed the fewest taps.
+    val pendingRemove = confirmRemove
+    if (pendingRemove != null) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = null },
+            title = { Text("Remove from history?") },
+            text = {
+                Text(
+                    "\u201c${pendingRemove.title}\u201d leaves the history list. " +
+                        "The chapter, your read mark and your place in it are " +
+                        "untouched."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onDelete(pendingRemove)
+                    confirmRemove = null
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (confirmClearAll) {
+        AlertDialog(
+            onDismissRequest = { confirmClearAll = false },
+            title = { Text("Clear all history?") },
+            text = {
+                Text(
+                    "Every entry is removed. Read marks and saved pages are kept, " +
+                        "so nothing about your progress changes \u2014 only the list " +
+                        "of what you opened recently."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onClearAll()
+                    confirmClearAll = false
+                }) { Text("Clear all") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearAll = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

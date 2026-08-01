@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
@@ -147,7 +151,7 @@ internal fun DownloadsTab(
                                 cover = entry.cover.ifBlank { null },
                                 title = entry.title,
                                 modifier = Modifier
-                                    .width(44.dp)
+                                    .width(64.dp)
                                     .aspectRatio(0.7f)
                                     .alpha(if (dim) 0.4f else 1f)
                             )
@@ -182,7 +186,16 @@ internal fun DownloadsTab(
                             }
                         },
                         trailingContent = {
-                            TextButton(onClick = { confirmDelete = entry }) { Text("Delete") }
+                            // Icon rather than the word, matching History and the
+                            // chapter rows. The confirmation below is unchanged —
+                            // this deletes files, so it always asked.
+                            IconButton(onClick = { confirmDelete = entry }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete downloads",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         },
                         modifier = Modifier.clickable { onOpen(entry) }
                     )
