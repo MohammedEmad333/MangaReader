@@ -578,6 +578,11 @@ class TachiyomiSourceAdapter(
             handle = this,
             dateUploaded = date_upload,
             scanlator = scanlator?.takeIf { it.isNotBlank() },
+            // Extensions that don't parse a number leave this at the API's own
+            // default of -1f, which is already Chapter.NO_NUMBER. Anything
+            // negative is normalised so a source using -2f or similar as its
+            // "unknown" doesn't sort ahead of a source using -1f.
+            number = if (chapter_number < 0f) Chapter.NO_NUMBER else chapter_number,
         )
     }
 

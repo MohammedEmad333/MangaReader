@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 107,
+            name = "0.107",
+            header = "Groundwork for chapter sorting",
+            body = "Chapters now carry the number their source published, " +
+                "which is what a sort by chapter number needs. Nothing looks " +
+                "different yet \u2014 the sorting itself is the next release.\n\n" +
+                "Chapter lists saved for offline reading before this update " +
+                "have no number stored, so they'll pick one up the next time " +
+                "the series is opened online.",
+        ),
+        ReleaseNote(
             code = 106,
             name = "0.106",
             header = "Scroll on to the next chapter",

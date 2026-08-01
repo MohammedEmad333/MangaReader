@@ -214,8 +214,30 @@ data class Chapter(
     val handle: Any? = null,
     /** Epoch millis from the source; 0 when it doesn't publish one. */
     val dateUploaded: Long = 0L,
-    val scanlator: String? = null
-)
+    val scanlator: String? = null,
+    /**
+     * The source's own chapter number, from `SChapter.chapter_number`.
+     *
+     * **[NO_NUMBER] means "the source didn't say", and that is not zero.** Three
+     * things arrive without one and all three are normal: a chapter from a
+     * source that publishes no numbering, a chapter rebuilt from the download
+     * queue (which stores an id and a name and nothing else), and every chapter
+     * in a `ChapterCache` file written before this field existed. Defaulting
+     * those to `0f` would make them a real chapter zero and pile them at the top
+     * of a number sort, which reads as the sort being broken rather than as data
+     * being absent — the same three-state trap `SeriesIndex` documents, in a new
+     * store.
+     *
+     * So anything sorting on this puts [NO_NUMBER] at the end, never among the
+     * real ones, and anything displaying it falls back to [name].
+     */
+    val number: Float = NO_NUMBER
+) {
+    companion object {
+        /** "This source published no chapter number." Negative so it can never collide with one. */
+        const val NO_NUMBER = -1f
+    }
+}
 
 /**
  * One page that couldn't be fetched, with enough context to act on it.
