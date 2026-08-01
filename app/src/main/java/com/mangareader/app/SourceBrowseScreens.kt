@@ -108,6 +108,13 @@ internal fun LibraryScreen(
     onRescan: () -> Unit,
     onOpen: (Series) -> Unit,
     onBack: () -> Unit,
+    /**
+     * Bumped whenever library state moves, so the corner markers below refresh
+     * after adding or removing a series without leaving the screen.
+     */
+    libraryTick: Int,
+    /** Drives the `Local` chip; extension sources are `tachi:`-prefixed. */
+    isLocalSource: Boolean,
     /** Held by the root so the grid's position outlives this branch. */
     scroll: ScrollMemory,
     /**
@@ -328,6 +335,10 @@ internal fun LibraryScreen(
                 }
             }
         } else {
+            // Once per screen, never per cell — each field behind this is a
+            // whole-store read, and asking per row is the shape §5 records as
+            // "an import is a load test".
+            val marks = rememberEntryMarks(libraryTick)
             LazyVerticalGrid(
                 // List is the same grid with one column, so paging, the empty
                 // state and "Load more" stay on one code path instead of two.
@@ -341,9 +352,9 @@ internal fun LibraryScreen(
             ) {
                 items(shown) { s ->
                     when (view) {
-                        BrowseView.COMFORTABLE -> ComfortableCell(s, onOpen)
-                        BrowseView.COMPACT -> CompactCell(s, onOpen)
-                        BrowseView.LIST -> ListRow(s, onOpen)
+                        BrowseView.COMFORTABLE -> ComfortableCell(s, marks, isLocalSource, onOpen)
+                        BrowseView.COMPACT -> CompactCell(s, marks, isLocalSource, onOpen)
+                        BrowseView.LIST -> ListRow(s, marks, isLocalSource, onOpen)
                     }
                 }
 
@@ -1420,32 +1431,59 @@ internal enum class BrowseView(val key: String, val label: String) {
 
 /** Cover with the title underneath it. */
 @Composable
-private fun ComfortableCell(series: Series, onOpen: (Series) -> Unit) {
+private fun ComfortableCell(
+    series: Series,
+    marks: EntryMarks,
+    local: Boolean,
+    onOpen: (Series) -> Unit
+) {
+    // Only entries already in the library carry marks — nothing else has a
+    // count, a download or a category. Most cells on a browse screen stay bare,
+    // and the ones that don't are the answer to "do I already have this".
+    val dim = marks.dim(series.id)
     Column(
         modifier = Modifier
             .padding(6.dp)
             .clickable { onOpen(series) }
     ) {
-        CoverImage(
-            cover = series.cover,
-            title = series.title,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-        )
+        Box {
+            CoverImage(
+                cover = series.cover,
+                title = series.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.7f)
+                    .alpha(if (dim) 0.4f else 1f)
+            )
+            Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+                EntryBadges(
+                    downloaded = marks.downloaded(series.id),
+                    local = marks.badgeLocal && local,
+                    unread = marks.unreadOf(series.id)
+                )
+            }
+        }
         Text(
             text = series.title,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .alpha(if (dim) 0.4f else 1f)
         )
     }
 }
 
 /** Cover with the title over it, under a scrim. */
 @Composable
-private fun CompactCell(series: Series, onOpen: (Series) -> Unit) {
+private fun CompactCell(
+    series: Series,
+    marks: EntryMarks,
+    local: Boolean,
+    onOpen: (Series) -> Unit
+) {
+    val dim = marks.dim(series.id)
     Box(
         modifier = Modifier
             .padding(6.dp)
@@ -1457,7 +1495,17 @@ private fun CompactCell(series: Series, onOpen: (Series) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.7f)
+                .alpha(if (dim) 0.4f else 1f)
         )
+        // Top-start, opposite the title's scrim at the bottom. The library grid
+        // puts them in the same corner, so the two screens read alike.
+        Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+            EntryBadges(
+                downloaded = marks.downloaded(series.id),
+                local = marks.badgeLocal && local,
+                unread = marks.unreadOf(series.id)
+            )
+        }
         // The scrim isn't decoration. Covers are arbitrary artwork and a title
         // drawn straight onto a pale one is unreadable; the gradient is what
         // makes white text safe over anything.
@@ -1482,7 +1530,13 @@ private fun CompactCell(series: Series, onOpen: (Series) -> Unit) {
 
 /** One row: small cover, full title. */
 @Composable
-private fun ListRow(series: Series, onOpen: (Series) -> Unit) {
+private fun ListRow(
+    series: Series,
+    marks: EntryMarks,
+    local: Boolean,
+    onOpen: (Series) -> Unit
+) {
+    val dim = marks.dim(series.id)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1496,13 +1550,25 @@ private fun ListRow(series: Series, onOpen: (Series) -> Unit) {
             modifier = Modifier
                 .width(44.dp)
                 .aspectRatio(0.7f)
+                .alpha(if (dim) 0.4f else 1f)
         )
         Spacer(Modifier.width(12.dp))
         Text(
             text = series.title,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .alpha(if (dim) 0.4f else 1f)
+        )
+        // Trailing rather than over the cover: a 44dp thumbnail is too small to
+        // carry a chip without hiding most of the art.
+        Spacer(Modifier.width(8.dp))
+        EntryBadges(
+            downloaded = marks.downloaded(series.id),
+            local = marks.badgeLocal && local,
+            unread = marks.unreadOf(series.id)
         )
     }
 }

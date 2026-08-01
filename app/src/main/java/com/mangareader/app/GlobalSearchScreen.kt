@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -81,10 +82,15 @@ internal fun GlobalSearchScreen(
     onCancel: () -> Unit,
     onOpenSource: (Source) -> Unit,
     onOpenSeries: (Source, Series) -> Unit,
+    /** Bumped when library state moves; refreshes the corner markers. */
+    libraryTick: Int,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
     val context = LocalContext.current
+    // Once for the whole screen, not once per result. A global search can put
+    // several hundred cells on screen across a dozen source rows.
+    val marks = rememberEntryMarks(libraryTick)
     var field by remember(query) { mutableStateOf(query) }
 
     // Read once per entry into the composition: the pin set only changes over in
@@ -219,24 +225,46 @@ internal fun GlobalSearchScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(result.series) { s ->
+                            // Results already in the library carry their marks,
+                            // which is the useful half here: a global search is
+                            // usually asking whether this series exists on a
+                            // source you can actually read, and half the answer
+                            // is whether you already have it.
+                            val dim = marks.dim(s.id)
                             Column(
                                 modifier = Modifier
                                     .width(110.dp)
                                     .clickable { onOpenSeries(result.source, s) }
                             ) {
-                                CoverImage(
-                                    cover = s.cover,
-                                    title = s.title,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(0.7f)
-                                )
+                                Box {
+                                    CoverImage(
+                                        cover = s.cover,
+                                        title = s.title,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(0.7f)
+                                            .alpha(if (dim) 0.4f else 1f)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(4.dp)
+                                    ) {
+                                        EntryBadges(
+                                            downloaded = marks.downloaded(s.id),
+                                            local = false,
+                                            unread = marks.unreadOf(s.id)
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = s.title,
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 4.dp)
+                                    modifier = Modifier
+                                        .padding(top = 4.dp)
+                                        .alpha(if (dim) 0.4f else 1f)
                                 )
                             }
                         }

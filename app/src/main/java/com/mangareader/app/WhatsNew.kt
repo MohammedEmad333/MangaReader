@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 113,
+            name = "0.113",
+            header = "Badges while browsing",
+            body = "Browsing a source and searching every source now show the " +
+                "same corner markers the library does: an unread count, a DL " +
+                "chip for anything downloaded, and dimming for series filed " +
+                "under Read.\n\nOnly series already in your library have any " +
+                "of that to show, which is the point \u2014 it tells you what " +
+                "you already have without opening anything.\n\nHistory and " +
+                "Downloads are next.",
+        ),
+        ReleaseNote(
             code = 112,
             name = "0.112",
             header = "Chapter numbers actually work now",
