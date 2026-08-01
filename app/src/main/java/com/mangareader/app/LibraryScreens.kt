@@ -116,6 +116,7 @@ internal fun LibraryTab(
     val fUnread = remember(tick) { LibraryPrefs.filterUnread(context) }
     val fStarted = remember(tick) { LibraryPrefs.filterStarted(context) }
     val fCompleted = remember(tick) { LibraryPrefs.filterCompleted(context) }
+    val fNsfw = remember(tick) { LibraryPrefs.filterNsfw(context) }
 
     var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -157,6 +158,14 @@ internal fun LibraryTab(
         if (wanted) SeriesIndex.all(context) else emptyMap()
     }
 
+    // Which sources are 18+. One string read and one parse, and only when the
+    // filter is on — same rule as `counts` above. Keyed on SourceNsfw.version
+    // because the flags are learned inside listAllSources on IO, which on a
+    // cold start finishes after this screen has already filtered itself.
+    val nsfwSources = remember(tick, fNsfw, SourceNsfw.version) {
+        if (fNsfw == FilterState.OFF) emptyMap() else SourceNsfw.all(context)
+    }
+
     // Most recent read per series, from History. History is capped at 40
     // chapters, so this is a partial answer by construction: anything older
     // simply has no timestamp and sorts to the end. That is worth having and
@@ -184,7 +193,12 @@ internal fun LibraryTab(
                 fRead to (e.seriesId in readIds),
                 fUnread to ((c?.unread ?: 0) > 0),
                 fStarted to (c?.started ?: false),
-                fCompleted to (c?.completed ?: false)
+                fCompleted to (c?.completed ?: false),
+                // Unknown source reads as "doesn't hold", like the three above:
+                // Include hides it, Exclude keeps it. That direction is chosen —
+                // a source nothing has classified yet should not make a saved
+                // series vanish from a library someone is looking at.
+                fNsfw to (nsfwSources[e.sourceId] ?: false)
             )
             checks.all { (state, holds) ->
                 when (state) {

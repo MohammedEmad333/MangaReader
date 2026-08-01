@@ -151,6 +151,10 @@ object SourceManager {
         // costs nothing on the common path: `record` refuses a batch that says
         // nothing new, so this is a write on install, uninstall and rename only.
         runCatching { SourceNames.record(context, all.associate { it.id to it.name }) }
+        // The same trip, one field over. `Source.isNsfw` is only reachable from
+        // a loaded source, and the Library screen cannot load sources — see
+        // SourceNsfw.
+        runCatching { SourceNsfw.record(context, all.associate { it.id to it.isNsfw }) }
 
         return all
     }

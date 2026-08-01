@@ -185,6 +185,7 @@ object ExtensionManager {
             // anything: nothing will ever list it again. This index is the only
             // place those names still exist.
             val names = HashMap<String, String>()
+            val nsfw = HashMap<String, Boolean>()
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 runCatching { nestedEntry(obj, pm) }
@@ -194,8 +195,10 @@ object ExtensionManager {
                 // become an Extension may still carry usable source names, and
                 // one that can't is skipped here on its own.
                 runCatching { collectSourceNames(obj, names) }
+                runCatching { collectSourceNsfw(obj, nsfw) }
             }
             runCatching { SourceNames.record(context, names) }
+            runCatching { SourceNsfw.record(context, nsfw) }
         }
         return entries
     }
@@ -207,6 +210,24 @@ object ExtensionManager {
      * source with `tachi:`, matching `TachiyomiSourceAdapter.id`. Getting that
      * wrong would store 1367 names under keys nothing ever looks up, silently.
      */
+    /**
+     * The same walk as [collectSourceNames], for the 18+ flag.
+     *
+     * The warning is per *extension* and the ids are per *source*, so every
+     * source an entry declares inherits its entry's flag. That is the only
+     * granularity the index offers, and it matches what `LoadResult.isNsfw`
+     * gives an installed extension.
+     */
+    private fun collectSourceNsfw(obj: JSONObject, into: MutableMap<String, Boolean>) {
+        val srcs = obj.optJSONArray("sources") ?: return
+        val flag = obj.optString("contentWarning", SAFE) != SAFE
+        for (i in 0 until srcs.length()) {
+            val src = srcs.optJSONObject(i) ?: continue
+            val id = src.optString("id").takeIf { it.isNotBlank() } ?: continue
+            into["tachi:$id"] = flag
+        }
+    }
+
     private fun collectSourceNames(obj: JSONObject, into: MutableMap<String, String>) {
         val srcs = obj.optJSONArray("sources") ?: return
         for (i in 0 until srcs.length()) {
@@ -273,9 +294,14 @@ object ExtensionManager {
             apkUrl = obj.getJSONObject("resources").getString("apkUrl"),
             isInstalled = installedInfo != null,
             lang = langLabel(langs.singleOrNull() ?: "all"),
-            // Three values now: SAFE, MIXED, NSFW. Anything but SAFE carries the
-            // badge — nothing filters on this flag, it only labels, so erring
-            // towards showing it costs nothing and hides nothing.
+            // Three values now: SAFE, MIXED, NSFW. Anything but SAFE counts as
+            // 18+. This used to say "nothing filters on this flag, it only
+            // labels" — as of 0.126 the Browse setting hides extensions on it
+            // and the library filter classifies saved series through
+            // SourceNsfw, so erring towards flagging now costs a hidden row
+            // rather than nothing. MIXED is still counted in deliberately: a
+            // source that carries some adult content is one someone switching
+            // this off does not want in the list.
             isNsfw = obj.optString("contentWarning", SAFE) != SAFE,
             installedVersion = installedInfo?.versionName
         )

@@ -215,6 +215,19 @@ object LibraryPrefs {
     fun setFilterCompleted(c: Context, v: FilterState) =
         p(c).edit().putInt("lib_f_completed", v.stored).apply()
 
+    /**
+     * 18+, classified by the entry's *source* — see [SourceNsfw].
+     *
+     * Separate from Browse's "Show 18+ sources" switch on purpose. That one
+     * shortens the lists you browse from; this one filters a library you have
+     * already built, and filtering a library belongs to the library (§4). One
+     * control doing both would mean a Settings switch silently removing rows
+     * from the Library tab, which reads as data loss rather than as a filter.
+     */
+    fun filterNsfw(c: Context) = FilterState.from(p(c).getInt("lib_f_nsfw", 0))
+    fun setFilterNsfw(c: Context, v: FilterState) =
+        p(c).edit().putInt("lib_f_nsfw", v.stored).apply()
+
     /** True when anything is filtering, so the bar can show it. */
     fun anyFilterActive(c: Context) =
         filterDownloaded(c) != FilterState.OFF ||
@@ -222,5 +235,6 @@ object LibraryPrefs {
             filterRead(c) != FilterState.OFF ||
             filterUnread(c) != FilterState.OFF ||
             filterStarted(c) != FilterState.OFF ||
-            filterCompleted(c) != FilterState.OFF
+            filterCompleted(c) != FilterState.OFF ||
+            filterNsfw(c) != FilterState.OFF
 }
