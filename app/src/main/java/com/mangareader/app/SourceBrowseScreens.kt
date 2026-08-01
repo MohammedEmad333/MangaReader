@@ -34,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
@@ -420,6 +422,8 @@ internal fun SeriesScreen(
     onDeleteDownloads: () -> Unit,
     onDeleteChapter: (Chapter) -> Unit,
     onSetRead: (List<Chapter>, Boolean) -> Unit,
+    /** Bookmarks a batch. Independent of read state — see `Bookmarks`. */
+    onSetBookmarked: (List<Chapter>, Boolean) -> Unit,
     loading: Boolean,
     error: String?,
     readTick: Int,
@@ -906,6 +910,7 @@ internal fun SeriesScreen(
                 val key = chapterKeyOf(sourceId, ch)
                 val read = remember(key, readTick) { ReadState.isRead(context, key) }
                 val resume = remember(key, readTick) { savedPage(context, key) }
+                val bookmarked = remember(key, readTick) { Bookmarks.isBookmarked(context, key) }
                 // `me.saket.swipe`, not Material3's SwipeToDismissBox — which
                 // this shipped on twice and which was unreliable both times.
                 //
@@ -981,6 +986,25 @@ internal fun SeriesScreen(
                     },
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Trailing, not leading. A leading icon on only the
+                            // bookmarked rows would leave every other title
+                            // starting a step further left, and a list whose
+                            // text doesn't line up reads as broken rendering
+                            // rather than as a marker.
+                            //
+                            // A marker, not a button: the row already opens the
+                            // chapter and the download control is beside it, and
+                            // a third tap target on a 171-row list is why the
+                            // read control was taken off these rows. Toggling
+                            // lives in the long-press bar.
+                            if (bookmarked) {
+                                Icon(
+                                    Icons.Default.Bookmark,
+                                    contentDescription = "Bookmarked",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
                             if (canDownload) {
                                 val percent = downloadProgress[ch.id]
                                 val downloaded = remember(ch.id, downloadTick) {
@@ -1084,6 +1108,18 @@ internal fun SeriesScreen(
                 },
                 onUnread = {
                     onSetRead(selectedChapters, false)
+                    selectedIds = emptySet()
+                },
+                // One button, and what it does is decided by the selection: if
+                // anything in it is not bookmarked, bookmark everything;
+                // otherwise clear them all. A per-chapter toggle over a mixed
+                // selection would flip half of them the wrong way, which is the
+                // rule `onSetRead` already follows for read state.
+                bookmarkAdds = selectedChapters.any {
+                    !Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, it))
+                },
+                onBookmark = { adding ->
+                    onSetBookmarked(selectedChapters, adding)
                     selectedIds = emptySet()
                 },
                 // Asks first, and the selection is kept until it's answered —
@@ -1408,6 +1444,9 @@ private fun ChapterSelectionBar(
     onDownload: () -> Unit,
     onRead: () -> Unit,
     onUnread: () -> Unit,
+    /** True when the button should add bookmarks rather than remove them. */
+    bookmarkAdds: Boolean,
+    onBookmark: (Boolean) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1462,6 +1501,13 @@ private fun ChapterSelectionBar(
                     label = "Unread",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onUnread
+                )
+                SeriesAction(
+                    icon = if (bookmarkAdds) Icons.Default.BookmarkBorder
+                    else Icons.Default.Bookmark,
+                    label = if (bookmarkAdds) "Bookmark" else "Unbookmark",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = { onBookmark(bookmarkAdds) }
                 )
                 SeriesAction(
                     icon = Icons.Default.Delete,
