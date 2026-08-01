@@ -38,6 +38,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -68,8 +69,14 @@ internal fun HistoryScreen(
     error: String?,
     onOpen: (HistoryEntry) -> Unit,
     onDelete: (HistoryEntry) -> Unit,
+    /** Bumped when library state moves; refreshes the corner markers. */
+    libraryTick: Int,
     onClearAll: () -> Unit
 ) {
+    // Once for the screen. History caps at 40 entries so the per-row cost would
+    // be survivable here, which is exactly the reasoning that put an O(library)
+    // read inside a row three times already — the shared helper is free.
+    val marks = rememberEntryMarks(libraryTick)
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -94,6 +101,9 @@ internal fun HistoryScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(history) { entry ->
+                    // History holds entries for series that may since have been
+                    // removed from the library, so most of these carry nothing.
+                    val dim = marks.dim(entry.seriesId)
                     ListItem(
                         leadingContent = {
                             CoverImage(
@@ -102,16 +112,36 @@ internal fun HistoryScreen(
                                 modifier = Modifier
                                     .width(40.dp)
                                     .aspectRatio(0.7f)
+                                    .alpha(if (dim) 0.4f else 1f)
                             )
                         },
                         headlineContent = {
-                            Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                entry.title,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.alpha(if (dim) 0.4f else 1f)
+                            )
                         },
                         supportingContent = {
-                            Text(
-                                if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
-                                else "Page ${entry.page + 1}"
-                            )
+                            // Beside the page position rather than over the
+                            // cover: 40dp is the smallest thumbnail in the app
+                            // and a chip on it would hide most of the art.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
+                                    else "Page ${entry.page + 1}"
+                                )
+                                EntryBadges(
+                                    downloaded = marks.downloaded(entry.seriesId),
+                                    local = marks.badgeLocal &&
+                                        !entry.sourceId.startsWith("tachi:"),
+                                    unread = marks.unreadOf(entry.seriesId)
+                                )
+                            }
                         },
                         modifier = Modifier.clickable { onOpen(entry) },
                         trailingContent = {

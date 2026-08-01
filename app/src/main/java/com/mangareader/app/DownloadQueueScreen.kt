@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,10 +48,13 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun DownloadsTab(
     downloadTick: Int,
+    /** Bumped when library state moves; refreshes the corner markers. */
+    libraryTick: Int,
     onOpen: (DownloadedSeries) -> Unit,
     onOpenQueue: () -> Unit
 ) {
     val context = LocalContext.current
+    val marks = rememberEntryMarks(libraryTick)
 
     // Deletes made here don't go through the service, so they wouldn't move
     // DownloadQueue.tick; a local counter covers that without pushing a callback
@@ -136,6 +140,7 @@ internal fun DownloadsTab(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(series, key = { it.seriesId }) { entry ->
+                    val dim = marks.dim(entry.seriesId)
                     ListItem(
                         leadingContent = {
                             CoverImage(
@@ -144,17 +149,37 @@ internal fun DownloadsTab(
                                 modifier = Modifier
                                     .width(44.dp)
                                     .aspectRatio(0.7f)
+                                    .alpha(if (dim) 0.4f else 1f)
                             )
                         },
                         headlineContent = {
-                            Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                entry.title,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.alpha(if (dim) 0.4f else 1f)
+                            )
                         },
                         supportingContent = {
-                            Text(
-                                "${entry.chapters.size} " +
-                                    (if (entry.chapters.size == 1) "chapter" else "chapters") +
-                                    " \u00b7 ${formatBytes(entry.sizeBytes)}"
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "${entry.chapters.size} " +
+                                        (if (entry.chapters.size == 1) "chapter" else "chapters") +
+                                        " \u00b7 ${formatBytes(entry.sizeBytes)}"
+                                )
+                                // No DL chip here. Every row on this screen is
+                                // downloaded by definition, so it would be a
+                                // badge that is always on and says nothing.
+                                EntryBadges(
+                                    downloaded = false,
+                                    local = marks.badgeLocal &&
+                                        !entry.sourceId.startsWith("tachi:"),
+                                    unread = marks.unreadOf(entry.seriesId)
+                                )
+                            }
                         },
                         trailingContent = {
                             TextButton(onClick = { confirmDelete = entry }) { Text("Delete") }

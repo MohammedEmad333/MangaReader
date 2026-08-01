@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 114,
+            name = "0.114",
+            header = "Badges in History and Downloads",
+            body = "The unread count and the read dimming now appear on the " +
+                "History and Downloads tabs as well, so every screen that " +
+                "lists series marks them the same way.\n\nNo DL chip on the " +
+                "Downloads tab \u2014 everything there is downloaded, so it " +
+                "would be a badge that is always on and tells you nothing.",
+        ),
+        ReleaseNote(
             code = 113,
             name = "0.113",
             header = "Badges while browsing",
