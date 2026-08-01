@@ -729,6 +729,7 @@ private fun BrowseSettings() {
     val context = LocalContext.current
     var showRepos by remember { mutableStateOf(false) }
     var pinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
+    var showNsfw by remember { mutableStateOf(SourcePrefs.showNsfw(context)) }
     val repoCount = remember(showRepos) { ExtensionRepos.list(context).size }
 
     SettingsColumn {
@@ -747,6 +748,21 @@ private fun BrowseSettings() {
             modifier = Modifier.clickable { showRepos = true }
         )
         HorizontalDivider()
+
+        SectionHeader("Content")
+        PrefSwitchRow(
+            title = "Show 18+ sources",
+            checked = showNsfw,
+            summary = "Hides adult sources and extensions from Browse and search"
+        ) {
+            showNsfw = it
+            SourcePrefs.setShowNsfw(context, it)
+        }
+        PrefNote(
+            "This hides them from the Sources list, the Extensions list and " +
+                "global search. It does not remove anything already in your " +
+                "library, and it isn't a lock \u2014 the switch is right here."
+        )
 
         SectionHeader("Global search")
         PrefSwitchRow(

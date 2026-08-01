@@ -20,6 +20,7 @@ object SourcePrefs {
     private const val KEY_PINNED_ONLY_SEARCH = "global_search_pinned_only"
     private const val KEY_HIDDEN = "hidden_sources"
     private const val KEY_ENABLED_LANGS = "enabled_langs"
+    private const val KEY_SHOW_NSFW = "show_nsfw"
 
     /**
      * Languages shown before anyone chooses. 95 sources across 30-odd languages
@@ -128,7 +129,45 @@ object SourcePrefs {
         return next
     }
 
-    /** A source shows only if its language is on and it isn't individually hidden. */
-    fun isVisible(id: String, lang: String, hidden: Set<String>, enabledLangs: Set<String>): Boolean =
-        id !in hidden && lang in enabledLangs
+    /**
+     * Whether 18+ sources and extensions appear at all.
+     *
+     * **Defaults to true**, unlike the language store's positive default, and
+     * for the opposite reason: this one is not solving a too-long list, it is
+     * offering to shorten one. Defaulting it off would make sources disappear
+     * for every existing install after an update, which reads as an extension
+     * having broken rather than as a new setting.
+     *
+     * **Scope, because a filter that doesn't state its scope fails silently
+     * (§5).** This hides *sources and extensions* — the lists you browse from.
+     * It does not hide series already saved to the library, does not untick the
+     * 18+ badge, and is not a lock: nothing here is a parental control, and the
+     * setting is one tap from the same screen it hides things on.
+     */
+    fun showNsfw(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SHOW_NSFW, true)
+
+    fun setShowNsfw(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SHOW_NSFW, value).apply()
+    }
+
+    /**
+     * A source shows only if its language is on, it isn't individually hidden,
+     * and it isn't 18+ while 18+ is switched off.
+     *
+     * One predicate rather than a second check bolted on beside it, because the
+     * Sources list and the global search fan-out both call this and a source
+     * hidden from one has to be hidden from the other — §5's "two predicates
+     * answering one question will disagree" is exactly what an extra
+     * `&& showNsfw` at each call site would set up.
+     */
+    fun isVisible(
+        id: String,
+        lang: String,
+        isNsfw: Boolean,
+        hidden: Set<String>,
+        enabledLangs: Set<String>,
+        showNsfw: Boolean
+    ): Boolean =
+        id !in hidden && lang in enabledLangs && (showNsfw || !isNsfw)
 }

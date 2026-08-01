@@ -185,6 +185,9 @@ internal fun SourceFilterScreen(
     val context = LocalContext.current
     var hidden by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
     var enabledLangs by remember { mutableStateOf(SourcePrefs.enabledLangs(context)) }
+    // Read, not written, here: 18+ is a Settings switch. It still belongs in
+    // the count below, or "N of M shown" contradicts the list beside it.
+    val showNsfw = remember { SourcePrefs.showNsfw(context) }
 
     val groups = remember(rows) {
         rows.groupBy { it.lang.ifBlank { "Other" } }
@@ -211,7 +214,8 @@ internal fun SourceFilterScreen(
                     supportingContent = {
                         val shown = rows.count {
                             SourcePrefs.isVisible(
-                                it.id, it.lang.ifBlank { "Other" }, hidden, enabledLangs
+                                it.id, it.lang.ifBlank { "Other" }, it.isNsfw,
+                                hidden, enabledLangs, showNsfw
                             )
                         }
                         Text("$shown of ${rows.size} shown")
@@ -311,6 +315,10 @@ internal fun BrowseTab(
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
     var enabledLangs by remember { mutableStateOf(SourcePrefs.enabledLangs(context)) }
+    // Re-read on every re-entry, like pinnedIds above it: a bottom-nav switch
+    // always disposes this tab, so changing the switch in Settings and coming
+    // back is enough. No invalidation to wire.
+    val showNsfw = remember { SourcePrefs.showNsfw(context) }
 
     val rows = remember(configs, extensions) {
         configs.map { cfg ->
@@ -341,7 +349,9 @@ internal fun BrowseTab(
     // Everything below works off the visible set; `rows` stays whole so the
     // filter screen can still list what's been switched off.
     val visibleRows = rows.filter {
-        SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hiddenIds, enabledLangs)
+        SourcePrefs.isVisible(
+            it.id, it.lang.ifBlank { "Other" }, it.isNsfw, hiddenIds, enabledLangs, showNsfw
+        )
     }
 
     val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
@@ -610,8 +620,13 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     // Client-side filter over the already-fetched index: no refetch, no network.
     val shownExtensions = remember(available, filter, installedOnly) {
         val q = filter.trim()
+        // The same switch as the Sources list. An 18+ extension left listed here
+        // while its sources are hidden would be a one-tap route back to exactly
+        // what was switched off, which makes the setting look broken.
+        val showNsfw = SourcePrefs.showNsfw(context)
         available.filter { ext ->
-            (!installedOnly || ext.isInstalled) &&
+            (showNsfw || !ext.isNsfw) &&
+                (!installedOnly || ext.isInstalled) &&
                 (q.isBlank() ||
                     ext.name.contains(q, ignoreCase = true) ||
                     ext.pkgName.contains(q, ignoreCase = true))

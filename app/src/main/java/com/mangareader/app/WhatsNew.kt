@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 126,
+            name = "0.126",
+            header = "Hide 18+ sources",
+            body = "Settings \u203a Browse \u203a Show 18+ sources. Turn it off and " +
+                "adult sources and extensions drop out of the Sources list, " +
+                "the Extensions list and global search.\n\nIt leaves your " +
+                "library alone \u2014 anything already saved stays saved. And it " +
+                "isn't a lock: the switch is in plain sight in Settings.",
+        ),
+        ReleaseNote(
             code = 125,
             name = "0.125",
             header = "Pick an accent colour",
