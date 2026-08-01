@@ -527,6 +527,7 @@ internal fun SeriesScreen(
     }
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
+    var showDownloadMenu by remember { mutableStateOf(false) }
     // Bumped when the sheet writes a pref, so the derived list below recomputes.
     // The prefs are the store; this is only the signal that they moved.
     var optionsTick by remember { mutableIntStateOf(0) }
@@ -1104,6 +1105,35 @@ internal fun SeriesScreen(
             },
             navigationIcon = { BackButton(onBack) },
             actions = {
+                if (canDownload && chapters.isNotEmpty()) {
+                    Box {
+                        IconButton(onClick = { showDownloadMenu = true }) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = "Download chapters"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showDownloadMenu,
+                            onDismissRequest = { showDownloadMenu = false }
+                        ) {
+                            DownloadChoice.entries.forEach { choice ->
+                                DropdownMenuItem(
+                                    text = { Text(choice.label) },
+                                    onClick = {
+                                        showDownloadMenu = false
+                                        // Over `visible`, so the menu follows
+                                        // the sort and filter on screen — the
+                                        // same list Select all works on, for
+                                        // the same reason.
+                                        downloadTargets(context, visible, sourceId, choice)
+                                            .forEach(onDownload)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
                 IconButton(onClick = { showChapterOptions = true }) {
                     Icon(
                         Icons.Default.FilterList,

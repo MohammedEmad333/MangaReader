@@ -269,3 +269,49 @@ internal fun ChapterOptionsSheet(
         }
     }
 }
+
+/**
+ * The bulk-download choices, from SY's `DownloadAction`.
+ *
+ * Bookmarked is absent for the same reason it is absent from the filter sheet:
+ * nothing in this app records a bookmark.
+ */
+enum class DownloadChoice(val label: String) {
+    NEXT_1("Next chapter"),
+    NEXT_5("Next 5 chapters"),
+    NEXT_10("Next 10 chapters"),
+    NEXT_25("Next 25 chapters"),
+    UNREAD("All unread chapters")
+}
+
+/**
+ * Which chapters a [DownloadChoice] actually queues.
+ *
+ * **"Next 5" means the next five that are unread *and not already on disk*, not
+ * the next five rows.** That is SY's rule (`getUnreadChapters` filters on
+ * `NOT_DOWNLOADED` before taking any) and it is the whole usefulness of the
+ * menu: taken literally as "the next five rows", tapping it on a series you are
+ * part-way through re-queues chapters you already have and looks like a button
+ * that did nothing.
+ *
+ * Runs over [chapters] in the order they are **drawn**, so the menu follows the
+ * sort and filter currently on screen rather than a hidden second ordering.
+ */
+internal fun downloadTargets(
+    context: Context,
+    chapters: List<Chapter>,
+    sourceId: String,
+    choice: DownloadChoice
+): List<Chapter> {
+    val candidates = chapters.filter { ch ->
+        !ReadState.isRead(context, chapterKeyOf(sourceId, ch)) &&
+            !Downloads.isComplete(context, ch.id)
+    }
+    return when (choice) {
+        DownloadChoice.NEXT_1 -> candidates.take(1)
+        DownloadChoice.NEXT_5 -> candidates.take(5)
+        DownloadChoice.NEXT_10 -> candidates.take(10)
+        DownloadChoice.NEXT_25 -> candidates.take(25)
+        DownloadChoice.UNREAD -> candidates
+    }
+}
