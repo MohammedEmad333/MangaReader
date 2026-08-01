@@ -254,7 +254,7 @@ class TachiyomiSourceAdapter(
     override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
         val manga = series.handle as? SManga ?: return@onSourceThread emptyList()
         // Extensions return newest-first; this interface wants reading order.
-        delegate.getChapterList(manga).asReversed().map { it.toChapter() }
+        delegate.getChapterList(manga).asReversed().map { it.toChapter(safeTitleOf(manga)) }
     }
 
     /**
@@ -570,7 +570,10 @@ class TachiyomiSourceAdapter(
         status = statusLabel(status),
     )
 
-    private fun SChapter.toChapter(): Chapter {
+    /** The manga's title if it has one — these are `lateinit` (§5). */
+    private fun safeTitleOf(manga: SManga): String = runCatching { manga.title }.getOrDefault("")
+
+    private fun SChapter.toChapter(seriesTitle: String = ""): Chapter {
         val chapterUrl = safeUrl()
         return Chapter(
             id = "${delegate.id}:$chapterUrl",
@@ -578,11 +581,13 @@ class TachiyomiSourceAdapter(
             handle = this,
             dateUploaded = date_upload,
             scanlator = scanlator?.takeIf { it.isNotBlank() },
-            // Extensions that don't parse a number leave this at the API's own
-            // default of -1f, which is already Chapter.NO_NUMBER. Anything
-            // negative is normalised so a source using -2f or similar as its
-            // "unknown" doesn't sort ahead of a source using -1f.
-            number = if (chapter_number < 0f) Chapter.NO_NUMBER else chapter_number,
+            // Nearly every extension leaves `chapter_number` at the API's
+            // default of -1f, because upstream Tachiyomi parses the number out
+            // of the name app-side and extensions were written against that.
+            // 0.107 took the field at face value and shipped a sort with
+            // nothing to sort on. `parse` honours a real value when there is
+            // one and falls back to the name when there isn't.
+            number = ChapterRecognition.parse(seriesTitle, safeName(), chapter_number),
         )
     }
 

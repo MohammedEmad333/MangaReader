@@ -75,10 +75,12 @@ class LocalSource(
                 .filter { !it.isDirectory && isArchive(it.name) }
                 .sortedBy { naturalSortKey(it.name ?: "") }
                 .map { f ->
+                    val chapterName = (f.name ?: "chapter").substringBeforeLast('.')
                     Chapter(
                         id = f.uri.toString(),
-                        name = (f.name ?: "chapter").substringBeforeLast('.'),
-                        handle = f
+                        name = chapterName,
+                        handle = f,
+                        number = ChapterRecognition.parse(series.title, chapterName)
                     )
                 }
         } else {

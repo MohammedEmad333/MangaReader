@@ -8,6 +8,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -90,5 +91,17 @@ internal fun yomuColorScheme(): ColorScheme {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    return if (dark) darkColorScheme() else lightColorScheme()
+    // Primary is darkened a step from the Material 3 baseline. It is the accent
+    // on the Resume button, the filter icon while filtering, and the saved-page
+    // line on a chapter row, so it sits against the surface far more often than
+    // it sits behind text — and the baseline lavender is bright enough on a
+    // dark surface to pull the eye off the covers.
+    //
+    // onPrimary is deliberately left alone: both replacements stay well clear of
+    // it on contrast, and the pair is what keeps a filled button legible.
+    return if (dark) {
+        darkColorScheme(primary = Color(0xFFB69DF8))
+    } else {
+        lightColorScheme(primary = Color(0xFF4F3D8A))
+    }
 }
