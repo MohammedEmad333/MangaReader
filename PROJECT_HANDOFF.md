@@ -1,13 +1,13 @@
 # Yomu / MangaReader — Project Handoff
 
-Context document for continuing work in a fresh chat. **`SESSION_HANDOFF_0.117.md`
-is the newest session file and covers 0.107–0.117 — the series screen pass. Read
+Context document for continuing work in a fresh chat. **`SESSION_HANDOFF_0.119.md`
+is the newest session file and covers 0.107–0.119 — the series screen pass. Read
 its §0 before anything else here; three of its entries correct assumptions this
 document still states.** `DESIGN_SERIES_SCREEN.md` is the design that run was
 built from. **The per-release
 `SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
 on 2026-07-31; `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`,
-`SESSION_HANDOFF_0.106.md` and `SESSION_HANDOFF_0.117.md` are the session files,
+`SESSION_HANDOFF_0.106.md` and `SESSION_HANDOFF_0.119.md` are the session files,
 and git history has the rest.**
 Last updated 2026-07-31 at **0.106**, head `4cc33fb`. **0.55 through 0.65 and
 0.67 through 0.106 are verified on device**, except 0.66 (unaccounted for) and
