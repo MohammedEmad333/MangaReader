@@ -63,6 +63,7 @@ import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -502,8 +503,20 @@ internal fun ScrollHandle(
     // the same index every frame and the handle sticks.
     var dragIndex by remember { mutableFloatStateOf(-1f) }
 
-    val visible = isScrolling || dragging
-    val handleAlpha by animateFloatAsState(if (visible) 1f else 0f, label = "handleAlpha")
+    // Lingers after the scroll stops rather than vanishing with it.
+    // `isScrollInProgress` goes false the instant a fling settles, and a handle
+    // that disappears at that moment is gone before you can reach for it — the
+    // scroll having stopped is usually the point at which someone wants it.
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(isScrolling, dragging) {
+        if (isScrolling || dragging) {
+            settled = true
+        } else {
+            delay(HANDLE_LINGER_MS)
+            settled = false
+        }
+    }
+    val handleAlpha by animateFloatAsState(if (settled) 1f else 0f, label = "handleAlpha")
 
     BoxWithConstraints(modifier = modifier.fillMaxHeight().width(HANDLE_WIDTH)) {
         val density = LocalDensity.current
@@ -542,5 +555,9 @@ internal fun ScrollHandle(
     }
 }
 
-private val HANDLE_WIDTH = 10.dp
-private val HANDLE_HEIGHT = 48.dp
+// Wide enough to be a target rather than a hairline. Material's minimum touch
+// target is 48dp and this is well under it, which is why the thumb is tall — the
+// finger finds it vertically, and the width only has to be visible.
+private val HANDLE_WIDTH = 16.dp
+private val HANDLE_HEIGHT = 56.dp
+private const val HANDLE_LINGER_MS = 1500L

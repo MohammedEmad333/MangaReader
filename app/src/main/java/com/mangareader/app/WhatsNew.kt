@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 134,
+            name = "0.134",
+            header = "A better scroll handle",
+            body = "Wider, taller, and it stays on screen for a moment after " +
+                "you stop scrolling instead of vanishing the instant the list " +
+                "settles \u2014 which was usually the moment you were reaching " +
+                "for it.\n\nDragging it keeps up now. Every small movement " +
+                "used to queue its own jump and the grid worked through them " +
+                "in order, so it was always arriving where your finger had " +
+                "been rather than where it was.",
+        ),
+        ReleaseNote(
             code = 133,
             name = "0.133",
             header = "A scroll handle in the library, and free-angle panning",
