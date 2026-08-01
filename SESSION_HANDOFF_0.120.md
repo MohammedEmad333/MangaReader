@@ -1,11 +1,11 @@
-# Session handoff — 0.107 to 0.119, the series screen and after
+# Session handoff — 0.107 to 0.120, the series screen and after
 
 Written 2026-08-01. `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md` and
 `SESSION_HANDOFF_0.106.md` all remain live reference — nothing here supersedes
 them. `DESIGN_SERIES_SCREEN.md` in the repo root is the design this session was
 built from and is still accurate except where §2 and §3 below correct it.
 
-Thirteen releases. Every one exercised on device. Two red CI runs, both from the
+Fourteen releases. Every one exercised on device. Two red CI runs, both from the
 same class of mistake and neither caught by the existing pre-push checks.
 
 ---
@@ -54,6 +54,8 @@ opens the wrong chapter, start there.
 | — | This handoff and `DESIGN_SERIES_SCREEN.md` | `356cc9a` | docs |
 | 0.118 | Bigger cards, icon deletes and confirmations in History and Downloads | `541191e` | Verified |
 | 0.119 | The library tab survives a cold start | `1df5ac4` | Verified |
+| — | This handoff folded through 0.119 | `4306755` | docs |
+| 0.120 | Chapter bookmarks | `0f348f3` | Verified |
 
 ---
 
@@ -264,6 +266,41 @@ already has that entry.
 
 ---
 
+## 7c. 0.120 — bookmarks, the field three features waited on
+
+§4 of the project handoff has listed *Bookmarked* since 0.65 as blocked on a data
+model decision rather than on an index. `Bookmarks.kt` is that decision and it is
+the cheapest one available: **a boolean pref per chapter key, the same shape as
+`ReadState`.** Nothing new has to be backed up, migrated or invalidated —
+`Backup` copies every SharedPreferences entry verbatim and picks it up for free.
+
+- **Independent of read state, deliberately.** `ReadState.setRead(false)` clears
+  the resume position because those are two halves of one answer to "where am
+  I". A bookmark is a third thing: reading a chapter, or marking it unread,
+  leaves it alone.
+- **Stored true or removed, never stored false.** An un-bookmarked chapter's
+  absence already means what a stored `false` would, in a pref file that also
+  holds a 3575-entry library.
+- **One button over a selection, not a per-chapter toggle.** If anything selected
+  is not bookmarked, the button bookmarks everything; otherwise it clears them
+  all. A toggle over a mixed selection flips half of them the wrong way, which is
+  the rule `onSetRead` already follows.
+- **The row marker is trailing, not leading.** A leading icon on only the
+  bookmarked rows leaves every other title starting a step further left, and a
+  list whose text doesn't line up reads as broken rendering rather than as a
+  marker. It is also not a button: the row opens the chapter and the download
+  control is beside it, and a third tap target on a 171-row list is why the read
+  control was taken off these rows in the first place.
+
+**What this unblocks, and it is the next thing to build:** the Bookmarked row in
+`ChapterOptionsSheet`'s Filter tab, and `DownloadChoice.BOOKMARKED` in the
+download menu. Both files carry a note saying bookmarks don't exist yet
+(`ChapterPrefs.kt`, the `SheetNote` in the Filter tab and the comment on
+`DownloadChoice`); **those notes are now wrong and must be updated in the same
+release.**
+
+---
+
 ## 8. The board
 
 1. **`isMinifyEnabled = false`, so nothing is shrunk.** The APK is 24 MB against
@@ -290,18 +327,19 @@ already has that entry.
 
 ## 9. State of the tree
 
-Head is `1df5ac4` (0.119). Build environment unchanged from 0.106 except
+Head is `0f348f3` (0.120). Build environment unchanged from 0.106 except
 `material-icons-extended` replacing `material-icons-core`. Kotlin 2.2.21, AGP
 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24, OkHttp 5.4.0,
 kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`.
 
-Two new files: `ChapterPrefs.kt` (the store, the sheet, `visibleChapters`,
-`downloadTargets`) and `ChapterRecognition.kt`.
+Three new files: `ChapterPrefs.kt` (the store, the sheet, `visibleChapters`,
+`downloadTargets`), `ChapterRecognition.kt`, and `Bookmarks.kt`.
 
-Nine cards left in To add. The unblocking one is **bookmarks** — it is the
-backing field SY's Bookmarked filter and Bookmarked download action both need,
-and it is the only item on the list that closes more than itself. **Minification**
+Eight cards left in To add. **The next piece of work is finishing what 0.120
+unblocked** — the Bookmarked filter row and the Bookmarked download action, which
+is an afternoon's work in two files that already have the shape for it, and which
+also removes two now-false notes from the UI. **Minification**
 would take about 7 MB back and wants its own release and its own test pass;
 R8 can strip what reflection needs, and this app classloads extension APKs.
 *Scroll to refresh* and *a setting for the primary colour* are both small and
@@ -315,7 +353,9 @@ staying at the end; Display by number; badges and dimming on all four new
 screens; the download menu skipping what is already on disk; Refresh from Library
 and from Browse leaving Back where it was; Share from both paths; the enlarged
 History and Downloads rows with their confirmations; the library tab surviving a
-force-stop.
+force-stop; bookmarking a mixed selection, a bookmark surviving both reading the
+chapter and marking it unread, and the rows still lining up with a marker
+present.
 
 **Note for whoever runs the next session:** CI status was read directly from the
 GitHub Actions API this session using a short-lived token. That token was
