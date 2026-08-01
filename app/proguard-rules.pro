@@ -111,3 +111,43 @@
 # here, but the size win is smaller than an optimised release build's would be.
 # Compare the published APK size against 24 MB before concluding this file is
 # doing its job.
+
+# ---------------------------------------------------------------------------
+# WHY 0.121 DID NOT START, AND WHAT IS UNRESOLVED
+# ---------------------------------------------------------------------------
+# 0.121 built green and then crashed in Application.onCreate on every launch:
+#
+#   IllegalArgumentException: Internal error: TypeReference constructed
+#   without actual type information
+#     at uy.kohesive.injekt.api.FullTypeReference.<init>(TypeInfo.kt:36)
+#     at AppModule$registerInjectables$$inlined$addSingleton$1.<init>
+#     at com.mangareader.app.AppModule.registerInjectables(App.kt:27)
+#
+# Injekt's addSingleton<T> / addSingletonFactory<T> are inline reified. Each
+# one compiles to an anonymous subclass of FullTypeReference<T>, and the
+# constructor recovers T from javaClass.genericSuperclass. If that returns a
+# raw Class instead of a ParameterizedType, the type argument is gone and
+# Injekt throws — which is exactly what happened.
+#
+# So R8 dropped the generic signature of those anonymous classes even though
+# this file asks for -keepattributes Signature. WHY IS NOT ESTABLISHED. Two
+# candidates, neither confirmed:
+#
+#   1. The -keepattributes list above is split across two lines after a
+#      trailing comma. If R8's parser does not treat that as a continuation,
+#      only the first line's attributes were requested — Signature is on the
+#      first line, so this would not explain it on its own, but the list may
+#      have been mis-parsed in some other way.
+#   2. R8 prunes a generic signature whose type arguments it considers
+#      unreachable, and these anonymous classes are only ever instantiated
+#      through an inlined reified call, so nothing references the type
+#      argument in a way R8 recognises. In that case the fix is an explicit
+#      keep on the subclasses rather than a global attribute request:
+#
+#          -keep class * extends uy.kohesive.injekt.api.FullTypeReference
+#
+# BEFORE TRYING EITHER: this failure is invisible to CI. The build was green.
+# Anything that touches minification has to be launched on a device before it
+# is believed, and the cheapest way to see the mapping R8 actually produced is
+# app/build/outputs/mapping/debug/, which the workflow does not currently
+# upload as an artifact. Uploading it is probably the first move.
