@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Edit
@@ -683,7 +684,7 @@ internal fun SeriesScreen(
                             if (canDownload && chapters.isNotEmpty()) {
                                 SeriesAction(
                                     icon = if (downloadingAll) Icons.Default.Clear
-                                    else Icons.Default.KeyboardArrowDown,
+                                    else Icons.Default.Download,
                                     label = if (downloadingAll) "Stop" else "Download all",
                                     tint = if (downloadingAll) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -930,7 +931,7 @@ internal fun SeriesScreen(
                                     }
                                     else -> IconButton(onClick = { onDownload(ch) }) {
                                         Icon(
-                                            Icons.Default.KeyboardArrowDown,
+                                            Icons.Default.Download,
                                             contentDescription = "Download",
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -1216,7 +1217,7 @@ private fun ChapterSelectionBar(
             ) {
                 if (canDownload) {
                     SeriesAction(
-                        icon = Icons.Default.KeyboardArrowDown,
+                        icon = Icons.Default.Download,
                         label = "Download",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = onDownload
