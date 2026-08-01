@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 128,
+            name = "0.128",
+            header = "Classify sources nothing else can",
+            body = "Settings \u203a Browse \u203a Unclassified sources. Some sources in " +
+                "your library aren't installed and aren't in any repository \u2014 " +
+                "a fork's own source, or an extension that has since been " +
+                "delisted \u2014 so nothing can tell whether they're 18+.\n\nThat " +
+                "is why excluding 18+ still left them showing. Switch them on " +
+                "here once and the library filter covers them from then on.",
+        ),
+        ReleaseNote(
             code = 127,
             name = "0.127",
             header = "An 18+ filter in the library",
