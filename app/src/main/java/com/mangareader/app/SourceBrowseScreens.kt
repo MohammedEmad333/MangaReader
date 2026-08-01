@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -422,7 +423,21 @@ internal fun SeriesScreen(
      * grid position, found a fourth time, and it takes the same answer.
      */
     scroll: ScrollMemory,
-    onOpen: (Int) -> Unit,
+    /**
+     * Opens a chapter **by id**.
+     *
+     * It took a list index until 0.110, which was safe only while this screen
+     * drew `chapters` unchanged: `YomuApp.openChapter` indexes its own
+     * `chapterList`, and the two lists were the same list. Filtering and sorting
+     * ended that. An index from the drawn list now means a different chapter on
+     * the other side, and nothing would report it — the wrong chapter opens, the
+     * reader's Prev/Next walk the wrong order, and read state lands on the wrong
+     * row. Same shape as the 0.104 `headRows` bug, in a second place.
+     *
+     * So the id crosses the boundary and `YomuApp` resolves it. The full list
+     * stays canonical; this screen only decides what to *draw*.
+     */
+    onOpen: (String) -> Unit,
     onLibraryChanged: () -> Unit,
     /** Runs [String] as a search of this series' own source. */
     onSearchTag: (String) -> Unit,
@@ -499,10 +514,26 @@ internal fun SeriesScreen(
             }
         }
     }
+    /**
+     * What the list below draws — filtered and sorted. **Not** what anything
+     * indexes: see `onOpen`.
+     *
+     * Keyed on both ticks because the filters read read-state and disk, so
+     * finishing a chapter or a download changes which rows belong here.
+     */
+    val visible = remember(chapters, readTick, downloadTick, optionsTick, sourceId) {
+        visibleChapters(context, chapters, sourceId)
+    }
+    val chapterDisplay = remember(optionsTick) { ChapterPrefs.display(context) }
+    val filtersActive = remember(optionsTick) { ChapterPrefs.anyFilterActive(context) }
     val downloadedCount = remember(chapters, downloadTick) {
         chapters.count { Downloads.isComplete(context, it.id) }
     }
     var coverOpen by remember(series.id) { mutableStateOf(false) }
+    var showChapterOptions by remember { mutableStateOf(false) }
+    // Bumped when the sheet writes a pref, so the derived list below recomputes.
+    // The prefs are the store; this is only the signal that they moved.
+    var optionsTick by remember { mutableIntStateOf(0) }
 
     // The one place in the app that has a chapter list, its source and the
     // series id in hand at the same time, which is exactly what the index needs
@@ -839,13 +870,21 @@ internal fun SeriesScreen(
                     onAction = if (challengeable) onSolveChallenge else null
                 )
                 Text(
-                    if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters",
+                    // Says so when rows are hidden. A filtered list that just
+                    // reports a smaller number reads as chapters having gone
+                    // missing, which is the report this would otherwise produce.
+                    when {
+                        visible.size != chapters.size ->
+                            "${visible.size} of ${chapters.size} chapters"
+                        chapters.size == 1 -> "1 chapter"
+                        else -> "${chapters.size} chapters"
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
 
-            itemsIndexed(chapters) { index, ch ->
+            itemsIndexed(visible) { _, ch ->
                 val key = chapterKeyOf(sourceId, ch)
                 val read = remember(key, readTick) { ReadState.isRead(context, key) }
                 val resume = remember(key, readTick) { savedPage(context, key) }
@@ -890,7 +929,7 @@ internal fun SeriesScreen(
                 ListItem(
                     headlineContent = {
                         Text(
-                            ch.name,
+                            chapterLabel(ch, chapterDisplay),
                             color = if (read) {
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = READ_DIM)
                             } else {
@@ -995,7 +1034,7 @@ internal fun SeriesScreen(
                     modifier = Modifier.combinedClickable(
                         onClick = {
                             if (selecting) selectedIds = selectedIds.toggle(ch.id)
-                            else onOpen(index)
+                            else onOpen(ch.id)
                         },
                         onLongClick = { selectedIds = selectedIds.toggle(ch.id) }
                     )
@@ -1012,7 +1051,10 @@ internal fun SeriesScreen(
             ChapterSelectionBar(
                 count = selectedChapters.size,
                 canDownload = canDownload,
-                onSelectAll = { selectedIds = chapters.map { it.id }.toSet() },
+                // What is on screen, not what exists. Selecting rows a filter
+                // is hiding and then deleting them is not what the button looks
+                // like it does.
+                onSelectAll = { selectedIds = visible.map { it.id }.toSet() },
                 onClear = { selectedIds = emptySet() },
                 onDownload = {
                     selectedChapters.forEach { onDownload(it) }
@@ -1049,6 +1091,19 @@ internal fun SeriesScreen(
                 )
             },
             navigationIcon = { BackButton(onBack) },
+            actions = {
+                IconButton(onClick = { showChapterOptions = true }) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = "Filter, sort and display chapters",
+                        // Tinted while a filter is on, the way SY tints its own.
+                        // Without it a filtered list is indistinguishable from a
+                        // series that simply has fewer chapters than you thought.
+                        tint = if (filtersActive) MaterialTheme.colorScheme.primary
+                        else LocalContentColor.current
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(
                 // Alpha on the container, not on the whole bar: fading the bar
                 // itself would take the back arrow with it, and the arrow has to
@@ -1065,7 +1120,13 @@ internal fun SeriesScreen(
         // "Resume" is not what anyone reaches for mid-selection.
         if (chapters.isNotEmpty() && !selecting) {
             ExtendedFloatingActionButton(
-                onClick = { onOpen(if (resumeIndex >= 0) resumeIndex else 0) },
+                // resumeIndex is an index into the *full* list, because Resume
+                // is a fact about the series rather than about the current
+                // filter — a target the filter is hiding still opens.
+                onClick = {
+                    val target = chapters.getOrNull(if (resumeIndex >= 0) resumeIndex else 0)
+                    if (target != null) onOpen(target.id)
+                },
                 icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
                 text = { Text(if (anyProgress) "Resume" else "Start") },
                 modifier = Modifier
@@ -1156,6 +1217,13 @@ internal fun SeriesScreen(
                 inLibrary = true
                 onLibraryChanged()
             }
+        )
+    }
+
+    if (showChapterOptions) {
+        ChapterOptionsSheet(
+            onDismiss = { showChapterOptions = false },
+            onChanged = { optionsTick++ }
         )
     }
 

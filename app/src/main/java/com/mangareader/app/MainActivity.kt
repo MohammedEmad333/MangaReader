@@ -1171,7 +1171,18 @@ fun YomuApp() {
             error = errorMessage,
             readTick = readTick,
             scroll = seriesScroll,
-            onOpen = { openChapter(it) },
+            // By id, not by index. The series screen draws a filtered and
+            // sorted view now, so its positions are not this list's positions —
+            // and openChapter indexes this one. Resolving here keeps chapterList
+            // canonical and means the reader's Prev/Next, which are index
+            // arithmetic, stay in source order and stay correct.
+            //
+            // A miss can only mean the list was refetched under the tap, so it
+            // does nothing rather than opening chapter 0.
+            onOpen = { chapterId ->
+                val index = chapterList.indexOfFirst { it.id == chapterId }
+                if (index >= 0) openChapter(index)
+            },
             onLibraryChanged = { libraryTick++ },
             // Both leave the series behind deliberately: a tag search is a
             // request to go and look at other things, and the results have to
