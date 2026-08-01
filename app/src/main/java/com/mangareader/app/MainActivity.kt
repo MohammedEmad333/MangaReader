@@ -539,10 +539,14 @@ fun YomuApp() {
                     }
                     val hidden = SourcePrefs.hiddenSources(context)
                     val langs = SourcePrefs.enabledLangs(context)
+                    val showNsfw = SourcePrefs.showNsfw(context)
                     val searchable = (locals + extensionSources)
                         .filter { it.supportsSearch }
                         .filter {
-                            SourcePrefs.isVisible(it.id, it.lang.ifBlank { "Other" }, hidden, langs)
+                            SourcePrefs.isVisible(
+                                it.id, it.lang.ifBlank { "Other" }, it.isNsfw,
+                                hidden, langs, showNsfw
+                            )
                         }
                     if (globalPinnedOnly) {
                         val pinned = SourcePrefs.pinned(context)
