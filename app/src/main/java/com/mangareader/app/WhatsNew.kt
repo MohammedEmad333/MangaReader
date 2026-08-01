@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 131,
+            name = "0.131",
+            header = "Pinch to zoom in long strip",
+            body = "Long strip zooms now, up to 3x. Pinch to scale the whole " +
+                "chapter, then drag sideways to move across a wide panel.\n\n" +
+                "Scrolling is untouched: at normal size nothing about the " +
+                "gesture changes, and while zoomed, up and down still scroll " +
+                "\u2014 only sideways drags pan. The zoom resets when you open " +
+                "another chapter.",
+        ),
+        ReleaseNote(
             code = 130,
             name = "0.130",
             header = "Chapter transitions in paged mode",

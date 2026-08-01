@@ -11,7 +11,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.clipToBounds
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,13 +28,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -48,7 +54,18 @@ import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/**
+ * How far a long strip can be pinched in.
+ *
+ * 3x rather than the 5x a single page can afford: this scales the whole list, so
+ * every page above and below the one being read is scaled with it, and past
+ * about 3x a webtoon panel is wider than the viewport in both directions at
+ * once — which would need the two-axis panning this deliberately doesn't have.
+ */
+private const val MAX_STRIP_ZOOM = 3f
 
 /**
  * The reader.
@@ -356,10 +373,59 @@ internal fun ReaderScreen(
             detectTapGestures(onTap = { showControls = !showControls })
         }
 
+        // Long-strip zoom scales the WHOLE LIST, not a page.
+        //
+        // That is what TachiyomiSY does — it scales its `WebtoonRecyclerView` —
+        // and it is the only shape that works here. Zooming an item would fight
+        // the scroll the mode exists for, which is why §7 of the handoff listed
+        // this as "a piece of work rather than a flag" for eleven sessions.
+        //
+        // graphicsLayer scales the rendering and leaves the layout alone, so a
+        // zoomed strip overflows its box — hence clipToBounds, or it paints over
+        // the control bars.
+        var stripScale by remember(chapterIndex) { mutableFloatStateOf(1f) }
+        var stripPanX by remember(chapterIndex) { mutableFloatStateOf(0f) }
+        val viewportWidthPx = with(LocalDensity.current) {
+            LocalConfiguration.current.screenWidthDp.dp.toPx()
+        }
+        val stripTransform = rememberTransformableState { zoomChange, panChange, _ ->
+            stripScale = (stripScale * zoomChange).coerceIn(1f, MAX_STRIP_ZOOM)
+            // Horizontal only. Vertical movement is the chapter, and panning it
+            // would mean the reader had two different answers to "drag up".
+            //
+            // Clamped to the overhang the zoom actually creates, so the content
+            // cannot be pushed off screen and left there — a blank reader that
+            // needs a pinch to recover reads as a crash.
+            val maxPan = viewportWidthPx * (stripScale - 1f) / 2f
+            stripPanX = (stripPanX + panChange.x).coerceIn(-maxPan, maxPan)
+        }
+        val zoomedStripModifier = stripModifier
+            .clipToBounds()
+            .graphicsLayer {
+                scaleX = stripScale
+                scaleY = stripScale
+                translationX = stripPanX
+            }
+            // `canPan` is the whole reason this can live on a scrollable list.
+            // At rest it refuses every pan, so the LazyColumn keeps its drags
+            // untouched and the strip behaves exactly as it did before. Zoomed,
+            // it claims only the drags that are more horizontal than vertical,
+            // which leaves scrolling with the list and gives panning the axis
+            // the list doesn't use.
+            //
+            // This is deliberately NOT a nested-scroll hook. Two of those were
+            // written for the strip in 0.101 and 0.102 and neither fired once;
+            // the lesson recorded then was to ask the layout, or use the API
+            // built for the job, rather than to guess at a phase.
+            .transformable(
+                state = stripTransform,
+                canPan = { pan -> stripScale > 1f && abs(pan.x) > abs(pan.y) }
+            )
+
         if (settings.mode == ReaderMode.LONG_STRIP) {
             LazyColumn(
                 state = listState,
-                modifier = stripModifier
+                modifier = zoomedStripModifier
             ) {
                 item {
                     ChapterTransitionRow(
