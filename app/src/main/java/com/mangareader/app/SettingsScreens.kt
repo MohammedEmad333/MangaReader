@@ -168,11 +168,28 @@ private fun AppearanceSettings() {
                 selected = ThemeMode.entries.indexOf(AppTheme.mode),
                 onSelect = { AppTheme.setMode(context, ThemeMode.entries[it]) }
             )
+            // Named chips rather than colour swatches, and the reason is that
+            // the swatch is unnecessary here: setting an accent recomposes the
+            // whole tree from the root, so tapping a chip repaints the entire
+            // screen — including these chips — before your finger is off it.
+            // The preview is the app.
+            //
+            // (A swatch would also mean four new imports in this file, which
+            // uses a curated import list rather than the wildcard block. That
+            // is the shape of two CI failures already in §8.)
+            PrefChipRow(
+                label = "Accent colour",
+                options = AccentColor.entries.map { it.label },
+                selected = AccentColor.entries.indexOf(AppTheme.accent),
+                onSelect = { AppTheme.setAccent(context, AccentColor.entries[it]) }
+            )
         }
         PrefNote(
             "Dark is the default and the only one with any mileage on it \u2014 every " +
                 "screen in this app was built against it. The reader keeps its own " +
-                "background setting either way."
+                "background setting either way.\n\nEach accent is a pair, one shade " +
+                "for dark mode and a darker one for light, so switching theme keeps " +
+                "it readable. Violet is what the app has always used."
         )
     }
 }

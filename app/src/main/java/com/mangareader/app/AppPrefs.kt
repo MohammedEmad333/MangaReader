@@ -43,22 +43,69 @@ internal enum class ThemeMode(val key: String, val label: String) {
     }
 }
 
+/**
+ * The accent the whole app is tinted with.
+ *
+ * Each entry carries **two** colours, and that is the point of the enum rather
+ * than a stored hex. A single colour cannot serve both themes: an accent light
+ * enough to read on a dark surface is invisible on a white one, and vice versa.
+ * The dark values sit around Material 3's tone 80 and the light ones around
+ * tone 30, which is the pairing `darkColorScheme` / `lightColorScheme` already
+ * assume for `onPrimary` — leaving `onPrimary` alone is what keeps a filled
+ * button legible, and is why this offers a palette rather than a free picker.
+ *
+ * [VIOLET] is the pair the app has always shipped, so the default changes
+ * nothing for anyone who never opens the setting.
+ */
+internal enum class AccentColor(
+    val key: String,
+    val label: String,
+    val dark: Long,
+    val light: Long
+) {
+    VIOLET("violet", "Violet", 0xFFB69DF8, 0xFF4F3D8A),
+    BLUE("blue", "Blue", 0xFF9CC7F5, 0xFF2E4F82),
+    TEAL("teal", "Teal", 0xFF87D2CC, 0xFF1F5551),
+    GREEN("green", "Green", 0xFF8FD79A, 0xFF2C5C36),
+    AMBER("amber", "Amber", 0xFFE6C176, 0xFF6B4E14),
+    ROSE("rose", "Rose", 0xFFF0A5B8, 0xFF7D2942);
+
+    companion object {
+        fun from(key: String?) = entries.firstOrNull { it.key == key } ?: VIOLET
+    }
+}
+
 internal object AppTheme {
 
     private const val KEY_THEME = "app_theme"
+    private const val KEY_ACCENT = "app_accent"
     private const val KEY_SECURE_SCREEN = "secure_screen"
 
     var mode by mutableStateOf(ThemeMode.DARK)
         private set
 
+    /**
+     * Snapshot state like [mode], and for the same reason: written from a
+     * settings row eight levels down, read by `MainActivity.setContent` at the
+     * root, so Compose recomposes the whole tree on its own.
+     */
+    var accent by mutableStateOf(AccentColor.VIOLET)
+        private set
+
     /** Called once from `MainActivity.onCreate`, before the first composition. */
     fun load(context: Context) {
         mode = ThemeMode.from(prefs(context).getString(KEY_THEME, null))
+        accent = AccentColor.from(prefs(context).getString(KEY_ACCENT, null))
     }
 
     fun setMode(context: Context, value: ThemeMode) {
         mode = value
         prefs(context).edit().putString(KEY_THEME, value.key).apply()
+    }
+
+    fun setAccent(context: Context, value: AccentColor) {
+        accent = value
+        prefs(context).edit().putString(KEY_ACCENT, value.key).apply()
     }
 
     // ---- secure screen ----
@@ -97,11 +144,14 @@ internal fun yomuColorScheme(): ColorScheme {
     // it sits behind text — and the baseline lavender is bright enough on a
     // dark surface to pull the eye off the covers.
     //
-    // onPrimary is deliberately left alone: both replacements stay well clear of
-    // it on contrast, and the pair is what keeps a filled button legible.
+    // onPrimary is deliberately left alone: every pair in [AccentColor] stays
+    // well clear of it on contrast, and that pair is what keeps a filled button
+    // legible. Only `primary` moves, so nothing else in the scheme has to be
+    // re-checked per accent.
+    val accent = AppTheme.accent
     return if (dark) {
-        darkColorScheme(primary = Color(0xFFB69DF8))
+        darkColorScheme(primary = Color(accent.dark))
     } else {
-        lightColorScheme(primary = Color(0xFF4F3D8A))
+        lightColorScheme(primary = Color(accent.light))
     }
 }

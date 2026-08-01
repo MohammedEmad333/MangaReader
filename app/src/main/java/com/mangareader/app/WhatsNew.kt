@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 125,
+            name = "0.125",
+            header = "Pick an accent colour",
+            body = "Settings \u203a Appearance \u203a Accent colour. Six choices, and " +
+                "the app repaints as you tap them.\n\nEach one is a pair \u2014 a " +
+                "lighter shade for dark mode and a darker one for light \u2014 so " +
+                "switching theme keeps it readable either way. Violet is what " +
+                "the app has always used, so nothing changes unless you change " +
+                "it.",
+        ),
+        ReleaseNote(
             code = 124,
             name = "0.124",
             header = "Swipe a chapter to bookmark it",
