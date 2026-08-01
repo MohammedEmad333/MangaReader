@@ -43,6 +43,21 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 112,
+            name = "0.112",
+            header = "Chapter numbers actually work now",
+            body = "Sorting by chapter number did nothing in 0.111, and " +
+                "titling rows by number looked identical to titling them by " +
+                "name. Both had the same cause: almost no source publishes a " +
+                "chapter number, so there was nothing to sort or show.\n\n" +
+                "The number is now read out of the chapter's own title, the " +
+                "same way Mihon does it \u2014 volume and version tags are " +
+                "ignored, and half chapters, extras and specials land just " +
+                "after the chapter they follow. A chapter with no number " +
+                "anywhere in its title still keeps its name and still sorts " +
+                "to the end.\n\nThe accent colour is a little darker.",
+        ),
+        ReleaseNote(
             code = 110,
             name = "0.110",
             header = "Filter, sort and display chapters",

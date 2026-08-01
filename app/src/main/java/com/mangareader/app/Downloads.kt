@@ -297,7 +297,16 @@ object ChapterCache {
                 // which is most of them on any existing install. The fallback
                 // has to be NO_NUMBER and not 0f — see Chapter.number. Read as
                 // a Double because that is what JSONObject stores a Float as.
-                number = o.optDouble("number", Chapter.NO_NUMBER.toDouble()).toFloat()
+                // Recognised from the name when the file predates the field,
+                // which is every file written before 0.107 — otherwise a series
+                // read offline would sort and display differently from the same
+                // series read online, which reads as the sort being unreliable.
+                // No series title here to strip; `parse` handles a blank one.
+                number = ChapterRecognition.parse(
+                    seriesTitle = "",
+                    chapterName = o.optString("name"),
+                    fromSource = o.optDouble("number", Chapter.NO_NUMBER.toDouble()).toFloat()
+                )
             )
         }
     }.getOrDefault(emptyList())
