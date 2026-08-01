@@ -42,9 +42,19 @@ import kotlin.math.roundToInt
  * that is most of the library and an Unread tab showing four entries would
  * otherwise look like a broken filter rather than a cold index.
  *
- * **Still not here:** Bookmarked, Lewd and Language filters, and Group → Status.
- * Those aren't blocked on an index — they have no backing field anywhere in the
- * app and need a data-model decision first.
+ * **Still not here:** Lewd and Language filters, and Group → Status. Those
+ * aren't blocked on an index — they have no backing field anywhere in the app
+ * and need a data-model decision first.
+ *
+ * **Bookmarked has moved between those two categories and is worth a line.**
+ * 0.120 gave chapters a bookmark field, so it is no longer a model decision —
+ * but a *library* filter asks "does this series have any bookmarked chapter",
+ * and `Bookmarks` is keyed by chapter with no index the other way. Answering it
+ * for 3575 entries means walking every `bm:` key in the pref file, which is the
+ * shape §5 of the handoff calls an import-scale cost sitting on a per-interaction
+ * path. So it is now blocked on an index, like the counts were before
+ * `SeriesIndex` — and the chapter-level Bookmarked filter, which is one lookup
+ * per drawn row, shipped in `ChapterPrefs` instead.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

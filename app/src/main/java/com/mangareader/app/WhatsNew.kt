@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 123,
+            name = "0.123",
+            header = "Filter and download by bookmark",
+            body = "The funnel's Filter tab has a Bookmarked row now, and the " +
+                "download menu can queue everything you've bookmarked.\n\n" +
+                "Downloading bookmarked chapters ignores whether they're read " +
+                "\u2014 a bookmark often means \u201ckeep this one\u201d rather than " +
+                "\u201cread this next\u201d. It still skips anything already on " +
+                "disk, like the rest of that menu.",
+        ),
+        ReleaseNote(
             code = 122,
             name = "0.122",
             header = "Undoing 0.121",

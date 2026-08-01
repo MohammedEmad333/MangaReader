@@ -76,9 +76,15 @@ object ChapterPrefs {
     fun setFilterUnread(c: Context, v: FilterState) =
         p(c).edit().putInt("ch_f_unread", v.stored).apply()
 
+    fun filterBookmarked(c: Context) = FilterState.from(p(c).getInt("ch_f_bm", 0))
+    fun setFilterBookmarked(c: Context, v: FilterState) =
+        p(c).edit().putInt("ch_f_bm", v.stored).apply()
+
     /** Drives the tint on the top bar's filter icon, the way SY tints its own. */
     fun anyFilterActive(c: Context) =
-        filterDownloaded(c) != FilterState.OFF || filterUnread(c) != FilterState.OFF
+        filterDownloaded(c) != FilterState.OFF ||
+            filterUnread(c) != FilterState.OFF ||
+            filterBookmarked(c) != FilterState.OFF
 }
 
 /**
@@ -104,6 +110,7 @@ internal fun visibleChapters(
 ): List<Chapter> {
     val fDownloaded = ChapterPrefs.filterDownloaded(context)
     val fUnread = ChapterPrefs.filterUnread(context)
+    val fBookmarked = ChapterPrefs.filterBookmarked(context)
 
     val filtered = chapters.filter { ch ->
         val downloadedOk = when (fDownloaded) {
@@ -112,10 +119,20 @@ internal fun visibleChapters(
             FilterState.EXCLUDE -> !Downloads.isComplete(context, ch.id)
         }
         if (!downloadedOk) return@filter false
-        when (fUnread) {
+        val unreadOk = when (fUnread) {
             FilterState.OFF -> true
             FilterState.INCLUDE -> !ReadState.isRead(context, chapterKeyOf(sourceId, ch))
             FilterState.EXCLUDE -> ReadState.isRead(context, chapterKeyOf(sourceId, ch))
+        }
+        if (!unreadOk) return@filter false
+        // Bookmarks are stored true or removed, never stored false, so the
+        // absent case and the "not bookmarked" case are one lookup and there is
+        // no third state to collapse here — unlike `SeriesIndex`, where absent
+        // and zero mean different things.
+        when (fBookmarked) {
+            FilterState.OFF -> true
+            FilterState.INCLUDE -> Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, ch))
+            FilterState.EXCLUDE -> !Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, ch))
         }
     }
 
@@ -179,6 +196,7 @@ internal fun ChapterOptionsSheet(
     var display by remember { mutableStateOf(ChapterPrefs.display(context)) }
     var fDownloaded by remember { mutableStateOf(ChapterPrefs.filterDownloaded(context)) }
     var fUnread by remember { mutableStateOf(ChapterPrefs.filterUnread(context)) }
+    var fBookmarked by remember { mutableStateOf(ChapterPrefs.filterBookmarked(context)) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         TabRow(selectedTabIndex = tab) {
@@ -209,15 +227,18 @@ internal fun ChapterOptionsSheet(
                         ChapterPrefs.setFilterUnread(context, it)
                         onChanged()
                     }
-                    // Two rows where the reference has four, and saying why is
-                    // cheaper than being asked. Bookmarked has no backing field
-                    // anywhere in this app; a scanlator filter is a *per series*
-                    // set of names, which this global store is the wrong shape
-                    // to hold.
+                    TriFilterRow("Bookmarked", fBookmarked) {
+                        fBookmarked = it
+                        ChapterPrefs.setFilterBookmarked(context, it)
+                        onChanged()
+                    }
+                    // Three rows where the reference has four, and saying why is
+                    // cheaper than being asked. A scanlator filter is a *per
+                    // series* set of names, which this global store is the wrong
+                    // shape to hold.
                     SheetNote(
-                        "Bookmarks don't exist in this app yet, and filtering by " +
-                            "scanlator needs a per-series setting rather than this " +
-                            "one. Both are on the list."
+                        "Filtering by scanlator needs a per-series setting rather " +
+                            "than this one, so it isn't here yet."
                     )
                 }
                 1 -> {
@@ -273,15 +294,17 @@ internal fun ChapterOptionsSheet(
 /**
  * The bulk-download choices, from SY's `DownloadAction`.
  *
- * Bookmarked is absent for the same reason it is absent from the filter sheet:
- * nothing in this app records a bookmark.
+ * [BOOKMARKED] is this app's own addition rather than SY's — bookmarks landed
+ * in 0.120 and this is half of what they unblocked, the other half being the
+ * Bookmarked row in the filter sheet above.
  */
 enum class DownloadChoice(val label: String) {
     NEXT_1("Next chapter"),
     NEXT_5("Next 5 chapters"),
     NEXT_10("Next 10 chapters"),
     NEXT_25("Next 25 chapters"),
-    UNREAD("All unread chapters")
+    UNREAD("All unread chapters"),
+    BOOKMARKED("All bookmarked chapters")
 }
 
 /**
@@ -294,6 +317,14 @@ enum class DownloadChoice(val label: String) {
  * part-way through re-queues chapters you already have and looks like a button
  * that did nothing.
  *
+ * **[DownloadChoice.BOOKMARKED] ignores read state, and that is deliberate.**
+ * Every other choice is a form of "what should I read next", so being unread is
+ * part of the question. A bookmark is a third thing that survives both reading a
+ * chapter and marking it unread (see [Bookmarks]), so filtering bookmarks by
+ * unread would silently skip the chapter someone bookmarked *because* they had
+ * read it and wanted it kept. Not-already-downloaded still applies, for the
+ * reason above.
+ *
  * Runs over [chapters] in the order they are **drawn**, so the menu follows the
  * sort and filter currently on screen rather than a hidden second ordering.
  */
@@ -303,15 +334,20 @@ internal fun downloadTargets(
     sourceId: String,
     choice: DownloadChoice
 ): List<Chapter> {
-    val candidates = chapters.filter { ch ->
-        !ReadState.isRead(context, chapterKeyOf(sourceId, ch)) &&
-            !Downloads.isComplete(context, ch.id)
+    // Common to every choice: queueing something already on disk is the one
+    // outcome that makes the whole menu look broken.
+    val notDownloaded = chapters.filter { !Downloads.isComplete(context, it.id) }
+    val unread = notDownloaded.filter {
+        !ReadState.isRead(context, chapterKeyOf(sourceId, it))
     }
     return when (choice) {
-        DownloadChoice.NEXT_1 -> candidates.take(1)
-        DownloadChoice.NEXT_5 -> candidates.take(5)
-        DownloadChoice.NEXT_10 -> candidates.take(10)
-        DownloadChoice.NEXT_25 -> candidates.take(25)
-        DownloadChoice.UNREAD -> candidates
+        DownloadChoice.NEXT_1 -> unread.take(1)
+        DownloadChoice.NEXT_5 -> unread.take(5)
+        DownloadChoice.NEXT_10 -> unread.take(10)
+        DownloadChoice.NEXT_25 -> unread.take(25)
+        DownloadChoice.UNREAD -> unread
+        DownloadChoice.BOOKMARKED -> notDownloaded.filter {
+            Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, it))
+        }
     }
 }
