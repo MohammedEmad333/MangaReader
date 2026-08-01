@@ -273,6 +273,7 @@ object ChapterCache {
                         put("name", ch.name)
                         put("date", ch.dateUploaded)
                         put("scanlator", ch.scanlator ?: "")
+                        put("number", ch.number.toDouble())
                     }
                 )
             }
@@ -291,7 +292,12 @@ object ChapterCache {
                 name = o.optString("name"),
                 handle = null,
                 dateUploaded = o.optLong("date", 0L),
-                scanlator = o.optString("scanlator").takeIf { it.isNotBlank() }
+                scanlator = o.optString("scanlator").takeIf { it.isNotBlank() },
+                // Every file written before this field existed is missing it,
+                // which is most of them on any existing install. The fallback
+                // has to be NO_NUMBER and not 0f — see Chapter.number. Read as
+                // a Double because that is what JSONObject stores a Float as.
+                number = o.optDouble("number", Chapter.NO_NUMBER.toDouble()).toFloat()
             )
         }
     }.getOrDefault(emptyList())
