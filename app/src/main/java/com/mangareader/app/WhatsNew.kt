@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 121,
+            name = "0.121",
+            header = "A smaller app",
+            body = "Unused code is stripped out of the build now, which takes " +
+                "back most of the size the new icon set added.\n\nNothing " +
+                "should look or behave differently. If a source stops " +
+                "loading, listing chapters or showing covers after this " +
+                "update, that is this change and it is worth reporting \u2014 " +
+                "extensions are separate apps and the build can't see what " +
+                "they need.",
+        ),
+        ReleaseNote(
             code = 120,
             name = "0.120",
             header = "Bookmark chapters",

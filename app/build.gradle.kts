@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 120
-        versionName = "0.120"
+        versionCode = 121
+        versionName = "0.121"
     }
 
     signingConfigs {
@@ -47,6 +47,39 @@ android {
     }
 
     buildTypes {
+        // Minification is on DEBUG, which looks backwards and isn't.
+        //
+        // .github/workflows/build.yml runs `assembleDebug` on every push and
+        // publishes app-debug.apk to the "latest" prerelease; the release APK
+        // sits behind a manual workflow_dispatch input. So debug is the only
+        // build that reaches a phone, and shrinking release — which is where
+        // this flag conventionally goes, and where it sat doing nothing while
+        // the APK grew from 17 MB to 24 — could never affect an installed one.
+        //
+        // Doing it here rather than switching the published artifact to
+        // release also keeps BuildConfig.DEBUG true, and with it CoverImage's
+        // failure overlay, which is the only thing in the app that tells a 403
+        // from a cover the source never supplied.
+        //
+        // The target is material-icons-extended: several MB of unused icon
+        // properties, which is code, so shrinking removes it. See
+        // proguard-rules.pro — and note it sets -dontobfuscate, because
+        // extensions resolve the vendored API by name.
+        //
+        // isShrinkResources is deliberately NOT on. It is a separate pass with
+        // its own failure mode (resources looked up by name), the win here is
+        // code rather than resources, and one new thing per release.
+        getByName("debug") {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+        // Left off deliberately. Release is not built on push and not
+        // installed, so enabling it would ship an untested R8 configuration to
+        // the one artifact nobody exercises. Turn it on once debug has been
+        // through a few releases with extensions still working.
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
