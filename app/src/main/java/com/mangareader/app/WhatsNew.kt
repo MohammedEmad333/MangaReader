@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 130,
+            name = "0.130",
+            header = "Chapter transitions in paged mode",
+            body = "Paged mode now has the same transition screens long strip " +
+                "has had: swipe past the last page to move to the next " +
+                "chapter, or back past the first to go to the previous " +
+                "one.\n\nThey tell you which chapter you just finished and " +
+                "which is next, and say so plainly when there isn't one. " +
+                "Tapping them works too.",
+        ),
+        ReleaseNote(
             code = 129,
             name = "0.129",
             header = "Pull down to refresh a series",
