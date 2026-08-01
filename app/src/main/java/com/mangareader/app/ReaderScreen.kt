@@ -112,7 +112,6 @@ internal fun ReaderScreen(
 
     ReaderWindowEffects(settings, showControls)
 
-    val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     /**
      * How many rows sit above page 0 in the strip.
      *
@@ -125,9 +124,24 @@ internal fun ReaderScreen(
      * that fails silently — get it wrong and chapters simply stop being marked
      * read, which is §5's 0.57 bug arriving from a new direction.
      *
-     * Zero outside long strip: the pager has no transition rows.
+     * **As of 0.130 this is 1 in every mode, and that is the change to be
+     * careful about.** It was strip-only, so paged mode was reading
+     * `pagerState.currentPage` as a page index directly. Now the pager carries
+     * transition pages too, so the same offset applies there — and paged mode is
+     * where read-marking has always worked, which makes it the mode with
+     * something to lose. Every arithmetic site below is a place this can fail
+     * silently.
      */
-    val headRows = if (settings.mode == ReaderMode.LONG_STRIP) 1 else 0
+    val headRows = 1
+
+    // Two extra pages in the pager: a transition at each end, the same pair the
+    // strip has carried since 0.104. Both counts come from `headRows` rather
+    // than a literal, so the offset has one source — a second copy of it drifts
+    // the moment either is edited, which is the shape 0.100 fixed for the
+    // refresh cursor.
+    val pagerState = rememberPagerState(initialPage = initialPage + headRows) {
+        if (pages.isEmpty()) 0 else pages.size + headRows * 2
+    }
 
     // Seeded past the header so a chapter opens on its first page, with the
     // previous-chapter row above it rather than in front of it.
@@ -180,11 +194,29 @@ internal fun ReaderScreen(
             row.offset + row.size <= info.viewportEndOffset
     }
 
-    val atTailRow by remember(pages.size, headRows) {
-        derivedStateOf { pages.isNotEmpty() && rowFullyVisible(pages.size + headRows) }
+    // Paged mode asks the pager instead of the layout, and asks **settledPage**
+    // rather than currentPage. A fling from page 3 to the tail reports every
+    // page it passes through on `currentPage`; settledPage moves once, when the
+    // scroll stops. Reading the live value here would advance the chapter mid-
+    // fling from a page the user never stopped on — the same trap §5 records
+    // against the library tab row, where two effects drove one position.
+    val atTailRow by remember(pages.size, headRows, settings.mode) {
+        derivedStateOf {
+            pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
+                rowFullyVisible(pages.size + headRows)
+            } else {
+                pagerState.settledPage == pages.size + headRows
+            }
+        }
     }
-    val atHeadRow by remember(pages.size, headRows) {
-        derivedStateOf { headRows > 0 && pages.isNotEmpty() && rowFullyVisible(0) }
+    val atHeadRow by remember(pages.size, headRows, settings.mode) {
+        derivedStateOf {
+            pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
+                rowFullyVisible(0)
+            } else {
+                pagerState.settledPage == 0
+            }
+        }
     }
 
     /**
@@ -208,8 +240,18 @@ internal fun ReaderScreen(
         else if (leftHead[0] && hasPrev) onPrev()
     }
 
+    // Declared here rather than beside the slider below, because `currentPage`
+    // needs it and Kotlin locals must be declared before use — the 0.110 CI
+    // failure exactly.
+    val lastPage = (pages.size - 1).coerceAtLeast(0)
+
     val currentPage = when {
-        settings.mode != ReaderMode.LONG_STRIP -> pagerState.currentPage
+        // Minus headRows, because index 0 is now the previous-chapter
+        // transition. Settling on either transition clamps to the nearest real
+        // page, which is what makes the tail count as "finished" for
+        // read-marking rather than as a page past the end.
+        settings.mode != ReaderMode.LONG_STRIP ->
+            (pagerState.currentPage - headRows).coerceIn(0, lastPage)
 
         // A strip's last page is visible at the bottom of the screen long
         // before it is ever the *first* item on it, so firstVisibleItemIndex
@@ -219,7 +261,10 @@ internal fun ReaderScreen(
         // marks a chapter read — could not fire.
         atStripEnd -> pages.lastIndex
 
-        else -> (listState.firstVisibleItemIndex - headRows).coerceIn(0, pages.lastIndex)
+        // `lastPage`, not `pages.lastIndex`: on an empty list the latter is -1
+        // and coerceIn(0, -1) throws. Latent before this release and free to
+        // close now that the bounded value exists a few lines up.
+        else -> (listState.firstVisibleItemIndex - headRows).coerceIn(0, lastPage)
     }
     LaunchedEffect(currentPage) { onProgress(currentPage) }
 
@@ -228,7 +273,6 @@ internal fun ReaderScreen(
     // standing up at the edge — and the page count above the bar has to follow
     // whichever is being dragged.
     var seekTarget by remember(pages.size) { mutableStateOf<Float?>(null) }
-    val lastPage = (pages.size - 1).coerceAtLeast(0)
     val seekPage = seekTarget?.roundToInt()?.coerceIn(0, lastPage) ?: currentPage
 
     // Committed on release, never during the drag: every intermediate value
@@ -240,7 +284,7 @@ internal fun ReaderScreen(
         if (target == null || pages.isEmpty()) return
         scope.launch {
             if (settings.mode == ReaderMode.LONG_STRIP) listState.scrollToItem(target + headRows)
-            else pagerState.scrollToPage(target)
+            else pagerState.scrollToPage(target + headRows)
         }
     }
 
@@ -371,19 +415,46 @@ internal fun ReaderScreen(
                 reverseLayout = settings.mode == ReaderMode.PAGED_RTL,
                 modifier = pageModifier
             ) { index ->
-                ReaderPage(
-                    file = pages.getOrNull(index),
-                    index = index,
-                    stillLoading = stillLoading,
-                    colorFilter = filter,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                    textColor = onBackground,
-                    // Paged only. In a strip the same gestures already belong to
-                    // the list, and a pinch that also scrolls is neither.
-                    zoomable = true,
-                    onTap = { showControls = !showControls }
-                )
+                // Index 0 and the last index are transition pages, not pages of
+                // the chapter. Under RTL the pager is reversed, so the previous
+                // -chapter transition sits on the right — which is where a
+                // right-to-left reader starts, so it needs no special case.
+                when (index) {
+                    0 -> ChapterTransitionRow(
+                        topLabel = if (hasPrev) "Previous" else null,
+                        topName = if (hasPrev) chapters.getOrNull(chapterIndex - 1)?.name else null,
+                        bottomLabel = "Current",
+                        bottomName = chapterName,
+                        fallback = "There's no previous chapter",
+                        textColor = onBackground,
+                        onClick = if (hasPrev) onPrev else null
+                    )
+
+                    pages.size + headRows -> ChapterTransitionRow(
+                        topLabel = "Finished",
+                        topName = chapterName,
+                        bottomLabel = if (hasNext) "Next" else null,
+                        bottomName = if (hasNext) chapters.getOrNull(chapterIndex + 1)?.name
+                        else null,
+                        fallback = "There's no next chapter",
+                        textColor = onBackground,
+                        onClick = if (hasNext) onNext else null
+                    )
+
+                    else -> ReaderPage(
+                        file = pages.getOrNull(index - headRows),
+                        index = index - headRows,
+                        stillLoading = stillLoading,
+                        colorFilter = filter,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        textColor = onBackground,
+                        // Paged only. In a strip the same gestures already belong to
+                        // the list, and a pinch that also scrolls is neither.
+                        zoomable = true,
+                        onTap = { showControls = !showControls }
+                    )
+                }
             }
         }
 
