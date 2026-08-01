@@ -1203,6 +1203,18 @@ fun YomuApp() {
                 }
                 readTick++
             },
+            // Same batched shape as onSetRead, and the same readTick bump: the
+            // chapter rows read their bookmark alongside their read flag, so one
+            // signal repaints both rather than adding a second tick nothing else
+            // would ever read.
+            onSetBookmarked = { list, value ->
+                Bookmarks.setBookmarkedBulk(
+                    context,
+                    list.map { chapterKeyOf(activeSourceId ?: "", it) },
+                    value
+                )
+                readTick++
+            },
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,

@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 120,
+            name = "0.120",
+            header = "Bookmark chapters",
+            body = "Long-press a chapter and use Bookmark in the bar that " +
+                "appears. Bookmarked chapters carry a marker in the list.\n\n" +
+                "Bookmarks are their own thing: reading a chapter, or marking " +
+                "it unread, leaves its bookmark alone.\n\nFiltering by " +
+                "bookmark, and downloading everything bookmarked, are the next " +
+                "update \u2014 this is the piece they were both waiting on.",
+        ),
+        ReleaseNote(
             code = 119,
             name = "0.119",
             header = "The Library opens on the tab you left",
