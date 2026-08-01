@@ -1435,6 +1435,7 @@ fun YomuApp() {
                             History.remove(context, it.chapterKey)
                             history = History.list(context)
                         },
+                        libraryTick = libraryTick,
                         onClearAll = {
                             History.list(context).forEach { History.remove(context, it.chapterKey) }
                             history = History.list(context)
@@ -1442,6 +1443,7 @@ fun YomuApp() {
                     )
                     3 -> DownloadsTab(
                         downloadTick = downloadTick + DownloadQueue.tick,
+                        libraryTick = libraryTick,
                         onOpen = { openFromDownloads(it) },
                         onOpenQueue = { downloadsOpen = true }
                     )
