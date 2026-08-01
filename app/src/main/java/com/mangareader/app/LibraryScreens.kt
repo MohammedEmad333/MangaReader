@@ -651,7 +651,17 @@ private fun LibraryGrid(
     // arithmetic being wrong rather than as two objects. That is the 0.109 top
     // bar, one screen over.
     val gridState = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering)
-    val gridScope = rememberCoroutineScope()
+    // Where the handle has asked the grid to go, -1 when it hasn't.
+    //
+    // A `launch { scrollToItem() }` per drag delta queues dozens of scrolls on
+    // the grid's own mutex, and they run in order — so the grid finishes
+    // arriving at where the finger was half a second ago. Holding the target in
+    // state and scrolling from a keyed effect means Compose cancels the
+    // superseded one on every new value, and only the latest ever runs.
+    var seekTo by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(seekTo) {
+        if (seekTo >= 0) gridState.scrollToItem(seekTo)
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
     LazyVerticalGrid(
@@ -773,7 +783,7 @@ private fun LibraryGrid(
             visibleItems = gridState.layoutInfo.visibleItemsInfo.size,
             totalItems = shown.size,
             isScrolling = gridState.isScrollInProgress,
-            onSeek = { index -> gridScope.launch { gridState.scrollToItem(index) } },
+            onSeek = { index -> seekTo = index },
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
