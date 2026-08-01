@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 115,
+            name = "0.115",
+            header = "Download the next few chapters",
+            body = "A download button in the series screen's top bar: next " +
+                "chapter, next 5, 10, 25, or every unread one.\n\nIt skips " +
+                "anything already on your device, so \u201cnext 5\u201d means the " +
+                "next five you haven't got rather than the next five rows \u2014 " +
+                "and it follows whatever sort and filter you have on screen.",
+        ),
+        ReleaseNote(
             code = 114,
             name = "0.114",
             header = "Badges in History and Downloads",
