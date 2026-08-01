@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 109,
+            name = "0.109",
+            header = "A top bar on the series screen",
+            body = "The back arrow used to scroll away with the cover. It now " +
+                "sits in a bar that stays put, and the bar fades in with the " +
+                "series title as you scroll down \u2014 so the cover art is still " +
+                "uncovered when you open the page.\n\nGroundwork as much as " +
+                "anything: the download, filter and options buttons go in that " +
+                "bar over the next few updates.",
+        ),
+        ReleaseNote(
             code = 108,
             name = "0.108",
             header = "Real icons",

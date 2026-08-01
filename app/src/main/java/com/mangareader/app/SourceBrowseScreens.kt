@@ -60,6 +60,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -533,9 +534,45 @@ internal fun SeriesScreen(
         }
     }
 
+    // Hoisted above the Box because the top bar and the list both read it. Built
+    // inline at the LazyColumn until 0.109, which was fine while nothing else
+    // needed it — construct it twice and the bar gets a state that never
+    // scrolls, and the symptom is a bar that simply never fades in, which reads
+    // as the alpha arithmetic being wrong rather than as two objects.
+    val listState = rememberRestoredListState(scroll, "series", series.id)
+
+    // dp converted once, out here: `firstVisibleItemScrollOffset` is in pixels,
+    // so a raw pixel constant would fade over a third of the distance on a
+    // high-density phone that it does on a low-density one.
+    val fadeOverPx = with(LocalDensity.current) { TOP_BAR_FADE_OVER.toPx() }
+
+    /**
+     * How opaque the top bar is, from how far the header has scrolled.
+     *
+     * The bar sits *over* the cover backdrop rather than above it, so at rest it
+     * is invisible and only the back arrow shows against the art — which is what
+     * the screen looked like before it had a bar at all. It fades in as the
+     * cover leaves, so the title arrives exactly when the thing it names is
+     * gone. Modelled on SY's `MangaToolbar`, which takes the same two alphas
+     * from its own scroll state.
+     *
+     * `derivedStateOf`, not a plain read: `firstVisibleItemScrollOffset` changes
+     * every frame of a drag, and reading it directly would recompose the whole
+     * screen — a 171-row chapter list included — on every pixel.
+     *
+     * [TOP_BAR_FADE_OVER] is deliberately shorter than the header: the bar wants
+     * to be solid before the chapter rows reach it, not when the header ends.
+     */
+    val barAlpha by remember(listState, fadeOverPx) {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / fadeOverPx).coerceIn(0f, 1f)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            state = rememberRestoredListState(scroll, "series", series.id),
+            state = listState,
             modifier = Modifier.fillMaxSize()
         ) {
             item {
@@ -563,14 +600,11 @@ internal fun SeriesScreen(
                     )
 
                     Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            BackButton(onBack)
-                        }
+                        // Where the back button used to sit. It is in the top bar
+                        // now, which is drawn over this Box rather than above it,
+                        // so the space still has to be reserved or the cover row
+                        // slides under the bar.
+                        Spacer(Modifier.height(TOP_BAR_HEIGHT))
 
                         Row(modifier = Modifier.padding(horizontal = 16.dp)) {
                             CoverImage(
@@ -1000,6 +1034,33 @@ internal fun SeriesScreen(
             )
         }
 
+        // Last in the Box, so it draws over the list rather than under it. Not
+        // Scaffold's `topBar` slot: that insets its content below the bar, and
+        // the whole point here is that the cover art runs *behind* a transparent
+        // bar. Scaffold would also have meant moving the FAB and the selection
+        // bar, both of which align against this Box.
+        TopAppBar(
+            title = {
+                Text(
+                    series.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(barAlpha)
+                )
+            },
+            navigationIcon = { BackButton(onBack) },
+            colors = TopAppBarDefaults.topAppBarColors(
+                // Alpha on the container, not on the whole bar: fading the bar
+                // itself would take the back arrow with it, and the arrow has to
+                // stay hit-testable and visible against the art from the first
+                // frame.
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = barAlpha),
+                scrolledContainerColor =
+                    MaterialTheme.colorScheme.surface.copy(alpha = barAlpha)
+            ),
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
         // Hidden while selecting: it sits exactly where the action bar goes, and
         // "Resume" is not what anyone reaches for mid-selection.
         if (chapters.isNotEmpty() && !selecting) {
@@ -1253,6 +1314,18 @@ private fun ChapterSelectionBar(
  * a chapter has been read, and it has to survive a bright phone outdoors.
  */
 private const val READ_DIM = 0.45f
+
+/**
+ * Height of the series screen's top bar, reserved in the scrolling header.
+ *
+ * Material3's `TopAppBar` is 64dp and does not expose it as a public constant,
+ * so this is a copy of a number owned elsewhere. If the bar ever looks like it
+ * overlaps the cover, or leaves a gap above it, this is why.
+ */
+private val TOP_BAR_HEIGHT = 64.dp
+
+/** How far the header scrolls before the top bar is fully opaque. */
+private val TOP_BAR_FADE_OVER = 120.dp
 
 
 private const val KEY_BROWSE_VIEW = "browse_view"
