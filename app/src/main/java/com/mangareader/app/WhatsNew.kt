@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 110,
+            name = "0.110",
+            header = "Filter, sort and display chapters",
+            body = "The funnel in the series screen's top bar opens three tabs. " +
+                "Filter to downloaded or unread chapters, sort by source order, " +
+                "chapter number, upload date or name in either direction, and " +
+                "title rows with the chapter number instead of its name.\n\n" +
+                "The funnel lights up while a filter is on, and the count above " +
+                "the list says \u201cN of M\u201d, so a shorter list never looks like " +
+                "chapters going missing.\n\nThese are one setting for the whole " +
+                "app rather than per series, like the reader's are. Bookmarks " +
+                "and filtering by scanlator aren't here yet.",
+        ),
+        ReleaseNote(
             code = 109,
             name = "0.109",
             header = "A top bar on the series screen",

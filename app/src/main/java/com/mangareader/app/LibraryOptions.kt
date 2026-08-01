@@ -283,7 +283,7 @@ internal fun LibraryOptionsSheet(
 }
 
 @Composable
-private fun SheetHeader(text: String) {
+internal fun SheetHeader(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,
@@ -293,7 +293,7 @@ private fun SheetHeader(text: String) {
 }
 
 @Composable
-private fun SheetNote(text: String) {
+internal fun SheetNote(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.bodySmall,
@@ -303,7 +303,7 @@ private fun SheetNote(text: String) {
 }
 
 @Composable
-private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -318,7 +318,7 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 }
 
 @Composable
-private fun TriFilterRow(label: String, state: FilterState, onChange: (FilterState) -> Unit) {
+internal fun TriFilterRow(label: String, state: FilterState, onChange: (FilterState) -> Unit) {
     val toggle = when (state) {
         FilterState.OFF -> ToggleableState.Off
         FilterState.INCLUDE -> ToggleableState.On
@@ -347,7 +347,7 @@ private fun TriFilterRow(label: String, state: FilterState, onChange: (FilterSta
 }
 
 @Composable
-private fun SortRow(
+internal fun SortRow(
     label: String,
     selected: Boolean,
     ascending: Boolean,
