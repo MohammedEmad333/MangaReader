@@ -3,25 +3,33 @@
 Context document for continuing work in a fresh chat. **The per-release
 `SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
 on 2026-07-31; `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md` and
-`SESSION_HANDOFF_0.93.md` are the session files, and git history has the rest.**
-Last updated 2026-07-31 at **0.93**, head `ba1fd5d`. **0.55 through 0.65 and 0.67
-through 0.93 are verified on device; only 0.66 is unaccounted for, and nothing in
-the tree is unverified** — see §0.
+`SESSION_HANDOFF_0.106.md` are the session files, and git history has the rest.**
+Last updated 2026-07-31 at **0.106**, head `4cc33fb`. **0.55 through 0.65 and
+0.67 through 0.106 are verified on device**, except 0.66 (unaccounted for) and
+0.104/0.105 (superseded before install) — see §0.
 
 **The bug board is not empty and this document claimed it was for four
-releases.** `SESSION_HANDOFF_0.93.md` §6 is the current board. Treat "the board
+releases.** `SESSION_HANDOFF_0.106.md` §6 is the current board. Treat "the board
 is empty" anywhere below as a statement about 2026-07-31 morning, and treat the
 four-item board in `SESSION_HANDOFF_0.87.md` §6 as superseded: its items 1 and 4
-were **fixed and verified** in 0.90, and its item 3 is half closed. Three items
-found while testing have replaced them — BeeHentai (upstream, its domain now
-serves a different site), the failure tally printing raw source ids, and
-`CoverRepair` having no "asked and got nothing" state.
+were **fixed and verified** in 0.90, its item 3's resume half closed in 0.88–0.89
+and its seek half is still open, and the failure tally's raw source ids were
+fixed in 0.94. What replaced them is in `SESSION_HANDOFF_0.106.md` §10, and the
+named next piece of work — **the three-chapter reader** — is §11 there.
+
+**Read TachiyomiSY, and this document previously discouraged it.** §1's note that
+`mihon-ref` is "mostly a dead end" and §5's "Do not vendor from modern Mihon" are
+true **about the vendored API only** — and they were over-generalised into "don't
+look at Mihon", which cost most of the wasted effort on 2026-07-31 evening. For
+app UI, gestures, screen structure and which third-party library to reach for,
+Mihon and TachiyomiSY are the best reference available and are fetchable without
+a clone. `SESSION_HANDOFF_0.106.md` §7 has the split and the commands.
 
 **Open thread 1 is closed, and this is the first time in thirteen sessions that
 sentence has been true.** The reader was the largest untested surface in the app.
 Paged right-to-left, grayscale and invert together, the chapter picker and
 settings surviving a reopen have now all been exercised on device; two were
-broken and are fixed. `SESSION_HANDOFF_0.93.md` §1. Whatever is chosen next is
+broken and are fixed. `SESSION_HANDOFF_0.106.md` §1. Whatever is chosen next is
 being chosen on its merits rather than because the reader was too large to face.
 
 **The headline of the 0.84–0.87 run is one character: `JsonObject?` where
@@ -97,9 +105,9 @@ exactly which half and why.
 
 ## 0. Where this was left — read this first
 
-### 0.88–0.93 — the reader, and covers that repair themselves
+### 0.88–0.106 — the reader, covers, source names, and reading the reference
 
-Full account in `SESSION_HANDOFF_0.93.md`.
+Full account in `SESSION_HANDOFF_0.106.md`.
 
 - **Resuming a chapter loads from the page you are on.** `startAt` on
   `loadPagesProgressively` reorders *indices*, never the page list — the index
@@ -150,6 +158,33 @@ Full account in `SESSION_HANDOFF_0.93.md`.
 - **BeeHentai is dead upstream and the probe proved it in one run.** 200, h2, no
   `cf-mitigated` — and the body is ToonTop. `beehentai.com` now serves
   `toontop.io`, so the extension's selectors match nothing.
+
+- **The chapter swipe is `me.saket.swipe`, not Material3 (0.103).**
+  `SwipeToDismissBox` exists to *remove* a row, so using it as an action means
+  refusing its own state change on every swipe — which is why it both misfired
+  while scrolling and failed to fire when meant. Mihon and SY both use
+  `me.saket.swipe:swipe:1.3.0` on this exact row. Two tuning rounds were spent
+  before reading the reference.
+- **The strip edge gesture was attempted twice, never fired once, and is
+  deleted (0.101, 0.102, 0.105).** Read `SESSION_HANDOFF_0.106.md` §5 before
+  trying a third time: **SY does not detect an edge at all** — its list already
+  holds the neighbouring chapters' pages, so scrolling continues into them.
+  0.106 gets the same behaviour from a *layout query* — "is the transition row
+  fully on screen" — which is the question `atStripEnd` already answers
+  reliably.
+- **Chapter transition rows at each end of a strip (0.104, 0.106),** modelled on
+  SY's. The risk in them is not the rows: they shift every list index, and four
+  places assumed list index == page index — including `atStripEnd`, which is what
+  marks a chapter read. One `headRows` value, added at all four.
+- **`SourceNames` (0.94–0.96)** closes the missing `sourceId → name` map that
+  §4 records against Group → Sources, and the raw ids the failure tally printed.
+  Names come from `listAllSources`, the repo index (**ids are bare there and need
+  the `tachi:` prefix**) and a Tachiyomi backup's field 101, which is the only
+  place a fork's built-in source survives.
+- **Writer and artist are separate fields (0.98).** `toSeries()` was joining
+  `SManga.author` and `.artist` with `", "` and `Series` had no artist field.
+- **Two scoped refreshes (0.98, 0.99)** — chosen sources, and series the index
+  has no counts for. Neither touches `RefreshCursor`.
 
 **Newest first: 0.84–0.87, and the board is at four.**
 `SESSION_HANDOFF_0.87.md`. `SManga.memo` and `SChapter.memo` are **non-null**,
@@ -329,7 +364,7 @@ to describe what exists instead of instructing someone to build it.
 item 3, rather than as speculative testing, is what worked: the item forced the
 page-fetch path open, and the two bugs actually found — the RTL slider and the
 chapter picker — were found by *reading* the file while in there, not by the
-item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.93.md`
+item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.106.md`
 §1. **Item 3's seek half is still open and this is the place it would be missed:**
 resume is done, reprioritising a fetch already in flight is not, and it needs a
 reorderable work queue rather than a parameter.
@@ -819,7 +854,7 @@ and invert together, the chapter picker, and whether settings survive reopening 
 chapter. The colour filters and settings persistence were correct as written; the
 RTL slider and the picker were not, and both are fixed. The `configChanges`
 commit at the end of the list is also exercised — rotation no longer bounces the
-reader back to the Library. `SESSION_HANDOFF_0.93.md` §1. The rest of this entry
+reader back to the Library. `SESSION_HANDOFF_0.106.md` §1. The rest of this entry
 is kept as the record of what was unknown, and what the cost of leaving it that
 way turned out to be.
 
@@ -2177,6 +2212,44 @@ unconditionally — so its own origin assignment has to come *after* that call.
 
 ## 5. Hard-won lessons — don't repeat these
 
+### A whole-file workflow makes a revert indistinguishable from an edit
+
+Files reach this repo as whole files dropped into `app/src/main/java/...`. Twice
+on 2026-07-31 a file was regenerated from an older snapshot before being edited,
+which silently undid an earlier fix — 0.94 undid 0.90's cover reporting, 0.96
+undid 0.91's Resume target. Both shipped. Neither was visible in the push,
+because a whole file is always a whole file.
+
+One was found by luck; the other, the cover reporting, was **invisible** — the
+stale-cover half of the repair was simply dead for three releases while the
+blank-cover half kept working.
+
+Two countermeasures, in order of value:
+
+- **Audit markers before pushing.** Grep each file for a short list of known-good
+  identifiers from every earlier change. Run across all 29 changes that session
+  it found nothing else, and it would have caught both.
+- **Read the diff stat.** A restore or a feature is mostly `+`. 0.96 showed
+  `-47` where it should have shown `-4`.
+
+This is the same family as the stale-Downloads glob and the wrong-module copy
+already recorded under "Termux-specific", seen from the authoring side rather
+than the copying side.
+
+### Two predicates answering one question will disagree
+
+`LibraryRefreshService` gained a scoped run in 0.98 (chosen sources) and a second
+kind in 0.99 (series with no counts). `ownsCursor` correctly refused to let
+either *clear* the shared `RefreshCursor` — and the line that *takes* one still
+tested `scope == null`, which an un-counted run satisfies. So it claimed a cursor
+it was then forbidden to release: a resume point for a full sweep that never ran,
+left behind permanently.
+
+Neither predicate was wrong when written. The second kind of scope made them
+disagree, and nothing connects them. **When a condition is asked in more than one
+place, name it once** — `ownsCursor` existed already and the other site simply
+didn't use it.
+
 ### A change that lengthens a job's lifetime wakes races that were always there
 
 0.88 reordered the reader's page fetch to start at the resume position. Nothing
@@ -3197,7 +3270,7 @@ Roughly in order of value:
    entry asked for, built as described below except for the cost: the sweep does
    *not* hold a fetched `SManga`, so a cover is a second request and is spent
    only on candidates. **233 covers repaired across 510 series in one partial
-   sweep, a 46% yield.** `SESSION_HANDOFF_0.93.md` §3, which also records what
+   sweep, a 46% yield.** `SESSION_HANDOFF_0.106.md` §3, which also records what
    that number does *not* count. The rest of this item is the original analysis,
    kept because it is still the clearest statement of why the bug existed.
 
@@ -3283,7 +3356,10 @@ Roughly in order of value:
    last needs a gesture model this screen doesn't have. Pinch-zoom is **done**
    for paged modes (0.62); long strip is the remaining gap and needs the
    viewport zoomed rather than an item, which is a piece of work rather than a
-   flag.
+   flag. **This is now a wanted feature rather than a declined one** — SY has it,
+   by scaling the whole `WebtoonRecyclerView`; the Compose equivalent is
+   `graphicsLayer` + `transformable` on the `LazyColumn`, which has to coexist
+   with the tap detector and the transition rows. `SESSION_HANDOFF_0.106.md` §10.
 9. **Covers are not cached for offline.** A library entry still shows a grey box
    in airplane mode. Coil's disk cache is on by default and may already cover
    most of this now that images share the client; it hasn't been checked.
@@ -3430,7 +3506,28 @@ Fold the 0.88-0.90 run into the handoffs; close open thread 1            6dcc166
 Resume from the furthest chapter with progress; cover size note          5d26494  verified OK
 Report repaired covers after a stop, and persist the count               fca3ca3  verified OK
 Clear the resume position when a chapter is marked unread                ba1fd5d  verified OK
+Record source names; group the library by source                        55e6144  reverted 3189c8d's half
+Name source tabs; learn names from the repo index                       c0cce75  verified OK
+Search by title or author; keep backup source names                     1de57e4  reverted 5d26494
+Restore the Resume target and the grid's cover reporting                1b5064b  verified OK
+Keep writer and artist apart; refresh only chosen sources               a180424  CI RED (import)
+Add the missing width import                                            f0b4f8a  verified OK
+Add a refresh scoped to series with no chapter count                    7506c00  verified OK
+Swipe to mark read (Material3); scoped run keeps off the cursor          2307f9e  swipe unreliable
+Strip edge gesture, post-scroll                                         dc1ce88  NEVER FIRED
+Edge gesture on pre-scroll; no flash between chapters                   76edcc9  flash fixed, gesture dead
+Rebuild the chapter swipe on me.saket.swipe                             a43348d  verified OK
+Add chapter transition rows to the strip                                f96cd14  verified OK
+Delete the dead edge gesture                                            86d8f2d  removal only
+Change chapter when a transition row scrolls into view                  4cc33fb  verified OK
 ```
+
+**`55e6144` and `1de57e4` are a new failure mode in this list: commits that
+shipped correct code and silently reverted an earlier fix**, because a whole file
+was regenerated from a stale snapshot. `1b5064b` restores both. §5 has the
+countermeasure. **`dc1ce88` and `76edcc9` are two more that shipped and did
+nothing at all** — an edge gesture that never fired on either nested-scroll
+phase; `86d8f2d` deletes it and `4cc33fb` replaces it with a layout query.
 
 `bf2241d` is a fourth entry in the pattern below: it shipped correct in
 isolation and broke something only in combination with what was already there —
