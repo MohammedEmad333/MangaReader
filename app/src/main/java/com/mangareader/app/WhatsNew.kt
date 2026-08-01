@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 117,
+            name = "0.117",
+            header = "Share works from the library too",
+            body = "0.116's Share row never appeared on a series opened from " +
+                "the Library — the screen shows a placeholder while it " +
+                "fetches, and the share link was worked out from that instead " +
+                "of from the real thing.",
+        ),
+        ReleaseNote(
             code = 116,
             name = "0.116",
             header = "An options menu on the series screen",
