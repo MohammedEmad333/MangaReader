@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 148,
+            name = "0.148",
+            header = "Chapter changes wait for you",
+            body = "Scrolling to the end of a chapter used to flip to the next " +
+                "one the instant the transition came into view \u2014 often " +
+                "while the list was still flinging, from somewhere you never " +
+                "stopped. It now waits until the scroll settles, then pauses " +
+                "for half a second.\n\nSo you get to read which chapter is " +
+                "next, and scrolling back before it turns cancels it.",
+        ),
+        ReleaseNote(
             code = 147,
             name = "0.147",
             header = "The double-tap zoom eases in",
