@@ -1,6 +1,9 @@
 # Session handoff — 0.123 to 0.134, bookmarks finished, 18+ everywhere, and the reader
 
 Written 2026-08-01, late. Nothing here supersedes anything.
+**Superseded in one place: `SESSION_HANDOFF_0.143.md` is newer and the
+Minification entry in §8 below is out of date — it was attempted four more
+times on 2026-08-02 and the cause of 0.121 is now established.**
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md` and `SESSION_HANDOFF_0.122.md` all remain live
 reference. This file continues straight on from 0.122, which ended with
