@@ -1,6 +1,9 @@
 # Session handoff — 0.121 to 0.122, the shrink that built green and would not start
 
 Written 2026-08-01, ~19:10. Nothing here supersedes anything.
+**§3's "WHY IS NOT ESTABLISHED" is now established: R8 full mode. See
+`SESSION_HANDOFF_0.143.md` §2. §6's five-step plan was followed on 2026-08-02
+and steps 1-4 all passed; step 5 is where it stands.**
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`
 and `SESSION_HANDOFF_0.120.md` all remain live reference.
 

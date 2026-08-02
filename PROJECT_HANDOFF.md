@@ -1,5 +1,23 @@
 # Yomu / MangaReader — Project Handoff
 
+**STOP. THIS DOCUMENT IS STALE BY 37 RELEASES.** It was last updated at 0.106
+and head is now 0.143. `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.122.md`,
+`SESSION_HANDOFF_0.134.md` and `SESSION_HANDOFF_0.143.md` all landed after it
+and several of them correct things stated below as current. **Read
+`SESSION_HANDOFF_0.143.md` §0 first** — the tree is currently in an unverified
+R8-on state and the published APK is expected to crash on Asura Scans.
+
+Two claims below are now wrong rather than merely old, and they are the ones
+most likely to be acted on:
+
+- **§7 item 1 and §5's account of minification are superseded.** Minification
+  works; the shrink is 23,869,296 → 11,714,964 bytes; the reason 0.121 would not
+  start is **R8 full mode**, established in 0.136 and written up in
+  `SESSION_HANDOFF_0.143.md` §2. It is no longer an open question.
+- **"26 extensions / 95 sources" is used below as a known-good figure. The
+  device reports 20 / 37.** Nobody has established which is right.
+  `SESSION_HANDOFF_0.143.md` §7.
+
 Context document for continuing work in a fresh chat. **`SESSION_HANDOFF_0.120.md`
 is the newest session file and covers 0.107–0.120 — the series screen pass. Read
 its §0 before anything else here; three of its entries correct assumptions this
