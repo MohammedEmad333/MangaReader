@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 138
-        versionName = "0.138"
+        versionCode = 139
+        versionName = "0.139"
     }
 
     signingConfigs {
@@ -85,25 +85,35 @@ android {
         // javaClass.genericSuperclass at runtime. That only works while the
         // class keeps its Signature attribute.
         // ---------------------------------------------------------------
-        // ON AGAIN IN 0.136, and the reason 0.121 failed is now named rather
-        // than guessed at. android.enableR8.fullMode has defaulted to true
-        // since AGP 8.0 and this project has never set it, so R8 has always
-        // run in full mode — where -keepattributes Signature does not protect
-        // a class that is not itself kept. The keep for uy.kohesive.injekt.**
-        // covered FullTypeReference and not its anonymous subclasses, which
-        // are generated in com.mangareader.app at each inlined addSingleton
-        // call site. proguard-rules.pro now keeps those explicitly.
+        // OFF AGAIN IN 0.139. Third attempt, and it got further than either
+        // previous one before failing.
         //
-        // THIS IS A HYPOTHESIS UNTIL THE APK LAUNCHES. CI going green proves
-        // nothing: 0.121 was green, published, and crashed at
-        // Application.onCreate, which no build step reaches. If it starts,
-        // the bindings survived — and that is the whole of the first check.
-        // The extension boundary is the second and has never run under R8:
-        // open a source, list chapters, read a page, open a source's settings
-        // dialog, and confirm diagnose still says 26 extensions / 95 sources.
+        // 0.136 STARTED - so R8 full mode was the right diagnosis and the
+        // FullTypeReference keeps were right - and then loaded 1 extension of
+        // 20 (NoClassDefFoundError kotlin.LazyKt; NoSuchMethodError
+        // OkHttpClient.Builder.sslSocketFactory). 0.137 added keeps for
+        // kotlin, kotlinx, okhttp3 and okio, reached 20/20, and passed browse,
+        // series, reader and source settings on device - then died on global
+        // search, which 0.134 does not. 0.138 added CrashLog and would not
+        // launch at all under R8.
+        //
+        // So TWO unexplained R8 failures are outstanding, not one, and the
+        // second appeared in code written the same evening. Turned off to
+        // restore a working app and to make CrashLog readable: crashes.txt
+        // survives an in-place upgrade, so 0.138's launch traces are on disk
+        // and visible in Settings once a launching build is installed.
+        //
+        // Everything the three attempts established is kept: the keeps in
+        // proguard-rules.pro are right as far as they go, mapping-debug
+        // uploads from CI, and the shrink is worth 12.2 MB (23,869,296 ->
+        // 11,632,431 bytes). What is missing is a keep that cannot be derived
+        // from the build file - it needs a stack trace, which is now
+        // obtainable where it was not before.
+        //
+        // DO NOT FLIP THIS AGAIN WITHOUT READING THE CRASH LOG FIRST.
         // ---------------------------------------------------------------
         getByName("debug") {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
