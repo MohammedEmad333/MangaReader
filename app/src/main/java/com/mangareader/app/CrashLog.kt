@@ -89,7 +89,23 @@ object CrashLog {
         // looking for right now, and scrolling past four older ones to reach it
         // on a phone is how a log stops being read.
         val existing = runCatching { if (f.exists()) f.readText() else "" }.getOrDefault("")
-        f.writeText((entry + existing).take(MAX_BYTES))
+        val combined = (entry + existing).take(MAX_BYTES)
+        f.writeText(combined)
+
+        // Mirror to external storage, and this is not redundancy for its own
+        // sake. filesDir is app-private: reading it needs a build that LAUNCHES,
+        // so a crash-on-startup can only be read by shipping another release
+        // first — which is the loop 0.138 and 0.139 were spent on.
+        //
+        // getExternalFilesDir needs no permission, is deleted with the app, and
+        // lands at Android/data/com.mangareader.app/files/, which a file manager
+        // on this device can reach. When a build will not start, that copy is
+        // the only one anyone can get at.
+        runCatching {
+            context.getExternalFilesDir(null)?.let { dir ->
+                File(dir, FILE).writeText(combined)
+            }
+        }
     }
 
     /** The log, newest first, or null when nothing has crashed. */
@@ -101,6 +117,7 @@ object CrashLog {
 
     fun clear(context: Context) {
         runCatching { file(context).delete() }
+        runCatching { context.getExternalFilesDir(null)?.let { File(it, FILE).delete() } }
     }
 
     /** Whether to offer the row at all. */

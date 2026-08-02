@@ -36,6 +36,28 @@
 # Backup.kt says it is public and top-level on purpose. Nothing in this app
 # calls its constructor, so R8 has no reason to think it is reachable, and the
 # failure mode is automatic backups silently never running.
+# ---------------------------------------------------------------------------
+# The pre-onCreate window
+# ---------------------------------------------------------------------------
+# 0.138 would not launch under R8 and its own crash handler recorded nothing,
+# which is itself the evidence: the handler was installed in Application
+# .onCreate, and Android runs attachBaseContext -> ContentProviders ->
+# onCreate. Something died in the provider phase.
+#
+# WorkManager merges androidx.startup.InitializationProvider into the manifest
+# from its own, so it does not appear in AndroidManifest.xml and is easy to
+# forget. It instantiates initializers and workers from stored class names,
+# which is the exact pattern R8 cannot see. The AutoBackupWorker keep above
+# covers this app's worker and nothing about the machinery that constructs it.
+#
+# Unconfirmed as the cause of 0.138 - CrashLog now installs in
+# attachBaseContext, so the next attempt says rather than implies.
+-keep class androidx.startup.** { *; }
+-keep class androidx.work.** { *; }
+-keep class * extends androidx.work.Worker { <init>(...); }
+-keep class * extends androidx.work.ListenableWorker { <init>(...); }
+-keep class * implements androidx.startup.Initializer { *; }
+
 -keep class com.mangareader.app.AutoBackupWorker { <init>(...); }
 
 # ---------------------------------------------------------------------------
