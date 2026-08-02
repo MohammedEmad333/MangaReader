@@ -42,7 +42,15 @@ was not the cause. It is now Trello card 73 on its own merits, and **the line on
 that card blaming the Asura Scans crash should be struck** — leaving it there
 sends the next session after a solved fault.
 
-**5. 0.149 is UNTESTED.** §5. It is the only unverified thing in the tree.
+**5. 0.149 is verified and the tree is fully verified.** All nine checks in §7
+passed on device, 2026-08-02 21:50. Nothing in 0.144–0.149 is now unexercised.
+
+**6. The extension count is 20 / 37 and 26 / 95 is retired.** Read off the
+diagnose screen in the same pass: 20 packages declaring `tachiyomi.extension`,
+**Loaded OK 20/20**, 37 sources, 37 held in cache. The 20/20 is what settles it —
+nothing is failing to load, so the gap was never a regression and never had
+anything to do with R8. Whether six extensions were uninstalled after 0.122 or
+26/95 was wrong when written is unresolved and is not worth another session.
 
 ---
 
@@ -57,7 +65,7 @@ sends the next session after a solved fault.
 | — | Handoff rewritten around the actual cause | `cae1fc4` | docs |
 | 0.147 | Animate the double-tap zoom | `3b7470c` | Verified |
 | 0.148 | Chapter turns wait for you | `0cb55ab` | Verified |
-| 0.149 | `ListScrollHandle`; chapter list is the first caller | `b3d681b` | **UNTESTED** |
+| 0.149 | `ListScrollHandle`; chapter list is the first caller | `b3d681b` | Verified |
 
 All six built green. No red CI this session.
 
@@ -210,8 +218,6 @@ chapters** (card 74, a connection probe with no diagnosis yet).
 
 Still open and untouched:
 
-- **The 20/37 vs 26/95 discrepancy.** One tap of the diagnose screen settles it
-  and it is the acceptance criterion on a card that cannot otherwise be met.
 - **Fling the zoom pan.** `Modifier.transformable` does not expose gesture
   velocity, so it needs a custom detector — and 0.101 and 0.102 are two custom
   detectors in this reader that never fired once between them. **Read
@@ -226,9 +232,11 @@ Still open and untouched:
 
 ---
 
-## 7. The test pass for 0.149
+## 7. The test pass for 0.149 — ALL NINE PASSED
 
-The handle only. Everything else in this range is verified.
+Run on device 2026-08-02 21:50. Kept as written because it is the list the next
+scroll-handle caller should be run against, and items 3, 4 and 6 are the ones
+that would have failed.
 
 1. **It appears and lingers.** Scroll a long chapter list; the handle fades in
    while scrolling and lingers ~1.5s after the list settles.
@@ -248,8 +256,8 @@ The handle only. Everything else in this range is verified.
 9. **The top bar still fades** correctly after a handle seek, not just after a
    finger scroll.
 
-While you are in there: **Settings → diagnose, and read the extension and source
-counts.** That settles card 72 for free.
+Also run: **Settings → diagnose.** 20 packages, 20/20 loaded, 37 sources. Card
+72 closed — see §0 item 6.
 
 ---
 
@@ -269,7 +277,12 @@ attempts.
 No new files. `ReaderScreen.kt`, `Ui.kt`, `SourceBrowseScreens.kt` and
 `WhatsNew.kt` changed.
 
-**Verified on device this session:** 0.144 opening Asura Scans with R8 off;
+**Verified on device this session:** all nine checks in §7 on 0.149 — the handle
+appearing and lingering, staying hidden on a short series, reaching the last
+chapter both unfiltered and under a filter, tracking a fast drag, the thumb
+moving on an ordinary scroll, the row swipes and long-press multi-select still
+working beside it, and the top bar fading correctly after a seek; the diagnose
+screen reporting 20/20 extensions and 37 sources; 0.144 opening Asura Scans with R8 off;
 0.145 crashing on Asura Scans under R8 with a logcat tombstone captured; 0.146
 under R8 — launch, 20/20 extensions, browse, series, reader, source settings,
 Asura Scans from Browse, Library and Downloads, global search pinned-only with
@@ -277,7 +290,7 @@ Asura Scans pinned; 0.147's double-tap in and out, pinch still instant, and a
 pinch taking over mid-animation; 0.148 in both modes, both directions, with
 read-marking checked explicitly.
 
-**Not verified: all of 0.149.** §7.
+**Nothing in this range is unverified.**
 
 **Housekeeping.** The PAT used this session was pasted into a chat and should be
 rotated. `debug.keystore` and `release.keystore` are still committed at the repo
