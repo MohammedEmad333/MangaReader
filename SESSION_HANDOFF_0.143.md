@@ -178,12 +178,29 @@ Two things follow, and the second is worth doing whatever happens with R8:
    from dying on any Cloudflare source. Not shipped — it is untested and the
    session ended.
 
-**Whether R8 causes the renderer death or merely exposes it is unknown.** R8 does
-not touch the renderer, which runs Chrome in another process, so "R8 causes it"
-needs a mechanism nobody has. It is equally possible this path is fragile
-unminified too and has simply never been exercised this way. **Try Asura Scans
-on an unminified build before assuming R8 is involved at all** — that is the
-cheapest next measurement and it was not run.
+**R8 IS implicated. That measurement was run and it came back clean.** Asura
+Scans opens fine on 0.144 with minification off. So the fault needs R8 *and*
+produces no Java exception, which is a narrow and genuinely odd combination —
+R8 does not touch the renderer process, so the simple version of the WebView
+hypothesis does not survive on its own.
+
+**What can kill a process under R8 with nothing for a handler to catch:**
+
+- **A native abort.** ART calls `abort()` on JNI misuse and on some verifier
+  states. No Java exception exists at any point.
+- **An unhandled `onRenderProcessGone`**, if R8 has broken something on the
+  WebView path such that the renderer dies or the client never responds.
+  Overrides of framework methods should survive R8, but this is the path the
+  fault is on and it has never been exercised under R8 before tonight.
+- **An ANR kill**, if the Cloudflare solve never completes under R8 and
+  something waits on the host lock. Fits the mechanism, fits less well with
+  how immediate the crash appears.
+
+**All three are visible in logcat and nowhere else.** App-side instrumentation
+is finished: a proven handler saw nothing, and that is the strongest evidence
+available that no Java exception occurs. `adb logcat -b crash,main` while
+reproducing is the next step, and Termux can do it on-device without a PC —
+Android 11+ wireless debugging, pair, `adb connect localhost:<port>`.
 
 Prior form worth reading first: Asura Scans is the source behind
 `SESSION_HANDOFF_0.87.md` in its entirety — the `JsonObject?` vendored as
@@ -301,9 +318,8 @@ that Asura Scans is the sole trigger of the global-search crash.
 **Verified on 0.143 (R8 ON):** the crash log captures a main-thread crash with a
 full cause chain, in its normal format, with R8 confirmed in the trace.
 
-**Not verified:** whether Asura Scans also dies on an UNMINIFIED build when the
-Cloudflare/WebView path is actually reached. That is the first measurement of
-the next session and it decides whether this is an R8 bug at all.
+**Verified after the handoff was first written:** Asura Scans opens normally on
+0.144 with R8 off. The fault requires minification.
 
 Head is now `0.144`, R8 **off**, published and working.
 
