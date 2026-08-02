@@ -60,6 +60,24 @@ adding a keep, and nothing checks this.
   extensions were uninstalled after 0.122 or 26/95 was wrong when written is
   unresolved and no longer worth resolving. Trello card 72, closed.
 
+**The whole tree is verified and the board's Needs verifying column is empty.**
+0.149 passed its nine-point test pass on device on 2026-08-02, and every release
+from 0.144 has been exercised. Head is 0.149; everything committed after it is
+documentation and one comment block, with no version bump, so the published APK
+matches what was verified.
+
+**A source that looks broken may not be, and AHottie is the worked example.**
+Its "no covers, no tabs, chapters load forever" report resolved into three
+different answers: one non-bug (the chip row is correctly suppressed for a source
+with neither a Latest listing nor filters), and two symptoms that were one cause
+outside this app entirely — `ahottie.top` serves its images from **imgbox**, and
+imgbox is unreachable from that device. `SESSION_HANDOFF_0.149.md` §9–§9e is the
+full arc, including three mechanisms that explained the symptom and were not the
+diagnosis. **Manhwa18 and Coomer are open cards of the same shape** — a
+connection probe and no conclusion — and the AHottie method applies directly:
+name the failing host, then check whether it is reachable at all before
+suspecting the extension or the app.
+
 **The reader had a polish pass in 0.147–0.149.** The double-tap zoom animates,
 chapter turns wait for you instead of firing mid-fling, and the chapter list has
 a scroll handle. `SESSION_HANDOFF_0.149.md`.

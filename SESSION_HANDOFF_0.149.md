@@ -1,4 +1,4 @@
-# Session handoff — 0.144 to 0.149, minification closed and the reader polished
+# Session handoff — 0.144 to 0.149, minification closed, the reader polished, and a bug that was never ours
 
 Written 2026-08-02, evening. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
@@ -6,9 +6,15 @@ Written 2026-08-02, evening. Nothing here supersedes anything.
 reference. `SESSION_HANDOFF_0.122.md` and `SESSION_HANDOFF_0.134.md` were
 deleted this session and folded into `PROJECT_HANDOFF.md` §9.
 
-Six releases. **The minification card closed** on a cause nothing in the build
-file could have predicted, and the three releases after it are reader polish
-taken off the board.
+Six releases and no code after them. **The minification card closed** on a cause
+nothing in the build file could have predicted, three releases of reader polish
+came off the board, and the evening went to an investigation that ended outside
+this codebase entirely.
+
+**HOW TO READ THIS FILE.** §1–§8 are the releases and are stable. **§9 through
+§9e are a chronological investigation log, and the early parts are wrong on
+purpose** — §9 is superseded by §9a, and §9a's remaining open questions are
+closed by §9c–§9e. **§9e is the conclusion.** Do not act on §9 or §9a alone.
 
 ---
 
@@ -27,30 +33,40 @@ names `com.squareup.zstd.ZstdCompressor` **from native code**. R8 reads dex and
 cannot see that, so it deleted the class; ART treats a pending exception inside
 a JNI call as fatal and calls `abort()`. Signal 6, no Java exception anywhere.
 
-**3. A verified instrument's silence is evidence. That is what broke this
-open.** `CrashLog` was proven to fire under R8 at 0.143. When it then came back
-empty for the Asura Scans crash, the emptiness stopped being a gap and became a
-finding — it ruled out the entire missing-keep category in one step, because
-those surface as ordinary `Throwable`s and get caught. That is what sent this to
-logcat. **Six releases of inference were built on this instrument before anyone
-checked that it fires**; the whole of its value arrived in the release after it
-was verified.
+**3. THE WHOLE TREE IS VERIFIED, for the first time since 0.143.** All nine
+checks in §7 passed on device at 21:50, and nothing in 0.144–0.149 is
+unexercised. **Head is 0.149 and nothing since it has bumped a version** —
+everything after `b3d681b` is documentation and one comment block.
 
-**4. The `onRenderProcessGone` hypothesis was wrong here and is still a real
-bug.** §3. It explained the evidence well enough to survive two releases and it
-was not the cause. It is now Trello card 73 on its own merits, and **the line on
-that card blaming the Asura Scans crash should be struck** — leaving it there
-sends the next session after a solved fault.
+**4. The extension count is 20 / 37 and 26 / 95 is retired.** 20 packages
+declaring `tachiyomi.extension`, **Loaded OK 20/20**, 37 sources. The 20/20 is
+what settles it: nothing is failing to load, so the gap was never a regression
+and never had anything to do with R8. A figure quoted as known-good and never
+re-measured had become an acceptance criterion nobody could meet; re-measuring
+cost one tap.
 
-**5. 0.149 is verified and the tree is fully verified.** All nine checks in §7
-passed on device, 2026-08-02 21:50. Nothing in 0.144–0.149 is now unexercised.
+**5. AHottie IS NOT AN APP BUG and the card is Blocked/Upstream.** §9e.
+`ahottie.top` serves its images from **imgbox**, and imgbox is unreachable from
+that device — Chrome fails on it identically, `ERR_CONNECTION_REFUSED`, while
+the host answers TCP and completes TLS in single-digit milliseconds from an
+unrelated network on the same three IPs. Every HTML path worked throughout;
+only images failed. Two hosts, one blocked.
 
-**6. The extension count is 20 / 37 and 26 / 95 is retired.** Read off the
-diagnose screen in the same pass: 20 packages declaring `tachiyomi.extension`,
-**Loaded OK 20/20**, 37 sources, 37 held in cache. The 20/20 is what settles it —
-nothing is failing to load, so the gap was never a regression and never had
-anything to do with R8. Whether six extensions were uninstalled after 0.122 or
-26/95 was wrong when written is unresolved and is not worth another session.
+**6. Two real app-side cards came out of a bug that was not in the app.** The
+download queue's **"Starting"** label is two states wearing one name, and a
+chapter targeting one dead host burns **36 × 30s** rediscovering it with nothing
+remembering the previous thirty-five failures. Both are filed.
+
+**7. THE METHOD LESSON, and it is the most reusable thing here.** Three separate
+times this session a mechanism that explained the symptom was mistaken for a
+diagnosis: the renderer death (§3), the unbounded `getPageList` loop (§9, killed
+by §9a), and the lazy-attribute cover parse (also §9a). The check that separates
+them is always cheap and always the same shape — **find the branch whose
+presence or absence distinguishes the candidates, and look at it.** Its
+complement, learned the expensive way in §9c: **when that instrument only
+reports on failure, read the timeout that governs it before deciding how long to
+watch.** `connectTimeout` 30s and `callTimeout` 2 min were in `NetworkHelper`
+the entire time.
 
 ---
 
@@ -209,26 +225,45 @@ Both declarations are annotated now and the check greps for it.
 
 ## 6. The board
 
-Closed this session: **Minification**, **Asura Scans crashed under R8**, **Does
-the crash log work under R8**, **Animate the double-tap zoom** (the card is now
-the fling only), **Scrolling to next/previous chapter was too instant**.
+**Closed this session:** Minification; Asura Scans crashed under R8; Does the
+crash log work under R8; Animate the double-tap zoom (that card is now the fling
+only); Scrolling to next/previous chapter was too instant; the 20/37 vs 26/95
+count; Verify 0.149.
 
-Opened this session: **`onRenderProcessGone`** (card 73), **Manhwa18 no
-chapters** (card 74, a connection probe with no diagnosis yet).
+**Opened this session:** `onRenderProcessGone` (73); Manhwa18 no chapters (74, a
+connection probe with no diagnosis yet); Verify 0.149 (75, now closed); a ceiling
+on `getPageList` (77); the download queue's "Starting" ambiguity (78); a per-host
+circuit breaker (79).
 
-Still open and untouched:
+**Reclassified:** AHottie (50) is **Blocked/Upstream**, not an app bug. §9e.
 
-- **Fling the zoom pan.** `Modifier.transformable` does not expose gesture
-  velocity, so it needs a custom detector — and 0.101 and 0.102 are two custom
-  detectors in this reader that never fired once between them. **Read
-  `SESSION_HANDOFF_0.106.md` §5 before starting.** The clamp and the 3x maximum
-  are already SY's exact numbers.
-- **Scroll handles on every other list** — the chapter list has one now, and
-  `ListScrollHandle` makes the rest three lines each.
+**Needs verifying is empty.**
+
+### Open, roughly by value
+
+- **`onRenderProcessGone`** — small, bounded, and it prevents a failure that is
+  invisible from inside the app. The nearest thing to shovel-ready.
+- **The "Starting" ambiguity** — the download queue is the screen that exists to
+  say why a download is not progressing, and it cannot separate "no page list"
+  from "page list, nothing landing". Store `ready` and `total`, not a percent.
+- **A per-host circuit breaker** — turns eighteen silent minutes into one
+  message. Pairs naturally with the card above.
+- **Scroll handles on the remaining five lists** — `ListScrollHandle` makes each
+  one three lines now.
+- **Fling the zoom pan** — needs a custom gesture detector, and 0.101 and 0.102
+  are two custom detectors in this reader that never fired once between them.
+  **Read `SESSION_HANDOFF_0.106.md` §5 before starting.** The clamp and the 3x
+  maximum are already SY's exact numbers.
+- **A ceiling on `getPageList`** — latent, **no known instance**. Do not close it
+  by fixing a source, and do not close a source by adding a cap.
 - **Scroll-to-refresh elsewhere**, **a feed tab in Browse**, **SY theme
   settings**, **tags on the series chevron**, **videos**.
-- **AHottie**, **Coomer**, **all-filters-enabled**; BeeHentai and Elite Babes
-  upstream.
+- **Manhwa18**, **Coomer**, **all-filters-enabled** — undiagnosed. **Manhwa18
+  and Coomer both arrived as connection probes, and AHottie is the worked
+  example of how to finish one**: name the failing host, then check whether it is
+  reachable at all before assuming the extension or the app is at fault.
+- **AHottie**, **BeeHentai**, **Elite Babes** — Blocked/Upstream, nothing to do
+  here.
 
 ---
 
@@ -291,6 +326,12 @@ pinch taking over mid-animation; 0.148 in both modes, both directions, with
 read-marking checked explicitly.
 
 **Nothing in this range is unverified.**
+
+**Since 0.149 (`b3d681b`), every commit is documentation plus one comment block
+in `app/build.gradle.kts`. No version bump, so the APK on the device is
+behaviourally identical to the one verified at 21:50.** The next real release
+needs the usual three: the changed files, the `versionCode`/`versionName` bump,
+and a matching `ReleaseNote` in `Changelog.notes`.
 
 **Housekeeping.** The PAT used this session was pasted into a chat and should be
 rotated. `debug.keystore` and `release.keystore` are still committed at the repo
