@@ -433,3 +433,64 @@ browse open until the requests time out, and the overlay prints the URL tail and
 the reason. Or download the `GALLERY` chapter and read the queue — failed
 downloads carry the page exception up instead of swallowing it, which turns a
 silent hang into a named exception.
+
+---
+
+## 9b. The download queue said nothing, and why that is its own bug
+
+The suggested reading in §9a — download the chapter and read the named failure —
+was run. **The queue sat on "Starting" for eleven minutes and named nothing.**
+
+### "Starting" is two states wearing one label
+
+`DownloadQueueScreen.kt:410` and `:426` both branch on
+`percent == null || percent == 0`, so the same label and the same indeterminate
+bar cover:
+
+1. **The page list has not come back.** `percent` is null.
+2. **The page list came back and zero pages have landed.** `percent` is 0,
+   because `DownloadService.fetchPages` stores `ready * 100 / total`.
+
+The comment at `:406` describes only the first — "no percent yet means the page
+list request hasn't come back". That is true of null and false of 0.
+
+**The download queue is the screen that exists to say why a download is not
+progressing, and it cannot distinguish the two states with different causes.**
+The only reason we know AHottie is in state 2 is that the *reader*, a different
+screen, separately reported "Page 1 of 36". Its own card is on the board.
+
+**Store `ready` and `total`, not a percent.** "0 of 36" says what neither
+"Starting" nor "0%" can, and a ratio cannot express "the denominator is not
+known yet" while two integers can. `total` is already at the callback and is
+thrown away. Fourth appearance of the three-state trap — present, said-zero,
+never-recorded.
+
+### Why nothing has failed yet, and the number that predicts when it will
+
+`NetworkHelper` sets `connectTimeout` 30s, `readTimeout` 30s and
+**`callTimeout` 2 minutes**. So no single call can hang forever — every image
+request must end, one way or the other, within two minutes.
+
+Which means the eleven minutes of silence is not one stuck request. It is
+**36 page requests each burning up to their own timeout**, with `ready` pinned
+at 0 the whole way, so the queue shows "Starting" throughout and
+`ChapterDownloadException` is only raised at the *end*, once the adapter knows
+which pages are missing. There is no per-page failure report on the way.
+
+**The prediction, which is falsifiable: the download will fail on its own, with
+a named exception, once every page has had its turn at the timeout.** If it
+never does, `callTimeout` is not reaching this path and that is a much more
+interesting finding.
+
+### The cheap reading, and why the earlier attempt missed it
+
+**Open AHottie's browse grid and do not navigate away for a full two minutes.**
+`callTimeout` guarantees each cover request ends by then, `onError` fires, and
+`CoverImage`'s overlay prints the URL tail and the reason — which is the one
+fact that separates the remaining candidates, and in particular the **image
+host**, which nobody has seen yet.
+
+The 22:22 attempt could not have worked: browse was open for well under a minute
+before moving to the series screen, and the timeout had not expired. **An
+instrument that only reports on failure tells you nothing until the failure is
+allowed to happen.**
