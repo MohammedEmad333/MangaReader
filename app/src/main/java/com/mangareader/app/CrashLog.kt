@@ -63,8 +63,30 @@ object CrashLog {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching { write(context, thread, error) }
+                .onFailure { runCatching { writeBarebones(context, error, it) } }
             previous?.uncaughtException(thread, error)
         }
+    }
+
+    /**
+     * What gets written when [write] itself fails.
+     *
+     * The formatted path touches SimpleDateFormat, BuildConfig, StringWriter
+     * and two directories, and under R8 any of those is a class that might not
+     * be there. A failure inside the handler was being swallowed by runCatching
+     * and the process then died silently — which is indistinguishable from no
+     * handler at all, and is what two blank logs looked like.
+     *
+     * This uses nothing but File and toString. If even this throws, the outer
+     * runCatching takes it and Android still gets to show its dialog.
+     */
+    private fun writeBarebones(context: Context, error: Throwable, writeFailure: Throwable) {
+        val text = "=== fallback ===\n" +
+            "original: " + error.toString() + "\n" +
+            error.stackTrace.take(12).joinToString("\n") { "  at $it" } + "\n" +
+            "log writer itself failed: " + writeFailure.toString() + "\n"
+        File(context.filesDir, FILE).writeText(text)
+        context.getExternalFilesDir(null)?.let { File(it, FILE).writeText(text) }
     }
 
     private fun write(context: Context, thread: Thread, error: Throwable) {
