@@ -157,6 +157,11 @@ touched by opening a source.
 *which* symbols an extension touches. **The source tells you why, and it is on an
 allowed host.**
 
+**The index changed shape — see `SESSION_HANDOFF_0.149.md` §9.** Entries are now
+at `extensionList.extensions`, not the top level, and `resources.apkUrl` rather
+than a flat `apkUrl`. The `grep -o` below still works; parsing the JSON as a
+list does not.
+
 ```bash
 curl -sL https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json -o idx.json
 # entry -> packageName gives the src path; language dir is the first segment

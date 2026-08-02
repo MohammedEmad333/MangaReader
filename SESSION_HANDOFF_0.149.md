@@ -295,3 +295,67 @@ read-marking checked explicitly.
 **Housekeeping.** The PAT used this session was pasted into a chat and should be
 rotated. `debug.keystore` and `release.keystore` are still committed at the repo
 root, and the release keystore is this app's signing identity.
+
+---
+
+## 9. AHottie, diagnosed from source (no release)
+
+No code shipped for this. It is here because the answer is three different
+answers and one of them is "not a bug", which is worth more than a fix.
+
+`extensions-source/src/all/ahottie`, 150 lines, v1.6.4, lib 1.6.
+`@Source abstract class AHottie : KeiSource()` — the concrete class is
+generated, which is the `.ExtensionGenerated` the diagnose screen shows.
+
+**"No tabs" is this app working as designed, and it is not the 0.86 shape.**
+AHottie declares `supportsLatest = false` and never overrides
+`getFilterList(data)`; `KeiSource`'s default returns an empty `FilterList`, so
+`supportsFilters` (`filterList.isNotEmpty()`) is false too.
+`SourceBrowseScreens.kt:246` gates the whole chip row on
+`supportsLatest || supportsFilters`, and its comment says why: a source with
+neither would get a single chip that does nothing. **0.86's Roku Hentai fix was
+the case where the row renders** — Roku *had* filters, so it drew a Filter chip
+and no Popular, making a filter a one-way trip. AHottie has neither, so
+suppressing the row is correct. Two sources, same symptom sentence, opposite
+verdicts.
+
+**"Chapters load forever" is the extension, and it is unbounded.**
+`getPageList` is a `while (true)` following `a[rel=next]`, fetching a full HTML
+document per iteration, with no page cap, no visited-set and no cycle guard.
+`popularMangaParse` uses that *same* selector for listing pagination, so if a
+gallery's `rel=next` points at the next gallery rather than the next page of
+images, it walks the site. `getPageList` never returns, so
+`loadPagesProgressively` never starts and the reader sits on spinners.
+
+**This app has no ceiling on `getPageList` at all** — not a request count, a
+wall clock, or a page count. That is its own card, deliberately: a ceiling
+changes the fetch path for every source, and §6 of `SESSION_HANDOFF_0.83.md` is
+0.79, a change with exactly that blast radius that rode along with a one-source
+fix and was reverted the next release.
+
+**"No covers" needs one on-device reading, and the app side is already ruled
+out.** `mangaDetailsParse` sets `title` and `genre` and never `thumbnail_url`,
+and `fetchMangaUpdate` returns it — but **nothing here blanks a good cover**:
+`healCover` returns early on blank (`Library.kt:131`), `setCovers` skips blank
+(`Library.kt:163`), and the series-open paths all read
+`fetched.cover ?: entry.cover`. So the null is absorbed at every write. What is
+left is either the listing parse (`.relative img` / `absUrl("src")` missing a
+lazy-loaded attribute) or the image request itself, and **`CoverImage`'s debug
+overlay separates those in one look** — URL absent versus URL present and
+failing. That check is one series open and it has not been done.
+
+### The Keiyoushi index changed shape, and the documented command is half-stale
+
+`SESSION_HANDOFF_0.83.md` §5 and `SESSION_HANDOFF_0.87.md` §5 both fetch
+`index.json` and treat it as a flat list. **It is now an object**: the entries
+live at `extensionList.extensions`, alongside `name`, `badgeLabel`,
+`signingKey` and `contact`. `len(json.load(...))` returns **5**, not 1368, and
+reads as an empty repo rather than a changed shape.
+
+The `grep -o '"apkUrl": *"[^"]*"'` line in 0.83 §5 still works, because it never
+parsed the structure. The `python3 -c 'json.load'` idiom does not.
+
+Entry shape now: `resources.apkUrl` / `iconUrl` / `jarUrl` (was a flat
+`apkUrl`), plus `extensionLib`, `contentWarning`, and a `sources[]` array of
+`{id, name, language, homeUrl}`. **1368 extensions as of 2026-08-02**, against
+1365 in 0.83 and 1367 in 0.134.
