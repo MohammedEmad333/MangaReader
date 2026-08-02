@@ -13,12 +13,10 @@ forward than it has ever been and is still not done.
 
 ## 0. Read this before touching anything
 
-**1. HEAD IS R8-ON AND UNVERIFIED. THE PUBLISHED APK IS EXPECTED TO CRASH.**
-0.143 has `isMinifyEnabled = true` and nobody has launched it. 0.141 — the same
-flag with almost the same rules — crashed when opening Asura Scans from Browse,
-from the Library and from Downloads. That fault is **not fixed**. If a working
-app is wanted before anything else, flip one line in `app/build.gradle.kts` and
-push; 0.142 is the last build verified to run.
+**1. R8 is OFF at 0.144 and the published APK works.** It was on at 0.143 and
+Asura Scans still killed the process, so it was turned off rather than left
+broken. Flipping it back is one line, and everything the four attempts
+established is still in the tree.
 
 **2. The 0.121 mystery is solved and it was R8 full mode.** §2.
 `android.enableR8.fullMode` has defaulted to true since AGP 8.0 and this project
@@ -152,12 +150,40 @@ fan-out looked implicated because it is the only screen that touches all 37
 sources at once, and every earlier single-source test happened to use something
 else.
 
-**No trace exists yet, and the reason is now understood.** The crash was last
-seen on 0.141, which had the handler in `attachBaseContext` but neither
-`writeBarebones` nor the `-keep` for `CrashLog` — so a failure inside `write()`
-under R8 would have been swallowed, which is exactly what 0.143 was built to
-close. **0.143 has the instrument and has not been pointed at this bug.** Open
-Asura Scans on it and the log should answer in one line.
+**Retried on 0.143 with the instrument proven. The log is still empty, and that
+is now a finding rather than a gap.**
+
+`CrashLog` captures a main-thread crash under R8 (§5). So the silence means the
+process is dying **outside the Java exception path** — nothing is reaching the
+default uncaught handler. That rules out the whole class of failure this session
+has been chasing: a missing keep surfaces as `NoClassDefFoundError` or
+`NoSuchMethodError`, and those are ordinary Throwables that get caught.
+
+**The leading hypothesis is the WebView renderer, and it explains the source.**
+`CloudflareInterceptor` answers the JS challenge in a headless `WebView`, and
+**nothing in this codebase overrides `onRenderProcessGone`.** When a renderer
+process dies unhandled, Android kills the host app, and there is no Java
+exception in our process to catch. Asura Scans is Cloudflare-protected, so it is
+the source that reaches that path — and 0.137's test pass never did, because the
+instruction at the time was to pick a source known to work.
+
+Two things follow, and the second is worth doing whatever happens with R8:
+
+1. **This needs `adb logcat`.** A native abort or a renderer kill is visible
+   there and nowhere else. App-side instrumentation has been taken as far as it
+   goes; that is what an empty log from a proven handler means.
+2. **`onRenderProcessGone` should be overridden regardless.** Returning true
+   from it stops a renderer death taking the app with it. That is correct
+   independent of minification, and this app is currently one renderer crash away
+   from dying on any Cloudflare source. Not shipped — it is untested and the
+   session ended.
+
+**Whether R8 causes the renderer death or merely exposes it is unknown.** R8 does
+not touch the renderer, which runs Chrome in another process, so "R8 causes it"
+needs a mechanism nobody has. It is equally possible this path is fragile
+unminified too and has simply never been exercised this way. **Try Asura Scans
+on an unminified build before assuming R8 is involved at all** — that is the
+cheapest next measurement and it was not run.
 
 Prior form worth reading first: Asura Scans is the source behind
 `SESSION_HANDOFF_0.87.md` in its entirety — the `JsonObject?` vendored as
@@ -256,11 +282,10 @@ Still open:
 
 ## 9. State of the tree
 
-Head is `94b1885` (0.143). Build environment unchanged from 0.134.
+Head is 0.144. Build environment unchanged from 0.134.
 
-**`isMinifyEnabled = true` on debug. Unverified. Expected to crash on Asura
-Scans.** Reverting is one line, and 0.142 (`d594309`) is the last build known to
-run.
+**`isMinifyEnabled = false` on debug.** The four attempts are all recorded in the
+comment above that flag.
 
 New file: `CrashLog.kt`. `App` gained `attachBaseContext`. `AdvancedSettings`
 gained a *Force a test crash* row and a *Crash log* row with a Clear action.
@@ -276,9 +301,11 @@ that Asura Scans is the sole trigger of the global-search crash.
 **Verified on 0.143 (R8 ON):** the crash log captures a main-thread crash with a
 full cause chain, in its normal format, with R8 confirmed in the trace.
 
-**Not verified, and it is the whole of the next session:** Asura Scans under
-0.143 — which should now yield a trace rather than a silent death — and
-everything else in the app under R8 beyond what 0.137 covered.
+**Not verified:** whether Asura Scans also dies on an UNMINIFIED build when the
+Cloudflare/WebView path is actually reached. That is the first measurement of
+the next session and it decides whether this is an R8 bug at all.
+
+Head is now `0.144`, R8 **off**, published and working.
 
 **The token used this session was the one the user asked to keep, and all others
 were revoked at the start of it.** It is a fine-grained PAT with contents write.
