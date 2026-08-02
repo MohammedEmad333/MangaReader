@@ -21,8 +21,11 @@
 -dontobfuscate
 
 # Keep enough attributes for reflection and kotlinx.serialization to work.
--keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod,
-                RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+# On one line on purpose. The previous version wrapped after a trailing comma,
+# which was one of the two candidate explanations for 0.121 and is now ruled
+# out rather than left as a variable. It was never the likely one — Signature
+# sits on the first line either way — but it cost nothing to delete.
+-keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod, RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
 
 # ---------------------------------------------------------------------------
 # Reflectively instantiated app classes
@@ -45,6 +48,27 @@
 # Injekt. Extension constructors do Injekt.get<NetworkHelper>() and
 # injectLazy(), resolved by type at runtime.
 -keep class uy.kohesive.injekt.** { *; }
+
+# And this is the pair that 0.121 needed and did not have.
+#
+# The keep above covers uy.kohesive.injekt.**, which includes FullTypeReference
+# itself — but NOT its anonymous subclasses. Those are generated at each
+# inlined addSingleton<T> call site and live in the CALLING package:
+#
+#   com.mangareader.app.AppModule$registerInjectables$$inlined$addSingleton$1
+#
+# So they were never kept, and under R8 full mode an unkept class does not
+# retain its generic signature no matter what -keepattributes asks for. The
+# signature is what FullTypeReference reads back via javaClass.genericSuperclass.
+#
+# allowobfuscation and allowshrinking are load-bearing: without them this pins
+# every such class as a shrinking root, which is the opposite of the point of
+# turning R8 on. The rule asks R8 to preserve the signature IF it keeps the
+# class, not to keep the class.
+#
+# This is the same rule Gson ships for TypeToken, for exactly the same reason.
+-keep,allowobfuscation,allowshrinking class uy.kohesive.injekt.api.FullTypeReference
+-keep,allowobfuscation,allowshrinking class * extends uy.kohesive.injekt.api.FullTypeReference
 
 # RxJava 1.x. The lib 1.4 extension API is Rx-based; most of it is reached only
 # from extension bytecode.
@@ -130,24 +154,31 @@
 # Injekt throws — which is exactly what happened.
 #
 # So R8 dropped the generic signature of those anonymous classes even though
-# this file asks for -keepattributes Signature. WHY IS NOT ESTABLISHED. Two
-# candidates, neither confirmed:
+# this file asks for -keepattributes Signature. 0.135 established why.
 #
-#   1. The -keepattributes list above is split across two lines after a
-#      trailing comma. If R8's parser does not treat that as a continuation,
-#      only the first line's attributes were requested — Signature is on the
-#      first line, so this would not explain it on its own, but the list may
-#      have been mis-parsed in some other way.
-#   2. R8 prunes a generic signature whose type arguments it considers
-#      unreachable, and these anonymous classes are only ever instantiated
-#      through an inlined reified call, so nothing references the type
-#      argument in a way R8 recognises. In that case the fix is an explicit
-#      keep on the subclasses rather than a global attribute request:
+# THE CAUSE: R8 FULL MODE. AGP 8.0 changed the default of
+# android.enableR8.fullMode to true, this project has never set it either way,
+# and it is on AGP 8.5.2 — so full mode has been in force for every R8 run this
+# app has ever done. In full mode -keepattributes Signature is not a global
+# promise: a class that is not itself kept does not retain its signature,
+# whatever the attribute list says. Candidate 2 was right about the shape and
+# understated the reason — it is not that R8 judged the type argument
+# unreachable, it is that the class was never kept in the first place.
 #
-#          -keep class * extends uy.kohesive.injekt.api.FullTypeReference
+# The keep above stops at uy.kohesive.injekt.**, and the anonymous subclasses
+# are in com.mangareader.app. That is the entire gap, and the two
+# -keep,allowobfuscation,allowshrinking rules beside that keep now close it.
 #
-# BEFORE TRYING EITHER: this failure is invisible to CI. The build was green.
-# Anything that touches minification has to be launched on a device before it
-# is believed, and the cheapest way to see the mapping R8 actually produced is
-# app/build/outputs/mapping/debug/, which the workflow does not currently
-# upload as an artifact. Uploading it is probably the first move.
+# Candidate 1 — the wrapped -keepattributes line — is gone as a variable: the
+# list is on one line now. It was never likely.
+#
+# WHAT IS STILL UNKNOWN, and it is not small: whether these two rules are
+# SUFFICIENT. Nothing in this app has been past Application.onCreate under R8,
+# so every keep aimed at the extension boundary below is still entirely
+# untested — 0.121 died before it classloaded a single extension.
+#
+# AND THIS FAILURE IS INVISIBLE TO CI. 0.121 was green, published a 9.59 MB
+# artifact, and would not start. Anything touching minification is launched on
+# a device before it is believed. app/build/outputs/mapping/ is uploaded as the
+# "mapping-debug" artifact as of 0.135 (build.yml), including on failed runs,
+# so missing_rules.txt / seeds.txt / usage.txt are readable without a device.

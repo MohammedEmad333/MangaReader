@@ -53,6 +53,26 @@ jobs:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      # R8's own account of what it did, from app/build/outputs/mapping/:
+      # missing_rules.txt (rules R8 wants and cannot infer), seeds.txt (what
+      # was kept) and usage.txt (what was removed). Together they answer "what
+      # did R8 actually do" without a device or a log fetch.
+      #
+      # always(), because the run that most needs this is a FAILED one. a9bbf5a
+      # died at :app:minifyDebugWithR8 and missing_rules.txt held the exact
+      # -dontwarn to add; a step that only runs on success cannot help there.
+      #
+      # if-no-files-found: ignore, because the directory does not exist at all
+      # while isMinifyEnabled is false. A warning on every ordinary build is
+      # how people learn to ignore warnings.
+      - name: Upload R8 mapping
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapping-debug
+          path: app/build/outputs/mapping/
+          if-no-files-found: ignore
+
       - name: Publish to "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
