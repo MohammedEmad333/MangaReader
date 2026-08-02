@@ -5,6 +5,9 @@ import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -54,6 +57,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -77,6 +81,18 @@ private const val MAX_STRIP_ZOOM = 3f
  * no room to pinch further without first pinching out.
  */
 private const val DOUBLE_TAP_ZOOM = 2f
+
+/**
+ * How long a double-tap zoom takes to land. SY's `ANIMATOR_DURATION_TIME`.
+ *
+ * **This applies to the double tap and to nothing else.** A pinch must stay
+ * instant: animating it would put every frame 200ms behind the fingers, which
+ * reads as lag rather than as polish. That is why this drives an explicit
+ * animation from the double-tap branch instead of the scale being an
+ * `animateFloatAsState` — a blanket animation cannot tell the two sources of a
+ * scale change apart, and one of them must not be smoothed.
+ */
+private const val ZOOM_ANIM_MS = 200
 
 /**
  * The reader.
@@ -399,6 +415,15 @@ internal fun ReaderScreen(
         var stripScale by remember(chapterIndex) { mutableFloatStateOf(1f) }
         var stripPanX by remember(chapterIndex) { mutableFloatStateOf(0f) }
         var stripPanY by remember(chapterIndex) { mutableFloatStateOf(0f) }
+        // The in-flight double-tap animation, held so a pinch can cancel it.
+        //
+        // Without this, starting a pinch during the 200ms would leave two
+        // writers on one value: the animation walking towards its target and
+        // the gesture multiplying whatever it finds there. The symptom is a
+        // pinch that drifts or snaps back, and it reads as a broken gesture
+        // rather than as two things driving one number — §5 of
+        // SESSION_HANDOFF_0.134.md, in a new place.
+        var zoomAnim by remember(chapterIndex) { mutableStateOf<Job?>(null) }
         val viewportWidthPx = with(LocalDensity.current) {
             LocalConfiguration.current.screenWidthDp.dp.toPx()
         }
@@ -415,6 +440,9 @@ internal fun ReaderScreen(
             v.coerceIn(-viewportHeightPx * (stripScale - 1f) / 2f, viewportHeightPx * (stripScale - 1f) / 2f)
 
         val stripTransform = rememberTransformableState { zoomChange, panChange, _ ->
+            // A live gesture always wins. Cancelling here rather than checking a
+            // flag means the animation never has to know a pinch exists.
+            zoomAnim?.cancel()
             stripScale = (stripScale * zoomChange).coerceIn(1f, MAX_STRIP_ZOOM)
             stripPanX = clampX(stripPanX + panChange.x)
             // **The vertical component is discarded mid-chapter, not the
@@ -466,22 +494,53 @@ internal fun ReaderScreen(
                 detectTapGestures(
                     onTap = { showControls = !showControls },
                     onDoubleTap = { offset ->
+                        // Both directions animate over ONE 0..1 driver rather
+                        // than three independent animations. SY uses an
+                        // AnimatorSet for the same reason: scale and the two
+                        // translations have to stay in step, and three separate
+                        // springs would let the content slide while it grows.
+                        val toScale: Float
+                        val toX: Float
+                        val toY: Float
                         if (stripScale > 1f) {
                             // Already zoomed: back to fit, centred.
-                            stripScale = 1f
-                            stripPanX = 0f
-                            stripPanY = 0f
+                            toScale = 1f
+                            toX = 0f
+                            toY = 0f
                         } else {
                             // SY's arithmetic, from `onDoubleTapConfirmed`:
                             // toX = (halfWidth - tapX) * (toScale - 1). It puts
                             // the point you tapped in the middle of the screen
                             // rather than zooming the centre and leaving you to
                             // pan to what you were looking at.
-                            stripScale = DOUBLE_TAP_ZOOM
-                            stripPanX =
-                                (viewportWidthPx / 2f - offset.x) * (DOUBLE_TAP_ZOOM - 1f)
-                            stripPanY =
-                                (viewportHeightPx / 2f - offset.y) * (DOUBLE_TAP_ZOOM - 1f)
+                            toScale = DOUBLE_TAP_ZOOM
+                            toX = (viewportWidthPx / 2f - offset.x) * (DOUBLE_TAP_ZOOM - 1f)
+                            toY = (viewportHeightPx / 2f - offset.y) * (DOUBLE_TAP_ZOOM - 1f)
+                        }
+                        val fromScale = stripScale
+                        val fromX = stripPanX
+                        val fromY = stripPanY
+                        zoomAnim?.cancel()
+                        zoomAnim = scope.launch {
+                            animate(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                // Decelerate, which is SY's interpolator. The
+                                // motion should arrive rather than stop.
+                                animationSpec = tween(ZOOM_ANIM_MS, easing = LinearOutSlowInEasing),
+                            ) { t, _ ->
+                                stripScale = fromScale + (toScale - fromScale) * t
+                                // Clamped per frame, against the scale THIS
+                                // frame has. The overhang grows with the zoom,
+                                // so a pan interpolated straight to its target
+                                // would outrun the content early in the zoom-in
+                                // and show blank at the edge. Zooming out it
+                                // matters more: the overhang shrinks to nothing,
+                                // and the clamp is what walks the pan back to
+                                // centre instead of leaving a gap.
+                                stripPanX = clampX(fromX + (toX - fromX) * t)
+                                stripPanY = clampY(fromY + (toY - fromY) * t)
+                            }
                         }
                     }
                 )
