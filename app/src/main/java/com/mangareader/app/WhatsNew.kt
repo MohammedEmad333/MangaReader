@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 149,
+            name = "0.149",
+            header = "A scroll handle on the chapter list",
+            body = "The same handle the library got in 0.133, now on a " +
+                "series' chapter list \u2014 which on a long-running series is " +
+                "the furthest you have to scroll anywhere in the app.\n\nIt " +
+                "spans what the filter is showing rather than every chapter " +
+                "that exists, so it still reaches the end when you have " +
+                "filtered to unread.",
+        ),
+        ReleaseNote(
             code = 148,
             name = "0.148",
             header = "Chapter changes wait for you",

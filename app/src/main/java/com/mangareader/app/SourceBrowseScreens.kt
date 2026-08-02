@@ -1141,6 +1141,25 @@ internal fun SeriesScreen(
         }
         } // PullToRefreshBox
 
+        // A series can carry a four-figure chapter list, which is the longest
+        // scroll in the app after the library itself.
+        //
+        // `visible.size + 3` counts the LIST's items, not the chapters: the
+        // cover header, the actions block and the trailing spacer are all lazy
+        // items, and seeking is `scrollToItem`, which counts them too. Using
+        // `visible.size` would leave the handle short of the end by three rows
+        // — worse, it would be short by three rows only sometimes, because two
+        // of those items change height with the series.
+        //
+        // `visible`, not `chapters`: the handle has to span what the filter is
+        // showing, which is the same reasoning as the selection bar's
+        // "select all" below.
+        ListScrollHandle(
+            state = listState,
+            totalItems = visible.size + 3,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+
         if (selecting) {
             ChapterSelectionBar(
                 count = selectedChapters.size,
