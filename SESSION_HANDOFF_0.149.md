@@ -298,7 +298,7 @@ root, and the release keystore is this app's signing identity.
 
 ---
 
-## 9. AHottie, diagnosed from source (no release)
+## 9. AHottie, diagnosed from source and then corrected by three screenshots
 
 No code shipped for this. It is here because the answer is three different
 answers and one of them is "not a bug", which is worth more than a fix.
@@ -318,6 +318,15 @@ the case where the row renders** — Roku *had* filters, so it drew a Filter chi
 and no Popular, making a filter a one-way trip. AHottie has neither, so
 suppressing the row is correct. Two sources, same symptom sentence, opposite
 verdicts.
+
+**CORRECTED at 22:22, and the correction is the point of this section.** Three
+screenshots overturned two of the three conclusions below within an hour of
+their being written. The overturned text is kept because the *method* that
+produced it — read the artifact, don't guess — is right, and because what it got
+wrong is instructive: **a plausible mechanism found in source is not a
+diagnosis, and this is the second time this session that sentence has had to be
+written** (§3 is the first, the renderer hypothesis). The corrections are in
+§9a.
 
 **"Chapters load forever" is the extension, and it is unbounded.**
 `getPageList` is a `while (true)` following `a[rel=next]`, fetching a full HTML
@@ -359,3 +368,68 @@ Entry shape now: `resources.apkUrl` / `iconUrl` / `jarUrl` (was a flat
 `apkUrl`), plus `extensionLib`, `contentWarning`, and a `sources[]` array of
 `{id, name, language, homeUrl}`. **1368 extensions as of 2026-08-02**, against
 1365 in 0.83 and 1367 in 0.134.
+
+---
+
+## 9a. What the device said, and what it overturned
+
+Three screenshots, 2026-08-02 22:22.
+
+**Browse:** grey cells, correct titles, **no title initials and no debug
+overlay**. **Series:** one chapter, `GALLERY`, dated 7 Apr 2026. **Reader:**
+**"Page 1 of 36"**, spinners, network at 0.1 KB/s.
+
+### The discriminator was a branch nobody was looking at
+
+`CoverImage`'s `else` arm draws the **title's first two letters** when
+`cover == null`. The cells are empty, so `cover` is **not** null. The overlay
+only renders once Coil calls `onError`, and it is absent, so **no error has
+fired yet**. Together: **the URL is present and the request is still pending.**
+Not missing, not 403 — hanging.
+
+That single observation is worth more than the 150 lines of extension source,
+and it cost one screenshot.
+
+### So it is one fault, not three
+
+**AHottie's image requests never complete.** Every HTML path works — listing,
+details, genre, chapter list, dates, and `getPageList` itself. Every *image*
+hangs, in the browse grid and in the reader alike.
+
+### What that overturns
+
+- **"`getPageList` loops forever" was wrong.** It returned, at 36 pages. The
+  code really is an unguarded `while (true)`, and that really is a hazard — it
+  is simply not what is happening here. The ceiling card stays open with **no
+  known instance**, and both cards now say so, because the trap is someone
+  capping `getPageList` and believing they fixed AHottie.
+- **"The listing parse misses a lazy-loaded attribute" was wrong.** The URL is
+  there.
+- **"No tabs is working as designed" stands.** That one was checked against
+  `SourceBrowseScreens.kt:246`, not inferred from the extension. **The
+  conclusion that survived is the one that was verified against this app's own
+  code rather than reasoned from the artifact.**
+
+### The general form, and it is now the third instance this session
+
+**A mechanism that explains the symptom is not a diagnosis.** §3 has the
+renderer-death version, which survived two releases. This is the same error made
+from a better source — the artifact was in hand and read correctly, and the
+reading still described a fault that was not occurring. The check that separates
+them is always the same shape and always cheap: **find the branch whose presence
+or absence distinguishes the candidates, and look at it.** Here it was two
+letters of a title.
+
+### Not yet separated
+
+A challenge on the image host that hangs rather than 403s; an image host
+differing from `baseUrl`, so the extension client's cookies and UA do not apply;
+or `CloudflareInterceptor` burning its full 30s headless timeout per image (§7
+item 6 of `PROJECT_HANDOFF.md`). Coil sending no `Referer` (§7 item 7) usually
+403s fast rather than hanging, so it is the weakest of the four.
+
+**Two readings settle it, both on instruments this app already has.** Leave
+browse open until the requests time out, and the overlay prints the URL tail and
+the reason. Or download the `GALLERY` chapter and read the queue — failed
+downloads carry the page exception up instead of swallowing it, which turns a
+silent hang into a named exception.
