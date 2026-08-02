@@ -1,22 +1,31 @@
-# Session handoff — 0.135 to 0.143, R8 named, R8 unfinished
+# Session handoff — 0.135 to 0.146, minification, finished
 
 Written 2026-08-02, evening. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.122.md` and
 `SESSION_HANDOFF_0.134.md` all remain live reference.
 
-Nine releases. **One feature shipped** (`CrashLog`) and it was built as an
-instrument, not a feature. The rest is the minification card, which is further
-forward than it has ever been and is still not done.
+Twelve releases. **One feature shipped** (`CrashLog`) and it was built as an
+instrument, not a feature. The rest is the minification card, which is **done**:
+23,869,296 → 11,731,348 bytes, everything verified on device, and every failure
+along the way is recorded with its mechanism rather than its symptom.
 
 ---
 
 ## 0. Read this before touching anything
 
-**1. R8 is OFF at 0.144 and the published APK works.** It was on at 0.143 and
-Asura Scans still killed the process, so it was turned off rather than left
-broken. Flipping it back is one line, and everything the four attempts
-established is still in the tree.
+**1. MINIFICATION IS ON AND WORKING, as of 0.146.** 23,869,296 → 11,731,348
+bytes, a 12.14 MB saving, with optimisation and obfuscation forced off by AGP
+for a debuggable build — so that is the floor. Verified on device: launch,
+20/20 extensions, browse, series, reader, source settings, Asura Scans by all
+three routes, and global search pinned-only with Asura Scans pinned.
+
+**The last blocker was a JNI FindClass and it took a logcat tombstone to see.**
+§4a. `okhttp-zstd` ships `libzstd-kmp.so`, whose static initialiser calls
+`FindClass("com/squareup/zstd/ZstdCompressor")` from native code. **R8 reads
+dex; it cannot see a reference from a `.so`.** So it deleted the class, ART
+treated a pending exception inside a JNI call as fatal and called `abort()` —
+signal 6, no Java exception anywhere.
 
 **2. The 0.121 mystery is solved and it was R8 full mode.** §2.
 `android.enableR8.fullMode` has defaulted to true since AGP 8.0 and this project
@@ -150,63 +159,41 @@ fan-out looked implicated because it is the only screen that touches all 37
 sources at once, and every earlier single-source test happened to use something
 else.
 
-**Retried on 0.143 with the instrument proven. The log is still empty, and that
-is now a finding rather than a gap.**
+**SOLVED in 0.146.** The abort message, from a logcat tombstone:
 
-`CrashLog` captures a main-thread crash under R8 (§5). So the silence means the
-process is dying **outside the Java exception path** — nothing is reaching the
-default uncaught handler. That rules out the whole class of failure this session
-has been chasing: a missing keep surfaces as `NoClassDefFoundError` or
-`NoSuchMethodError`, and those are ordinary Throwables that get caught.
+```
+JNI DETECTED ERROR IN APPLICATION: JNI FindClass called with pending exception
+java.lang.ClassNotFoundException: Didn't find class
+"com.squareup.zstd.ZstdCompressor"
+```
 
-**The leading hypothesis is the WebView renderer, and it explains the source.**
-`CloudflareInterceptor` answers the JS challenge in a headless `WebView`, and
-**nothing in this codebase overrides `onRenderProcessGone`.** When a renderer
-process dies unhandled, Android kills the host app, and there is no Java
-exception in our process to catch. Asura Scans is Cloudflare-protected, so it is
-the source that reaches that path — and 0.137's test pass never did, because the
-instruction at the time was to pick a source known to work.
+`okhttp-zstd` ships `libzstd-kmp.so`. `JniZstdKt`'s static initialiser calls
+into it, and the native side does `FindClass` on `com/squareup/zstd/ZstdCompressor`.
+No Java code names that class, so R8 removed it. ART treats a pending exception
+inside a JNI call as a fatal application error and calls `abort()`.
 
-Two things follow, and the second is worth doing whatever happens with R8:
+**Why only one source of 37:** Asura Scans answers with `Content-Encoding: zstd`.
+Nothing else reached the decompressor at all.
 
-1. **This needs `adb logcat`.** A native abort or a renderer kill is visible
-   there and nowhere else. App-side instrumentation has been taken as far as it
-   goes; that is what an empty log from a proven handler means.
-2. **`onRenderProcessGone` should be overridden regardless.** Returning true
-   from it stops a renderer death taking the app with it. That is correct
-   independent of minification, and this app is currently one renderer crash away
-   from dying on any Cloudflare source. Not shipped — it is untested and the
-   session ended.
+**Why the crash log was empty, correctly:** a handler that only sees `Throwable`
+cannot see a native abort. Once `CrashLog` was proven to fire under R8 (§5), its
+silence stopped being a gap and became the finding — it ruled out the entire
+missing-keep category, because those surface as ordinary Throwables and get
+caught. That is what sent this to logcat.
 
-**R8 IS implicated. That measurement was run and it came back clean.** Asura
-Scans opens fine on 0.144 with minification off. So the fault needs R8 *and*
-produces no Java exception, which is a narrow and genuinely odd combination —
-R8 does not touch the renderer process, so the simple version of the WebView
-hypothesis does not survive on its own.
+**Why `okhttp3.**` did not cover it:** that package holds the interceptor. The
+implementation is under `com.squareup.zstd`, three packages from anything named
+in `source-api/build.gradle.kts`.
 
-**What can kill a process under R8 with nothing for a handler to catch:**
+**The generalisation, now in `proguard-rules.pro`:** the `api` list is necessary
+and not sufficient. A dependency that ships a native library can name classes
+from JNI that appear nowhere in Java, so keep its whole implementation package
+rather than the API surface the app compiles against.
 
-- **A native abort.** ART calls `abort()` on JNI misuse and on some verifier
-  states. No Java exception exists at any point.
-- **An unhandled `onRenderProcessGone`**, if R8 has broken something on the
-  WebView path such that the renderer dies or the client never responds.
-  Overrides of framework methods should survive R8, but this is the path the
-  fault is on and it has never been exercised under R8 before tonight.
-- **An ANR kill**, if the Cloudflare solve never completes under R8 and
-  something waits on the host lock. Fits the mechanism, fits less well with
-  how immediate the crash appears.
-
-**All three are visible in logcat and nowhere else.** App-side instrumentation
-is finished: a proven handler saw nothing, and that is the strongest evidence
-available that no Java exception occurs. `adb logcat -b crash,main` while
-reproducing is the next step, and Termux can do it on-device without a PC —
-Android 11+ wireless debugging, pair, `adb connect localhost:<port>`.
-
-Prior form worth reading first: Asura Scans is the source behind
-`SESSION_HANDOFF_0.87.md` in its entirety — the `JsonObject?` vendored as
-nullable against a non-null declaration. It is a lib 1.6 extension and leans on
-`kotlinx.serialization`. It is also the extension that most recently exercised
-`getMangaUpdate` (`SESSION_HANDOFF_0.83.md` §2).
+**How long this took to see, and why:** four R8 attempts were spent treating
+this as a missing-keep problem, because the first two failures were exactly
+that. The category was not questioned until an instrument that had finally been
+verified came back silent.
 
 ---
 
@@ -282,9 +269,6 @@ Done: the mapping artifact, the full-mode diagnosis, the derived keep list,
 
 Still open:
 
-- **Minification.** In *Needs verifying*. HEAD is R8-on and untested.
-- **Asura Scans crashes under R8** — §4. The single outstanding R8 fault.
-- **Does `CrashLog` work under R8** — §5. Blocks §4.
 - **The 20/37 vs 26/95 discrepancy** — §7.
 - **AHottie**, **Coomer**, BeeHentai and Elite Babes: unchanged, all
   pre-existing and unrelated to R8.
@@ -301,8 +285,8 @@ Still open:
 
 Head is 0.144. Build environment unchanged from 0.134.
 
-**`isMinifyEnabled = false` on debug.** The four attempts are all recorded in the
-comment above that flag.
+**`isMinifyEnabled = true` on debug.** All five attempts are recorded in the
+comment above that flag and in `proguard-rules.pro`.
 
 New file: `CrashLog.kt`. `App` gained `attachBaseContext`. `AdvancedSettings`
 gained a *Force a test crash* row and a *Crash log* row with a Clear action.
