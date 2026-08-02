@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 135
-        versionName = "0.135"
+        versionCode = 136
+        versionName = "0.136"
     }
 
     signingConfigs {
@@ -83,16 +83,27 @@ android {
         // Injekt's reified helpers work by creating an anonymous subclass of
         // FullTypeReference<T> and reading T back out of
         // javaClass.genericSuperclass at runtime. That only works while the
-        // class keeps its Signature attribute. proguard-rules.pro asks for
-        // -keepattributes Signature and it was not enough, and the reason is
-        // not yet established — see the note at the bottom of that file.
+        // class keeps its Signature attribute.
+        // ---------------------------------------------------------------
+        // ON AGAIN IN 0.136, and the reason 0.121 failed is now named rather
+        // than guessed at. android.enableR8.fullMode has defaulted to true
+        // since AGP 8.0 and this project has never set it, so R8 has always
+        // run in full mode — where -keepattributes Signature does not protect
+        // a class that is not itself kept. The keep for uy.kohesive.injekt.**
+        // covered FullTypeReference and not its anonymous subclasses, which
+        // are generated in com.mangareader.app at each inlined addSingleton
+        // call site. proguard-rules.pro now keeps those explicitly.
         //
-        // Do not set this true again until an APK has been launched on a
-        // device. CI going green proves nothing here: this crashes at
-        // Application.onCreate, which no build step reaches.
+        // THIS IS A HYPOTHESIS UNTIL THE APK LAUNCHES. CI going green proves
+        // nothing: 0.121 was green, published, and crashed at
+        // Application.onCreate, which no build step reaches. If it starts,
+        // the bindings survived — and that is the whole of the first check.
+        // The extension boundary is the second and has never run under R8:
+        // open a source, list chapters, read a page, open a source's settings
+        // dialog, and confirm diagnose still says 26 extensions / 95 sources.
         // ---------------------------------------------------------------
         getByName("debug") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
