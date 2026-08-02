@@ -52,9 +52,13 @@ adding a keep, and nothing checks this.
 
 - **§7 item 1 and §5's account of minification are superseded.** Minification is
   done. It is no longer an open question.
-- **"26 extensions / 95 sources" is used below as a known-good figure. The
-  device reports 20 / 37.** Nobody has established which is right, and it is one
-  tap of the diagnose screen to settle. Trello card 72.
+- **"26 extensions / 95 sources" is retired. The figure is 20 / 37**, read off
+  the diagnose screen on 0.149, 2026-08-02: 20 packages declaring
+  `tachiyomi.extension`, **Loaded OK 20/20**, 37 sources, 37 held in cache. The
+  20/20 is the part that mattered — nothing is failing to load, so the gap was
+  never a regression and never had anything to do with R8. Whether six
+  extensions were uninstalled after 0.122 or 26/95 was wrong when written is
+  unresolved and no longer worth resolving. Trello card 72, closed.
 
 **The reader had a polish pass in 0.147–0.149.** The double-tap zoom animates,
 chapter turns wait for you instead of firing mid-fling, and the chapter list has
@@ -1119,7 +1123,8 @@ They generally prefer receiving **complete files to drop in** rather than
 
 As of the source-visibility commit, verified on device:
 
-- **26/26 extensions load, 95 sources total.**
+- ~~**26/26 extensions load, 95 sources total.**~~ **Superseded: 20/20 load, 37
+  sources, measured on device 2026-08-02. See the banner.**
 - Browsing, chapter lists, and page rendering work end to end.
 - Library with categories works.
 - Per-source search + pagination work.

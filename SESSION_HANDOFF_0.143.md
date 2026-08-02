@@ -254,10 +254,19 @@ status is all readable from `api.github.com`; nothing else is.
 
 ---
 
-## 7. A number that does not match, and nobody has checked it
+## 7. A number that does not match — CHECKED AND CLOSED 2026-08-02
 
 Extension diagnostics reports **20 packages / 37 sources**. This document set
 has said **26 extensions / 95 sources** since 0.122.
+
+**ANSWERED on 0.149: the device figure is right and 26/95 is retired.** The
+diagnose screen reports 20 packages, **Loaded OK 20/20**, 37 sources, 37 held in
+cache — internally consistent, with nothing failing to load. Which is the whole
+point: the fear was that someone would read 20/37 under R8 as a regression
+caused by keep rules, and 20/20 says there is no load failure to explain.
+Whether six extensions were uninstalled after 0.122 or 26/95 was wrong when
+written is still unknown and no longer matters. The rest of this section is why
+that was already the likely reading.
 
 R8 cannot cause this. The package count comes from `PackageManager`, which
 minification does not touch, and 0.136 reported 20 while broken. So either six
@@ -274,7 +283,7 @@ Done: the mapping artifact, the full-mode diagnosis, the derived keep list,
 
 Still open:
 
-- **The 20/37 vs 26/95 discrepancy** — §7.
+- ~~The 20/37 vs 26/95 discrepancy~~ — **closed, §7.**
 - **AHottie**, **Coomer**, BeeHentai and Elite Babes: unchanged, all
   pre-existing and unrelated to R8.
 - **Animate the double-tap zoom** (shipped 0.147) and **fling the zoom pan**
