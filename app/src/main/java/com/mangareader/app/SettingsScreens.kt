@@ -1533,6 +1533,25 @@ private fun AdvancedSettings() {
     SettingsColumn {
         SectionHeader("Diagnostics")
         ListItem(
+            headlineContent = { Text("Force a test crash") },
+            supportingContent = {
+                Text(
+                    "Throws on purpose. The app will close; reopen it and the " +
+                        "crash log should hold the trace"
+                )
+            },
+            modifier = Modifier.clickable {
+                // Deliberately outside runCatching, and deliberately not on a
+                // background thread: this has to reach the default uncaught
+                // handler by the shortest path there is, or a blank log after
+                // tapping it would be ambiguous between "handler broken" and
+                // "this particular route doesn't reach it".
+                throw IllegalStateException("Test crash from Diagnostics")
+            }
+        )
+        HorizontalDivider()
+
+        ListItem(
             headlineContent = { Text("Crash log") },
             supportingContent = {
                 Text(
