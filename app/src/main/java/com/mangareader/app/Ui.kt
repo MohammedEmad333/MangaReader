@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -485,6 +486,46 @@ internal fun MiniBadge(text: String, colour: Color) {
  * clutter, and on a 3575-entry library it is also a lie about precision — one
  * pixel of track is several series.
  */
+/**
+ * [ScrollHandle] wired to a [LazyListState], which is every caller but the
+ * library grid.
+ *
+ * The core takes four integers rather than a state object on purpose —
+ * `LazyGridState` and `LazyListState` share no supertype exposing what it needs
+ * — but that left five lines of identical wiring at each call site: the seek
+ * state, the keyed effect, the four readings. Five lines copied six times is
+ * five chances to reintroduce the 0.133 drag lag, so the wiring lives here once.
+ *
+ * **The seek target is held in state and scrolled from a keyed effect**, which
+ * is the whole of the 0.133 fix. A `launch { scrollToItem() }` per drag delta
+ * queues on the list's scroll mutex and runs in order, so the list is forever
+ * arriving where the finger was half a second ago. Keying the effect makes
+ * Compose cancel the superseded scroll, and only the newest ever runs.
+ *
+ * `totalItems` is a count in the LIST's index space, not the data's. A column
+ * with a header and a trailing spacer has two items that are not rows, and
+ * seeking is `scrollToItem`, which counts them too.
+ */
+@Composable
+internal fun ListScrollHandle(
+    state: LazyListState,
+    totalItems: Int,
+    modifier: Modifier = Modifier
+) {
+    var seekTo by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(seekTo) {
+        if (seekTo >= 0) state.scrollToItem(seekTo)
+    }
+    ScrollHandle(
+        firstVisibleIndex = state.firstVisibleItemIndex,
+        visibleItems = state.layoutInfo.visibleItemsInfo.size,
+        totalItems = totalItems,
+        isScrolling = state.isScrollInProgress,
+        onSeek = { seekTo = it },
+        modifier = modifier
+    )
+}
+
 @Composable
 internal fun ScrollHandle(
     firstVisibleIndex: Int,
