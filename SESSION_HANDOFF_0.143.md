@@ -1,9 +1,13 @@
 # Session handoff — 0.135 to 0.146, minification, finished
 
-Written 2026-08-02, evening. Nothing here supersedes anything.
-`SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
-`SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.122.md` and
-`SESSION_HANDOFF_0.134.md` all remain live reference.
+Written 2026-08-02, evening. **Partly superseded: `SESSION_HANDOFF_0.149.md` is
+newer and covers 0.144–0.149. §5's open question is answered, §8's board is out
+of date, and §9's "head is now 0.144, R8 off" is three releases behind. §2, §3
+and §4 are the live parts.**
+`SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`
+and `SESSION_HANDOFF_0.120.md` all remain live reference. `SESSION_HANDOFF_0.122.md`
+and `SESSION_HANDOFF_0.134.md` were deleted on 2026-08-02 and folded into
+`PROJECT_HANDOFF.md` §9.
 
 Twelve releases. **One feature shipped** (`CrashLog`) and it was built as an
 instrument, not a feature. The rest is the minification card, which is **done**:
@@ -101,7 +105,8 @@ The fix is the pair Gson ships for `TypeToken`, for the same reason:
 `allowobfuscation,allowshrinking` are load-bearing. A plain `-keep` pins every
 such class as a shrinking root, which is the opposite of the point.
 
-`SESSION_HANDOFF_0.122.md` §3 listed two candidates. Candidate 2 had the shape
+The deleted `SESSION_HANDOFF_0.122.md` §3 listed two candidates (git history).
+Candidate 2 had the shape
 right and understated the reason: it is not that R8 judged the type argument
 unreachable, it is that the class was never kept. Candidate 1 — the wrapped
 `-keepattributes` line — is deleted as a variable; the list is on one line now.
@@ -242,8 +247,8 @@ and `adb logcat` is the only honest route left.
 `missing_rules.txt` is written by a build that dies at `minifyDebugWithR8`.
 Confirmed working — nothing on an unminified run, 3.3 MB on a minified one.
 
-`SESSION_HANDOFF_0.122.md` §5's two limits both still hold, and one is worse
-than recorded: **artifact downloads redirect to
+The two CI-reading limits recorded in the deleted `SESSION_HANDOFF_0.122.md` §5
+both still hold — see `PROJECT_HANDOFF.md` §9 — and one is worse than recorded: **artifact downloads redirect to
 `productionresultssa*.blob.core.windows.net`**, not just job logs. Run/job/step
 status is all readable from `api.github.com`; nothing else is.
 
@@ -252,7 +257,7 @@ status is all readable from `api.github.com`; nothing else is.
 ## 7. A number that does not match, and nobody has checked it
 
 Extension diagnostics reports **20 packages / 37 sources**. This document set
-has said **26 extensions / 95 sources** since `SESSION_HANDOFF_0.122.md`.
+has said **26 extensions / 95 sources** since 0.122.
 
 R8 cannot cause this. The package count comes from `PackageManager`, which
 minification does not touch, and 0.136 reported 20 while broken. So either six
@@ -272,8 +277,8 @@ Still open:
 - **The 20/37 vs 26/95 discrepancy** — §7.
 - **AHottie**, **Coomer**, BeeHentai and Elite Babes: unchanged, all
   pre-existing and unrelated to R8.
-- **Animate the double-tap zoom** and **fling the zoom pan** —
-  `SESSION_HANDOFF_0.134.md` §6, untouched this session.
+- **Animate the double-tap zoom** (shipped 0.147) and **fling the zoom pan**
+  (still open) — `SESSION_HANDOFF_0.149.md` §4 and §6.
 - **Scroll handles on every other list**, **scroll-to-refresh elsewhere**, **a
   feed tab in Browse** — untouched.
 - *Chapter transitions are too instant* and *all-filters-enabled* are new bug
@@ -305,7 +310,8 @@ full cause chain, in its normal format, with R8 confirmed in the trace.
 **Verified after the handoff was first written:** Asura Scans opens normally on
 0.144 with R8 off. The fault requires minification.
 
-Head is now `0.144`, R8 **off**, published and working.
+~~Head is now `0.144`, R8 **off**, published and working.~~ **Superseded: head is
+`0.149` and R8 is ON and verified. `SESSION_HANDOFF_0.149.md`.**
 
 **The token used this session was the one the user asked to keep, and all others
 were revoked at the start of it.** It is a fine-grained PAT with contents write.

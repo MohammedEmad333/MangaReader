@@ -85,32 +85,43 @@ android {
         // javaClass.genericSuperclass at runtime. That only works while the
         // class keeps its Signature attribute.
         // ---------------------------------------------------------------
-        // OFF AGAIN IN 0.139. Third attempt, and it got further than either
-        // previous one before failing.
+        // OFF AGAIN IN 0.139, AND BACK ON FOR GOOD IN 0.146. Attempts three
+        // through five, and the two causes they found.
         //
         // 0.136 STARTED - so R8 full mode was the right diagnosis and the
         // FullTypeReference keeps were right - and then loaded 1 extension of
         // 20 (NoClassDefFoundError kotlin.LazyKt; NoSuchMethodError
-        // OkHttpClient.Builder.sslSocketFactory). 0.137 added keeps for
-        // kotlin, kotlinx, okhttp3 and okio, reached 20/20, and passed browse,
-        // series, reader and source settings on device - then died on global
-        // search, which 0.134 does not. 0.138 added CrashLog and would not
-        // launch at all under R8.
+        // OkHttpClient.Builder.sslSocketFactory). CAUSE TWO: R8 shrinks to the
+        // union of what it can see and it cannot see an extension APK. 0.137
+        // added keeps for kotlin, kotlinx, okhttp3 and okio and reached 20/20.
         //
-        // So TWO unexplained R8 failures are outstanding, not one, and the
-        // second appeared in code written the same evening. Turned off to
-        // restore a working app and to make CrashLog readable: crashes.txt
-        // survives an in-place upgrade, so 0.138's launch traces are on disk
-        // and visible in Settings once a launching build is installed.
+        // 0.137 then died on Asura Scans, and so did 0.141. Four attempts
+        // treated that as a third missing keep, because the first two failures
+        // were exactly that. It was not.
         //
-        // Everything the three attempts established is kept: the keeps in
-        // proguard-rules.pro are right as far as they go, mapping-debug
-        // uploads from CI, and the shrink is worth 12.2 MB (23,869,296 ->
-        // 11,632,431 bytes). What is missing is a keep that cannot be derived
-        // from the build file - it needs a stack trace, which is now
-        // obtainable where it was not before.
+        // CAUSE THREE, found at 0.146 from a logcat tombstone: okhttp-zstd
+        // ships libzstd-kmp.so, whose static initialiser does
+        // FindClass("com/squareup/zstd/ZstdCompressor") FROM NATIVE CODE. No
+        // Java code names that class, so R8 removed it, and ART treats a
+        // pending exception inside a JNI call as fatal - abort(), signal 6, no
+        // Java exception at any point. That is why the crash log was empty and
+        // was right to be: a handler that only sees Throwable cannot see a
+        // native abort. Fixed by -keep class com.squareup.zstd.** { *; }.
+        // Only Asura Scans hit it because it is the one source of 37 that
+        // answers Content-Encoding: zstd.
         //
-        // DO NOT FLIP THIS AGAIN WITHOUT READING THE CRASH LOG FIRST.
+        // THE RULE, and it is in proguard-rules.pro too: the `api` list in
+        // source-api/build.gradle.kts is NECESSARY AND NOT SUFFICIENT. A
+        // dependency that ships a .so can name classes from JNI that appear
+        // nowhere in dex. Keep its whole implementation package.
+        //
+        // VERIFIED ON DEVICE AT 0.146: launch, 20/20 extensions, browse,
+        // series, reader, source settings, Asura Scans from Browse, Library
+        // and Downloads, and global search pinned-only with Asura Scans
+        // pinned. 23,869,296 -> 11,731,348 bytes.
+        //
+        // Full account: SESSION_HANDOFF_0.143.md, closed in
+        // SESSION_HANDOFF_0.149.md.
         // ---------------------------------------------------------------
         getByName("debug") {
             isMinifyEnabled = true
