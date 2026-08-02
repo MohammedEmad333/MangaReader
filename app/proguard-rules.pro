@@ -76,6 +76,55 @@
 -keep interface rx.** { *; }
 
 # Jsoup. Every ParsedHttpSource extension parses with it.
+# The Kotlin standard library. Every extension is Kotlin and references the
+# stdlib facade classes directly — kotlin.LazyKt for `by lazy`, StringsKt,
+# CollectionsKt, jvm.internal.Intrinsics for every null check the compiler
+# emits. :app is Kotlin too, but it uses a different SUBSET, and R8 shrinks to
+# the union of what it can see. 0.136 died on:
+#
+#   NoClassDefFoundError: Failed resolution of: Lkotlin/LazyKt;
+#
+# on five extensions at once, because nothing in :app happened to reference
+# that particular facade.
+-keep class kotlin.** { *; }
+-keep interface kotlin.** { *; }
+
+# Coroutines and kotlinx.serialization. Declared `implementation` in
+# source-api rather than `api`, which affects what :app can compile against
+# and NOTHING about runtime: an extension's classloader has this app's dex on
+# its parent path, so every class extension bytecode names has to be present
+# here regardless of which Gradle configuration put it in.
+-keep class kotlinx.coroutines.** { *; }
+-keep class kotlinx.serialization.** { *; }
+
+# OkHttp and Okio. Extensions build their own clients off the shared one —
+# newBuilder(), interceptors, and the two-argument sslSocketFactory overload
+# that sources with custom trust managers call. :app calls none of that, so R8
+# removed the methods while keeping the class, and 0.136 gave:
+#
+#   NoSuchMethodError: No virtual method sslSocketFactory(
+#     Ljavax/net/ssl/SSLSocketFactory;Ljavax/net/ssl/X509TrustManager;)
+#
+# A missing METHOD on a present class is the more dangerous half of this:
+# it survives classloading and fails at the call.
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keep class okio.** { *; }
+
+# ---------------------------------------------------------------------------
+# HOW THIS LIST WAS DERIVED, so the next gap is found by reading rather than
+# by installing
+# ---------------------------------------------------------------------------
+# The `api` entries in source-api/build.gradle.kts ARE the extensions' compile
+# classpath, plus the Kotlin stdlib every Kotlin compile gets implicitly, plus
+# the `implementation` entries that reach extension bytecode at runtime anyway.
+# Anything on that list which is not kept whole here is a NoClassDefFoundError
+# or a NoSuchMethodError waiting for the one extension that touches it.
+#
+# Adding a dependency to source-api means adding a keep here. There is no
+# build-time check for this and there cannot be one — the code that would fail
+# is in an APK R8 has never seen.
+
 -keep class org.jsoup.** { *; }
 -keep interface org.jsoup.** { *; }
 
