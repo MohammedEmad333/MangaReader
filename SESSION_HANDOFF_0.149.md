@@ -563,3 +563,60 @@ means an ISP or router level block on imgbox, and there is nothing here to fix.
 Failing on both means imgbox is down or blocked further upstream. **Nothing
 should be built until that is known** — and on either answer, the fix is not in
 this app.
+
+---
+
+## 9d. The VPN attempt, and measuring the far end from somewhere else
+
+**imgbox is up.** `images2.imgbox.com` resolves to `212.63.223.225`, `.226` and
+`.227` from an unrelated network — **the same addresses the phone gets, so DNS
+is not hijacked and the IP is genuine** — and all three accept TCP and complete
+a TLS handshake with a valid certificate in **single-digit milliseconds**.
+
+So the far end is fine and the failure is entirely in the path from this phone.
+
+### The failure mode changed under VPN, and that is the finding
+
+| | Message | Type |
+|---|---|---|
+| No VPN, 22:43 | `failed to connect to …/212.63.223.225 (port 443) from /192.168.1.213 (port 44414) after 30000ms` | `SocketTimeoutException` |
+| VPN, 22:48 | `Failed to connect to images2.imgbox.com/212.63.223.225:443` | `ConnectException` |
+
+The first prints a **source address and an elapsed timeout**: packets silently
+dropped for a full 30 seconds, which is the signature of a firewall or DPI
+blackhole rather than a refusal. The second has **neither** — it failed fast,
+meaning something answered with a reset or the route was unavailable.
+
+**Only the network path differed, so the difference is the network path.** A
+drop became a rejection. That is worth more than either message alone, and it
+is only visible because the overlay prints the exception's own text rather than
+a friendly summary.
+
+### What is ruled out now
+
+DNS hijacking, imgbox being down, 403 / Cloudflare / DDoS-Guard, the missing
+`Referer`, and `CloudflareInterceptor`'s timeout. Everything that needs a
+connection to exist is dead, because no connection ever existed.
+
+### The clean test is still not run
+
+**Mobile data with the VPN off.** A VPN adds a variable rather than removing
+one, and this one did not obviously carry the app's traffic. Cellular is a
+genuinely different path to the same host and it is one toggle.
+
+The second reading, if the first is ambiguous: open the failing URL in the
+phone's **browser** with the VPN on. Browser failing too means the VPN is not
+covering the device. **Browser succeeding while the app fails would be a new
+finding and would move this back into the app** — per-app split tunnelling is
+the first thing to check in that case.
+
+### An app-side improvement this exposed, worth its own card if wanted
+
+A chapter whose every page targets one dead host currently spends
+**36 × 30 seconds** discovering that, one page at a time, with no user-visible
+error until the end. Nothing remembers that the previous thirty-five
+connections to that host all failed. A per-host circuit breaker for the
+duration of a fetch — first N connect failures to one host, stop and fail the
+chapter with the host named — would turn eighteen silent minutes into one
+message. Not filed yet; the reporting half is already covered by the
+"Starting" card.
