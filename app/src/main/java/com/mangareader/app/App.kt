@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.app.Application
+import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -21,12 +22,26 @@ import uy.kohesive.injekt.api.get
  */
 class App : Application(), ImageLoaderFactory {
 
+    /**
+     * The earliest hook this app has.
+     *
+     * `onCreate` is not first. Android runs attachBaseContext, then every
+     * ContentProvider, then onCreate — and WorkManager registers its own
+     * `androidx.startup.InitializationProvider` through manifest merging, so a
+     * failure there happens in a window `onCreate` never sees. 0.138 died in
+     * exactly that window under R8 and wrote nothing, because the handler it
+     * shipped was installed one phase too late.
+     *
+     * `base` rather than `this`: the Application's own context is not usable
+     * yet at this point, and CrashLog only needs filesDir.
+     */
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        CrashLog.install(base)
+    }
+
     override fun onCreate() {
         super.onCreate()
-        // FIRST. A crash handler registered after the line that crashes is a
-        // handler that catches nothing, and the two worst failures this app has
-        // had were both inside onCreate.
-        CrashLog.install(this)
         Injekt.importModule(AppModule(this))
         // Runs for every process entry point, not just the Activity — including
         // the system restarting DownloadService on its own, which is the case
