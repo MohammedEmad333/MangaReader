@@ -27,8 +27,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 142
-        versionName = "0.142"
+        versionCode = 143
+        versionName = "0.143"
     }
 
     signingConfigs {
@@ -113,7 +113,7 @@ android {
         // DO NOT FLIP THIS AGAIN WITHOUT READING THE CRASH LOG FIRST.
         // ---------------------------------------------------------------
         getByName("debug") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

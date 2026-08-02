@@ -58,6 +58,13 @@
 -keep class * extends androidx.work.ListenableWorker { <init>(...); }
 -keep class * implements androidx.startup.Initializer { *; }
 
+# The crash reporter must survive whatever it is reporting on. It is the only
+# instrument this project has for R8 failures, and an instrument shrunk by the
+# thing it measures reads as "nothing went wrong". Small enough that keeping it
+# whole costs nothing measurable.
+-keep class com.mangareader.app.CrashLog { *; }
+-keep class com.mangareader.app.CrashLog$* { *; }
+
 -keep class com.mangareader.app.AutoBackupWorker { <init>(...); }
 
 # ---------------------------------------------------------------------------
