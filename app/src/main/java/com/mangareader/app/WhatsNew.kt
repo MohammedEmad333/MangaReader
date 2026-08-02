@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 147,
+            name = "0.147",
+            header = "The double-tap zoom eases in",
+            body = "Double-tapping a long strip used to snap straight to 2x " +
+                "and straight back. It now travels there over a fifth of a " +
+                "second, so you can see where you landed instead of having to " +
+                "work it out.\n\nPinching is untouched and still instant \u2014 " +
+                "smoothing that would only put it behind your fingers.",
+        ),
+        ReleaseNote(
             code = 134,
             name = "0.134",
             header = "A better scroll handle",
