@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -93,6 +94,20 @@ private const val DOUBLE_TAP_ZOOM = 2f
  * scale change apart, and one of them must not be smoothed.
  */
 private const val ZOOM_ANIM_MS = 200
+
+/**
+ * How long a transition row must sit still on screen before the chapter turns.
+ *
+ * The row used to fire the moment it qualified, which made reaching the end of
+ * a chapter feel like being thrown into the next one — you never saw what you
+ * were being told. A short dwell makes the row a thing you arrive at and then
+ * pass, and it costs nothing to back out of: scrolling away cancels the
+ * LaunchedEffect that is waiting, so leaving is free until the moment it fires.
+ *
+ * Long enough to read "Next: Chapter 12", short enough that a deliberate scroll
+ * to the end does not feel stuck.
+ */
+private const val TRANSITION_DWELL_MS = 550L
 
 /**
  * The reader.
@@ -244,10 +259,17 @@ internal fun ReaderScreen(
     // scroll stops. Reading the live value here would advance the chapter mid-
     // fling from a page the user never stopped on — the same trap §5 records
     // against the library tab row, where two effects drove one position.
+    //
+    // **The strip needs the same thing and did not have it until 0.148.**
+    // `rowFullyVisible` queries the live layout, so a fling that carried the
+    // row on screen turned the chapter while the list was still moving — from
+    // a position nobody stopped at, which is exactly what settledPage exists to
+    // prevent one mode over. `!isScrollInProgress` is the strip's settledPage:
+    // it says the same thing to a LazyColumn that settledPage says to a pager.
     val atTailRow by remember(pages.size, headRows, settings.mode) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
-                rowFullyVisible(pages.size + headRows)
+                rowFullyVisible(pages.size + headRows) && !listState.isScrollInProgress
             } else {
                 pagerState.settledPage == pages.size + headRows
             }
@@ -256,7 +278,7 @@ internal fun ReaderScreen(
     val atHeadRow by remember(pages.size, headRows, settings.mode) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
-                rowFullyVisible(0)
+                rowFullyVisible(0) && !listState.isScrollInProgress
             } else {
                 pagerState.settledPage == 0
             }
@@ -276,12 +298,25 @@ internal fun ReaderScreen(
     val leftHead = remember(chapterIndex) { booleanArrayOf(false) }
 
     LaunchedEffect(atTailRow) {
-        if (!atTailRow) leftTail[0] = true
-        else if (leftTail[0] && hasNext) onNext()
+        if (!atTailRow) {
+            leftTail[0] = true
+        } else if (leftTail[0] && hasNext) {
+            // The dwell is a delay inside the effect rather than a timer beside
+            // it, and that is the whole trick: LaunchedEffect is cancelled the
+            // moment its key changes, so scrolling off the row before the wait
+            // is up cancels the turn with no bookkeeping and no flag to get
+            // wrong. Nothing has to remember that a turn was pending.
+            delay(TRANSITION_DWELL_MS)
+            onNext()
+        }
     }
     LaunchedEffect(atHeadRow) {
-        if (!atHeadRow) leftHead[0] = true
-        else if (leftHead[0] && hasPrev) onPrev()
+        if (!atHeadRow) {
+            leftHead[0] = true
+        } else if (leftHead[0] && hasPrev) {
+            delay(TRANSITION_DWELL_MS)
+            onPrev()
+        }
     }
 
     // Declared here rather than beside the slider below, because `currentPage`
