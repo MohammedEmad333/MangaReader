@@ -38,11 +38,14 @@ crashes with Asura Scans pinned and is clean without it. Two failures collapsed
 into one, and the fan-out was only implicated because it is the one screen that
 touches every source at once.
 
-**5. `CrashLog` exists, works, and has never been proven under R8.** §5. It
-captured a deliberate test crash cleanly at 0.142 with minification off. Both
-real crashes it was built for happened under R8 and it recorded nothing. 0.143
-exists to test exactly that and was not run. **Test the instrument before
-trusting its silence** — that is the whole of the next step.
+**5. `CrashLog` works, and it works UNDER R8.** §5. Proven twice: unminified at
+0.142, and minified at 0.143 with `R8$$SyntheticClass` in the trace to show R8
+ran. It produced a normal entry, not the `writeBarebones` fallback, so the
+formatted path survives minification intact.
+
+**The consequence: the next Asura Scans crash will produce a trace.** That is
+the one thing standing between this card and done, and it is now one tap of a
+source away. Nobody has run it — 0.143 has had its test crash and nothing else.
 
 ---
 
@@ -149,8 +152,12 @@ fan-out looked implicated because it is the only screen that touches all 37
 sources at once, and every earlier single-source test happened to use something
 else.
 
-**No trace exists.** `CrashLog` recorded nothing, and until §5 is settled that
-silence means nothing either way.
+**No trace exists yet, and the reason is now understood.** The crash was last
+seen on 0.141, which had the handler in `attachBaseContext` but neither
+`writeBarebones` nor the `-keep` for `CrashLog` — so a failure inside `write()`
+under R8 would have been swallowed, which is exactly what 0.143 was built to
+close. **0.143 has the instrument and has not been pointed at this bug.** Open
+Asura Scans on it and the log should answer in one line.
 
 Prior form worth reading first: Asura Scans is the source behind
 `SESSION_HANDOFF_0.87.md` in its entirety — the `JsonObject?` vendored as
@@ -266,8 +273,12 @@ settings dialog all working under R8; 0.139 and 0.140 launching; the crash log
 capturing a deliberate main-thread crash with a full cause chain at 0.142; and
 that Asura Scans is the sole trigger of the global-search crash.
 
-**Not verified, and it is the whole of the next session:** anything at all under
-0.143.
+**Verified on 0.143 (R8 ON):** the crash log captures a main-thread crash with a
+full cause chain, in its normal format, with R8 confirmed in the trace.
+
+**Not verified, and it is the whole of the next session:** Asura Scans under
+0.143 — which should now yield a trace rather than a silent death — and
+everything else in the app under R8 beyond what 0.137 covered.
 
 **The token used this session was the one the user asked to keep, and all others
 were revoked at the start of it.** It is a fine-grained PAT with contents write.
