@@ -150,9 +150,46 @@
 # Anything on that list which is not kept whole here is a NoClassDefFoundError
 # or a NoSuchMethodError waiting for the one extension that touches it.
 #
+# AND THE LIST DOES NOT STOP AT THE DEPENDENCY. A dependency that ships a .so
+# can reach classes by name from native code, and those are invisible to R8 in
+# a way even the `api` list does not reveal — okhttp-zstd is declared there,
+# and the class it actually needed was com.squareup.zstd.ZstdCompressor, three
+# packages away from anything named in the build file. When a dependency has a
+# native library, keep its whole implementation package, not just the API
+# surface the app compiles against.
+#
 # Adding a dependency to source-api means adding a keep here. There is no
 # build-time check for this and there cannot be one — the code that would fail
 # is in an APK R8 has never seen.
+
+# ---------------------------------------------------------------------------
+# Classes reached only from JNI
+# ---------------------------------------------------------------------------
+# R8 cannot see a reference from native code. It reads dex, and a FindClass
+# call lives in a .so it never opens — so a class touched only by JNI looks
+# dead from every angle R8 has.
+#
+# okhttp-zstd is exactly that. libzstd-kmp.so does
+# FindClass("com/squareup/zstd/ZstdCompressor") from JniZstdKt's static
+# initialiser. Nothing in Java names that class, R8 removed it, and 0.145 died:
+#
+#   JNI DETECTED ERROR IN APPLICATION: JNI FindClass called with pending
+#   exception java.lang.ClassNotFoundException: Didn't find class
+#   "com.squareup.zstd.ZstdCompressor"
+#
+# ART treats a pending exception inside a JNI call as fatal and calls abort().
+# **Signal 6, no Java exception at any point**, so the crash handler in
+# CrashLog cannot see it and never could — an empty crash log with a proven
+# handler is what this failure mode looks like, and it took a logcat tombstone
+# to name.
+#
+# It surfaced on Asura Scans alone because that is the source answering with
+# Content-Encoding: zstd, so nothing else reached the decompressor. One source
+# out of 37, one class, and a silent process death.
+#
+# okhttp3.** was already kept and did not help: the interceptor there is only
+# the entry point, and the implementation lives under com.squareup.zstd.
+-keep class com.squareup.zstd.** { *; }
 
 -keep class org.jsoup.** { *; }
 -keep interface org.jsoup.** { *; }
