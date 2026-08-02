@@ -494,3 +494,72 @@ The 22:22 attempt could not have worked: browse was open for well under a minute
 before moving to the series screen, and the timeout had not expired. **An
 instrument that only reports on failure tells you nothing until the failure is
 allowed to happen.**
+
+---
+
+## 9c. The answer: imgbox is unreachable, and the overlay said so in one line
+
+Browse left open past the timeout, 22:43:
+
+```
+https://images2.imgbox.com/86/ca/gjf590ov_o.jpg
+failed to connect to images2.imgbox.com/212.63.223.225 (port 443)
+from /192.168.1.213 (port 44414) after 30000ms
+```
+
+Identical on every cell — different source ports, one destination IP.
+
+**Neither an app bug nor an extension bug.** `ahottie.top` serves its images
+from **imgbox**, and imgbox cannot be reached from this network.
+
+### One string killed four candidates at once
+
+- **DNS resolved.** There is an IP. Not a lookup failure.
+- **It is `connectTimeout`** — 30000ms is `NetworkHelper`'s 30s — so **the TCP
+  handshake never completed. Nothing was ever sent**, which makes every
+  header-shaped explanation impossible in principle.
+- **Not 403, not Cloudflare, not DDoS-Guard.** All three need a connection and
+  return a response.
+- **Not the missing `Referer`** (§7 item 7). It was already the weakest
+  candidate and it is now dead: a `Referer` check cannot fire on a connection
+  that never opens.
+- **Not `CloudflareInterceptor`'s 30s headless timeout** (§7 item 6). The
+  matching number is a coincidence; this is OkHttp's connect timeout on a plain
+  image GET.
+
+### Everything else falls out of it
+
+**HTML worked throughout because `ahottie.top` is a different host and is
+reachable.** Listing, details, genre, chapter list, dates and `getPageList` all
+succeeded; every image failed. Two hosts, one blocked. That is the whole of
+"AHottie has no covers and chapters load forever".
+
+**The download sat on "Starting" for eleven minutes** because 36 pages each
+burned a 30s connect timeout with `ready` pinned at 0. §9b's prediction holds
+and the mechanism is confirmed.
+
+**Blast radius, checked against all 1368 extensions:** AHottie does not hardcode
+imgbox anywhere — the URLs come from the site at runtime. Only
+`DarkLegacyComics` names it, for a single hardcoded thumbnail.
+
+### What this cost, and the one line that would have saved it
+
+Three rounds: a source read that produced a plausible wrong mechanism, a device
+reading that overturned it, and a queue reading that named nothing. **The fact
+that settled it was available in round two and was not collected**, because the
+screen was left for under a minute and the instrument only speaks on failure.
+
+**When an instrument reports only on failure, the failure has to be allowed to
+happen, and the timeout is the number that says how long that takes.**
+`callTimeout` 2 min and `connectTimeout` 30s were both in `NetworkHelper` the
+whole time. Reading them first would have turned "leave it open" into "leave it
+open for thirty seconds", and this would have been one round.
+
+### Not closed yet
+
+**Confirm whether it is this network.** Reopen AHottie on mobile data, or open
+that URL in a browser on the same WiFi. Loading on cellular and not on WiFi
+means an ISP or router level block on imgbox, and there is nothing here to fix.
+Failing on both means imgbox is down or blocked further upstream. **Nothing
+should be built until that is known** — and on either answer, the fix is not in
+this app.
