@@ -620,3 +620,64 @@ duration of a fetch — first N connect failures to one host, stop and fail the
 chapter with the host named — would turn eighteen silent minutes into one
 message. Not filed yet; the reporting half is already covered by the
 "Starting" card.
+
+---
+
+## 9e. Closed: Chrome fails identically, so the app is exonerated
+
+Chrome, VPN on, `images2.imgbox.com`:
+
+```
+This site can't be reached
+images2.imgbox.com refused to connect.
+ERR_CONNECTION_REFUSED
+```
+
+**A browser and this app, two entirely independent network stacks, fail the
+same way on the same host.** That is device or network wide. Per-app split
+tunnelling is ruled out and so is everything in this codebase. The card is
+labelled Blocked/Upstream.
+
+### Three attempts, two failure shapes
+
+| Path | Result | Meaning |
+|---|---|---|
+| No VPN, app | `SocketTimeoutException` after 30000ms, source address printed | packets **silently dropped** — a blackhole |
+| VPN, app | `ConnectException`, no elapsed time | failed **fast** |
+| VPN, Chrome | `ERR_CONNECTION_REFUSED` | an actual **TCP RST** |
+
+The shape tracks the path: a drop without the VPN, an active refusal with it.
+Both are filtering, applied at different points. Meanwhile the host itself
+answers TCP and completes TLS in single-digit milliseconds from an unrelated
+network, on the same three IPs this phone resolves.
+
+### The whole chain, and what each step cost
+
+1. **Source read.** Produced a coherent wrong mechanism — an unbounded
+   `getPageList` loop. Cost: a card that had to be walked back.
+2. **Device screenshots.** Overturned it. `Page 1 of 36` and an absent
+   `else`-branch initial were the two facts, and both were free.
+3. **Download queue.** Named nothing, because "Starting" is two states in one
+   label. Cost: a round, and produced a real card.
+4. **The overlay, left long enough to fire.** Named the host and the exception
+   in one line. **This was available at step 2 and was not collected**, because
+   the instruction omitted how long to wait.
+5. **Measuring the far end from elsewhere.** Killed DNS hijacking and
+   host-is-down together.
+6. **Chrome.** Killed the app.
+
+**Five rounds, and step 4 could have been step 2.** The reusable form is in
+§9a — find the branch that distinguishes the candidates and look at it — plus
+its complement, learned here: **when the distinguishing instrument only reports
+on failure, read the timeout that governs it before deciding how long to
+watch.** `connectTimeout` 30s and `callTimeout` 2 min were in `NetworkHelper`
+throughout.
+
+### The only app-side residue
+
+A chapter whose every page targets one dead host spends **36 × 30 seconds**
+discovering that, one page at a time, and nothing remembers that the previous
+thirty-five connections to the same host failed. A per-host circuit breaker for
+the duration of a fetch — first N connect failures to one host, stop and fail
+the chapter naming it — turns eighteen silent minutes into one message. Still
+not filed; the reporting half is the "Starting" card, which is filed.
