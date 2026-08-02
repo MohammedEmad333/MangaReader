@@ -1524,10 +1524,42 @@ private fun AdvancedSettings() {
     var diagnostics by remember { mutableStateOf<String?>(null) }
     var diagnosticsTitle by remember { mutableStateOf("Extension diagnostics") }
     var running by remember { mutableStateOf(false) }
+    // Seeded once from disk rather than read per recomposition: this is a file
+    // stat on the composition thread, and the answer only changes when the
+    // process has died in between, which means a fresh composition anyway.
+    var crashPresent by remember { mutableStateOf(CrashLog.exists(context)) }
     var confirmCookies by remember { mutableStateOf(false) }
 
     SettingsColumn {
         SectionHeader("Diagnostics")
+        ListItem(
+            headlineContent = { Text("Crash log") },
+            supportingContent = {
+                Text(
+                    if (crashPresent) "The last uncaught exceptions, newest first"
+                    else "Nothing has crashed since this was last cleared"
+                )
+            },
+            modifier = Modifier.clickable {
+                scope.launch {
+                    val report = withContext(Dispatchers.IO) {
+                        CrashLog.read(context) ?: "No crashes recorded."
+                    }
+                    diagnosticsTitle = "Crash log"
+                    diagnostics = report
+                }
+            },
+            trailingContent = {
+                if (crashPresent) {
+                    TextButton(onClick = {
+                        CrashLog.clear(context)
+                        crashPresent = false
+                    }) { Text("Clear") }
+                }
+            }
+        )
+        HorizontalDivider()
+
         ListItem(
             headlineContent = { Text("Extension diagnostics") },
             supportingContent = {
