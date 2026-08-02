@@ -1,128 +1,85 @@
 # Yomu / MangaReader — Project Handoff
 
-**STOP. THIS DOCUMENT IS STALE BY 37 RELEASES.** It was last updated at 0.106
-and head is now 0.143. `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.122.md`,
-`SESSION_HANDOFF_0.134.md` and `SESSION_HANDOFF_0.143.md` all landed after it
-and several of them correct things stated below as current. **Read
-`SESSION_HANDOFF_0.143.md` §0 first** — the tree is currently in an unverified
-R8-on state and the published APK is expected to crash on Asura Scans.
+**This document's body is stale by 43 releases.** It was last revised through
+0.106 and head is **0.149**. The banner below is current as of 2026-08-02
+evening; everything from §1 onward is 0.106-era except §9, which is new. Where
+they disagree, the banner and §9 win.
 
-Two claims below are now wrong rather than merely old, and they are the ones
-most likely to be acted on:
+**Read `SESSION_HANDOFF_0.149.md` §0 first.** It covers 0.144–0.149 and is the
+newest state of the tree.
 
-- **§7 item 1 and §5's account of minification are superseded.** Minification
-  works; the shrink is 23,869,296 → 11,714,964 bytes; the reason 0.121 would not
-  start is **R8 full mode**, established in 0.136 and written up in
-  `SESSION_HANDOFF_0.143.md` §2. It is no longer an open question.
+Live session files, newest first:
+
+| File | Covers | Why it is still here |
+|---|---|---|
+| `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Newest. Minification closed, the reader polish pass |
+| `SESSION_HANDOFF_0.143.md` | 0.135–0.146 | The five R8 attempts and their two root causes |
+| `SESSION_HANDOFF_0.106.md` | 0.88–0.106 | §5 (why two edge gestures never fired) is cited by an open card; §11 is the three-chapter reader design |
+| `SESSION_HANDOFF_0.120.md` | 0.107–0.120 | §3 `chapter_number`; the series screen pass |
+| `SESSION_HANDOFF_0.87.md` | 0.84–0.87 | §5, fetching extension source in three minutes |
+| `SESSION_HANDOFF_0.83.md` | 0.73–0.83 | §3 the dependency cascade; §5 the dex scan |
+| `DESIGN_SERIES_SCREEN.md` | — | The design the 0.107–0.120 run was built from |
+
+**Deleted, folded into §9 of this file on 2026-08-02:**
+`SESSION_HANDOFF_0.122.md` (the 0.121 mystery — solved, and rewritten correctly
+in `SESSION_HANDOFF_0.143.md` §2) and `SESSION_HANDOFF_0.134.md` (bookmarks,
+18+, long-strip zoom — all shipped and all carried in more detail on their
+Trello cards). `SESSION_HANDOFF_0.67`–`0.81` and `0.93` were folded and deleted
+earlier. Git history has all of them.
+
+---
+
+## Current state, 0.149
+
+**Minification is on, working, and the card is closed.** 23,869,296 →
+11,731,348 bytes on the published debug asset — a 12.14 MB saving with
+optimisation and obfuscation forced off by AGP for a debuggable build, so that
+is the floor rather than the ceiling. Five attempts, **two root causes that were
+not guessable from the build file**: R8 full mode stripping `Signature` from
+Injekt's anonymous `FullTypeReference` subclasses, and a JNI `FindClass` from
+`libzstd-kmp.so` naming a class no Java code mentions.
+`SESSION_HANDOFF_0.143.md` is the full account.
+
+**The keep list is derivable and the derivation is the reusable part.** The
+`api` entries in `source-api/build.gradle.kts` are the extensions' compile
+classpath; anything on it not kept whole is a `NoClassDefFoundError` waiting for
+the one extension that touches it. **Necessary and not sufficient** — a
+dependency that ships a `.so` can name classes from JNI that appear nowhere in
+dex, which is what cost four attempts. Adding a dependency to `source-api` means
+adding a keep, and nothing checks this.
+
+**Two claims this document still makes below are wrong rather than merely old:**
+
+- **§7 item 1 and §5's account of minification are superseded.** Minification is
+  done. It is no longer an open question.
 - **"26 extensions / 95 sources" is used below as a known-good figure. The
-  device reports 20 / 37.** Nobody has established which is right.
-  `SESSION_HANDOFF_0.143.md` §7.
+  device reports 20 / 37.** Nobody has established which is right, and it is one
+  tap of the diagnose screen to settle. Trello card 72.
 
-Context document for continuing work in a fresh chat. **`SESSION_HANDOFF_0.120.md`
-is the newest session file and covers 0.107–0.120 — the series screen pass. Read
-its §0 before anything else here; three of its entries correct assumptions this
-document still states.** `DESIGN_SERIES_SCREEN.md` is the design that run was
-built from. **The per-release
-`SESSION_HANDOFF_0.67`–`0.81` files were folded into this document and deleted
-on 2026-07-31; `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`,
-`SESSION_HANDOFF_0.106.md` and `SESSION_HANDOFF_0.120.md` are the session files,
-and git history has the rest.**
-Last updated 2026-07-31 at **0.106**, head `4cc33fb`. **0.55 through 0.65 and
-0.67 through 0.106 are verified on device**, except 0.66 (unaccounted for) and
-0.104/0.105 (superseded before install) — see §0.
+**The reader had a polish pass in 0.147–0.149.** The double-tap zoom animates,
+chapter turns wait for you instead of firing mid-fling, and the chapter list has
+a scroll handle. `SESSION_HANDOFF_0.149.md`.
 
-**The bug board is not empty and this document claimed it was for four
-releases.** `SESSION_HANDOFF_0.106.md` §6 is the current board. Treat "the board
-is empty" anywhere below as a statement about 2026-07-31 morning, and treat the
-four-item board in `SESSION_HANDOFF_0.87.md` §6 as superseded: its items 1 and 4
-were **fixed and verified** in 0.90, its item 3's resume half closed in 0.88–0.89
-and its seek half is still open, and the failure tally's raw source ids were
-fixed in 0.94. What replaced them is in `SESSION_HANDOFF_0.106.md` §10, and the
-named next piece of work — **the three-chapter reader** — is §11 there.
+**Read TachiyomiSY.** §1's note that `mihon-ref` is "mostly a dead end" and §5's
+"Do not vendor from modern Mihon" are true **about the vendored API only**, and
+they were over-generalised into "don't look at Mihon", which cost most of one
+evening. For app UI, gestures, screen structure and which third-party library to
+reach for, Mihon and TachiyomiSY are the best reference available and are
+fetchable without a clone. `SESSION_HANDOFF_0.106.md` §7 has the split and the
+commands. Every reader feature since 0.130 came from reading SY first.
 
-**Read TachiyomiSY, and this document previously discouraged it.** §1's note that
-`mihon-ref` is "mostly a dead end" and §5's "Do not vendor from modern Mihon" are
-true **about the vendored API only** — and they were over-generalised into "don't
-look at Mihon", which cost most of the wasted effort on 2026-07-31 evening. For
-app UI, gestures, screen structure and which third-party library to reach for,
-Mihon and TachiyomiSY are the best reference available and are fetchable without
-a clone. `SESSION_HANDOFF_0.106.md` §7 has the split and the commands.
+**The bug board lives on Trello, not here.** Seven open bugs and eight feature
+cards as of 2026-08-02. Treat any statement below about what is or is not on the
+board as a statement about 2026-07-31.
 
-**Open thread 1 is closed, and this is the first time in thirteen sessions that
-sentence has been true.** The reader was the largest untested surface in the app.
-Paged right-to-left, grayscale and invert together, the chapter picker and
-settings surviving a reopen have now all been exercised on device; two were
-broken and are fixed. `SESSION_HANDOFF_0.106.md` §1. Whatever is chosen next is
-being chosen on its merits rather than because the reader was too large to face.
-
-**The headline of the 0.84–0.87 run is one character: `JsonObject?` where
-extensions-lib declares `JsonObject`.** 0.83 added `SManga.memo` /
-`SChapter.memo` and vendored them nullable. Every 1.6 extension is compiled
-against the non-null declaration, so extension code carries no null check and a
-null arrived as `NullPointerException` on `JsonObject.get` from inside the
-extension — after silently deleting the fallback its author had written for
-exactly that case. Asura Scans could be browsed but not opened from the Library,
-read but not downloaded. `SESSION_HANDOFF_0.87.md` is the full account and §5
-there is the generalisation, which is the most reusable thing in it: **a vendored
-API that relaxes a type is a contract change to everything compiled against it,
-and nothing reports it.**
-
-**The headline of 2026-07-31 is not any single bug: about one extension in eight
-had outgrown this app's vendored API.** A 23-extension sample of the 1365 in the
-Keiyoushi repo found 13% using `getMangaUpdate`, which this app did not
-implement — they browse perfectly and fail on every series. Four sources were
-recovered in one night (Elite Babes, SpyFakku, Asura Scans, and one crash that
-affected all of them), and the rest would have arrived one report at a time.
-`SESSION_HANDOFF_0.83.md` is the full account. **The build environment moved on 2026-07-31**: Kotlin 2.0.20 → 2.2.21,
-compileSdk 34 → 36, OkHttp → 5.4.0. None of that was a choice — one extension
-update forced all of it, and `SESSION_HANDOFF_0.83.md` §3 is the chain. **The app now opens in about three seconds.**
-It was taking around thirty, that item had been on the board for five sessions,
-and 0.71 measured it and 0.72 fixed it: the library screen was asking the
-Downloads tab's question to decide which covers get a download badge, which cost
-19.9 seconds of every cold start. See `SESSION_HANDOFF_0.83.md`.
-**The library refresh has been deprioritised** — it has already delivered its
-capability and what remains on it is accounting; `SESSION_HANDOFF_0.83.md` §9 is
-the new ordering and §5.1 is the consequence that isn't obvious.
-Two full library sweeps ran on the night
-of 2026-07-29/30, the first to completion, which is what exercised 0.67's
-machinery end to end. **The second sweep's end-of-sweep arithmetic came up 547
-short** — the first measurement of bugs 3 and 6; see the sweep-2 arithmetic below.
-0.63 shipped the vertical page slider rotated the wrong way, 0.64 fixed it, 0.65
-landed the per-series chapter index that four backlog items were all waiting on,
-and 0.67–0.68 made it answer for the whole library instead of your browsing
-history. (Supersedes the earlier version of this file, and folds in
-`SESSION_HANDOFF_0.83.md`.)
-
-**The index exists and is now filled by a sweep, not by browsing.**
-`SeriesIndex.kt` holds per-series chapter and read counts, and unread badges,
-Unread / Started / Completed filters and three sorts all shipped on it in 0.65.
-0.67 added a foreground-service library refresh that fetches a chapter list for
-every saved series, and 0.68 made a stopped refresh **resume** rather than start
-again from the top — which is what turned it from a feature into one that can
-actually finish on a 3571-entry library. Both are in §0.
-
-**The library is 3571 entries as of 0.68.** Most of this document says 3567,
-which is what the Tachiyomi import produced and is still the right number in
-every sentence about that import. Where a current count matters, it moves — which
-is itself the reason `RefreshCursor` stores a timestamp rather than an offset into
-the entry list.
-
-**The library screen was rebuilt and every part of it is verified on device**
-(builds 0.52-0.54). Category tabs with swipe, multi-select with bulk category
-editing, search, a four-tab options sheet, and a post-update "What's new"
-dialog. §4 "The library screen" is the account; the tab-sync bug in §5 is the
-one worth reading even if you never touch this screen again.
-
-**The manhwatoon 400s are fixed.** That thread had been open across several
-handoffs. The account is in §5, and it is worth reading even if you never touch
-that source, because the fix was the opposite of every previous attempt.
-
-**The app runs against a real library** — 3567 series, imported from Tachiyomi.
+**The app runs against a real library** — 3575 entries, imported from Tachiyomi.
 That single event exposed nine performance bugs and two correctness bugs in code
 that had been fine for months at ~40 series. If you read one thing in §5, read
-"An import is a load test". Its constraint shaped this session too: half of what
-a library options sheet normally offers is not affordable here, and §4 records
-exactly which half and why.
+"An import is a load test". Cold start is ~3 seconds; it was ~30 before 0.72.
+
+**Two things in this repo that should still be dealt with:** `debug.keystore`
+and `release.keystore` are committed at the repo root. The release keystore is
+the signing identity for this app. Any PAT pasted into a chat should be rotated.
 
 ---
 
@@ -3626,3 +3583,109 @@ push is silent, not red. And 0.70's covers fix is marked verified on the strengt
 of the symptom disappearing rather than the error being read; the debug overlay
 in `Ui.kt`'s `CoverImage` is still the only thing that distinguishes a 403 from a
 missing `thumbnail_url`, and it was never made to speak.
+
+---
+
+## 9. Folded from deleted session files
+
+`SESSION_HANDOFF_0.122.md` and `SESSION_HANDOFF_0.134.md` were deleted on
+2026-08-02. Everything below is what would otherwise have been lost — the rest
+of both files is either resolved, superseded by `SESSION_HANDOFF_0.143.md`, or
+carried in more detail on a Trello card. Git history has the originals.
+
+### From 0.122 — a green CI run is not evidence for a build-config change
+
+0.121 built clean, published a 9.59 MB APK, and crashed in `Application.onCreate`
+on every launch. **No build step reaches `onCreate`.** Anything touching R8,
+manifest merging, or initialisation order must be **launched on a device before
+it is believed**, and that check has to be explicit — the usual signal here
+(green, artifact published, size moved) was all present and all meaningless.
+
+### From 0.122 — the flag was on the wrong build type for its entire life
+
+`isMinifyEnabled` sat inside `getByName("release")`. CI runs `assembleDebug` on
+every push and publishes `app-debug.apk`; the release APK is behind a manual
+`workflow_dispatch` input. **So the APK on the phone has always been the debug
+one**, and every discussion of "turning minification on" before 0.121 was
+describing a change to a build nobody installs. Generalises: before tuning a
+build flag, confirm which build type the artifact you actually install comes
+from.
+
+### From 0.122 — R8 writes the rule it wants
+
+A build that dies at `minifyDebugWithR8` on a missing class writes the exact
+`-dontwarn` it needs to `app/build/outputs/mapping/debug/missing_rules.txt`.
+Take it from there rather than guessing at the package. CI uploads that
+directory as **`mapping-debug`** with `if: always()`, which is the point — the
+run that most needs it is a failed one.
+
+### From 0.134 — `SourceNsfw`, and the shape it generalises
+
+`SourceNsfw.kt` answers "is this source 18+" for a screen that cannot afford to
+classload extensions. `LibraryEntry` stores `seriesId`, `sourceId`, `title`,
+`cover`, `addedAt` and nothing about content, so a saved series can only be
+classified by its source — and asking a source means `listAllSources()`, which
+classloads extension APKs and cannot happen in composition.
+
+**The solved shape: a record written at the point the information already
+exists.** It learns from `listAllSources` and from the repo index, exactly where
+`SourceNames` does. Anything else a screen needs to know about a *source*
+without classloading gets answered this way.
+
+- **A map, not a set of the flagged ones.** A set collapses "known safe" into
+  "never seen", and this store has the usual three states. Only a map can record
+  a source that *stops* being flagged. Third appearance of the `SeriesIndex`
+  three-state trap.
+- **Unknown reads as "the condition doesn't hold"** — Include hides it, Exclude
+  keeps it. A source nothing has classified must not make a saved series vanish
+  from a library someone is looking at.
+- **It classifies a source, not a series.** A mixed-content source marks
+  everything saved from it. Series-level needs a field `LibraryEntry` has
+  nowhere to put.
+- **Only touched switches are recorded** in the by-hand classifier. An untouched
+  one must not store "not 18+", which is a claim nobody made.
+
+### From 0.134 — `tachi:6901` is E-Hentai, and one id is unidentifiable
+
+Two library sources were neither installed nor in any index. `tachi:6901` is
+**E-Hentai**: TachiyomiSY's `source-api/.../exh/source/SourceIds.kt` declares
+`LEWD_SOURCE_SERIES = 6900` and `EH_SOURCE_ID = LEWD_SOURCE_SERIES + 1`. A fork
+built-in, which is why no index has it.
+
+The other, ending `831257`, is **unidentified and probably unrecoverable**: not
+an SY built-in, not in the 1367-extension Keiyoushi index, and not derivable
+from the id — Tachiyomi computes a source id as MD5 of `name/lang/versionId`
+(verified: that formula reproduces 995 of 1043 live ids), and a 7,200-candidate
+sweep found no match. **The only place it survives is the user's own backup,
+field 101.** `TachiyomiImport` records names from that field now, but that code
+landed in 0.94–0.96 and this library was imported at `931cf5f`, long before, so
+it never ran. A re-import would name it and would also remove non-favourite
+entries, so it is not free. Offered and declined.
+
+### From 0.134 — check the file's own import list, not the tree
+
+0.131 went red on `clipToBounds` (it is in `androidx.compose.ui.draw`, not
+`androidx.compose.foundation`) and on `transformable`'s `canPan` overload
+needing `ExperimentalFoundationApi` in the opt-in. **Both were one grep away** —
+`SourceBrowseScreens.kt` imports `ExperimentalFoundationApi` on line 14. That was
+the fifth CI failure in this project from an identifier assumed rather than
+checked, and it happened in the same session that avoided the same trap three
+times by checking.
+
+The import split as it stands: `SourceBrowseScreens.kt`, `ReaderScreen.kt` and
+`MoreScreens.kt` carry the wildcard block; `SettingsScreens.kt` and
+`DownloadQueueScreen.kt` use curated lists and are where this keeps happening.
+
+### From 0.134 — confirm what deletes, not what cancels
+
+"Every delete button should request confirmation" was applied more narrowly than
+it reads: **confirm what deletes files or wipes a list, not what cancels an
+action.** History's per-entry Remove and its Clear all ask; the download queue's
+Remove and Cancel all do not, because those undo something you can re-add in a
+tap and a dialog there is noise.
+
+Found while applying it, and not on any card: **History's Clear all had no guard
+at all** and wiped the whole history on one tap — the most destructive control
+on the screen needed the fewest taps. It surfaced from grepping every delete
+affordance in the app before starting, which is worth doing again if the rule is
+revisited.
