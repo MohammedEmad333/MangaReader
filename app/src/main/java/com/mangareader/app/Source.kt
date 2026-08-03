@@ -184,6 +184,33 @@ interface Source {
     suspend fun loadDetails(series: Series): Series = series
 
     /**
+     * Video URLs on a chapter's own page, for handing to an external player.
+     *
+     * **This deliberately sits OUTSIDE the page list, and that is the whole
+     * design.** Some gallery sources publish photos and videos together —
+     * CosplayTele's "31 photos and 13 videos" is the reported case — but
+     * `pageListParse` there is `select(".gallery-item img")`, which matches
+     * `<img>` and nothing else. The videos are on the page and the extension
+     * never emits them, so nothing in this app has ever seen one.
+     *
+     * Folding them into [loadPages] would have been the obvious move and would
+     * have been wrong: it changes page counts, chapter progress, the download
+     * queue's arithmetic and the reader's every assumption about what a page is,
+     * for every source, to serve one. This is additive instead — a source that
+     * has no videos returns an empty list and nothing anywhere changes.
+     *
+     * **It is a second-guess at an extension's job and it will rot.** The app
+     * is otherwise a pure pass-through: it hands filters and requests to the
+     * extension unmodified and reads back what it is given. This one method
+     * breaks that on purpose, so it is scoped as narrowly as it can be — a
+     * generic `<video>` scan of a document the source already told us about,
+     * never a per-source selector. When it stops finding things, suspect the
+     * site's markup, and prefer fixing the extension upstream over widening
+     * this.
+     */
+    suspend fun listVideos(chapter: Chapter): List<String> = emptyList()
+
+    /**
      * A page on the source's own site for [series], for sharing or opening in a
      * browser. Null when there is nothing to point at — local folders, and any
      * source whose handle didn't survive.

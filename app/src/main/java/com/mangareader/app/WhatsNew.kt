@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 173,
+            name = "0.173",
+            header = "Find videos on a gallery page",
+            body = "Some gallery sources put videos alongside the photos but "  +
+                "never hand them to the app. The series menu now has \"Find "  +
+                "videos\", which looks at the first chapter\u2019s page and "  +
+                "opens anything it finds in your video player.\n\nIt is a "  +
+                "best effort: if a source hides its videos behind a script, "  +
+                "there will be nothing to find.",
+        ),
+        ReleaseNote(
             code = 172,
             name = "0.172",
             header = "No more leftover purple text",

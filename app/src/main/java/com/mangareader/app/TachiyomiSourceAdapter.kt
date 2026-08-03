@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 import android.util.Log
+import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -23,6 +24,7 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.jsoup.Jsoup
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -163,6 +165,42 @@ class TachiyomiSourceAdapter(
             // Tachiyomi's own UI does.
             delegate.getSearchManga(page, query, filterList).toSeriesPage()
         }
+
+
+    /**
+     * See [Source.listVideos] for why this exists outside the page list.
+     *
+     * Fetches the chapter's own page THROUGH THE EXTENSION'S CLIENT AND HEADERS,
+     * not a bare request: that client carries the Cloudflare interceptor, the
+     * recorded clearance UA and whatever else the source needs, and a plain GET
+     * would be challenged where the extension is not.
+     *
+     * The selector is generic — `video[src]` and `video source[src]` — rather
+     * than anything CosplayTele-shaped. A source with no <video> tags returns an
+     * empty list and no caller shows anything, so this costs nothing anywhere
+     * except the one request, which is only made when asked for.
+     *
+     * Relative URLs are resolved against the document, so a source using
+     * `/media/x.mp4` works without special handling.
+     */
+    override suspend fun listVideos(chapter: Chapter): List<String> = onSourceThread {
+        val http = delegate as? HttpSource ?: return@onSourceThread emptyList()
+        val sChapter = chapter.handle as? SChapter ?: return@onSourceThread emptyList()
+        val url = http.baseUrl + sChapter.url
+
+        val body = http.client.newCall(GET(url, http.headers)).execute().use { response ->
+            if (!response.isSuccessful) return@onSourceThread emptyList()
+            response.body?.string() ?: return@onSourceThread emptyList()
+        }
+
+        // `abs:src` resolves against the document's own base, so the second
+        // argument here is what makes a relative path usable.
+        Jsoup.parse(body, url)
+            .select("video[src], video source[src]")
+            .map { it.attr("abs:src") }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
 
     /** Pulls the source-relative url back out of an id built by [toSeries]. */
     private fun urlFromId(id: String): String? {
