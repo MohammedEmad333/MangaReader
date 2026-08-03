@@ -262,6 +262,14 @@ class MainActivity : ComponentActivity() {
 /** Index of the Downloads tab in the bottom bar. Named because 3 says nothing. */
 private const val DOWNLOADS_TAB = 3
 
+/**
+ * How long the first back press stays "armed".
+ *
+ * Two seconds is the Android convention. Shorter and a deliberate double press
+ * misses; longer and a back pressed minutes apart closes the app unexpectedly.
+ */
+private const val EXIT_CONFIRM_MS = 2000L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YomuApp() {
@@ -407,6 +415,43 @@ fun YomuApp() {
     var pageJob by remember { mutableStateOf<Job?>(null) }
     var downloadTick by remember { mutableIntStateOf(0) }
     var downloadsOpen by remember { mutableStateOf(false) }
+
+    // Whether a chapter fetch has COMPLETED for the series on screen.
+    //
+    // chapterList is empty in three different situations — nothing fetched yet,
+    // a fetch that failed, and a fetch that genuinely returned nothing — and the
+    // series screen was asserting the third whenever it saw the first. It said
+    // "This source returned no chapters" while the request was still in flight.
+    //
+    // The app still cannot tell a genuine zero from an extension whose selector
+    // matched nothing; that information does not exist anywhere, because Jsoup's
+    // select() returns an empty set either way. What it CAN now tell is whether
+    // it has an answer at all, which is the difference between a claim and a
+    // guess.
+    var chaptersFetched by remember { mutableStateOf(false) }
+
+    // Back once more to leave, if back would otherwise close the app.
+    //
+    // Deliberately NOT a dialog. A dialog on the way out is a second thing to
+    // dismiss and it fires on the gesture people use most; a toast plus a second
+    // press costs nothing to ignore and cannot be tapped by accident.
+    //
+    // Placed at the ROOT and enabled only when nothing else is showing, so it
+    // cannot swallow a back that some inner screen wanted. Every other
+    // BackHandler in the app takes precedence by being nested deeper — that is
+    // Compose's rule, not something this has to check.
+    var backArmedAt by remember { mutableLongStateOf(0L) }
+    BackHandler {
+        val now = System.currentTimeMillis()
+        if (now - backArmedAt < EXIT_CONFIRM_MS) {
+            activity?.finish()
+        } else {
+            backArmedAt = now
+            android.widget.Toast
+                .makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
 
     // Tapping the download notification lands on the QUEUE rather than on
     // wherever the app was last left.
@@ -686,6 +731,7 @@ fun YomuApp() {
         tagSearchReturn = null
         activeSeries = series
         chapterList = emptyList()
+        chaptersFetched = false
         errorMessage = null
         enrichSeries(src, series)
         scope.launch {
@@ -694,6 +740,7 @@ fun YomuApp() {
                 chapterList = withContext(Dispatchers.IO) {
                     src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
                 }
+                chaptersFetched = true
             } catch (e: Throwable) {
                 errorMessage = sourceFailureMessage(e, "Could not list chapters")
             }
@@ -724,6 +771,7 @@ fun YomuApp() {
                 chapterList = withContext(Dispatchers.IO) {
                     src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
                 }
+                chaptersFetched = true
             } catch (e: Throwable) {
                 errorMessage = sourceFailureMessage(e, "Could not list chapters")
             }
@@ -929,6 +977,7 @@ fun YomuApp() {
             cover = entry.cover.ifBlank { null }
         )
         chapterList = emptyList()
+        chaptersFetched = false
         scope.launch {
             isLoading = true
             try {
@@ -967,6 +1016,7 @@ fun YomuApp() {
                 if (activeSeries?.id == entry.seriesId) {
                     activeSeries = result.first
                     chapterList = result.second
+                    chaptersFetched = true
                     enrichSeries(src, result.first)
                 }
             } catch (e: Throwable) {
@@ -998,6 +1048,7 @@ fun YomuApp() {
             cover = entry.cover.ifBlank { null }
         )
         chapterList = emptyList()
+        chaptersFetched = false
         scope.launch {
             isLoading = true
             try {
@@ -1040,6 +1091,7 @@ fun YomuApp() {
                 } else if (activeSeries?.id == entry.seriesId) {
                     activeSeries = result.first
                     chapterList = result.second
+                    chaptersFetched = true
                     enrichSeries(src, result.first)
                 }
             } catch (e: Throwable) {
@@ -1201,6 +1253,9 @@ fun YomuApp() {
         SeriesScreen(
             series = activeSeries!!,
             chapters = chapterList,
+            // Empty means three different things; this says which. See its
+            // declaration.
+            chaptersFetched = chaptersFetched,
             sourceId = activeSourceId ?: "",
             sourceName = activeSource?.name ?: "",
             canDownload = activeSource?.supportsDownload == true,

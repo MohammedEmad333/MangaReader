@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 169,
+            name = "0.169",
+            header = "Back twice to leave, and no more premature verdicts",
+            body = "Pressing back where it would close the app now asks for "  +
+                "a second press first.\n\nAnd a series screen no longer says "  +
+                "\"This source returned no chapters\" while it is still "  +
+                "asking. It waits until there is an answer.",
+        ),
+        ReleaseNote(
             code = 168,
             name = "0.168",
             header = "Tap the download notification to see the queue",

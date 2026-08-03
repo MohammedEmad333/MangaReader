@@ -528,6 +528,15 @@ private fun GenreChips(
 internal fun SeriesScreen(
     series: Series,
     chapters: List<Chapter>,
+    /**
+     * Whether a chapter fetch has COMPLETED for this series.
+     *
+     * An empty [chapters] means three things — nothing fetched yet, a fetch
+     * that failed, and a fetch that genuinely returned nothing — and this
+     * screen used to assert the third whenever it saw the first, announcing
+     * "This source returned no chapters" while the request was still running.
+     */
+    chaptersFetched: Boolean,
     sourceId: String,
     sourceName: String,
     canDownload: Boolean,
@@ -1041,7 +1050,7 @@ internal fun SeriesScreen(
                     actionLabel = if (challengeable) "Open in WebView" else null,
                     onAction = if (challengeable) onSolveChallenge else null
                 )
-                Text(
+                if (chaptersFetched || chapters.isNotEmpty()) Text(
                     // Says so when rows are hidden. A filtered list that just
                     // reports a smaller number reads as chapters having gone
                     // missing, which is the report this would otherwise produce.
@@ -1056,6 +1065,9 @@ internal fun SeriesScreen(
                     // the source layer to record that a fetch completed, and is
                     // still open on its own card.
                     when {
+                        // Only once there is an answer. Before that the
+                        // progress indicator above is the honest thing on
+                        // screen, and a sentence claiming a result would not be.
                         chapters.isEmpty() -> "This source returned no chapters"
                         visible.size != chapters.size ->
                             "${visible.size} of ${chapters.size} chapters"
