@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 185,
+            name = "0.185",
+            header = "Still looking for the picture",
+            body = "The last attempt did not help and has been taken back "  +
+                "out. This one checks two things nobody had looked at: "  +
+                "whether the page has more than one video, and whether "  +
+                "something above it in the page is hiding it.",
+        ),
+        ReleaseNote(
             code = 184,
             name = "0.184",
             header = "The player screen stops jumping to adverts",
