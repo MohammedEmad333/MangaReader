@@ -43,6 +43,13 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 188,
+            name = "0.188",
+            header = "The video link button actually opens now",
+            body = "It worked in 0.187 and had nowhere to show its result, "  +
+                "so tapping it looked like nothing at all.",
+        ),
+        ReleaseNote(
             code = 187,
             name = "0.187",
             header = "Get the video link and open it anywhere",
