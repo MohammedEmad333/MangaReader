@@ -344,15 +344,28 @@ internal fun LibraryScreen(
             // whole-store read, and asking per row is the shape §5 records as
             // "an import is a load test".
             val marks = rememberEntryMarks(libraryTick)
+
+            // Held in state and scrolled from a keyed effect rather than
+            // launched per drag delta — a launch { scrollToItem() } per delta
+            // queues on the scroll mutex and runs in order, so the grid arrives
+            // where the finger was half a second ago. That was the 0.133 lag.
+            var seekTo by remember { mutableIntStateOf(-1) }
+            LaunchedEffect(seekTo) {
+                if (seekTo >= 0) gridState.scrollToItem(seekTo)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
             LazyVerticalGrid(
                 // List is the same grid with one column, so paging, the empty
                 // state and "Load more" stay on one code path instead of two.
                 columns = if (view == BrowseView.LIST) GridCells.Fixed(1)
                 else GridCells.Adaptive(minSize = coverMinDp),
                 state = gridState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(6.dp)
             ) {
                 items(shown) { s ->
@@ -381,6 +394,24 @@ internal fun LibraryScreen(
                         }
                     }
                 }
+            }
+
+            // ScrollHandle directly, not ListScrollHandle: this is a GRID, and
+            // LazyGridState and LazyListState share no supertype exposing what
+            // the handle needs. Same call shape as the library grid.
+            //
+            // shown.size + 1 when there is a next page, because "Load more" is
+            // a lazy item and scrollToItem counts it. Every caller has its own
+            // version of this number, and getting it wrong is what stops a
+            // handle short of the end.
+            ScrollHandle(
+                firstVisibleIndex = gridState.firstVisibleItemIndex,
+                visibleItems = gridState.layoutInfo.visibleItemsInfo.size,
+                totalItems = shown.size + if (hasNext) 1 else 0,
+                isScrolling = gridState.isScrollInProgress,
+                onSeek = { index -> seekTo = index },
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
             }
         }
     }
@@ -1428,6 +1459,20 @@ internal fun SeriesScreen(
                 },
                 icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
                 text = { Text(if (anyProgress) "Resume" else "Start") },
+                // An ExtendedFloatingActionButton defaults to
+                // `primaryContainer`, and AppPrefs moves only `primary` when the
+                // accent changes — deliberately, so nothing else in the scheme
+                // has to be re-checked per accent. The result was a Start button
+                // that stayed baseline lavender whatever accent was picked,
+                // which is the report.
+                //
+                // Fixed here rather than by deriving primaryContainer from the
+                // accent: that would change every other primaryContainer user
+                // at once and break exactly the property AppPrefs is protecting.
+                // `primary`/`onPrimary` is the pair AppPrefs already guarantees
+                // stays legible for every accent.
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)

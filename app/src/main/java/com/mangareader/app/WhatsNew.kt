@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 158,
+            name = "0.158",
+            header = "Scroll handles everywhere, and Start follows your accent",
+            body = "Per-source browse and the Extensions list are the last "  +
+                "two lists to get the drag handle, so every long list in the "  +
+                "app now has one.\n\nAnd the Start button on a series kept "  +
+                "the default lavender whatever accent colour you picked. It "  +
+                "follows the accent now.",
+        ),
+        ReleaseNote(
             code = 157,
             name = "0.157",
             header = "Scroll handles on two more lists",

@@ -1,18 +1,19 @@
 # Yomu / MangaReader — Project Handoff
 
-**This document's body is stale by 43 releases.** It was last revised through
-0.106 and head is **0.149**. The banner below is current as of 2026-08-02
-evening; everything from §1 onward is 0.106-era except §9, which is new. Where
+**This document's body is stale by 51 releases.** It was last revised through
+0.106 and head is **0.157**. The banner below is current as of 2026-08-03
+afternoon; everything from §1 onward is 0.106-era except §9, which is new. Where
 they disagree, the banner and §9 win.
 
-**Read `SESSION_HANDOFF_0.149.md` §0 first.** It covers 0.144–0.149 and is the
+**Read `SESSION_HANDOFF_0.157.md` §0 first.** It covers 0.150–0.157 and is the
 newest state of the tree.
 
 Live session files, newest first:
 
 | File | Covers | Why it is still here |
 |---|---|---|
-| `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Newest. Minification closed, the reader polish pass |
+| `SESSION_HANDOFF_0.157.md` | 0.150–0.157 | Newest. The download queue's two pauses, a per-host circuit breaker, and four labels that each stood for two mechanisms |
+| `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Minification closed, the reader polish pass |
 | `SESSION_HANDOFF_0.143.md` | 0.135–0.146 | The five R8 attempts and their two root causes |
 | `SESSION_HANDOFF_0.106.md` | 0.88–0.106 | §5 (why two edge gestures never fired) is cited by an open card; §11 is the three-chapter reader design |
 | `SESSION_HANDOFF_0.120.md` | 0.107–0.120 | §3 `chapter_number`; the series screen pass |
@@ -73,14 +74,32 @@ with neither a Latest listing nor filters), and two symptoms that were one cause
 outside this app entirely — `ahottie.top` serves its images from **imgbox**, and
 imgbox is unreachable from that device. `SESSION_HANDOFF_0.149.md` §9–§9e is the
 full arc, including three mechanisms that explained the symptom and were not the
-diagnosis. **Manhwa18 and Coomer are open cards of the same shape** — a
-connection probe and no conclusion — and the AHottie method applies directly:
-name the failing host, then check whether it is reachable at all before
-suspecting the extension or the app.
+diagnosis. **Manhwa18 and Coomer were open cards of the same shape and both
+closed on 2026-08-03**, in opposite directions: Coomer is Blocked/Upstream (its
+own frontend gets the same 503 from its own API), and Manhwa18 was never a
+connection problem at all — `chapterListParse` selects `ul.list-chapters` and
+matched nothing, off the same document `mangaDetailsParse` parsed successfully.
+`SESSION_HANDOFF_0.157.md` §7.
 
 **The reader had a polish pass in 0.147–0.149.** The double-tap zoom animates,
 chapter turns wait for you instead of firing mid-fling, and the chapter list has
 a scroll handle. `SESSION_HANDOFF_0.149.md`.
+
+**The download queue was rebuilt in 0.151–0.157 and two of its contracts
+changed.** `DownloadQueue.progress` is no longer a percent — it is
+`DownloadProgress(ready, total)` with `total` null until the page list lands —
+and `head()` no longer means "the first queued item", because a chapter can now
+be paused on its own and the worker walks past it. `downloadPage` also takes the
+fetch's host-failure tally and will refuse to retry a connect failure against a
+host already known bad. `SESSION_HANDOFF_0.157.md` §3, §5, §8.
+
+**THE FAULT THAT APPEARED FOUR TIMES IN ONE SESSION: one label standing for two
+mechanisms.** `Starting` in the download queue, `0 chapters` on the series
+screen, the `Clear cookies` dialog, and the pause button. Each arrived as a
+cosmetic complaint and each was a state the code could not express. When a
+string or a control covers two causes, the fix is almost never the wording — it
+is that something upstream threw the distinction away.
+`SESSION_HANDOFF_0.157.md` §0.3.
 
 **Read TachiyomiSY.** §1's note that `mihon-ref` is "mostly a dead end" and §5's
 "Do not vendor from modern Mihon" are true **about the vendored API only**, and
@@ -90,9 +109,12 @@ reach for, Mihon and TachiyomiSY are the best reference available and are
 fetchable without a clone. `SESSION_HANDOFF_0.106.md` §7 has the split and the
 commands. Every reader feature since 0.130 came from reading SY first.
 
-**The bug board lives on Trello, not here.** Seven open bugs and eight feature
-cards as of 2026-08-02. Treat any statement below about what is or is not on the
-board as a statement about 2026-07-31.
+**The bug board lives on Trello, not here.** As of 2026-08-03 afternoon:
+"Needs verifying" holds one card (73, `onRenderProcessGone` — shipped in 0.150
+and impossible to exercise without adb or a Cloudflare challenge), and the open
+bugs are Manhwa18 (upstream or login-gated), the all-filters-enabled report, the
+start-button colour, and four Blocked/Upstream sources. Treat any statement
+below about what is or is not on the board as a statement about 2026-07-31.
 
 **The app runs against a real library** — 3575 entries, imported from Tachiyomi.
 That single event exposed nine performance bugs and two correctness bugs in code
