@@ -13,11 +13,13 @@ import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -316,7 +318,7 @@ class TachiyomiSourceAdapter(
             if (persist) throw ChapterDownloadException(0, 0, IllegalStateException("No chapter handle"))
             return@onSourceThread
         }
-        val pages = delegate.getPageList(sChapter)
+        val pages = cappedPageList(sChapter)
         val dir = if (persist) Downloads.dirFor(context, chapter.id)
         else Downloads.cacheDirFor(context, chapter.id)
         dir.mkdirs()
@@ -455,9 +457,65 @@ class TachiyomiSourceAdapter(
         return (start until count) + (start - 1 downTo 0)
     }
 
+
+    /**
+     * [getPageList] with a ceiling on it. Both call sites go through this.
+     *
+     * The app had no limit of any kind on getPageList — not a request count, not
+     * a page count, not a clock. An extension that looped was indistinguishable
+     * from a slow source, and the reader would sit on spinners forever with
+     * nothing anywhere able to say which.
+     *
+     * TWO LIMITS, BECAUSE THEY CATCH DIFFERENT FAILURES.
+     *
+     * The PAGE COUNT catches an extension that returns, having collected
+     * nonsense — a gallery whose `rel=next` walked into the site's listing
+     * pagination and came back with thousands of "pages". That is a bug whatever
+     * the timing, and this check is exact.
+     *
+     * The WALL CLOCK catches one that never returns at all. **It does not stop
+     * it.** withTimeout cancels the coroutine, and cancellation in Kotlin is
+     * cooperative: a blocking `while (true)` inside an extension has no
+     * suspension point to observe it, so the extension's thread keeps going
+     * until it finishes or the process dies. What this buys is that the READER
+     * stops waiting and says why. The runaway work is leaked, deliberately and
+     * knowingly, because the alternative on offer is an app that hangs.
+     *
+     * If a source is ever found that actually hits the clock, the leak stops
+     * being theoretical and this needs revisiting — probably by giving the
+     * extension's OkHttp client a smaller call timeout, which is the only lever
+     * that reaches inside its loop.
+     *
+     * BOTH THROW rather than returning what was collected. A truncated chapter
+     * reads as one that legitimately ends early, which is a silent failure of
+     * the kind this codebase keeps finding; source errors have named their
+     * exception type since 0.78, so the existing path reports these properly.
+     * Both call sites throw BEFORE any directory is created, so a cap firing
+     * mid-download fails the chapter rather than storing a partial one.
+     */
+    private suspend fun cappedPageList(sChapter: SChapter): List<TachiPage> {
+        val pages = try {
+            withTimeout(PAGE_LIST_TIMEOUT_MS) { delegate.getPageList(sChapter) }
+        } catch (e: TimeoutCancellationException) {
+            throw IOException(
+                "This source took more than ${PAGE_LIST_TIMEOUT_MS / 1000}s to list " +
+                    "the pages of one chapter and was given up on. The extension may be " +
+                    "stuck following its own pagination."
+            )
+        }
+        if (pages.size > PAGE_LIST_MAX) {
+            throw IOException(
+                "This source returned ${pages.size} pages for one chapter, past the " +
+                    "$PAGE_LIST_MAX-page limit. That is almost certainly the extension " +
+                    "walking the site rather than the chapter."
+            )
+        }
+        return pages
+    }
+
     override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {
         val sChapter = chapter.handle as? SChapter ?: return@onSourceThread emptyList()
-        val pages = delegate.getPageList(sChapter)
+        val pages = cappedPageList(sChapter)
 
         if (Downloads.isComplete(context, chapter.id)) {
             return@onSourceThread Downloads.pages(context, chapter.id)
@@ -760,6 +818,26 @@ class TachiyomiSourceAdapter(
          * a momentary 5xx — rather than trying to out-stubborn a server.
          */
         const val PAGE_ATTEMPTS = 3
+
+        /**
+         * Ceiling on how many pages one chapter may claim to have.
+         *
+         * Generous on purpose: the longest real chapters anywhere near this app
+         * are a few hundred pages, so this only fires on something that is not a
+         * chapter at all. A tighter limit would start refusing real content, and
+         * refusing real content is worse than the failure it guards against.
+         */
+        const val PAGE_LIST_MAX = 2000
+
+        /**
+         * How long one getPageList may take before the caller stops waiting.
+         *
+         * Three minutes, which is far longer than any legitimate page list and
+         * is meant to be. A wall clock punishes a slow network for an
+         * extension's fault, so it is set where only a genuinely stuck source
+         * can reach it. See cappedPageList for what this does and does not do.
+         */
+        const val PAGE_LIST_TIMEOUT_MS = 180_000L
 
         /** Doubles each attempt: 750ms, then 1.5s. */
         const val PAGE_RETRY_BASE_MS = 750L
