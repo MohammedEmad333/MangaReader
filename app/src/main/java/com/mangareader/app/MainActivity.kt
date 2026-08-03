@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -434,7 +435,7 @@ fun YomuApp() {
     // null = never asked, empty = asked and found none — the same three-state
     // shape as chaptersFetched, and for the same reason: "no videos" and "not
     // looked yet" are different sentences.
-    var videoLinks by remember { mutableStateOf<List<String>?>(null) }
+    var videoScan by remember { mutableStateOf<VideoScan?>(null) }
     var videoScanning by remember { mutableStateOf(false) }
 
     // Back once more to leave, if back would otherwise close the app.
@@ -772,22 +773,21 @@ fun YomuApp() {
     /**
      * Scans the first chapter's page for videos. See Source.listVideos.
      *
-     * Errors are reported through videoLinks = emptyList() plus errorMessage
-     * rather than silently: a scan that failed and a page with no videos would
-     * otherwise look identical, which is the failure this codebase keeps
-     * finding.
+     * A failure comes back as a VideoScan carrying the reason rather than as a
+     * thrown error, so "the scan failed" and "the page has no videos" reach the
+     * dialog as different sentences. They looked identical in 0.173 and that is
+     * exactly the failure this codebase keeps writing cards about.
      */
     fun findVideos() {
         val src = activeSource ?: return
         val chapter = chapterList.firstOrNull() ?: return
-        videoLinks = null
+        videoScan = null
         videoScanning = true
         scope.launch {
-            try {
-                videoLinks = withContext(Dispatchers.IO) { src.listVideos(chapter) }
+            videoScan = try {
+                withContext(Dispatchers.IO) { src.scanVideos(chapter) }
             } catch (e: Throwable) {
-                videoLinks = emptyList()
-                errorMessage = sourceFailureMessage(e, "Could not scan for videos")
+                VideoScan(emptyList(), sourceFailureMessage(e, "The scan failed"))
             }
             videoScanning = false
         }
@@ -1654,24 +1654,33 @@ fun YomuApp() {
 
     // Shown while scanning AND after, so "none found" is a stated result rather
     // than a menu tap that appeared to do nothing.
-    val links = videoLinks
-    if (videoScanning || links != null) {
+    val scan = videoScan
+    if (videoScanning || scan != null) {
         AlertDialog(
-            onDismissRequest = { if (!videoScanning) videoLinks = null },
+            onDismissRequest = { if (!videoScanning) videoScan = null },
             title = { Text("Videos in this chapter") },
             text = {
                 when {
                     videoScanning -> Text("Scanning the first chapter\u2026")
-                    links.isNullOrEmpty() -> Text(
-                        "No videos on this chapter's page.\n\nMost sources list only " +
-                            "images, and a source that shows videos on its website may " +
-                            "still not expose them \u2014 CosplayTele's extension selects " +
-                            "img tags and nothing else."
-                    )
+                    // The old wording here blamed the source's extension for
+                    // selecting only img tags. True of the PAGE LIST and
+                    // irrelevant to this result: the scan reads the page
+                    // directly and never asks the extension. It explained a
+                    // cause that had not produced what was on screen, which is
+                    // worse than saying nothing. It reports the document now.
+                    scan == null || scan.links.isEmpty() -> Column {
+                        Text("No playable video found on this chapter's page.")
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            scan?.note ?: "The scan returned nothing at all.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                     else -> Column {
                         Text("Tap one to open it in a video player.")
                         Spacer(Modifier.height(12.dp))
-                        links.forEachIndexed { index, url ->
+                        scan.links.forEachIndexed { index, url ->
                             TextButton(
                                 onClick = {
                                     // The REMOTE url, streamed by the player.
@@ -1698,7 +1707,7 @@ fun YomuApp() {
             },
             confirmButton = {
                 TextButton(
-                    onClick = { videoLinks = null },
+                    onClick = { videoScan = null },
                     enabled = !videoScanning
                 ) { Text("Close") }
             }
