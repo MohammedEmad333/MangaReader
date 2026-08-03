@@ -747,7 +747,11 @@ different path entirely.
 
 ## 10. State of the tree
 
-Head is `556b753`; the last app change is `a1056b4` (0.189). Build environment unchanged from 0.134: Kotlin
+The last change to app code is `a1056b4` (0.189). **Deliberately not naming the
+repo's head commit**: this file names it, so every edit to this file moves head
+and makes the line wrong — it went stale twice within an hour that way. The APK
+tracks app changes, not doc commits, and `git log --oneline -1` answers the
+other question without anyone maintaining it. Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
