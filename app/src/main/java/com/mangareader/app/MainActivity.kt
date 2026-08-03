@@ -430,6 +430,13 @@ fun YomuApp() {
     // guess.
     var chaptersFetched by remember { mutableStateOf(false) }
 
+    // Video links found on a chapter's page, for handing to an external player.
+    // null = never asked, empty = asked and found none — the same three-state
+    // shape as chaptersFetched, and for the same reason: "no videos" and "not
+    // looked yet" are different sentences.
+    var videoLinks by remember { mutableStateOf<List<String>?>(null) }
+    var videoScanning by remember { mutableStateOf(false) }
+
     // Back once more to leave, if back would otherwise close the app.
     //
     // Deliberately NOT a dialog. A dialog on the way out is a second thing to
@@ -762,6 +769,30 @@ fun YomuApp() {
      * stays on screen and readable while the request runs. Clearing it first is
      * what 0.102 had to undo in the reader for the same reason.
      */
+    /**
+     * Scans the first chapter's page for videos. See Source.listVideos.
+     *
+     * Errors are reported through videoLinks = emptyList() plus errorMessage
+     * rather than silently: a scan that failed and a page with no videos would
+     * otherwise look identical, which is the failure this codebase keeps
+     * finding.
+     */
+    fun findVideos() {
+        val src = activeSource ?: return
+        val chapter = chapterList.firstOrNull() ?: return
+        videoLinks = null
+        videoScanning = true
+        scope.launch {
+            try {
+                videoLinks = withContext(Dispatchers.IO) { src.listVideos(chapter) }
+            } catch (e: Throwable) {
+                videoLinks = emptyList()
+                errorMessage = sourceFailureMessage(e, "Could not scan for videos")
+            }
+            videoScanning = false
+        }
+    }
+
     fun refreshChapters() {
         val src = activeSource ?: return
         val series = activeSeries ?: return
@@ -1258,6 +1289,7 @@ fun YomuApp() {
             // Empty means three different things; this says which. See its
             // declaration.
             chaptersFetched = chaptersFetched,
+            onFindVideos = { findVideos() },
             sourceId = activeSourceId ?: "",
             sourceName = activeSource?.name ?: "",
             canDownload = activeSource?.supportsDownload == true,
@@ -1618,6 +1650,59 @@ fun YomuApp() {
                 }
             }
         }
+    }
+
+    // Shown while scanning AND after, so "none found" is a stated result rather
+    // than a menu tap that appeared to do nothing.
+    val links = videoLinks
+    if (videoScanning || links != null) {
+        AlertDialog(
+            onDismissRequest = { if (!videoScanning) videoLinks = null },
+            title = { Text("Videos in this chapter") },
+            text = {
+                when {
+                    videoScanning -> Text("Scanning the first chapter\u2026")
+                    links.isNullOrEmpty() -> Text(
+                        "No videos on this chapter's page.\n\nMost sources list only " +
+                            "images, and a source that shows videos on its website may " +
+                            "still not expose them \u2014 CosplayTele's extension selects " +
+                            "img tags and nothing else."
+                    )
+                    else -> Column {
+                        Text("Tap one to open it in a video player.")
+                        Spacer(Modifier.height(12.dp))
+                        links.forEachIndexed { index, url ->
+                            TextButton(
+                                onClick = {
+                                    // The REMOTE url, streamed by the player.
+                                    // Nothing is downloaded, so no FileProvider
+                                    // and no guessing at file extensions. The
+                                    // cost is that a host needing this app's
+                                    // cookies or headers will fail in the
+                                    // player, and that is worth knowing early.
+                                    val view = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(Uri.parse(url), "video/*")
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    runCatching { context.startActivity(view) }
+                                        .onFailure {
+                                            errorMessage =
+                                                "No app on this device can play that link"
+                                        }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Video ${index + 1}", maxLines = 1) }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { videoLinks = null },
+                    enabled = !videoScanning
+                ) { Text("Close") }
+            }
+        )
     }
 
     val probeSourceRef = activeSource

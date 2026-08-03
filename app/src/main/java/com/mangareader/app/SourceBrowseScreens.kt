@@ -536,6 +536,8 @@ internal fun SeriesScreen(
      * "This source returned no chapters" while the request was still running.
      */
     chaptersFetched: Boolean,
+    /** Scans the first chapter's page for video URLs. See Source.listVideos. */
+    onFindVideos: () -> Unit,
     sourceId: String,
     sourceName: String,
     canDownload: Boolean,
@@ -1423,6 +1425,21 @@ internal fun SeriesScreen(
                                 onRefresh()
                             }
                         )
+                        // Scans the FIRST chapter only, and the dialog says so.
+                        // A gallery source has one chapter, which is the case
+                        // this was built for; scanning every chapter of a
+                        // 200-chapter series would be 200 requests to answer a
+                        // question nobody asked. Hidden entirely when there are
+                        // no chapters, so it cannot be tapped into a no-op.
+                        if (chapters.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("Find videos") },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onFindVideos()
+                                }
+                            )
+                        }
                         // Only in the library: categories are a library concept
                         // and the dialog writes an assignment for a series that
                         // isn't saved, which nothing would ever read.
