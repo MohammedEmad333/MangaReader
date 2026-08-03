@@ -1,22 +1,23 @@
-# Session handoff — 0.150 to 0.154, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.156, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Five releases. **Two of them were written against cards whose stated premise
+Seven releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
-as the feature existed, and one fixed a bug this session had introduced two
-hours earlier. Everything except §2 is verified on device.
+as the feature existed, one fixed a bug this session had introduced two hours
+earlier, and one corrected a prediction this session had got wrong by a factor
+of five. Everything except §2 and §9 is verified on device.
 
 ---
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.154 and the whole range is verified except `onRenderProcessGone`.**
-0.151, 0.152, 0.153 and 0.154 were all exercised on device. 0.150 was not, and
-cannot be — §2.
+**1. Head is 0.156 and the whole range is verified except `onRenderProcessGone`
+and the tag change.** 0.151 through 0.156 were exercised on device. 0.150 was
+not and cannot be (§2); the chevron/tags change is untested (§9).
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -39,6 +40,12 @@ building on it.
 §6. Card 82's step 4 verified that the notification *said* "All chapters on
 hold" and not what its *button* did. The bug was in the button.
 
+**6. A mechanism read is not a number known.** §8. 0.155's circuit breaker was
+predicted at ninety seconds and took four and a half minutes, because
+`downloadPage` retries three times and nothing multiplied by that — the retry
+loop had been read while writing the change. That is §0.5 of
+`SESSION_HANDOFF_0.149.md`, made again in the same session that wrote it down.
+
 ---
 
 ## 1. The releases
@@ -50,6 +57,8 @@ hold" and not what its *button* did. The bug was in the button.
 | 0.152 | Pause stops the chapter in flight | `0801208` | Verified |
 | 0.153 | Per-download pause; queue screen icons; two one-liners | `fe71519` | Verified |
 | 0.154 | `Resume all` when holds are the only thing stopping the queue | `d1ac443` | Verified |
+| 0.155 | A per-host circuit breaker for one page fetch | `ca4365c` | Superseded by 0.156 |
+| 0.156 | Attempt-level counting, retry suppression, tags on the chevron | `b52cbf0` | Breaker verified; tags not |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -279,9 +288,99 @@ does serve 503 as an interstitial — and the browser killed it in one tap.
 
 ---
 
-## 8. State of the tree
+## 8. 0.155 and 0.156 — the circuit breaker, and the number nobody multiplied by
 
-Head is `d1ac443` (0.154). Build environment unchanged from 0.134: Kotlin
+A chapter whose every page targets one unreachable host used to spend
+36 × 30s discovering that, one page at a time, with nothing remembering that
+the previous thirty-five connections to the same host had failed. 0.151 made
+that stall legible — `0 of 30` instead of `Starting`. This makes it end.
+
+### 0.155 worked, and was five times slower than predicted
+
+It named the right host for the right reason and took **over four minutes**
+against a predicted ninety seconds.
+
+**`downloadPage` retries.** `PAGE_ATTEMPTS = 3`, and `isTransient` returns true
+for any `IOException`, which includes `SocketTimeoutException`. So every *page*
+failure cost 3 × `connectTimeout`, not one, and six page failures were three
+batches of ninety seconds.
+
+**The retry loop was read while writing 0.155 and not multiplied by.** That is
+`SESSION_HANDOFF_0.149.md` §0.7's complement, verbatim, in the session that
+quoted it: read the number that governs an instrument before predicting how
+long it takes to speak.
+
+**Lowering the threshold could not have fixed it.** The floor was
+`PAGE_ATTEMPTS × connectTimeout` on the first batch whatever the limit was.
+
+### What 0.156 changed
+
+- **Counted per ATTEMPT, not per page.** A retry is another connection to the
+  same host and counts as one.
+- **A shared `ConcurrentHashMap`, written from inside `downloadPage`**, so a
+  failure is visible to the sibling page coroutines *while the batch is still
+  running* rather than after it.
+- **Retries suppressed past the first connect failure per host**
+  (`CONNECT_RETRY_GIVE_UP_AT = 2`). **Retrying a connect timeout against a host
+  that just timed out buys nothing** — `recycleConnections()` exists for a stale
+  pool, and a fresh socket pays the full timeout again to learn the same thing.
+  This is a behaviour change for every source, not just dead hosts.
+- **`HOST_CONNECT_FAILURE_LIMIT = 4`**, now attempts: roughly two batches.
+- **Successes still clear the host**, computed once per completed batch so the
+  reset does not depend on the order results arrive in.
+
+### The other half: a count that was not a measurement
+
+`"30 of 30 pages failed"` was `done.count { it == null }` — and a page nobody
+reached is null exactly like a page that failed. The chapter had stopped after
+six. Now `attempted` and `failedSoFar` are tracked separately.
+
+**Same fault as §3 and §4**, in the same area, found by reading a screenshot of
+this session's own fix.
+
+### The verifying message names the mechanism
+
+> gave up after 5 consecutive failures across 4 of 30 pages
+
+**Five attempts from four pages.** The first page to hit the host got its one
+permitted retry, then the suppression stopped the rest. That is attempt-level
+counting visible in the output, and it is only legible because the count and
+the page total are now reported separately.
+
+---
+
+## 9. Tags on the series chevron (0.156), and a gap left in it
+
+Expanding a series description now wraps every tag; collapsed, the row still
+scrolls horizontally. Tags past the right edge had been reachable only by a
+horizontal drag nothing advertised, so a series with many genres looked like it
+had four.
+
+**`FlowRow` is opted into rather than worked around.** The old comment avoided
+it as experimental on this Compose version, and that reason still stands for
+the collapsed row — which keeps the scrolling `Row`, so a long tag list cannot
+push the chapter list off screen. For the expanded one there is no good
+alternative: chip widths vary, so chunking into fixed rows leaves ragged gaps.
+
+**The chips moved into one `GenreChips` composable** used by both branches. Two
+copies of a chip that owns a dropdown is two places for the menu to drift, and
+that menu is the reason a tag stopped being decoration.
+
+**Inserted before `SeriesScreen`'s `@OptIn` block, not between an annotation and
+its declaration** — `SESSION_HANDOFF_0.149.md` §5. Both annotation blocks were
+re-checked as contiguous afterwards.
+
+**NOT VERIFIED, and one gap left deliberately.** The chevron only renders when
+there *is* a description, so a series with tags and no description still cannot
+expand them. That is the same shape as §6's dead loop — a control that cannot
+reach a state — and it is noted on card 64 rather than fixed, because widening
+that file further in one day was not worth the risk.
+
+---
+
+## 10. State of the tree
+
+Head is `b52cbf0` (0.156). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -289,13 +388,15 @@ working.
 
 Files changed across the range: `CloudflareInterceptor.kt`, `WebViewScreen.kt`,
 `DownloadQueue.kt`, `DownloadService.kt`, `DownloadQueueScreen.kt`,
-`SourceBrowseScreens.kt`, `SettingsScreens.kt`, `WhatsNew.kt`,
-`app/build.gradle.kts`.
+`SourceBrowseScreens.kt`, `SettingsScreens.kt`, `TachiyomiSourceAdapter.kt`,
+`WhatsNew.kt`, `app/build.gradle.kts`.
 
-**Two API notes for anyone reading this code cold.** `onRenderProcessGone` is
-API 26 and `minSdk` is 24; the override is never invoked below 26 and CI runs no
-lint step, so nothing flags it. And `DownloadQueue.head()` no longer means "the
-first queued item" — see §5.
+**Three notes for anyone reading this code cold.** `onRenderProcessGone` is API
+26 and `minSdk` is 24; the override is never invoked below 26 and CI runs no
+lint step, so nothing flags it. `DownloadQueue.head()` no longer means "the
+first queued item" — §5. And `downloadPage` now takes the fetch's host-failure
+tally and will *refuse to retry* a connect failure against a host already known
+bad in that fetch — §8.
 
 **Housekeeping.** `debug.keystore` and `release.keystore` are still committed at
 the repo root, and the release keystore is this app's signing identity. The
@@ -304,12 +405,12 @@ decision rather than an oversight.
 
 ---
 
-## 9. The board
+## 11. The board
 
 **Closed this session:** the "Starting" ambiguity (78); Pause did nothing
 mid-chapter (83); the queue screen pass (82); Clear cookies vs
-ClearanceUserAgents (81); the all-held dead loop (85). Manhwa18 (74) and Coomer
-(69) both reclassified.
+ClearanceUserAgents (81); the all-held dead loop (85); the per-host circuit
+breaker (79). Manhwa18 (74) and Coomer (69) both reclassified.
 
 **Opened:** the empty-versus-unparsed chapter list (80, wording half shipped);
 the queue screen pass (82, now closed); the all-held loop (85, now closed).
@@ -317,11 +418,10 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
+**Needs verifying also holds 64**, the tag change — §9.
+
 ### Open, roughly by value
 
-- **A per-host circuit breaker** (79) — turns eighteen silent minutes into one
-  message naming the host. Pairs with §3, which now makes the stall visible but
-  still takes 36 × 30s to reach the end.
 - **Telling a real zero from an unparsed one** (80) — §4. Touches every source,
   so settle the shape first.
 - **Scroll handles on the remaining five lists** (47) — `ListScrollHandle` makes
