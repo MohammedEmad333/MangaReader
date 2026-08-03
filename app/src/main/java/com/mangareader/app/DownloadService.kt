@@ -481,11 +481,16 @@ class DownloadService : Service() {
         val isPaused = DownloadQueue.paused
         val allOnHold = DownloadQueue.allItemsPaused()
 
+        // Carries EXTRA_OPEN_QUEUE so tapping the notification lands on the
+        // queue rather than wherever the app happened to be. FLAG_UPDATE_CURRENT
+        // matters here: without it the extra would be baked into the first
+        // PendingIntent ever created and later rebuilds would be ignored.
         val open = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_OPEN_QUEUE, true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -556,6 +561,9 @@ class DownloadService : Service() {
         private const val WAKE_LOCK_TIMEOUT_MS = 4L * 60 * 60 * 1000
         private const val NOTIFY_INTERVAL_MS = 500L
         private const val PAUSE_POLL_MS = 700L
+
+        /** Set on the notification's tap intent; read by MainActivity. */
+        const val EXTRA_OPEN_QUEUE = "com.mangareader.app.OPEN_QUEUE"
 
         const val ACTION_PAUSE = "com.mangareader.app.PAUSE"
         const val ACTION_RESUME = "com.mangareader.app.RESUME"

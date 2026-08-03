@@ -1,11 +1,11 @@
-# Session handoff — 0.150 to 0.157, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.167, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Eight releases. **Two of them were written against cards whose stated premise
+Eighteen releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
 as the feature existed, one fixed a bug this session had introduced two hours
 earlier, and one corrected a prediction this session had got wrong by a factor
@@ -15,8 +15,8 @@ of five. Everything except §2 is verified on device.
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.157 and the whole range is verified except `onRenderProcessGone`.**
-0.151 through 0.157 were exercised on device. 0.150 was not and cannot be — §2.
+**1. Head is 0.167 and the whole range is verified except `onRenderProcessGone`.**
+0.151 through 0.167 were exercised on device. 0.150 was not and cannot be — §2.
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -39,7 +39,14 @@ building on it.
 §6. Card 82's step 4 verified that the notification *said* "All chapters on
 hold" and not what its *button* did. The bug was in the button.
 
-**6. A mechanism read is not a number known.** §8. 0.155's circuit breaker was
+**6. A mechanism read is not a number known.** §8.
+
+**7. THE MOST REUSABLE THING IN THIS FILE IS §9b.** The scroll handle stopped
+short of the end of every list for thirty releases and was signed off four
+times, because every test step said "reaches the last row" and none said "the
+last row is FULLY VISIBLE". Three wrong diagnoses followed, all from "what
+changed most recently" — for a bug no recent change could have caused. The
+question that settled it took one look and was asked fourth. 0.155's circuit breaker was
 predicted at ninety seconds and took four and a half minutes, because
 `downloadPage` retries three times and nothing multiplied by that — the retry
 loop had been read while writing the change. That is §0.5 of
@@ -59,6 +66,16 @@ loop had been read while writing the change. That is §0.5 of
 | 0.155 | A per-host circuit breaker for one page fetch | `ca4365c` | Superseded by 0.156 |
 | 0.156 | Attempt-level counting, retry suppression, tags on the chevron | `b52cbf0` | Verified |
 | 0.157 | Scroll handles on Downloads and global search; the chevron gap | `68e989a` | Verified |
+| 0.158 | Last two scroll handles; Start follows the accent | `d0e9bd5` | Verified |
+| 0.159 | Start's label by luminance; History's handle | `52054a6` | Verified |
+| 0.160 | Pull to refresh on History and Downloads | `fb021f9` | Superseded |
+| 0.161 | Clear the refresh flag from an effect | `dec24ed` | Verified |
+| 0.162 | Invalidate the download index; browse refresh | `0a5261d` | Half reverted |
+| 0.163 | Clear the completion memo; browse refresh out | `e9d3055` | Verified |
+| 0.164 | Grids seek by row | `0f04700` | Real fix, not the reported one |
+| 0.165 | Handle inset from the edges; browse refresh back | `34b0dbe` | Partial |
+| 0.166 | Count only rows that fit; system-bar insets | `514e467` | Verified |
+| 0.167 | Item count from the list, not the caller | `829ce83` | Verified |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -405,9 +422,103 @@ not `ListScrollHandle`.
 
 ---
 
+## 9b. The scroll handle never reached the end, and five releases went into finding out why
+
+**Read this one for the method, not the fix.** The fix is four lines.
+
+The handle stopped short of the end of every list in the app — a fifth of the
+last cell on Downloads and History, two chapters on a long series, the *Load
+more* button on a browse grid. **It had been that way since 0.133 and was signed
+off as working four separate times.**
+
+### Why every earlier verification passed
+
+Every test step written for it — by me — said *"reaches the last row"* or
+*"REACHES THE LAST CELL"*. **None said "the last row is fully visible."** A
+handle that stops 20% short passes the first wording honestly, because the row
+*is* on screen. It is just clipped.
+
+**The wording was the defect.** Not the tester, not the code under test.
+
+### The two real causes
+
+1. **Partially visible items counted as fitting** (0.166).
+   `layoutInfo.visibleItemsInfo` includes items clipped by the viewport edge, so
+   `span = totalItems - visibleItems` overstated capacity and the furthest
+   seekable index fell short by however many were clipped — one at each end,
+   usually. Both wrappers now count only items wholly inside the viewport, and
+   grids count rows the same way.
+
+2. **Hand-counted item totals** (0.167). The chapter list passed
+   `visible.size + 3`. **0.157 added two lazy items to that screen** — the tag
+   row and the chevron for tags with no description — **and left the `+ 3`
+   alone.** The parameter is now gone entirely: `layoutInfo.totalItemsCount` is
+   the composition's count and cannot drift from it. All seven callers stopped
+   passing arithmetic.
+
+### Three wrong answers first, and each one fit
+
+- **A `PullToRefreshBox` wrapper** (0.163). Reverted; changed nothing.
+- **Grid row alignment** (0.164). A *real* bug — `scrollToItem` aligns the row
+  containing an index, so cell arithmetic drops the final partial row — fixed,
+  and not the reported symptom.
+- **The navigation gesture strip** (0.165). Plausible: the track ran to the
+  screen edge, so the end of a drag competed with the system back swipe.
+
+**All three came from "what changed most recently between working and broken."**
+The code had been wrong since 0.133, so no recent change could have explained
+it, and that should have been visible from the first report.
+
+### The question that settled it
+
+> When a list stops short, is the thumb **hard against the bottom of its track**,
+> or short of it?
+
+Bottom means the arithmetic is wrong. Short means the drag is being cut off. One
+look, and it was available before any of the three wrong answers. **It was asked
+fourth.**
+
+### The generalisation
+
+**A restatement of a number the framework already knows is a bug waiting for
+someone to edit the thing it restates.** Card 47 had *instructed* every new
+caller to hand-count its lazy items, and treated the fact that each caller had a
+different number as evidence of care. It was six copies of a fact with one
+owner.
+
+---
+
+## 9c. Pull to refresh, and a cache under a cache
+
+0.160 added the gesture to History and Downloads. **On Downloads it did nothing
+at all**, and it took three attempts to make it do anything.
+
+- **0.160**: bumped the revision. `DownloadIndex.list()` memoises, so the tick
+  re-read the memo and never touched the disk.
+- **0.162**: called `DownloadIndex.invalidate()`. That forces a rebuild — and
+  the rebuild calls `Downloads.isComplete()` for every record, **which answers
+  from its own `ConcurrentHashMap`**. The rebuild re-asked a memo that still
+  said "complete".
+- **0.163**: `Downloads.invalidateCompletion()`, which drops the completion and
+  size memos *and* the index. Its own comment says it is "for anything that
+  moves or removes files in bulk", which is exactly what a refresh asserts.
+
+**Clearing an outer cache while an inner one still answers is not a partial fix,
+it is no fix** — and it reads as a fix, because the code plainly does something.
+
+**Two reversals worth keeping.** Mid-session I argued these gestures were
+near-redundant, since every in-app mutation already re-reads. True, and the
+wrong conclusion: the case it dismissed — a change made from *outside* the app —
+was both the only case the gesture could serve and the case that was broken.
+And the indicator itself needed `isRefreshing` cleared from an **effect**;
+cleared inline, `PullToRefreshBox` never observes the transition and the arrow
+stays parked on screen (0.161).
+
+---
+
 ## 10. State of the tree
 
-Head is `68e989a` (0.157). Build environment unchanged from 0.134: Kotlin
+Head is `829ce83` (0.167). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -446,7 +557,8 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 a challenge.
 
 **Needs verifying holds only 73.** Everything else shipped this session is
-verified.
+verified — including, finally, the scroll handle (§12), whose card had claimed
+that for thirty releases without it being true.
 
 ### Open, roughly by value
 
