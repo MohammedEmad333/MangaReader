@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.imageLoader
+import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1693,6 +1694,14 @@ private fun AdvancedSettings() {
                         CookieManager.getInstance().removeAllCookies(null)
                         CookieManager.getInstance().flush()
                     }
+                    // The UA a challenge was solved under is NOT in that store.
+                    // It lives in its own prefs and is presented per host on
+                    // every request, so leaving it behind meant this button
+                    // promised a challenge would come back while the app went
+                    // on identifying itself exactly as it had when it passed.
+                    // It also left a state no fresh install can reach: no
+                    // clearance, but a UA earned by a challenge that is gone.
+                    runCatching { ClearanceUserAgents.clear(context) }
                     confirmCookies = false
                 }) { Text("Clear") }
             },
