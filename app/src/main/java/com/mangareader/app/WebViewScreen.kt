@@ -414,19 +414,14 @@ internal fun EmbedWebViewScreen(
                     // Players are the main reason this exists, and many will not
                     // start without it.
                     settings.mediaPlaybackRequiresUserGesture = false
-                    // AIMED, not hopeful. The DOM branch is exhausted: the
-                    // element fills the viewport (rect 0,0 392x680 against a
-                    // 392x680 viewport), opacity 1, visible, display block,
-                    // decoding 341 frames with none dropped. Nothing in the page
-                    // explains a white screen, so what is left is the WebView
-                    // not compositing the video's own layer.
-                    //
-                    // Inline HTML5 video needs a hardware layer; without one the
-                    // audio plays and the picture never reaches the screen,
-                    // which is exactly the reading. Nothing in this app disables
-                    // acceleration — no setLayerType anywhere, manifest default
-                    // on — so making it explicit is the one lever left here.
-                    setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                    // NO setLayerType HERE, AND THAT IS DELIBERATE. 0.183 set
+                    // LAYER_TYPE_HARDWARE on the reasoning that inline video
+                    // needs a hardware layer; frames went from 341 to 1352 and
+                    // the screen stayed white, so it did nothing — and forcing
+                    // a WebView into an offscreen hardware layer is a known way
+                    // to BREAK video overlays, because the video composites
+                    // outside the texture the layer captures. A change that did
+                    // not help and can hurt does not get to stay.
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     // The player's host is the only place this screen may go.
                     val allowedHost = runCatching { Uri.parse(url).host }.getOrNull()
@@ -530,28 +525,48 @@ private val VIDEO_PROBE_JS = """
       var note = document.getElementById('yomu-note');
       var extra = note ? note.textContent + '\n' : '';
       var v = document.querySelectorAll('video');
-      if (!v.length) return extra + 'no <video> in the DOM';
-      var e = v[0];
-      var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
-      var frames = q ? q.totalVideoFrames : -1;
-      var r = e.getBoundingClientRect();
-      var cs = window.getComputedStyle(e);
-      // What is actually on top at the element's own centre. If this is not the
-      // video, something is covering it — which is the difference between "not
-      // drawn" and "drawn under something".
-      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      var top = document.elementFromPoint(cx, cy);
-      var topDesc = top ? (top.tagName + (top.className ? '.' + String(top.className).split(' ')[0] : '')) : 'nothing';
-      return extra +
-        'media ' + e.videoWidth + 'x' + e.videoHeight +
-        '  t=' + (e.currentTime || 0).toFixed(1) +
-        (e.paused ? ' PAUSED' : ' playing') + ' frames=' + frames + '\n' +
-        'rect ' + Math.round(r.left) + ',' + Math.round(r.top) +
-        ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-        '  viewport ' + window.innerWidth + 'x' + window.innerHeight + '\n' +
-        'opacity=' + cs.opacity + ' vis=' + cs.visibility +
-        ' disp=' + cs.display + ' z=' + cs.zIndex + '\n' +
-        'topmost at centre: ' + topDesc;
+      if (!v.length) return extra + 'no video element in the DOM';
+
+      // EVERY video, not just the first. A page can carry an ad's video and the
+      // content's, and reporting only v[0] would describe the wrong one without
+      // ever saying so.
+      var lines = [];
+      for (var i = 0; i < v.length; i++) {
+        var e = v[i];
+        var r = e.getBoundingClientRect();
+        var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
+        lines.push(i + ': ' + e.videoWidth + 'x' + e.videoHeight +
+          ' rect ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+          ' t=' + (e.currentTime || 0).toFixed(1) +
+          (e.paused ? ' PAUSED' : ' play') +
+          ' f=' + (q ? q.totalVideoFrames : -1));
+      }
+
+      // THE ANCESTOR CHAIN. getComputedStyle(video).opacity is the element's OWN
+      // opacity and says nothing about a parent set to 0 — the same for
+      // transform, filter and clip. An ancestor can hide a perfectly healthy
+      // video and every reading taken so far would still look correct.
+      var hidden = [];
+      var n = v[0];
+      while (n && n.nodeType === 1 && n.tagName !== 'HTML') {
+        var c = window.getComputedStyle(n);
+        var why = [];
+        if (parseFloat(c.opacity) < 1) why.push('opacity=' + c.opacity);
+        if (c.visibility !== 'visible') why.push('vis=' + c.visibility);
+        if (c.transform && c.transform !== 'none') why.push('transform');
+        if (c.filter && c.filter !== 'none') why.push('filter=' + c.filter);
+        if (c.clipPath && c.clipPath !== 'none') why.push('clip');
+        if (parseInt(c.zIndex, 10) < 0) why.push('z=' + c.zIndex);
+        if (why.length) {
+          hidden.push(n.tagName + (n.className ? '.' + String(n.className).split(' ')[0] : '') +
+            ' ' + why.join(' '));
+        }
+        n = n.parentElement;
+      }
+
+      return extra + 'videos=' + v.length + '\n' + lines.join('\n') + '\n' +
+        (hidden.length ? 'ancestors hiding it:\n' + hidden.join('\n')
+                       : 'no ancestor hides it');
     })()
 """.trimIndent()
 
