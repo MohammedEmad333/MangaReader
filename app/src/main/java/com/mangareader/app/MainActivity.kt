@@ -436,6 +436,9 @@ fun YomuApp() {
     // shape as chaptersFetched, and for the same reason: "no videos" and "not
     // looked yet" are different sentences.
     var videoScan by remember { mutableStateOf<VideoScan?>(null) }
+    // url to open, and the page it is embedded on. The second half is the
+    // Referer, and without it cossora.stream answers "Unknown Error xD".
+    var openEmbed by remember { mutableStateOf<Pair<String, String>?>(null) }
     var videoScanning by remember { mutableStateOf(false) }
 
     // Back once more to leave, if back would otherwise close the app.
@@ -1182,6 +1185,21 @@ fun YomuApp() {
     val chapterIdx = activeChapterIdx
     val readerChapter = chapterIdx?.let { chapterList.getOrNull(it) }
 
+    // Same shape and same justification as the challenge branch below: gated on
+    // state that is null in every other flow, and clearing it drops back onto
+    // whatever was underneath. Placed BELOW the challenge so a Cloudflare wall
+    // still wins — a player is never more urgent than being able to reach the
+    // site at all.
+    val embed = openEmbed
+    if (challengeUrl == null && embed != null) {
+        EmbedWebViewScreen(
+            url = embed.first,
+            referer = embed.second,
+            onBack = { openEmbed = null }
+        )
+        return
+    }
+
     val challenge = challengeUrl
     if (challenge != null) {
         // Sits above every other branch, and safely so: it's gated on state that
@@ -1689,12 +1707,17 @@ fun YomuApp() {
                         scan.embeds.forEachIndexed { index, url ->
                             TextButton(
                                 onClick = {
-                                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    runCatching { context.startActivity(view) }
-                                        .onFailure {
-                                            errorMessage = "Nothing here can open that link"
-                                        }
+                                    // NOT the system browser. Chrome sends no
+                                    // Referer for a typed navigation, and this
+                                    // player refuses that with "Unknown Error
+                                    // xD" — which is exactly what happened when
+                                    // 0.176 handed it over. The in-app WebView
+                                    // can state where the request came from.
+                                    val page = activeSeries?.let { series ->
+                                        activeSource?.seriesUrl(series)
+                                    }
+                                    videoScan = null
+                                    openEmbed = url to (page ?: "")
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
