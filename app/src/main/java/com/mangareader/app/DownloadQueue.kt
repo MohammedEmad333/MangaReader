@@ -246,6 +246,21 @@ object DownloadQueue {
     /** True when this chapter is paused on its own. */
     fun isItemPaused(chapterId: String): Boolean = chapterId in pausedIds
 
+    /**
+     * Releases every individual hold.
+     *
+     * Separate from [setPaused] on purpose. The queue-wide pause and a set of
+     * per-chapter holds are different intents, and resuming one must not
+     * silently discard the other — globally pausing while three chapters are
+     * held, then resuming, has to leave those three held. This is only for the
+     * case where holds are the ONLY thing stopping the queue, where "resume"
+     * has no other possible meaning.
+     */
+    fun clearItemPauses(context: Context) {
+        pausedIds = emptySet()
+        save(context)
+    }
+
     /** True when the given chapter is queued but not yet started. */
     fun isQueued(chapterId: String): Boolean = items.any { it.chapterId == chapterId }
 

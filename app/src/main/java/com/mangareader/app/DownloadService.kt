@@ -144,6 +144,15 @@ class DownloadService : Service() {
                 val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
                 if (id != null) DownloadQueue.setItemPaused(this, id, false)
             }
+            ACTION_RESUME_ALL -> {
+                // Offered only when individual holds are the ONLY thing
+                // stopping the queue. Clearing them then has one meaning, and
+                // it is the one thing the user can want from a notification
+                // saying nothing is happening.
+                pausing = false
+                DownloadQueue.setPaused(this, false)
+                DownloadQueue.clearItemPauses(this)
+            }
             ACTION_SKIP -> {
                 val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
                 if (id == null || id == DownloadQueue.activeId) itemJob?.cancel()
@@ -503,10 +512,28 @@ class DownloadService : Service() {
             // having asked yet.
             .setProgress(100, percent ?: 0, current == null || percent == null)
 
+        // Three states, not two. Keying this on `isPaused` alone left a dead
+        // loop: with every chapter individually held the title said "All
+        // chapters on hold" and the action said Pause, which set the queue-wide
+        // pause, whose Resume cleared it and returned to all-on-hold. The
+        // button toggled a mechanism that was not the one holding the queue,
+        // so nothing could ever be resumed from here.
+        val resumeAll = !isPaused && allOnHold
         builder.addAction(
             0,
-            if (isPaused) "Resume" else "Pause",
-            action(if (isPaused) ACTION_RESUME else ACTION_PAUSE, 1)
+            when {
+                isPaused -> "Resume"
+                resumeAll -> "Resume all"
+                else -> "Pause"
+            },
+            action(
+                when {
+                    isPaused -> ACTION_RESUME
+                    resumeAll -> ACTION_RESUME_ALL
+                    else -> ACTION_PAUSE
+                },
+                1
+            )
         )
         builder.addAction(0, "Cancel all", action(ACTION_CANCEL_ALL, 2))
 
@@ -534,6 +561,7 @@ class DownloadService : Service() {
         const val ACTION_RESUME = "com.mangareader.app.RESUME"
         const val ACTION_PAUSE_ITEM = "com.mangareader.app.PAUSE_ITEM"
         const val ACTION_RESUME_ITEM = "com.mangareader.app.RESUME_ITEM"
+        const val ACTION_RESUME_ALL = "com.mangareader.app.RESUME_ALL"
         const val ACTION_SKIP = "com.mangareader.app.SKIP"
         const val ACTION_CANCEL_ALL = "com.mangareader.app.CANCEL_ALL"
         const val EXTRA_CHAPTER_ID = "chapterId"
