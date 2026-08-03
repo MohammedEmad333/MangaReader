@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 154,
+            name = "0.154",
+            header = "Resume works when every chapter is on hold",
+            body = "With all your downloads held, the button still offered "  +
+                "to pause \u2014 and pausing then unpausing just came back "  +
+                "to the same place, so there was no way to start them again "  +
+                "from the queue or the notification.\n\nIt now offers "  +
+                "Resume all, which releases every hold at once.",
+        ),
+        ReleaseNote(
             code = 153,
             name = "0.153",
             header = "Pause one download, not all of them",

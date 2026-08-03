@@ -271,17 +271,30 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.weight(1f))
             if (items.isNotEmpty()) {
+                // Three states, matching the notification. Keyed on `paused`
+                // alone this was a dead loop: with every chapter held the
+                // button offered Pause, which set the queue-wide pause, whose
+                // Resume returned to all-held. It toggled a mechanism that was
+                // not the one holding the queue.
+                val resumeAll = !paused && items.all { it.chapterId in pausedIds }
                 IconButton(onClick = {
                     DownloadService.start(
                         context,
-                        if (paused) DownloadService.ACTION_RESUME
-                        else DownloadService.ACTION_PAUSE
+                        when {
+                            paused -> DownloadService.ACTION_RESUME
+                            resumeAll -> DownloadService.ACTION_RESUME_ALL
+                            else -> DownloadService.ACTION_PAUSE
+                        }
                     )
                 }) {
                     Icon(
-                        if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        contentDescription = if (paused) "Resume all downloads"
-                        else "Pause all downloads"
+                        if (paused || resumeAll) Icons.Default.PlayArrow
+                        else Icons.Default.Pause,
+                        contentDescription = when {
+                            paused -> "Resume all downloads"
+                            resumeAll -> "Release every hold"
+                            else -> "Pause all downloads"
+                        }
                     )
                 }
                 // Confirmed, unlike before: this discards the whole queue and
