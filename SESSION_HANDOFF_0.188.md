@@ -22,11 +22,17 @@ that cites a file by name has to be re-read every time the name changes. The
 name is now fixed at 0.188 and the coverage line above says what it actually
 covers.
 
-**1a. Head is 0.189. THREE things are unverified, not two.** The two long-term
-ones carry code that has never executed and cannot be made to on demand:
-`onRenderProcessGone` (§2) and the `getPageList` ceiling (§9e), both parked in
-Needs verifying deliberately. The third is simply new: **0.189 has not been on a
-device at all** — see §10. Everything from 0.150 to 0.188 is verified.
+**1a. Head is 0.189. THREE things are unverified.** Two carry code that has
+never executed and cannot be made to on demand: `onRenderProcessGone` (§2) and
+the `getPageList` ceiling (§9e), both parked in Needs verifying deliberately.
+
+The third is one half of 0.189. **The headless player is verified** — spinner,
+the link dialog opening by itself, MX Player, silence while it works, and the
+reveal path. **The chapter-order change is not**, because the gallery it was
+tested on has ONE chapter, which makes the old behaviour and the new one
+identical. It needs a multi-chapter series sorted DESCENDING: the scan should
+take the chapter at the top of the list on screen, where `chapterList[0]` would
+have taken the opposite end.
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -103,7 +109,7 @@ loop had been read while writing the change. That is §0.5 of
 | 0.177–0.186 | Ten attempts to make a video RENDER | `b6de0ba`…`9f87702` | All failed — §9g |
 | 0.187 | Extract the media url instead | `c72cc47` | Verified |
 | 0.188 | Show the dialog on a screen that composes | `38225cd` | Verified |
-| 0.189 | Headless player; scan the chapter on screen | `a1056b4` | **NOT VERIFIED** |
+| 0.189 | Headless player; scan the chapter on screen | `a1056b4` | Player verified; chapter order NOT |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -779,12 +785,18 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
-**0.189 IS UNVERIFIED ON DEVICE.** It reworks the same feature card 68 closed:
-the embed page now loads offscreen and plays itself muted, so a working run
-should go Find videos → spinner → link dialog → MX Player with no blank screen
-in between. And "Find videos" now scans the chapter at the top of the list AS
-SORTED AND FILTERED, rather than `chapterList[0]` — on a descending sort those
-are opposite ends. Neither has been seen working.
+**0.189's PLAYER HALF IS VERIFIED.** The embed page loads offscreen at 1x1 and
+plays itself muted, and the run goes Find videos → spinner → link dialog → MX
+Player with no blank screen and no audio leaking out of the background pass.
+The reveal path works when nothing is found.
+
+**Its CHAPTER-ORDER half is not, and could not have been by that test.** "Find
+videos" now scans the chapter at the top of the list AS SORTED AND FILTERED
+rather than `chapterList[0]`. The gallery used throughout this work has one
+chapter, so both behaviours pick the same row and a pass there says nothing. A
+multi-chapter series on a DESCENDING sort is the only thing that separates them
+— the same shape as §9b, where a test that could not fail was mistaken for a
+test that passed.
 
 **The video feature (card 68) is done and verified through 0.188**: Find videos on a series,
 open the embedded player, tap the download icon, and the link opens in MX
