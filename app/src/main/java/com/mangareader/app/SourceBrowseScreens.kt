@@ -408,7 +408,70 @@ private fun SeriesAction(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/**
+ * The tag chips, shared by the collapsed scrolling row and the expanded
+ * wrapping one.
+ *
+ * Extracted when the chevron learned to show every tag: two copies of a chip
+ * that owns a dropdown is two places for the menu actions to drift apart, and
+ * the menu is the reason a tag stopped being decoration in the first place.
+ *
+ * Not a Row or a FlowRow itself — the caller supplies the layout, which is the
+ * only thing that differs between the two states.
+ */
+@Composable
+private fun GenreChips(
+    genres: List<String>,
+    sourceName: String,
+    onSearchTag: (String) -> Unit,
+    onGlobalSearchTag: (String) -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    genres.forEach { genre ->
+        // A tag was decoration until now — a chip with an empty onClick. What it
+        // actually is is a query, so tapping one offers the three things you can
+        // do with a query rather than picking one and hoping.
+        Box {
+            var tagMenu by remember(genre) { mutableStateOf(false) }
+            SuggestionChip(
+                onClick = { tagMenu = true },
+                label = { Text(genre) }
+            )
+            DropdownMenu(
+                expanded = tagMenu,
+                onDismissRequest = { tagMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Search $sourceName") },
+                    onClick = {
+                        tagMenu = false
+                        onSearchTag(genre)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Global search") },
+                    onClick = {
+                        tagMenu = false
+                        onGlobalSearchTag(genre)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Copy to clipboard") },
+                    onClick = {
+                        tagMenu = false
+                        clipboard.setText(AnnotatedString(genre))
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
 internal fun SeriesScreen(
     series: Series,
@@ -469,7 +532,7 @@ internal fun SeriesScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    // The clipboard moved into GenreChips with the chips themselves.
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
@@ -844,53 +907,43 @@ internal fun SeriesScreen(
 
             if (series.genres.isNotEmpty()) {
                 item {
-                    // Scrolling row rather than a wrapping one: FlowRow is still
-                    // an experimental layout API on this Compose version.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        series.genres.forEach { genre ->
-                            // A tag was decoration until now — a chip with an
-                            // empty onClick. What it actually is is a query, so
-                            // tapping one offers the three things you can do
-                            // with a query rather than picking one and hoping.
-                            Box {
-                                var tagMenu by remember(genre) { mutableStateOf(false) }
-                                SuggestionChip(
-                                    onClick = { tagMenu = true },
-                                    label = { Text(genre) }
-                                )
-                                DropdownMenu(
-                                    expanded = tagMenu,
-                                    onDismissRequest = { tagMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Search $sourceName") },
-                                        onClick = {
-                                            tagMenu = false
-                                            onSearchTag(genre)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Global search") },
-                                        onClick = {
-                                            tagMenu = false
-                                            onGlobalSearchTag(genre)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Copy to clipboard") },
-                                        onClick = {
-                                            tagMenu = false
-                                            clipboard.setText(AnnotatedString(genre))
-                                        }
-                                    )
-                                }
-                            }
+                    // COLLAPSED: a scrolling row, so a long tag list does not
+                    // push the chapter list off the screen. EXPANDED: a wrapping
+                    // one, showing every tag at once — which is the whole point
+                    // of the chevron, and was the report: tags past the right
+                    // edge were reachable only by a horizontal drag nothing
+                    // advertised.
+                    //
+                    // FlowRow is still experimental on this Compose version, which
+                    // is why the collapsed row does not use it. Opted into rather
+                    // than worked around, because chip widths vary and chunking
+                    // into fixed rows leaves ragged gaps.
+                    val tagModifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                    if (descriptionExpanded) {
+                        FlowRow(
+                            modifier = tagModifier,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GenreChips(
+                                genres = series.genres,
+                                sourceName = sourceName,
+                                onSearchTag = onSearchTag,
+                                onGlobalSearchTag = onGlobalSearchTag
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = tagModifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GenreChips(
+                                genres = series.genres,
+                                sourceName = sourceName,
+                                onSearchTag = onSearchTag,
+                                onGlobalSearchTag = onGlobalSearchTag
+                            )
                         }
                     }
                 }

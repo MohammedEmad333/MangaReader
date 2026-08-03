@@ -23,6 +23,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 import eu.kanade.tachiyomi.source.model.Page as TachiPage
@@ -332,13 +333,22 @@ class TachiyomiSourceAdapter(
         // exactly once, so this is the same work in a different sequence.
         val order = fetchOrder(pages.size, startAt)
 
+        // How many pages were actually tried, and how many of those failed.
+        // Kept because `done` cannot answer either question: a page nobody
+        // reached is null exactly like a page that failed.
+        var attempted = 0
+        var failedSoFar = 0
+
         // Consecutive connect failures per host, for THIS fetch only.
         //
         // Scoped to the call rather than the process on purpose: a host down now
         // may be up in a minute, and a breaker outliving the fetch turns a blip
         // into a source that stays broken until restart. Nothing has to remember
         // to reset it, because it goes out of scope with the chapter.
-        val hostFailures = HashMap<String, Int>()
+        // ConcurrentHashMap because downloadPage writes to it from the async
+        // page coroutines, which is the point: a failure has to be visible to
+        // its siblings WHILE the batch is still running, not after it.
+        val hostFailures = ConcurrentHashMap<String, Int>()
 
         order.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
             chunk.map { index ->
@@ -347,25 +357,23 @@ class TachiyomiSourceAdapter(
                     // the batch, because it is no longer the position in the
                     // sequence — it is the page's own number, and it addresses
                     // both the slot below and the file on disk.
-                    val outcome = runCatching { downloadPage(pages[index], dir, index) }
+                    val outcome = runCatching { downloadPage(pages[index], dir, index, hostFailures) }
                     outcome.exceptionOrNull()?.let { firstError.compareAndSet(null, it) }
                     Triple(index, outcome.getOrNull(), outcome.exceptionOrNull())
                 }
-            }.awaitAll().forEach { (index, file, error) ->
-                done[index] = file
-                // Only CONNECT failures count, and only consecutively. A 404 on
-                // one page says nothing about the host, so it leaves the streak
-                // untouched rather than advancing it; a success clears it, so a
-                // source with a few dead images among good ones never trips.
-                val host = failingHost(error) ?: hostOf(pages[index].imageUrl)
-                if (host != null) {
-                    when {
-                        error == null -> hostFailures[host] = 0
-                        isConnectFailure(error) ->
-                            hostFailures[host] = (hostFailures[host] ?: 0) + 1
-                        else -> Unit
-                    }
-                }
+            }.awaitAll().let { results ->
+                results.forEach { (index, file, _) -> done[index] = file }
+                attempted += results.size
+                failedSoFar += results.count { (_, file, _) -> file == null }
+
+                // Connect failures are counted inside downloadPage, one per
+                // ATTEMPT, so the retries count too — they are the same host
+                // refusing the same connection. Success is handled here, once
+                // the batch is complete, so the reset does not depend on the
+                // order results happen to arrive in.
+                results.mapNotNull { (index, file, _) ->
+                    if (file != null) hostOf(pages[index].imageUrl) else null
+                }.toSet().forEach { hostFailures.remove(it) }
             }
             onUpdate(done.toList())
 
@@ -381,14 +389,20 @@ class TachiyomiSourceAdapter(
                 // user-visible error until the very end.
                 val stopped = IOException(
                     "Could not connect to ${dead.key} — gave up after " +
-                        "${dead.value} consecutive failures"
+                        "${dead.value} consecutive failures across $attempted " +
+                        "of ${pages.size} pages"
                 )
                 // Thrown on BOTH paths. The download path wraps it so the
                 // chapter fails rather than being stored partial; the reader
                 // surfaces it through sourceFailureMessage instead of sitting
                 // on spinners.
                 if (persist) {
-                    throw ChapterDownloadException(done.count { it == null }, pages.size, stopped)
+                    // failedSoFar, NOT done.count { it == null }: pages that were
+                    // never attempted are also null, so counting nulls reported
+                    // "30 of 30 pages failed" for a chapter that stopped after
+                    // six. A number that looks like a measurement and is not one
+                    // is the fault this whole area has been fixing all session.
+                    throw ChapterDownloadException(failedSoFar, pages.size, stopped)
                 }
                 throw stopped
             }
@@ -450,8 +464,13 @@ class TachiyomiSourceAdapter(
         }
         val dir = Downloads.cacheDirFor(context, chapter.id).apply { mkdirs() }
 
+        // A tally of its own, unread: this path has no circuit breaker and is
+        // not getting one here. Passing a fresh map keeps downloadPage's
+        // retry-suppression working within this call without leaking counts
+        // between two unrelated fetches.
+        val hostFailures = ConcurrentHashMap<String, Int>()
         pages.mapIndexedNotNull { index, page ->
-            runCatching { downloadPage(page, dir, index) }.getOrNull()
+            runCatching { downloadPage(page, dir, index, hostFailures) }.getOrNull()
         }
     }
 
@@ -531,7 +550,20 @@ class TachiyomiSourceAdapter(
         return false
     }
 
-    private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {        var attempt = 0
+    /**
+     * [hostFailures] is the fetch-scoped connect-failure tally, shared with the
+     * sibling page coroutines. Written here rather than in the batch loop
+     * because a retry is another connection to the same host and has to count
+     * as one, and because a failure has to be visible to the pages running
+     * alongside this one while the batch is still in flight.
+     */
+    private suspend fun downloadPage(
+        page: TachiPage,
+        dir: File,
+        index: Int,
+        hostFailures: ConcurrentHashMap<String, Int>
+    ): File {
+        var attempt = 0
         while (true) {
             try {
                 return fetchPage(page, dir, index)
@@ -539,10 +571,26 @@ class TachiyomiSourceAdapter(
                 throw e
             } catch (e: Exception) {
                 attempt++
+
+                // A connect failure is recorded per attempt, and past the first
+                // one for that host this stops retrying.
+                //
+                // RETRYING A CONNECT TIMEOUT AGAINST A HOST THAT JUST TIMED OUT
+                // BUYS NOTHING. recycleConnections() exists for a stale pool,
+                // and a fresh socket does not help a host that is not answering
+                // — it pays the full connectTimeout again to learn the same
+                // thing. This was the floor under the circuit breaker: three
+                // attempts at 30s made every page cost 90s, so six page
+                // failures took four and a half minutes to notice.
+                val deadHost = isConnectFailure(e) &&
+                    hostOf(page.imageUrl)?.let { host ->
+                        hostFailures.merge(host, 1, Int::plus)!! >= CONNECT_RETRY_GIVE_UP_AT
+                    } == true
+
                 // A 403 or 404 means the same thing however many times it's
                 // asked, so those fail immediately rather than burning three
                 // more requests and eleven seconds on a foregone conclusion.
-                if (attempt >= PAGE_ATTEMPTS || !isTransient(e)) {
+                if (attempt >= PAGE_ATTEMPTS || !isTransient(e) || deadHost) {
                     throw PageDownloadException(index, page.imageUrl, e)
                 }
                 // Before the backoff, not after: the retry has to land on a new
@@ -733,15 +781,25 @@ class TachiyomiSourceAdapter(
         const val CONNECTION_RECYCLE_BATCHES = 4
 
         /**
-         * Consecutive connect failures to one host before a fetch gives up.
+         * Failed connect ATTEMPTS to one host before a fetch gives up.
          *
-         * Six, against PAGE_CONCURRENCY = 2, is three batches — enough that a
-         * brief network stumble does not end a chapter, and short enough that
-         * an unreachable host costs about ninety seconds rather than one
-         * connectTimeout per page. AHottie against a blocked imgbox was
-         * 36 x 30s: eighteen minutes of silence for a fact available in one.
+         * Attempts, not pages: a retry is another connection to the same host
+         * and counts. The first shipped version counted pages and predicted
+         * ninety seconds; it took four and a half minutes, because
+         * PAGE_ATTEMPTS = 3 made every page failure cost 3 x connectTimeout and
+         * nothing had multiplied by that.
+         *
+         * With retries suppressed past the first failure per host, four is
+         * roughly two batches — about a minute against a blackholed host,
+         * against the eighteen minutes AHottie used to take.
          */
-        const val HOST_CONNECT_FAILURE_LIMIT = 6
+        const val HOST_CONNECT_FAILURE_LIMIT = 4
+
+        /**
+         * Connect failures to one host, within a fetch, after which that host's
+         * pages stop retrying. Two, so a single blip still gets its retry.
+         */
+        const val CONNECT_RETRY_GIVE_UP_AT = 2
 
         /** Depth limit when walking a cause chain, so a cycle cannot hang. */
         const val CAUSE_CHAIN_LIMIT = 6
