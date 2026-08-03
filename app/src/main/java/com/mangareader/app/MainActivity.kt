@@ -440,6 +440,9 @@ fun YomuApp() {
     // cannot swallow a back that some inner screen wanted. Every other
     // BackHandler in the app takes precedence by being nested deeper — that is
     // Compose's rule, not something this has to check.
+    // Declared here rather than beside the notification block below, because the
+    // back handler uses it first and Kotlin reads a function body in order.
+    val activity = context as? ComponentActivity
     var backArmedAt by remember { mutableLongStateOf(0L) }
     BackHandler {
         val now = System.currentTimeMillis()
@@ -465,7 +468,6 @@ fun YomuApp() {
     //
     // The extra is REMOVED once acted on. Left in place, the launch intent keeps
     // saying "open the queue" and a rotation would drag the user back to it.
-    val activity = context as? ComponentActivity
     fun consumeQueueRequest(intent: Intent?) {
         if (intent?.getBooleanExtra(DownloadService.EXTRA_OPEN_QUEUE, false) != true) return
         intent.removeExtra(DownloadService.EXTRA_OPEN_QUEUE)
