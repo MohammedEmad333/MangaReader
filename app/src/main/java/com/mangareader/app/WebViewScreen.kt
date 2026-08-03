@@ -404,7 +404,11 @@ internal fun EmbedWebViewScreen(
             // weight, not fillMaxSize: as the last child of a Column that
             // already spent height on the bar, fillMaxSize asks for the whole
             // screen and the bottom of the page falls off it.
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            // BLACK behind the transparent WebView. If the video is composited
+            // back there it shows; if there is no surface at all the screen goes
+            // black rather than white, and the two readings are distinguishable
+            // without another release.
+            modifier = Modifier.fillMaxWidth().weight(1f).background(Color.Black),
             factory = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
@@ -414,6 +418,25 @@ internal fun EmbedWebViewScreen(
                     // Players are the main reason this exists, and many will not
                     // start without it.
                     settings.mediaPlaybackRequiresUserGesture = false
+                    // THE LAST THEORY, and the only one that explains WHITE
+                    // rather than black.
+                    //
+                    // WebView can composite video on a surface placed BEHIND the
+                    // page, visible through a transparent hole where the <video>
+                    // sits. This page sets an opaque background on <html>
+                    // (class bg-white — elementFromPoint named it), which paints
+                    // straight over that hole. Audio plays, frames climb, the
+                    // element measures correctly and nothing hides it, and the
+                    // screen shows the page's own white.
+                    //
+                    // So: make the WebView itself transparent, and clear the
+                    // page's backgrounds once it loads. If the video is behind,
+                    // it appears. If the screen goes BLACK instead, the hole
+                    // theory is wrong and the surface is simply not there — a
+                    // useful answer either way, and the two are distinguishable
+                    // at a glance.
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+
                     // NO setLayerType HERE, AND THAT IS DELIBERATE. 0.183 set
                     // LAYER_TYPE_HARDWARE on the reasoning that inline video
                     // needs a hardware layer; frames went from 341 to 1352 and
@@ -442,6 +465,10 @@ internal fun EmbedWebViewScreen(
                         ): Boolean {
                             val target = request?.url?.host ?: return false
                             return allowedHost != null && target != allowedHost
+                        }
+
+                        override fun onPageFinished(v: WebView?, finishedUrl: String?) {
+                            v?.evaluateJavascript(CLEAR_BACKGROUND_JS, null)
                         }
 
                         override fun onRenderProcessGone(
@@ -594,5 +621,29 @@ private val PLAY_JS = """
         });
       }
       return 'play() called';
+    })()
+""".trimIndent()
+
+/**
+ * Strips opaque backgrounds so a video composited behind the page can show.
+ *
+ * Only the document-level backgrounds, and only backgrounds — nothing that would
+ * move or resize anything. If this reveals the picture, the page was painting
+ * over it; if the screen turns black, there was no surface behind to reveal and
+ * the theory is dead.
+ */
+private val CLEAR_BACKGROUND_JS = """
+    (function () {
+      ['html', 'body'].forEach(function (sel) {
+        var e = document.querySelector(sel);
+        if (e) {
+          e.style.setProperty('background', 'transparent', 'important');
+          e.style.setProperty('background-color', 'transparent', 'important');
+        }
+      });
+      var v = document.querySelector('video');
+      if (v && v.parentElement) {
+        v.parentElement.style.setProperty('background', 'transparent', 'important');
+      }
     })()
 """.trimIndent()

@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 186,
+            name = "0.186",
+            header = "One more idea about the missing picture",
+            body = "The video may be playing behind the page rather than in "  +
+                "it, with the page\u2019s own white painted over the top. "  +
+                "This build makes the page transparent to find out.\n\nIf "  +
+                "the screen turns black instead of showing the video, that "  +
+                "idea is wrong too and this is the end of the road.",
+        ),
+        ReleaseNote(
             code = 185,
             name = "0.185",
             header = "Still looking for the picture",
