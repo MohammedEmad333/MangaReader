@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 187,
+            name = "0.187",
+            header = "Get the video link and open it anywhere",
+            body = "Instead of fighting to draw the video inside the app, "  +
+                "the player screen can now hand you the actual video address "  +
+                "\u2014 open it in MX Player, VLC, or anything else you "  +
+                "have.\n\nUse the download icon in the bar while the video "  +
+                "is playing.",
+        ),
+        ReleaseNote(
             code = 186,
             name = "0.186",
             header = "One more idea about the missing picture",

@@ -439,6 +439,8 @@ fun YomuApp() {
     // url to open, and the page it is embedded on. The second half is the
     // Referer, and without it cossora.stream answers "Unknown Error xD".
     var openEmbed by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Media urls scraped out of a player, for handing to an external app.
+    var mediaUrls by remember { mutableStateOf<List<String>?>(null) }
     var videoScanning by remember { mutableStateOf(false) }
 
     // Back once more to leave, if back would otherwise close the app.
@@ -1195,6 +1197,7 @@ fun YomuApp() {
         EmbedWebViewScreen(
             url = embed.first,
             referer = embed.second,
+            onMediaFound = { mediaUrls = it },
             onBack = { openEmbed = null }
         )
         return
@@ -1768,6 +1771,60 @@ fun YomuApp() {
                     onClick = { videoScan = null },
                     enabled = !videoScanning
                 ) { Text("Close") }
+            }
+        )
+    }
+
+    // What the player is actually fetching, for an app that can show it.
+    val media = mediaUrls
+    if (media != null) {
+        AlertDialog(
+            onDismissRequest = { mediaUrls = null },
+            title = { Text("Video link") },
+            text = {
+                if (media.isEmpty()) {
+                    Text(
+                        "Nothing usable found. The player may be feeding itself " +
+                            "from JavaScript, in which case there is no address " +
+                            "an outside app could open."
+                    )
+                } else Column {
+                    Text("Opens in whatever video player you have installed.")
+                    Spacer(Modifier.height(12.dp))
+                    media.take(6).forEach { link ->
+                        TextButton(
+                            onClick = {
+                                // The REFERER GOES WITH IT. These hosts refuse a
+                                // bare request, which is what "Unknown Error xD"
+                                // was; MX Player and VLC both read this extra,
+                                // and a player that ignores it is no worse off
+                                // than opening the link cold.
+                                val page = openEmbed?.second.orEmpty()
+                                val view = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(Uri.parse(link), "video/*")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    if (page.isNotBlank()) {
+                                        putExtra("headers", arrayOf("Referer", page))
+                                    }
+                                }
+                                runCatching { context.startActivity(view) }
+                                    .onFailure {
+                                        errorMessage = "No installed app can play that link"
+                                    }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                link.substringAfterLast('/').take(48).ifBlank { link.take(48) },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { mediaUrls = null }) { Text("Close") }
             }
         )
     }
