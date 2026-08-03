@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +32,9 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+// PullToRefreshBox lives in a SUB-PACKAGE of material3, which the wildcard
+// elsewhere does not reach and which the 0.98 CI failure was about.
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,6 +58,7 @@ import kotlinx.coroutines.withContext
  * different sets — a chapter can be downloaded without the series ever being
  * saved, and a saved series usually has nothing downloaded at all.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DownloadsTab(
     downloadTick: Int,
@@ -69,6 +74,7 @@ internal fun DownloadsTab(
     // DownloadQueue.tick; a local counter covers that without pushing a callback
     // back up to YomuApp for something no other screen cares about.
     var localTick by remember { mutableIntStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
     val revision = downloadTick + localTick
 
     // Keyed on the revision so a chapter finishing, or a delete from anywhere
@@ -146,7 +152,20 @@ internal fun DownloadsTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        } else Box(modifier = Modifier.fillMaxSize()) {
+        } else PullToRefreshBox(
+            // Instant by design: the refresh is a re-read of the download index
+            // off disk, not a network call, so there is no honest "refreshing"
+            // period to show. The flag is set and cleared in one pass rather
+            // than padded with a delay to make the spinner look busy.
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                localTick++
+                refreshing = false
+            },
+            modifier = Modifier.fillMaxSize()
+        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // Third caller of ListScrollHandle, after the library grid (0.133)
             // and the series chapter list (0.149).
             //
@@ -222,6 +241,7 @@ internal fun DownloadsTab(
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
+        } // PullToRefreshBox
     }
 
     confirmDelete?.let { entry ->
