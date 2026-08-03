@@ -651,17 +651,13 @@ private fun LibraryGrid(
     // arithmetic being wrong rather than as two objects. That is the 0.109 top
     // bar, one screen over.
     val gridState = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering)
-    // Where the handle has asked the grid to go, -1 when it hasn't.
-    //
-    // A `launch { scrollToItem() }` per drag delta queues dozens of scrolls on
-    // the grid's own mutex, and they run in order — so the grid finishes
-    // arriving at where the finger was half a second ago. Holding the target in
-    // state and scrolling from a keyed effect means Compose cancels the
-    // superseded one on every new value, and only the latest ever runs.
-    var seekTo by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(seekTo) {
-        if (seekTo >= 0) gridState.scrollToItem(seekTo)
-    }
+    // The seek target and its keyed effect moved into GridScrollHandle, which
+    // owns them for both grid callers now. The reasoning is unchanged and lives
+    // there: a `launch { scrollToItem() }` per drag delta queues dozens of
+    // scrolls on the grid's own mutex and they run in order, so the grid
+    // finishes arriving where the finger was half a second ago. Holding the
+    // target in state and scrolling from a keyed effect cancels the superseded
+    // one on every new value.
 
     Box(modifier = modifier.fillMaxSize()) {
     LazyVerticalGrid(
@@ -773,17 +769,14 @@ private fun LibraryGrid(
         }
     }
 
-        // Seeks by item index rather than by pixel, because a grid's rows are
-        // not a fixed height — a Comfortable cell carries a title and a
-        // Cover-only one doesn't, and Adaptive columns change how many items a
-        // row holds. Index is the one unit that means the same thing in every
-        // display mode.
-        ScrollHandle(
-            firstVisibleIndex = gridState.firstVisibleItemIndex,
-            visibleItems = gridState.layoutInfo.visibleItemsInfo.size,
+        // GridScrollHandle, not ScrollHandle: it seeks in ROWS. The cell-index
+        // version could not reach the last row, because scrollToItem aligns the
+        // row containing an index to the top and so pulls the start back to a
+        // row boundary, dropping the final partial row below the fold. See its
+        // KDoc — this was latent here since 0.133 and only surfaced on browse.
+        GridScrollHandle(
+            state = gridState,
             totalItems = shown.size,
-            isScrolling = gridState.isScrollInProgress,
-            onSeek = { index -> seekTo = index },
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }

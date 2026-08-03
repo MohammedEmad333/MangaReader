@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -522,6 +523,56 @@ internal fun ListScrollHandle(
         totalItems = totalItems,
         isScrolling = state.isScrollInProgress,
         onSeek = { seekTo = it },
+        modifier = modifier
+    )
+}
+
+/**
+ * A [ScrollHandle] for a grid, measured in ROWS rather than cells.
+ *
+ * **The cell-index version could not reach the last row and that is arithmetic,
+ * not layout.** `ScrollHandle` seeks to `totalItems - visibleItems`, which for a
+ * LIST puts the last item exactly at the bottom. On a grid `scrollToItem`
+ * aligns the ROW CONTAINING that index to the top, so the start is pulled back
+ * to a row boundary and the final partial row falls below the fold — by up to
+ * `columns - 1` cells. With three columns and a hundred entries, dragging to the
+ * bottom stopped at cell 98 of 99.
+ *
+ * It is invisible whenever the last row happens to be full and the arithmetic
+ * happens to land on a boundary, which is why it survived being "verified" on
+ * the library in 0.133 and on browse in 0.158.
+ *
+ * Columns are read off the layout rather than passed in: both callers use
+ * `GridCells.Adaptive`, so the count changes with the window and with the
+ * display mode, and anything the caller could pass would be a guess about a
+ * number the grid already knows.
+ */
+@Composable
+internal fun GridScrollHandle(
+    state: LazyGridState,
+    totalItems: Int,
+    modifier: Modifier = Modifier
+) {
+    val info = state.layoutInfo
+    // maxOf(column) + 1 rather than a span calculation: with Adaptive columns
+    // this is the only place the real count exists. Coerced because an empty
+    // or not-yet-measured grid reports nothing and a zero would divide.
+    val columns = ((info.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1).coerceAtLeast(1)
+    val visibleRows = info.visibleItemsInfo.map { it.row }.distinct().size.coerceAtLeast(1)
+    val totalRows = (totalItems + columns - 1) / columns
+
+    var seekRow by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(seekRow) {
+        // Back into cell units for the grid: the first cell of that row.
+        if (seekRow >= 0) state.scrollToItem((seekRow * columns).coerceIn(0, (totalItems - 1).coerceAtLeast(0)))
+    }
+
+    ScrollHandle(
+        firstVisibleIndex = state.firstVisibleItemIndex / columns,
+        visibleItems = visibleRows,
+        totalItems = totalRows,
+        isScrolling = state.isScrollInProgress,
+        onSeek = { seekRow = it },
         modifier = modifier
     )
 }
