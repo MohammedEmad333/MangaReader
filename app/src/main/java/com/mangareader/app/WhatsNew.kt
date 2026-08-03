@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 178,
+            name = "0.178",
+            header = "The player is visible now",
+            body = "0.177 loaded the video and played it, but showed a blank "  +
+                "page \u2014 the player had asked to go fullscreen and the "  +
+                "app was not listening.\n\nFullscreen works properly now, "  +
+                "and back leaves fullscreen before it leaves the player.",
+        ),
+        ReleaseNote(
             code = 177,
             name = "0.177",
             header = "Embedded players open inside the app",
