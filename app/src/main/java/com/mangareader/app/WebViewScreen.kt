@@ -484,20 +484,30 @@ internal fun EmbedWebViewScreen(
 private val VIDEO_PROBE_JS = """
     (function () {
       var note = document.getElementById('yomu-note');
-      var extra = note ? '\n' + note.textContent : '';
+      var extra = note ? note.textContent + '\n' : '';
       var v = document.querySelectorAll('video');
-      if (!v.length) return 'no <video> in the DOM' + extra;
-      return extra + Array.prototype.map.call(v, function (e, i) {
-        var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
-        var frames = q ? q.totalVideoFrames :
-          (typeof e.webkitDecodedFrameCount === 'number' ? e.webkitDecodedFrameCount : -1);
-        var dropped = q ? q.droppedVideoFrames : -1;
-        return i + ': media ' + e.videoWidth + 'x' + e.videoHeight +
-          '  box ' + e.clientWidth + 'x' + e.clientHeight +
-          '  t=' + (e.currentTime || 0).toFixed(1) +
-          (e.paused ? '  PAUSED' : '  playing') +
-          '  frames=' + frames + ' dropped=' + dropped;
-      }).join('\n');
+      if (!v.length) return extra + 'no <video> in the DOM';
+      var e = v[0];
+      var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
+      var frames = q ? q.totalVideoFrames : -1;
+      var r = e.getBoundingClientRect();
+      var cs = window.getComputedStyle(e);
+      // What is actually on top at the element's own centre. If this is not the
+      // video, something is covering it — which is the difference between "not
+      // drawn" and "drawn under something".
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var top = document.elementFromPoint(cx, cy);
+      var topDesc = top ? (top.tagName + (top.className ? '.' + String(top.className).split(' ')[0] : '')) : 'nothing';
+      return extra +
+        'media ' + e.videoWidth + 'x' + e.videoHeight +
+        '  t=' + (e.currentTime || 0).toFixed(1) +
+        (e.paused ? ' PAUSED' : ' playing') + ' frames=' + frames + '\n' +
+        'rect ' + Math.round(r.left) + ',' + Math.round(r.top) +
+        ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+        '  viewport ' + window.innerWidth + 'x' + window.innerHeight + '\n' +
+        'opacity=' + cs.opacity + ' vis=' + cs.visibility +
+        ' disp=' + cs.display + ' z=' + cs.zIndex + '\n' +
+        'topmost at centre: ' + topDesc;
     })()
 """.trimIndent()
 

@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 182,
+            name = "0.182",
+            header = "Finding where the picture went",
+            body = "The video decodes every frame and drops none, so the "  +
+                "picture exists. This release reports where the player puts "  +
+                "it on the page and what is sitting on top of it.",
+        ),
+        ReleaseNote(
             code = 181,
             name = "0.181",
             header = "Counting the frames",
