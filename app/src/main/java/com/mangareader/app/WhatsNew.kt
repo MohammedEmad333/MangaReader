@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 163,
+            name = "0.163",
+            header = "Refreshing Downloads really does look at the disk now",
+            body = "There were two caches in the way and the last attempt "  +
+                "only cleared one of them, so a series deleted outside the "  +
+                "app still would not go away until you restarted it. Both "  +
+                "are cleared now.\n\nPull to refresh has been taken back off "  +
+                "Browse for the moment: it stopped the scroll handle reaching "  +
+                "the end of the grid.",
+        ),
+        ReleaseNote(
             code = 162,
             name = "0.162",
             header = "Pulling to refresh Downloads actually re-reads the disk",

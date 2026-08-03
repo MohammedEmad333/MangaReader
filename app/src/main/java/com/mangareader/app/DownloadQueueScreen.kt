@@ -178,18 +178,22 @@ internal fun DownloadsTab(
             isRefreshing = refreshing,
             onRefresh = {
                 refreshing = true
-                // INVALIDATE FIRST. Bumping the tick alone re-ran produceState
-                // and produceState called DownloadIndex.list(), which returns a
-                // PROCESS-LEVEL CACHE — `cached?.let { return it }`. So 0.160's
-                // gesture re-read the cache and never touched the disk, and a
-                // series deleted by a file manager stayed listed forever.
+                // TWO LAYERS OF CACHE, and 0.162 only cleared the outer one.
                 //
-                // Only Downloads.delete and Downloads.record invalidate that
-                // cache, so nothing in the app could pick up a change the app
-                // did not make. Refresh is the one action whose entire meaning
-                // is "assume what I am holding is stale", so it is the right
-                // and only place to say so.
-                DownloadIndex.invalidate()
+                // DownloadIndex.list() memoises its result, so 0.160's gesture
+                // re-read that and never touched the disk. 0.162 called
+                // DownloadIndex.invalidate() — which forced a rebuild, and the
+                // rebuild calls Downloads.isComplete() for every record, which
+                // answers from ITS OWN ConcurrentHashMap memo. So the rebuild
+                // re-asked a memo that still said "complete" and the disk was
+                // still never consulted.
+                //
+                // invalidateCompletion() drops the completion and size memos
+                // AND the index — it exists for exactly this, "anything that
+                // moves or removes files in bulk", and a refresh is the user
+                // saying that happened. Clearing the outer cache while an inner
+                // one still answers is not a partial fix, it is no fix.
+                Downloads.invalidateCompletion()
                 localTick++
             },
             modifier = Modifier.fillMaxSize()
