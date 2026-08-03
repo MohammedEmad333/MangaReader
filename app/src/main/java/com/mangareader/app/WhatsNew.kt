@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 172,
+            name = "0.172",
+            header = "No more leftover purple text",
+            body = "Buttons like Got it, Remove and Close kept the old "  +
+                "purple lettering whatever accent you picked. Every filled "  +
+                "button now takes black or white, whichever suits your "  +
+                "accent.\n\nThe Sources tab in Browse also gets its drag "  +
+                "handle \u2014 0.171 put one on the wrong list.",
+        ),
+        ReleaseNote(
             code = 171,
             name = "0.171",
             header = "A limit on runaway sources, and a handle on the source list",

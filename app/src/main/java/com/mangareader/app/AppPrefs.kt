@@ -9,6 +9,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -144,14 +145,34 @@ internal fun yomuColorScheme(): ColorScheme {
     // it sits behind text — and the baseline lavender is bright enough on a
     // dark surface to pull the eye off the covers.
     //
-    // onPrimary is deliberately left alone: every pair in [AccentColor] stays
-    // well clear of it on contrast, and that pair is what keeps a filled button
-    // legible. Only `primary` moves, so nothing else in the scheme has to be
-    // re-checked per accent.
+    // onPrimary MOVES WITH IT, as of 0.172. It used to be left alone, on the
+    // argument that every pair in [AccentColor] stays clear of the baseline on
+    // contrast. That argument was true and it was about the wrong property:
+    // baseline onPrimary is a dark purple, so every filled Button in the app
+    // drew legible purple text on an amber accent, which reads as left over
+    // from another palette. It was reported four times before anyone traced it
+    // here — see the Start button card, which fixed the same thing at one call
+    // site in 0.159 and noted that everything else was still wrong.
+    //
+    // DERIVING onPrimary FROM primary IS NOT THE THING 0.158 WARNED AGAINST.
+    // That warning was about primaryContainer and the other container roles,
+    // which are separate SURFACES and would change unrelated controls. onPrimary
+    // has no meaning except "legible on top of primary", so computing it from
+    // primary is the definition, not a side effect.
+    //
+    // Luminance rather than a per-accent table: a table is another thing to keep
+    // in step with [AccentColor], and this needs no re-checking when an accent
+    // is added.
     val accent = AppTheme.accent
     return if (dark) {
-        darkColorScheme(primary = Color(accent.dark))
+        val primary = Color(accent.dark)
+        darkColorScheme(primary = primary, onPrimary = onAccent(primary))
     } else {
-        lightColorScheme(primary = Color(accent.light))
+        val primary = Color(accent.light)
+        lightColorScheme(primary = primary, onPrimary = onAccent(primary))
     }
 }
+
+/** Black or white, whichever stays legible on [background]. */
+private fun onAccent(background: Color): Color =
+    if (background.luminance() > 0.5f) Color.Black else Color.White

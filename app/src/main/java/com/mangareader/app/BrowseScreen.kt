@@ -460,8 +460,15 @@ internal fun BrowseTab(
                     row.source?.let { onOpenExtension(it) }
                 }
 
+                // THE Sources TAB, which is what card 87 named and what 0.171
+                // missed: that release put a handle on the "All sources" screen
+                // instead — a different list, reached from a different place.
+                // Hoisted so the handle and the list share one state.
+                val sourcesListState =
+                    rememberRestoredListState(scroll, "sources", sourcesOrdering)
+                Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
-                    state = rememberRestoredListState(scroll, "sources", sourcesOrdering),
+                    state = sourcesListState,
                     modifier = Modifier.fillMaxSize()
                 ) {
                     if (lastUsedRow != null) {
@@ -542,6 +549,11 @@ internal fun BrowseTab(
                             ) { Text("Add a local source") }
                         }
                     }
+                }
+                ListScrollHandle(
+                    state = sourcesListState,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
                 }
             } else {
                 ExtensionsScreen(
