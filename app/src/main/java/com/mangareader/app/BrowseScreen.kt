@@ -208,7 +208,13 @@ internal fun SourceFilterScreen(
             }
         )
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // The list of every installed source, grouped by language with a header
+        // and a divider per group — the longest list in Browse and the one card
+        // 87 reported. The handle reads its own item count, so the grouping
+        // needs no arithmetic here.
+        val sourceListState = rememberLazyListState()
+        Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = sourceListState, modifier = Modifier.fillMaxSize()) {
             item {
                 ListItem(
                     headlineContent = { Text("All sources") },
@@ -278,6 +284,11 @@ internal fun SourceFilterScreen(
                 }
                 item { HorizontalDivider() }
             }
+        }
+        ListScrollHandle(
+            state = sourceListState,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
         }
     }
 }
