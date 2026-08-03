@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -186,11 +187,26 @@ internal fun GlobalSearchScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        } else {
+        } else Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+        ) {
+            // Fourth caller of ListScrollHandle.
+            //
+            // totalItems is shown.size: one lazy item PER SOURCE, not per
+            // series. Each item draws a source header and a horizontal row of
+            // covers, so the list is short in items and tall in pixels — the
+            // handle seeks by item index, which is the right unit here even
+            // though a single item can be most of a screen.
+            //
+            // `shown`, not the unfiltered results, for the same reason the
+            // chapter list spans `visible`: the handle has to reach the end of
+            // what is actually drawn.
+            val listState = rememberLazyListState()
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
+                state = listState,
+                modifier = Modifier.fillMaxSize()
             ) {
                 items(shown) { result ->
                     Row(
@@ -272,6 +288,11 @@ internal fun GlobalSearchScreen(
                     HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
                 }
             }
+            ListScrollHandle(
+                state = listState,
+                totalItems = shown.size,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 }

@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 157,
+            name = "0.157",
+            header = "Scroll handles on two more lists",
+            body = "The Downloads tab and global search now have the same "  +
+                "drag handle the library and the chapter list already had, "  +
+                "so a long list is one drag rather than a lot of "  +
+                "flicking.\n\nAlso: a series with tags but no description "  +
+                "can now expand its tags, which it could not before \u2014 "  +
+                "the arrow only appeared when there was a description to "  +
+                "expand.",
+        ),
+        ReleaseNote(
             code = 156,
             name = "0.156",
             header = "Giving up on a dead server takes a minute, not five",

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -145,8 +146,17 @@ internal fun DownloadsTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+        } else Box(modifier = Modifier.fillMaxSize()) {
+            // Third caller of ListScrollHandle, after the library grid (0.133)
+            // and the series chapter list (0.149).
+            //
+            // totalItems is series.size and nothing else, unlike the chapter
+            // list's `visible.size + 3`: this LazyColumn has no header, no
+            // actions block and no trailing spacer, so its item count IS the
+            // data count. Every caller has its own version of this number and
+            // getting it wrong stops the handle short of the end.
+            val listState = rememberLazyListState()
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(series, key = { it.seriesId }) { entry ->
                     val dim = marks.dim(entry.seriesId)
                     ListItem(
@@ -206,6 +216,11 @@ internal fun DownloadsTab(
                     HorizontalDivider()
                 }
             }
+            ListScrollHandle(
+                state = listState,
+                totalItems = series.size,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 

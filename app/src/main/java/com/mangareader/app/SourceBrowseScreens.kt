@@ -903,6 +903,28 @@ internal fun SeriesScreen(
                         )
                     }
                 }
+            } else if (series.genres.isNotEmpty()) {
+                item {
+                    // The chevron used to live only inside the description
+                    // block, so a series with tags and NO description had no way
+                    // to expand them — a control that could not reach a state,
+                    // which is the same shape as 0.154's pause loop. Rendered
+                    // here instead, above the tags it governs.
+                    Icon(
+                        if (descriptionExpanded) Icons.Default.KeyboardArrowUp
+                        else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (descriptionExpanded) {
+                            "Collapse tags"
+                        } else {
+                            "Expand tags"
+                        },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { descriptionExpanded = !descriptionExpanded }
+                            .padding(vertical = 8.dp)
+                    )
+                }
             }
 
             if (series.genres.isNotEmpty()) {
