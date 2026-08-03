@@ -1,18 +1,18 @@
 # Yomu / MangaReader — Project Handoff
 
-**This document's body is stale by 66 releases.** It was last revised through
-0.106 and head is **0.172**. The banner below is current as of 2026-08-03
+**This document's body is stale by 82 releases.** It was last revised through
+0.106 and head is **0.188**. The banner below is current as of 2026-08-03
 afternoon; everything from §1 onward is 0.106-era except §9, which is new. Where
 they disagree, the banner and §9 win.
 
-**Read `SESSION_HANDOFF_0.172.md` §0 first.** It covers 0.150–0.172 and is the
+**Read `SESSION_HANDOFF_0.188.md` §0 first.** It covers 0.150–0.188 and is the
 newest state of the tree.
 
 Live session files, newest first:
 
 | File | Covers | Why it is still here |
 |---|---|---|
-| `SESSION_HANDOFF_0.172.md` | 0.150–0.172 | Newest. The download queue's two pauses, a per-host circuit breaker, four labels that each stood for two mechanisms, §9b — a bug signed off four times because the test step was worded wrong — and §9d, the same bug reported four times because a rule was applied to a case it did not cover |
+| `SESSION_HANDOFF_0.188.md` | 0.150–0.188 | Newest. The download queue's two pauses, a per-host circuit breaker, §9b — a bug signed off four times because the test step was worded wrong — §9d, the same bug reported four times because a rule was applied past its edge — and §9g, ten releases spent on a symptom while the objective sat in reach |
 | `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Minification closed, the reader polish pass |
 | `SESSION_HANDOFF_0.143.md` | 0.135–0.146 | The five R8 attempts and their two root causes |
 | `SESSION_HANDOFF_0.106.md` | 0.88–0.106 | §5 (why two edge gestures never fired) is cited by an open card; §11 is the three-chapter reader design |
@@ -92,6 +92,12 @@ and `head()` no longer means "the first queued item", because a chapter can now
 be paused on its own and the worker walks past it. `downloadPage` also takes the
 fetch's host-failure tally and will refuse to retry a connect failure against a
 host already known bad. `SESSION_HANDOFF_0.157.md` §3, §5, §8.
+
+**AN INSTRUMENT BEATS A THEORY, AND THE OBJECTIVE BEATS THE SYMPTOM.** Ten
+releases went into making a video render inside a WebView; the goal was to watch
+it, and the element's own address was readable throughout. Every real answer
+came from a probe reporting what the page held; every wrong turn came from a
+mechanism that merely fitted the symptom. `SESSION_HANDOFF_0.188.md` §9g.
 
 **CI LOGS CANNOT BE READ FROM THE AGENT ENVIRONMENT.** `/actions/jobs/{id}/logs`
 303-redirects to Azure blob storage, outside the network allowlist, so a red

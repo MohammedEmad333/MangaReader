@@ -1,11 +1,11 @@
-# Session handoff — 0.150 to 0.172, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.188, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Twenty-three releases. **Two of them were written against cards whose stated premise
+Thirty-nine releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
 as the feature existed, one fixed a bug this session had introduced two hours
 earlier, and one corrected a prediction this session had got wrong by a factor
@@ -15,7 +15,7 @@ of five. Everything except §2 is verified on device.
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.172. The whole range is verified on device except two cards whose
+**1. Head is 0.188. The whole range is verified on device except two cards whose
 code has never executed and cannot be made to: `onRenderProcessGone` (§2) and
 the `getPageList` ceiling (§9e). Both sit in Needs verifying, deliberately.**
 
@@ -41,6 +41,10 @@ building on it.
 hold" and not what its *button* did. The bug was in the button.
 
 **6. A mechanism read is not a number known.** §8.
+
+**9. AN INSTRUMENT BEATS A THEORY, AND THE OBJECTIVE BEATS THE SYMPTOM.** §9g —
+ten releases spent making a video render, when the goal was to watch it and its
+address was readable the whole time.
 
 **8. A RULE FROM ONE CASE MAY NOT COVER THE NEXT ONE.** §9d — four reports of
 the same bug, because 0.158's warning about *container* roles was applied to a
@@ -86,6 +90,10 @@ loop had been read while writing the change. That is §0.5 of
 | 0.170 | Back twice to exit; no premature chapter verdict | `10f987e` | Verified |
 | 0.171 | getPageList ceiling; handle on the wrong list | `4e59378` | Half wrong |
 | 0.172 | onPrimary derived from the accent; right list | `125a546` | Verified |
+| 0.173–0.176 | Find videos: scan, report, embeds | `8bd6036`…`65aa22e` | 0.175 RED |
+| 0.177–0.186 | Ten attempts to make a video RENDER | `b6de0ba`…`9f87702` | All failed — §9g |
+| 0.187 | Extract the media url instead | `c72cc47` | Verified |
+| 0.188 | Show the dialog on a screen that composes | `38225cd` | Verified |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -616,9 +624,114 @@ arithmetic cause from a physical one after three wrong answers.
 
 ---
 
+---
+
+## 9g. The video investigation — ten releases spent on the wrong problem
+
+**Read this one before starting any long chase.** The feature works. The route
+to it was bad, and the badness is legible.
+
+### What was asked, and what was actually true
+
+A CosplayTele gallery titled *"31 photos and 13 videos"* showed 31 pages and no
+video. `pageListParse` there is `select(".gallery-item img")` — `<img>` and
+nothing else, so **the extension never emits the video and nothing in this app
+had ever seen one.** (The title describes the ZIP the site sells. The page
+embeds **one** video, 13:44 long — a number I took from the title and used to
+dismiss a correct lead. See below.)
+
+### The chain that worked, each link found by measurement
+
+1. **Scan the chapter page.** No `<video>` in 286 KB, `.mp4×0`, `.m3u8×0`. The
+   player is built by script — no selector could ever reach it.
+2. **Iframes are in the HTML.** Two: `googletagmanager` (now filtered) and
+   `cossora.stream/embed/<uuid>` — the player.
+3. **Opening that in Chrome returns `{"error":true,"message":"Unknown Error
+   xD"}`** — an embed-only player refusing a request with no `Referer`. Loaded
+   in-app with the gallery page as `Referer`, it works.
+4. It plays **audio and never draws.** Still unexplained; §9h.
+5. **So take the URL instead.** `video.currentSrc` plus performance resource
+   entries, handed to `ACTION_VIEW` with the `Referer` as an intent extra. MX
+   Player plays it.
+
+### The wrong turn
+
+**0.177–0.186 tried to make the video RENDER inside the WebView.** HTML5
+fullscreen handling, a hardware layer, page transparency. Each fitted the
+symptom. None worked. One had to be reverted as a known video-breaker.
+
+**Rendering it there was never the goal — watching it was**, and the element
+knew its own address the entire time. The reframe came from the user asking
+*"is there no way to download it or play it externally?"*, which is a question
+about the objective rather than the symptom.
+
+### Four things that cost real time
+
+**A NUMBER TAKEN FROM A TITLE.** `iframe=2` was dismissed as "two frames against
+thirteen videos doesn't match". There was one video. The count came from
+marketing copy and was never measured, and it buried the correct lead for a
+release.
+
+**A THROUGHPUT READING OVER-READ.** 1 MB/s on a blank screen correctly ruled out
+a network failure, then got stretched into "it is playing invisibly". It was
+preload. The same measurement was right once and wrong once.
+
+**A PROBE THAT COULD NOT SEE THE ANSWER.** For three releases it reported
+`v[0]` only, and `getComputedStyle(video).opacity` — the element's *own*
+opacity, which cannot show an ancestor set to zero. "Nothing in the DOM explains
+it" was a conclusion drawn from properties that could not have contained the
+explanation. Same shape as §9b, where the test step could not catch the bug it
+was written for.
+
+**NEVER ASKING WHAT THE USER'S EYES SAW.** Every reading came from a screenshot,
+and "healthy video, blank capture" is exactly what a protected surface looks
+like. One question ruled out a class of explanation that would have made every
+prior measurement meaningless. It cost one message and was asked ninth.
+
+### What actually worked
+
+**A JS probe reporting what the page held.** Frames decoding ruled out DRM. The
+ancestor walk ruled out the DOM. `elementFromPoint` named the covering element.
+Every real answer came from the instrument; every wrong turn came from a
+mechanism that merely fitted.
+
+---
+
+## 9h. Known and unexplained: video does not draw in this app's WebView
+
+`videos=1`, 1440x1080, box filling the viewport, `opacity 1`, `visible`, no
+ancestor hiding it, **1440 frames decoded, 0 dropped**, audio perfect, screen
+white. **Confirmed by eye, not only by screenshot.**
+
+Ruled out: codec and DRM (frames decode), layout (box is correct), the DOM
+(ancestor chain clean), HTML5 fullscreen (`onShowCustomView` never fires),
+hardware layer (no change, and reverted), and surface-behind-the-page (the
+screen went black, so there is nothing back there).
+
+**Not chased further, deliberately** — the extracted URL makes it irrelevant. If
+another source's embed ever needs to play in-app, start here and expect it to be
+device- or WebView-build-specific.
+
+---
+
+## 9i. Two structural notes from the same work
+
+**AN EARLY-RETURN BRANCH OWNS EVERYTHING IT DRAWS.** `YomuApp`'s routing chain
+returns early. 0.187's link button set its state correctly and showed nothing,
+because the dialog was at the bottom of the function — below the `return`. The
+challenge branch has always been self-contained and never exposed this.
+
+**EMBED HOSTS MONETISE TAPS.** The player page navigated the whole WebView to
+AliExpress on any touch. `shouldOverrideUrlLoading` is now host-scoped — not a
+blocklist, because naming advertisers one at a time is a race nobody wins — and
+`javaScriptCanOpenWindowsAutomatically` is off, since `window.open` takes a
+different path entirely.
+
+---
+
 ## 10. State of the tree
 
-Head is `125a546` (0.172). Build environment unchanged from 0.134: Kotlin
+Head is `38225cd` (0.188). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -656,6 +769,10 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
+**The video feature (card 68) is done and verified**: Find videos on a series,
+open the embedded player, tap the download icon, and the link opens in MX
+Player. §9g is the account; §9h is what stayed broken and stopped mattering.
+
 **Needs verifying holds 73 and 77.** Both shipped, both carry code that has
 never executed and cannot be made to on demand. Everything else from 0.150 to
 0.172 is verified on device — including, finally, the scroll handle (§9b), whose
@@ -666,8 +783,8 @@ card had claimed that for thirty releases without it being true.
 **In progress** list — added because card 77 sat mid-work for an hour with the
 board unable to say so.
 
-**Backlog is five cards and they are not like the rest of this session.** 65,
-68 and 31 are features of real size with no design work done; 67 is flagged
+**Backlog is four cards.** 65 and 31 are features of real size with no design
+work done; 67 is flagged
 risky (two earlier custom gesture detectors in that reader never fired at all —
 read `SESSION_HANDOFF_0.106.md` §5 first); 58's Library item is deliberately
 excluded, since the only refresh it could trigger is a foreground service over
