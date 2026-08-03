@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 168,
+            name = "0.168",
+            header = "Tap the download notification to see the queue",
+            body = "It used to just open the app wherever you left it. It "  +
+                "now goes straight to the download queue, whether the app "  +
+                "was running or not.\n\nThe drag handle is also a bit "  +
+                "wider, which mostly means easier to grab.",
+        ),
+        ReleaseNote(
             code = 167,
             name = "0.167",
             header = "The handle reaches the last chapter too",

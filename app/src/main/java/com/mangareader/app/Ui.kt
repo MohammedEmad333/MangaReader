@@ -713,7 +713,14 @@ internal fun ScrollHandle(
 // Wide enough to be a target rather than a hairline. Material's minimum touch
 // target is 48dp and this is well under it, which is why the thumb is tall — the
 // finger finds it vertically, and the width only has to be visible.
-private val HANDLE_WIDTH = 16.dp
+/**
+ * Wider than it looks like it needs to be, and that is the point.
+ *
+ * 16dp was the visual width and it was also the touch target, which is half
+ * Material's 48dp minimum — on a control whose whole job is being grabbed
+ * one-handed at the edge of the screen, where the thumb is least accurate.
+ */
+private val HANDLE_WIDTH = 24.dp
 
 /**
  * Keeps the thumb's travel clear of the top and bottom screen edges.
