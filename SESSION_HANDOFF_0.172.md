@@ -1,11 +1,11 @@
-# Session handoff — 0.150 to 0.167, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.172, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Eighteen releases. **Two of them were written against cards whose stated premise
+Twenty-three releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
 as the feature existed, one fixed a bug this session had introduced two hours
 earlier, and one corrected a prediction this session had got wrong by a factor
@@ -15,8 +15,9 @@ of five. Everything except §2 is verified on device.
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.167 and the whole range is verified except `onRenderProcessGone`.**
-0.151 through 0.167 were exercised on device. 0.150 was not and cannot be — §2.
+**1. Head is 0.172. The whole range is verified on device except two cards whose
+code has never executed and cannot be made to: `onRenderProcessGone` (§2) and
+the `getPageList` ceiling (§9e). Both sit in Needs verifying, deliberately.**
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -40,6 +41,10 @@ building on it.
 hold" and not what its *button* did. The bug was in the button.
 
 **6. A mechanism read is not a number known.** §8.
+
+**8. A RULE FROM ONE CASE MAY NOT COVER THE NEXT ONE.** §9d — four reports of
+the same bug, because 0.158's warning about *container* roles was applied to a
+*foreground* role it never covered.
 
 **7. THE MOST REUSABLE THING IN THIS FILE IS §9b.** The scroll handle stopped
 short of the end of every list for thirty releases and was signed off four
@@ -76,6 +81,11 @@ loop had been read while writing the change. That is §0.5 of
 | 0.165 | Handle inset from the edges; browse refresh back | `34b0dbe` | Partial |
 | 0.166 | Count only rows that fit; system-bar insets | `514e467` | Verified |
 | 0.167 | Item count from the list, not the caller | `829ce83` | Verified |
+| 0.168 | Notification opens the queue; wider handle | `efac5fa` | Verified |
+| 0.169 | — | `6561471` | **RED, did not build** |
+| 0.170 | Back twice to exit; no premature chapter verdict | `10f987e` | Verified |
+| 0.171 | getPageList ceiling; handle on the wrong list | `4e59378` | Half wrong |
+| 0.172 | onPrimary derived from the accent; right list | `125a546` | Verified |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -516,9 +526,99 @@ stays parked on screen (0.161).
 
 ---
 
+---
+
+## 9d. 0.172 — the four-report bug, and a rule applied to a case it did not cover
+
+**Every filled `Button` in the app drew purple text**, whatever accent was
+picked. `Button` defaults to `containerColor = primary` and
+`contentColor = onPrimary`; `AppPrefs` moved `primary` with the accent and left
+`onPrimary` at the Material baseline, which is a dark purple. Legible on amber,
+and obviously from another palette.
+
+**It was reported four times** — "Got it", "Tags", "Remove", "Close" — before
+anyone traced it past the call site.
+
+### Why it took four
+
+**0.159 fixed exactly this on the Start button**, with a luminance calculation
+at the call site, because deriving a scheme colour looked like the thing 0.158
+had warned against.
+
+**It was not.** That warning was about `primaryContainer` and the other
+**container** roles. Those are separate *surfaces*: deriving them would change
+unrelated controls and break the property `AppPrefs` exists to protect.
+`onPrimary` has no meaning except *"legible on top of primary"* — computing it
+from primary is the definition, not a side effect.
+
+So a rule learned from one case was applied to a case it did not cover, and the
+distinguishing feature — **surface role versus foreground role** — was sitting in
+the role names the entire time. The cost was four more sightings plus a
+workaround that fixed one control out of dozens.
+
+`onPrimary` is now derived by luminance in `AppPrefs`, and the Start button is
+back to plain `onPrimary`.
+
+**Still baseline, and correctly so:** `primaryContainer`, `secondaryContainer`,
+`tertiaryContainer` and their `on` pairs. If a control taking one of those ever
+looks foreign, fix it at the call site — but check which kind of role it is
+first.
+
+---
+
+## 9e. 0.171 — a ceiling that admits what it cannot do
+
+`getPageList` had no limit of any kind. An extension that looped was
+indistinguishable from a slow source, and the reader sat on spinners forever.
+
+Two limits now, in `cappedPageList`, the only path to `delegate.getPageList`:
+
+- **`PAGE_LIST_MAX = 2000`** catches an extension that *returns* having
+  collected nonsense. Exact, and generous on purpose — refusing real content
+  would be worse than the failure it guards.
+- **`PAGE_LIST_TIMEOUT_MS = 180_000`** catches one that *never returns*, **and
+  does not stop it.** `withTimeout` cancels the coroutine, and cancellation is
+  cooperative: a blocking `while (true)` inside an extension has no suspension
+  point to observe it, so its thread runs until it finishes or the process dies.
+  What the clock buys is that the **reader** stops waiting and says why. The
+  runaway work is leaked, knowingly.
+
+**If a source is ever found that hits the clock, that leak stops being
+theoretical.** The only lever reaching inside an extension's own loop is its
+OkHttp call timeout; nothing at this boundary can interrupt it.
+
+Both **throw** rather than returning what was collected — a truncated chapter
+reads as one that legitimately ends early — and both throw before any directory
+is created, so a cap firing mid-download fails the chapter rather than storing a
+partial one.
+
+**Neither has ever fired.** No known source hits either. It is in Needs
+verifying and should stay there.
+
+---
+
+## 9f. Two operational notes worth more than they look
+
+**CI LOGS ARE UNREACHABLE FROM THIS ENVIRONMENT.** 0.169 shipped red — the
+back-to-exit handler referenced `activity`, declared in the block *below* it,
+and a Kotlin function body is read in order. Finding it meant re-reading the
+diff, because `/actions/jobs/{id}/logs` 303-redirects to Azure blob storage,
+which is outside the network allowlist: a failed build reports only *that* it
+failed. **The `mapping-debug` artifact IS reachable through the API; the log is
+not.**
+
+**A SCREENSHOT BEAT READING THE CODE, TWICE.** 0.171 put a scroll handle on the
+"All sources" screen when the card said the Sources **tab** — two `LazyColumn`s
+of source rows in one file, only one inside the Browse pager. One screenshot
+settled it. The same thing settled the scroll-handle diagnosis in §9b, where the
+question *"where is the thumb when the list stops short"* separated an
+arithmetic cause from a physical one after three wrong answers.
+
+---
+
 ## 10. State of the tree
 
-Head is `829ce83` (0.167). Build environment unchanged from 0.134: Kotlin
+Head is `125a546` (0.172). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -556,9 +656,22 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
-**Needs verifying holds only 73.** Everything else shipped this session is
-verified — including, finally, the scroll handle (§12), whose card had claimed
-that for thirty releases without it being true.
+**Needs verifying holds 73 and 77.** Both shipped, both carry code that has
+never executed and cannot be made to on demand. Everything else from 0.150 to
+0.172 is verified on device — including, finally, the scroll handle (§9b), whose
+card had claimed that for thirty releases without it being true.
+
+**The board also changed shape.** Every card now carries at least one label,
+"Reports" is archived, "To add" is renamed **Backlog**, and there is a new
+**In progress** list — added because card 77 sat mid-work for an hour with the
+board unable to say so.
+
+**Backlog is five cards and they are not like the rest of this session.** 65,
+68 and 31 are features of real size with no design work done; 67 is flagged
+risky (two earlier custom gesture detectors in that reader never fired at all —
+read `SESSION_HANDOFF_0.106.md` §5 first); 58's Library item is deliberately
+excluded, since the only refresh it could trigger is a foreground service over
+every series.
 
 ### Open, roughly by value
 
