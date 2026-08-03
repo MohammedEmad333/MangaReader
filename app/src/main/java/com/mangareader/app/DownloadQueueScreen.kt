@@ -178,6 +178,18 @@ internal fun DownloadsTab(
             isRefreshing = refreshing,
             onRefresh = {
                 refreshing = true
+                // INVALIDATE FIRST. Bumping the tick alone re-ran produceState
+                // and produceState called DownloadIndex.list(), which returns a
+                // PROCESS-LEVEL CACHE — `cached?.let { return it }`. So 0.160's
+                // gesture re-read the cache and never touched the disk, and a
+                // series deleted by a file manager stayed listed forever.
+                //
+                // Only Downloads.delete and Downloads.record invalidate that
+                // cache, so nothing in the app could pick up a change the app
+                // did not make. Refresh is the one action whose entire meaning
+                // is "assume what I am holding is stale", so it is the right
+                // and only place to say so.
+                DownloadIndex.invalidate()
                 localTick++
             },
             modifier = Modifier.fillMaxSize()
