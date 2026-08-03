@@ -62,7 +62,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -1497,23 +1496,13 @@ internal fun SeriesScreen(
                 // accent: that would change every other primaryContainer user
                 // at once and break exactly the property AppPrefs is protecting.
                 containerColor = MaterialTheme.colorScheme.primary,
-                // NOT onPrimary. AppPrefs leaves that at the Material baseline
-                // too, and its comment defends the choice on CONTRAST — "every
-                // pair in AccentColor stays well clear of it" — which was never
-                // the thing that failed. Baseline onPrimary is a dark purple, so
-                // against an amber accent it is perfectly legible and obviously
-                // left over from a different palette. Contrast was fine; the hue
-                // was not.
-                //
-                // Luminance picks black or white against whatever the accent is,
-                // which is the one rule that needs no per-accent re-checking —
-                // the same property AppPrefs is protecting, arrived at without
-                // touching the scheme.
-                contentColor = if (MaterialTheme.colorScheme.primary.luminance() > 0.5f) {
-                    Color.Black
-                } else {
-                    Color.White
-                },
+                // onPrimary again, and correct this time: 0.172 moved the
+                // luminance rule into AppPrefs, where it fixes every filled
+                // Button in the app rather than this one. 0.159 did it here
+                // because deriving a scheme colour looked like the thing 0.158
+                // had warned against — it was not, and four more reports of
+                // lavender text were the cost of that caution.
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
