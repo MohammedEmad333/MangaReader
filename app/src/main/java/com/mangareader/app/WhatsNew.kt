@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 184,
+            name = "0.184",
+            header = "The player screen stops jumping to adverts",
+            body = "Tapping the video threw you out to a shopping site \u2014 "  +
+                "these embed hosts make their money from exactly that. The "  +
+                "screen now stays on the player and refuses to be "  +
+                "navigated away.\n\nIt also carries the hardware-surface fix "  +
+                "from 0.183, which never reached you.",
+        ),
+        ReleaseNote(
             code = 183,
             name = "0.183",
             header = "The picture should arrive now",
