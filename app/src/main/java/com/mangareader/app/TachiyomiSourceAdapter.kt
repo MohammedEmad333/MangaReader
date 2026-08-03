@@ -183,23 +183,69 @@ class TachiyomiSourceAdapter(
      * Relative URLs are resolved against the document, so a source using
      * `/media/x.mp4` works without special handling.
      */
-    override suspend fun listVideos(chapter: Chapter): List<String> = onSourceThread {
-        val http = delegate as? HttpSource ?: return@onSourceThread emptyList()
-        val sChapter = chapter.handle as? SChapter ?: return@onSourceThread emptyList()
+    override suspend fun scanVideos(chapter: Chapter): VideoScan = onSourceThread {
+        val http = delegate as? HttpSource
+            ?: return@onSourceThread VideoScan(emptyList(), "Not an HTTP source.")
+        val sChapter = chapter.handle as? SChapter
+            ?: return@onSourceThread VideoScan(emptyList(), "This chapter has no source handle.")
         val url = http.baseUrl + sChapter.url
 
         val body = http.client.newCall(GET(url, http.headers)).execute().use { response ->
-            if (!response.isSuccessful) return@onSourceThread emptyList()
-            response.body?.string() ?: return@onSourceThread emptyList()
+            if (!response.isSuccessful) {
+                return@onSourceThread VideoScan(
+                    emptyList(),
+                    "The page answered HTTP ${response.code}."
+                )
+            }
+            response.body?.string()
+                ?: return@onSourceThread VideoScan(emptyList(), "The page returned no body.")
         }
 
         // `abs:src` resolves against the document's own base, so the second
         // argument here is what makes a relative path usable.
-        Jsoup.parse(body, url)
-            .select("video[src], video source[src]")
+        val doc = Jsoup.parse(body, url)
+        val links = doc.select("video[src], video source[src]")
             .map { it.attr("abs:src") }
             .filter { it.isNotBlank() }
             .distinct()
+
+        if (links.isNotEmpty()) return@onSourceThread VideoScan(links, null)
+
+        // NOTHING FOUND, so report what the document DID hold. Counting the
+        // elements a video could hide in separates "no video anywhere in the
+        // served HTML" — meaning JavaScript builds it, and no selector will ever
+        // help — from "a video element exists but not in the shape being
+        // selected", which is one more selector away.
+        //
+        // The raw-text counts matter more than the tag counts: a .mp4 in the
+        // HTML with no <video> around it means the markup is something else
+        // entirely, and the excerpt below shows what.
+        val videos = doc.select("video").size
+        val iframes = doc.select("iframe").size
+        val sources = doc.select("source").size
+        val mp4 = Regex("\\.mp4").findAll(body).count()
+        val m3u8 = Regex("\\.m3u8").findAll(body).count()
+
+        val excerpt = listOf(".mp4", ".m3u8", "<video")
+            .firstNotNullOfOrNull { needle ->
+                body.indexOf(needle, ignoreCase = true).takeIf { it >= 0 }?.let { at ->
+                    body.substring(
+                        (at - 90).coerceAtLeast(0),
+                        (at + 90).coerceAtMost(body.length)
+                    ).replace(Regex("\\s+"), " ")
+                }
+            }
+
+        VideoScan(
+            emptyList(),
+            buildString {
+                append("Page fetched, ${body.length} chars.\n")
+                append("video=$videos  iframe=$iframes  source=$sources\n")
+                append("\".mp4\"×$mp4  \".m3u8\"×$m3u8\n")
+                if (excerpt != null) append("\nAround the first match:\n…$excerpt…")
+                else append("\nNo .mp4, .m3u8 or <video anywhere in the HTML.")
+            }
+        )
     }
 
     /** Pulls the source-relative url back out of an id built by [toSeries]. */

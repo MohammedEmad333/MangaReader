@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 174,
+            name = "0.174",
+            header = "Find videos now says what it found instead",
+            body = "When the scan comes back empty it reports what was "  +
+                "actually on the page \u2014 how many video, iframe and "  +
+                "source tags, whether any mp4 link appears at all, and the "  +
+                "markup around the first match.\n\nThat is the difference "  +
+                "between a page with no videos and a page whose videos are "  +
+                "built by scripts, which nothing here could ever reach.",
+        ),
+        ReleaseNote(
             code = 173,
             name = "0.173",
             header = "Find videos on a gallery page",

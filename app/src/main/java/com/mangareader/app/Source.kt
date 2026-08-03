@@ -208,7 +208,7 @@ interface Source {
      * site's markup, and prefer fixing the extension upstream over widening
      * this.
      */
-    suspend fun listVideos(chapter: Chapter): List<String> = emptyList()
+    suspend fun scanVideos(chapter: Chapter): VideoScan = VideoScan(emptyList(), null)
 
     /**
      * A page on the source's own site for [series], for sharing or opening in a
@@ -341,3 +341,26 @@ class ChapterDownloadException(
         }
     }
 }
+
+/**
+ * The result of [Source.scanVideos] — what was found, and what was there instead.
+ *
+ * **[note] exists because "found nothing" is not a diagnosis.** The first
+ * version of this returned a bare list, and when it came back empty on a gallery
+ * advertising thirteen videos there was no way to tell which of three things had
+ * happened: the videos are injected by JavaScript and are not in the served HTML
+ * at all; they are in a different element than the one being selected; or the
+ * page served to this client differs from the one a browser sees.
+ *
+ * Separating those from a phone otherwise means reading page source, which
+ * Android browsers do not offer. So the scan reports what the document actually
+ * contained — the same instinct as the connection probe, which exists because a
+ * failure that names nothing costs more than the request that would have named
+ * it.
+ */
+data class VideoScan(
+    /** Playable urls found, in document order. */
+    val links: List<String>,
+    /** What the document held, when [links] is empty. Null when not applicable. */
+    val note: String?
+)
