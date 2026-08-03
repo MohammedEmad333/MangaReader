@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -308,6 +309,9 @@ internal fun EmbedWebViewScreen(
     // calling this leaves the player believing it is still fullscreen, and the
     // next tap on its own exit button does nothing.
     var fullscreenExit by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+    // The live WebView, kept so the DOM can be interrogated.
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    var domNote by remember { mutableStateOf("reading the page\u2026") }
 
     // Back leaves fullscreen first, then the screen. Without the first step the
     // only way out of a fullscreen video is to leave the player entirely.
@@ -323,6 +327,31 @@ internal fun EmbedWebViewScreen(
     // WebView that leaves the tree stops playing — the video would die at the
     // moment it went fullscreen. So the page stays mounted underneath and the
     // handed-over view is drawn on top of it.
+    // ASKS THE PAGE WHAT IT HAS, rather than guessing again.
+    //
+    // 0.177 showed a blank page while streaming at 1MB/s and the cause was
+    // assumed to be HTML5 fullscreen; 0.178 implemented that and the page was
+    // still blank, still streaming, now with a title. Two guesses, both fitting
+    // the symptom, neither checked. So this reports the facts a fix has to be
+    // built on: whether a <video> exists at all, whether it is playing, the
+    // media's own dimensions, and the size the page has given it on screen.
+    //
+    // videoWidth > 0 with clientHeight == 0 is a LAYOUT problem. currentTime
+    // advancing while the box has size is a RENDERING one. No <video> at all
+    // means something else is playing the media and none of the work so far
+    // applies.
+    LaunchedEffect(webView) {
+        val view = webView ?: return@LaunchedEffect
+        while (true) {
+            delay(1500)
+            view.evaluateJavascript(VIDEO_PROBE_JS) { raw ->
+                domNote = raw.removeSurrounding("\"")
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -398,8 +427,16 @@ internal fun EmbedWebViewScreen(
                         }
                     }
                     loadUrl(url, mapOf("Referer" to referer))
-                }
+                }.also { webView = it }
             }
+        )
+        // Under the page, not over it: a diagnostic that covers the thing being
+        // diagnosed is its own bug.
+        Text(
+            domNote,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.fillMaxWidth().padding(8.dp)
         )
     }
 
@@ -412,3 +449,23 @@ internal fun EmbedWebViewScreen(
     }
     }
 }
+
+/**
+ * Reports what the page's <video> elements are doing.
+ *
+ * Written as one expression returning a string, because evaluateJavascript
+ * hands back a JSON-encoded value and a string is the one shape that survives
+ * that legibly.
+ */
+private val VIDEO_PROBE_JS = """
+    (function () {
+      var v = document.querySelectorAll('video');
+      if (!v.length) return 'no <video> in the DOM';
+      return Array.prototype.map.call(v, function (e, i) {
+        return i + ': media ' + e.videoWidth + 'x' + e.videoHeight +
+          '  box ' + e.clientWidth + 'x' + e.clientHeight +
+          '  t=' + (e.currentTime || 0).toFixed(1) +
+          (e.paused ? '  PAUSED' : '  playing');
+      }).join('\n');
+    })()
+""".trimIndent()

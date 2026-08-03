@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 179,
+            name = "0.179",
+            header = "The player screen now says what it sees",
+            body = "Two attempts at the blank player were guesses that "  +
+                "fitted the symptom and were both wrong. This one reports "  +
+                "what the page actually contains \u2014 whether there is a "  +
+                "video at all, whether it is playing, and what size it "  +
+                "thinks it is \u2014 in a line under the page.",
+        ),
+        ReleaseNote(
             code = 178,
             name = "0.178",
             header = "The player is visible now",
