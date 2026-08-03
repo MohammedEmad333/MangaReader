@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 150,
+            name = "0.150",
+            header = "The app no longer closes if the browser view dies",
+            body = "Sources protected by Cloudflare are opened in a hidden " +
+                "browser view to answer their check. That view runs in its " +
+                "own process, and if Android shut it down \u2014 usually to " +
+                "reclaim memory \u2014 it took the whole app with it, with no " +
+                "warning and nothing in the crash log.\n\nIt now fails the " +
+                "one request instead, and says so.",
+        ),
+        ReleaseNote(
             code = 149,
             name = "0.149",
             header = "A scroll handle on the chapter list",
