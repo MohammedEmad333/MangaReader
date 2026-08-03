@@ -138,6 +138,19 @@ object DownloadQueue {
         private set
 
     /**
+     * Chapters the user has paused individually, as opposed to [paused] which
+     * stops the whole queue.
+     *
+     * **Kept as ids rather than a flag on [DownloadItem]** so the item list
+     * stays the plain ordered thing [head] walks, and so a pause survives the
+     * item being rewritten. Persisted alongside the queue: a chapter paused
+     * before the process died must come back paused, or resuming happens by
+     * itself and the user is not the one who asked for it.
+     */
+    var pausedIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    /**
      * Bumped every time a chapter leaves the queue. Screens that read download
      * state off the filesystem — the tick / check mark in the chapter list, the
      * storage row in More, the Downloads tab — key their `remember` on this.
@@ -175,6 +188,9 @@ object DownloadQueue {
     fun remove(context: Context, chapterId: String) {
         items = items.filterNot { it.chapterId == chapterId }
         progress = progress - chapterId
+        // A pause on a chapter that is no longer queued is dead state, and it
+        // would come back to life if the same chapter were queued again.
+        pausedIds = pausedIds - chapterId
         save(context)
     }
 
@@ -211,6 +227,7 @@ object DownloadQueue {
     fun clear(context: Context) {
         items = emptyList()
         progress = emptyMap()
+        pausedIds = emptySet()
         activeId = null
         save(context)
     }
@@ -219,6 +236,15 @@ object DownloadQueue {
         paused = value
         save(context)
     }
+
+    /** Pauses or resumes one chapter, independently of the queue-wide [paused]. */
+    fun setItemPaused(context: Context, chapterId: String, value: Boolean) {
+        pausedIds = if (value) pausedIds + chapterId else pausedIds - chapterId
+        save(context)
+    }
+
+    /** True when this chapter is paused on its own. */
+    fun isItemPaused(chapterId: String): Boolean = chapterId in pausedIds
 
     /** True when the given chapter is queued but not yet started. */
     fun isQueued(chapterId: String): Boolean = items.any { it.chapterId == chapterId }
@@ -253,8 +279,20 @@ object DownloadQueue {
 
     // ---------- service side ----------
 
-    /** The chapter the service should work on next, or null when there's nothing. */
-    fun head(): DownloadItem? = items.firstOrNull()
+    /**
+     * The chapter the service should work on next, or null when there's nothing.
+     *
+     * **Skips individually paused items rather than stopping at them.** The
+     * head used to be simply the first item; once a single chapter can be
+     * paused, stopping at it would let one paused row hold up every runnable
+     * chapter behind it — a pause that reads as a freeze. Skipping leaves the
+     * paused item exactly where it is in [items], so resuming it does not send
+     * it to the back of the queue.
+     */
+    fun head(): DownloadItem? = items.firstOrNull { it.chapterId !in pausedIds }
+
+    /** True when every queued chapter is individually paused. */
+    fun allItemsPaused(): Boolean = items.isNotEmpty() && items.all { it.chapterId in pausedIds }
 
     fun setActive(chapterId: String?) {
         activeId = chapterId
@@ -281,6 +319,7 @@ object DownloadQueue {
     fun finish(context: Context, item: DownloadItem, failure: String? = null) {
         items = items.filterNot { it.chapterId == item.chapterId }
         progress = progress - item.chapterId
+        pausedIds = pausedIds - item.chapterId
         if (activeId == item.chapterId) activeId = null
         if (failure != null) {
             failed = listOf(FailedDownload(item, failure)) +
@@ -299,14 +338,18 @@ object DownloadQueue {
         val queued = items
         val bad = failed
         val isPaused = paused
+        val pausedItems = pausedIds
         runCatching {
             val queuedArr = JSONArray()
             queued.forEach { queuedArr.put(it.toJson()) }
             val failedArr = JSONArray()
             bad.forEach { failedArr.put(it.toJson()) }
+            val pausedArr = JSONArray()
+            pausedItems.forEach { pausedArr.put(it) }
             file(context).writeText(
                 JSONObject().apply {
                     put("paused", isPaused)
+                    put("pausedIds", pausedArr)
                     put("items", queuedArr)
                     put("failed", failedArr)
                 }.toString()
@@ -331,11 +374,18 @@ object DownloadQueue {
             val root = JSONObject(f.readText())
             paused = root.optBoolean("paused", false)
 
+            root.optJSONArray("pausedIds")?.let { arr ->
+                pausedIds = (0 until arr.length()).map { arr.getString(it) }.toSet()
+            }
+
             root.optJSONArray("items")?.let { arr ->
                 items = (0 until arr.length())
                     .map { DownloadItem.fromJson(arr.getJSONObject(it)) }
                     // A chapter that finished after the last save is already on disk.
                     .filterNot { Downloads.isComplete(context, it.chapterId) }
+                // Pauses for chapters that are no longer queued would otherwise
+                // accumulate forever in a file nothing prunes.
+                pausedIds = pausedIds intersect items.map { it.chapterId }.toSet()
             }
             root.optJSONArray("failed")?.let { arr ->
                 failed = (0 until arr.length())

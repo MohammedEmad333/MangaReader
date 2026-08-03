@@ -43,6 +43,21 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 153,
+            name = "0.153",
+            header = "Pause one download, not all of them",
+            body = "Every chapter in the queue now has its own pause, so "  +
+                "you can hold one back without stopping the rest \u2014 the "  +
+                "queue carries on with whatever is behind it, and a held "  +
+                "chapter keeps its place rather than going to the end. It "  +
+                "stays held if you close the app.\n\nThe queue's buttons "  +
+                "are icons now, and Cancel all asks first, since it "  +
+                "discarded everything on a single tap.\n\nAlso: clearing "  +
+                "cookies now really does bring a Cloudflare check back, and "  +
+                "a series with nothing in it says the source returned no "  +
+                "chapters instead of reporting a count of zero.",
+        ),
+        ReleaseNote(
             code = 152,
             name = "0.152",
             header = "Pause stops the download you are watching",

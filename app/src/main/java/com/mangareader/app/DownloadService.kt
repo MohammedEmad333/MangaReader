@@ -126,6 +126,24 @@ class DownloadService : Service() {
                 pausing = false
                 DownloadQueue.setPaused(this, false)
             }
+            ACTION_PAUSE_ITEM -> {
+                val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
+                if (id != null) {
+                    DownloadQueue.setItemPaused(this, id, true)
+                    // Only the chapter in flight needs interrupting; a queued
+                    // one is not running, so the flag alone is the whole job.
+                    // Same `pausing` contract as the queue-wide pause: the item
+                    // must be left in the queue, not finished.
+                    if (id == DownloadQueue.activeId) {
+                        pausing = true
+                        itemJob?.cancel()
+                    }
+                }
+            }
+            ACTION_RESUME_ITEM -> {
+                val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
+                if (id != null) DownloadQueue.setItemPaused(this, id, false)
+            }
             ACTION_SKIP -> {
                 val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
                 if (id == null || id == DownloadQueue.activeId) itemJob?.cancel()
@@ -161,11 +179,16 @@ class DownloadService : Service() {
             var wasPaused = false
             try {
                 while (isActive) {
-                    if (DownloadQueue.paused) {
+                    if (DownloadQueue.paused || DownloadQueue.allItemsPaused()) {
                         // Only on the transition: this loop spins every second or
                         // so, and neither re-posting the notification nor holding
                         // the CPU awake is worth anything while nothing is being
                         // fetched.
+                        //
+                        // allItemsPaused() is here rather than left to head()
+                        // returning null: that would break out of the loop and
+                        // stop the service, so resuming a chapter would need the
+                        // worker rebuilt. Idling keeps it ready.
                         if (!wasPaused) {
                             wasPaused = true
                             releaseWakeLock()
@@ -440,10 +463,14 @@ class DownloadService : Service() {
 
     private fun buildNotification(): Notification {
         val remaining = DownloadQueue.items.size
-        val current = DownloadQueue.items.firstOrNull()
+        // head(), not items.firstOrNull(): once a chapter can be paused on its
+        // own, the first item may be one the worker is skipping over, and the
+        // notification would name a chapter nothing is downloading.
+        val current = DownloadQueue.head()
         val progress = current?.let { DownloadQueue.progress[it.chapterId] }
         val percent = progress?.percent
         val isPaused = DownloadQueue.paused
+        val allOnHold = DownloadQueue.allItemsPaused()
 
         val open = PendingIntent.getActivity(
             this,
@@ -458,6 +485,7 @@ class DownloadService : Service() {
             .setContentTitle(
                 when {
                     isPaused -> "Downloads paused"
+                    allOnHold -> "All chapters on hold"
                     current == null -> "Finishing downloads"
                     else -> current.seriesTitle.ifBlank { "Downloading" }
                 }
@@ -504,6 +532,8 @@ class DownloadService : Service() {
 
         const val ACTION_PAUSE = "com.mangareader.app.PAUSE"
         const val ACTION_RESUME = "com.mangareader.app.RESUME"
+        const val ACTION_PAUSE_ITEM = "com.mangareader.app.PAUSE_ITEM"
+        const val ACTION_RESUME_ITEM = "com.mangareader.app.RESUME_ITEM"
         const val ACTION_SKIP = "com.mangareader.app.SKIP"
         const val ACTION_CANCEL_ALL = "com.mangareader.app.CANCEL_ALL"
         const val EXTRA_CHAPTER_ID = "chapterId"
