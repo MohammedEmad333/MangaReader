@@ -208,7 +208,7 @@ interface Source {
      * site's markup, and prefer fixing the extension upstream over widening
      * this.
      */
-    suspend fun scanVideos(chapter: Chapter): VideoScan = VideoScan(emptyList(), null)
+    suspend fun scanVideos(chapter: Chapter): VideoScan = VideoScan(emptyList())
 
     /**
      * A page on the source's own site for [series], for sharing or opening in a
