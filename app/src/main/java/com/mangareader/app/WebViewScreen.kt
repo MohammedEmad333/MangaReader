@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -362,7 +366,27 @@ internal fun EmbedWebViewScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            navigationIcon = { BackButton(onBack) }
+            navigationIcon = { BackButton(onBack) },
+            actions = {
+                // THE VIDEO IS THERE AND PAUSED AT ZERO. Frames have decoded
+                // (media 1440x1080) and the page has given it a real box
+                // (392x728), so nothing is broken about loading or layout —
+                // nothing has told it to start. The player's own overlay is
+                // presumably what would, and it is not drawing.
+                //
+                // mediaPlaybackRequiresUserGesture is already false, so this
+                // should be permitted; if it is refused, the console message
+                // lands in the strip below and says why.
+                IconButton(onClick = {
+                    webView?.evaluateJavascript(PLAY_JS) { result ->
+                        if (result != null && result != "null" && result != "\"\"") {
+                            domNote = result.removeSurrounding("\"")
+                        }
+                    }
+                }) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+                }
+            }
         )
         if (progress in 1..99) {
             LinearProgressIndicator(
@@ -459,13 +483,42 @@ internal fun EmbedWebViewScreen(
  */
 private val VIDEO_PROBE_JS = """
     (function () {
+      var note = document.getElementById('yomu-note');
+      var extra = note ? '\n' + note.textContent : '';
       var v = document.querySelectorAll('video');
-      if (!v.length) return 'no <video> in the DOM';
-      return Array.prototype.map.call(v, function (e, i) {
+      if (!v.length) return 'no <video> in the DOM' + extra;
+      return extra + Array.prototype.map.call(v, function (e, i) {
         return i + ': media ' + e.videoWidth + 'x' + e.videoHeight +
           '  box ' + e.clientWidth + 'x' + e.clientHeight +
           '  t=' + (e.currentTime || 0).toFixed(1) +
           (e.paused ? '  PAUSED' : '  playing');
       }).join('\n');
+    })()
+""".trimIndent()
+
+/**
+ * Starts the first <video> and reports what happened.
+ *
+ * A promise rejection here is the answer to "why is it paused" — autoplay
+ * policy, a decode failure, or a source the element could not open all reject
+ * with a named error, and the message goes straight to the strip.
+ */
+private val PLAY_JS = """
+    (function () {
+      var v = document.querySelector('video');
+      if (!v) return 'no <video> to play';
+      var p = v.play();
+      if (p && p.catch) {
+        p.catch(function (e) {
+          var el = document.getElementById('yomu-note');
+          if (!el) {
+            el = document.createElement('div');
+            el.id = 'yomu-note';
+            document.body.appendChild(el);
+          }
+          el.textContent = 'play() rejected: ' + e.name + ' ' + e.message;
+        });
+      }
+      return 'play() called';
     })()
 """.trimIndent()
