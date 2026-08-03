@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 159,
+            name = "0.159",
+            header = "The Start button reads properly on every accent",
+            body = "0.158 gave it your accent colour but left the label and "  +
+                "arrow the old purple, which was legible and obviously from "  +
+                "a different palette. They are now black or white, whichever "  +
+                "suits the accent behind them.\n\nAlso: History gets the "  +
+                "drag handle it was missed out of in 0.157.",
+        ),
+        ReleaseNote(
             code = 158,
             name = "0.158",
             header = "Scroll handles everywhere, and Start follows your accent",
