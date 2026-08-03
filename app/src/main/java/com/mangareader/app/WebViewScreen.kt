@@ -12,14 +12,19 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +41,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -306,6 +312,17 @@ internal fun EmbedWebViewScreen(
     onMediaFound: (List<String>) -> Unit,
     onBack: () -> Unit
 ) {
+    // THE PAGE IS NOT SHOWN BY DEFAULT, and that is the point of this screen
+    // now. The embedded player provably never draws here — audio plays, every
+    // frame decodes, the screen stays white, and SESSION_HANDOFF_0.188.md §9h
+    // records what that rules out. Showing it meant handing someone a blank
+    // white rectangle and hoping they found the link button.
+    //
+    // So the page loads offscreen, plays itself muted, and the url it reaches
+    // for is offered directly. `reveal` exists for the case where nothing is
+    // found: seeing the page beats being told nothing was there.
+    var reveal by remember { mutableStateOf(false) }
+    var searched by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(0) }
     // The page's own title, shown in the bar. A blank page WITH a title means
     // the page loaded and the problem is rendering; a blank page with no title
@@ -335,6 +352,40 @@ internal fun EmbedWebViewScreen(
     // WebView that leaves the tree stops playing — the video would die at the
     // moment it went fullscreen. So the page stays mounted underneath and the
     // handed-over view is drawn on top of it.
+    // Plays it muted, then watches for the url. Both are needed and in this
+    // order: the element sits PAUSED at t=0 until told otherwise, and neither
+    // currentSrc nor the resource timeline exists before playback starts.
+    //
+    // Polling rather than a single shot after onPageFinished: the player builds
+    // itself from script, so the video element does not exist when the page
+    // reports finished. Ten seconds is generous for a fetch already in flight.
+    LaunchedEffect(webView) {
+        val view = webView ?: return@LaunchedEffect
+        repeat(20) {
+            delay(500)
+            view.evaluateJavascript(SILENT_PLAY_JS, null)
+            delay(500)
+            var done = false
+            view.evaluateJavascript(MEDIA_URLS_JS) { raw ->
+                val found = raw.removeSurrounding("\"")
+                    .replace("\\n", "\n")
+                    .replace("\\/", "/")
+                    .split("\n")
+                    .filter { it.isNotBlank() }
+                    .map { it.substringAfter('|') }
+                    .distinct()
+                if (found.isNotEmpty()) {
+                    done = true
+                    onMediaFound(found)
+                }
+            }
+            if (done) return@LaunchedEffect
+        }
+        // Nothing after ten seconds. Say so and offer the page, rather than
+        // spinning forever on a promise that is not going to be kept.
+        searched = true
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -347,15 +398,10 @@ internal fun EmbedWebViewScreen(
             },
             navigationIcon = { BackButton(onBack) },
             actions = {
-                // THE VIDEO IS THERE AND PAUSED AT ZERO. Frames have decoded
-                // (media 1440x1080) and the page has given it a real box
-                // (392x728), so nothing is broken about loading or layout —
-                // nothing has told it to start. The player's own overlay is
-                // presumably what would, and it is not drawing.
-                //
-                // mediaPlaybackRequiresUserGesture is already false, so this
-                // should be permitted; if it is refused, the console message
-                // lands in the strip below and says why.
+                // Only once the page is visible. With it hidden these duplicate
+                // what the loop above already does, and a control that repeats
+                // an automatic action is just a way to wonder whether it worked.
+                if (!reveal) return@TopAppBar
                 IconButton(onClick = {
                     webView?.evaluateJavascript(PLAY_JS, null)
                 }) {
@@ -388,7 +434,13 @@ internal fun EmbedWebViewScreen(
             // weight, not fillMaxSize: as the last child of a Column that
             // already spent height on the bar, fillMaxSize asks for the whole
             // screen and the bottom of the page falls off it.
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            // One pixel when hidden rather than zero: a WebView with no size
+            // does not lay out, and a player that never lays out never starts.
+            modifier = if (reveal) {
+                Modifier.fillMaxWidth().weight(1f)
+            } else {
+                Modifier.size(1.dp)
+            },
             factory = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
@@ -477,6 +529,41 @@ internal fun EmbedWebViewScreen(
                 }.also { webView = it }
             }
         )
+        // What the page used to occupy. Says what is happening instead of
+        // showing a white rectangle that is doing something invisible.
+        if (!reveal) {
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (!searched) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(20.dp))
+                    Text("Finding the video\u2026", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The player is loading in the background. When the video " +
+                            "address turns up it opens in your video player.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Text("No video address found", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "This player may build its stream entirely in the page, " +
+                            "which leaves nothing an outside app can open.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    // Worth offering even knowing it does not draw: the page may
+                    // carry a download link of its own, and being shown the
+                    // thing beats being told about it.
+                    TextButton(onClick = { reveal = true }) { Text("Show the page anyway") }
+                }
+            }
+        }
+
     }
 
     val handedOver = fullscreenView
@@ -550,5 +637,27 @@ private val MEDIA_URLS_JS = """
       } catch (e) {}
       // Longest first: a manifest or a whole file beats one segment of it.
       return out.filter(function (x, i) { return out.indexOf(x) === i; }).join('\n');
+    })()
+""".trimIndent()
+
+/**
+ * Mutes and starts the video, for the headless pass.
+ *
+ * MUTED MATTERS. This runs with the WebView invisible, so unmuted autoplay would
+ * blare the soundtrack at someone who only asked for a link. Muted playback is
+ * also the case browsers permit most freely, so it is likelier to start at all.
+ *
+ * Playing is not optional: the element sits at t=0 PAUSED until told otherwise,
+ * and neither currentSrc nor the resource timeline is populated before it does.
+ */
+private val SILENT_PLAY_JS = """
+    (function () {
+      var v = document.querySelector('video');
+      if (!v) return 'no video yet';
+      v.muted = true;
+      v.volume = 0;
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+      return 'started';
     })()
 """.trimIndent()

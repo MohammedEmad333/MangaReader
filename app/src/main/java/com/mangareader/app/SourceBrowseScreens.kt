@@ -536,8 +536,15 @@ internal fun SeriesScreen(
      * "This source returned no chapters" while the request was still running.
      */
     chaptersFetched: Boolean,
-    /** Scans the first chapter's page for video URLs. See Source.listVideos. */
-    onFindVideos: () -> Unit,
+    /**
+     * Scans a chapter's page for video urls. See Source.scanVideos.
+     *
+     * Takes the chapter rather than picking one upstream: the caller cannot see
+     * the sort or the filter, so "the first chapter" up there meant the first
+     * of the RAW list, which on a descending sort is the last one drawn. This
+     * passes what is actually at the top of the list being looked at.
+     */
+    onFindVideos: (Chapter) -> Unit,
     sourceId: String,
     sourceName: String,
     canDownload: Boolean,
@@ -1425,18 +1432,22 @@ internal fun SeriesScreen(
                                 onRefresh()
                             }
                         )
-                        // Scans the FIRST chapter only, and the dialog says so.
-                        // A gallery source has one chapter, which is the case
-                        // this was built for; scanning every chapter of a
-                        // 200-chapter series would be 200 requests to answer a
-                        // question nobody asked. Hidden entirely when there are
-                        // no chapters, so it cannot be tapped into a no-op.
-                        if (chapters.isNotEmpty()) {
+                        // Scans ONE chapter — the one at the top of the list as
+                        // currently sorted and filtered, which is the one being
+                        // looked at. Scanning all of a 200-chapter series would
+                        // be 200 requests to answer a question nobody asked.
+                        //
+                        // Keyed off `visible`, not `chapters`: with a filter on,
+                        // the raw list's first entry may not be on screen at
+                        // all, and scanning something invisible is how a feature
+                        // reports about a page nobody asked about.
+                        val scanTarget = visible.firstOrNull()
+                        if (scanTarget != null) {
                             DropdownMenuItem(
                                 text = { Text("Find videos") },
                                 onClick = {
                                     showOptionsMenu = false
-                                    onFindVideos()
+                                    onFindVideos(scanTarget)
                                 }
                             )
                         }

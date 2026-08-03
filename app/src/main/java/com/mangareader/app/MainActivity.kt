@@ -776,16 +776,19 @@ fun YomuApp() {
      * what 0.102 had to undo in the reader for the same reason.
      */
     /**
-     * Scans the first chapter's page for videos. See Source.listVideos.
+     * Scans one chapter's page for videos. See Source.scanVideos.
+     *
+     * The CALLER picks which — the chapter at the top of the list as sorted and
+     * filtered on screen. Choosing it here meant chapterList[0], the raw list's
+     * first entry, which under a descending sort is the last one drawn.
      *
      * A failure comes back as a VideoScan carrying the reason rather than as a
      * thrown error, so "the scan failed" and "the page has no videos" reach the
      * dialog as different sentences. They looked identical in 0.173 and that is
      * exactly the failure this codebase keeps writing cards about.
      */
-    fun findVideos() {
+    fun findVideos(chapter: Chapter) {
         val src = activeSource ?: return
-        val chapter = chapterList.firstOrNull() ?: return
         videoScan = null
         videoScanning = true
         scope.launch {
@@ -1368,7 +1371,7 @@ fun YomuApp() {
             // Empty means three different things; this says which. See its
             // declaration.
             chaptersFetched = chaptersFetched,
-            onFindVideos = { findVideos() },
+            onFindVideos = { chapter -> findVideos(chapter) },
             sourceId = activeSourceId ?: "",
             sourceName = activeSource?.name ?: "",
             canDownload = activeSource?.supportsDownload == true,
@@ -1740,7 +1743,7 @@ fun YomuApp() {
             title = { Text("Videos in this chapter") },
             text = {
                 when {
-                    videoScanning -> Text("Scanning the first chapter\u2026")
+                    videoScanning -> Text("Scanning the chapter's page\u2026")
                     // The old wording here blamed the source's extension for
                     // selecting only img tags. True of the PAGE LIST and
                     // irrelevant to this result: the scan reads the page
