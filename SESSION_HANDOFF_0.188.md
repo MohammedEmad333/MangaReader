@@ -1,11 +1,11 @@
-# Session handoff — 0.150 to 0.188, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.189, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Thirty-nine releases. **Two of them were written against cards whose stated premise
+Forty releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
 as the feature existed, one fixed a bug this session had introduced two hours
 earlier, and one corrected a prediction this session had got wrong by a factor
@@ -15,9 +15,18 @@ of five. Everything except §2 is verified on device.
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.188. The whole range is verified on device except two cards whose
-code has never executed and cannot be made to: `onRenderProcessGone` (§2) and
-the `getPageList` ceiling (§9e). Both sit in Needs verifying, deliberately.**
+**1. Head is 0.189, and this file is NOT renamed to match — deliberately.**
+Renaming it 0.157 → 0.167 → 0.172 → 0.188 across one session left fifteen
+dangling references behind, six of them in PROJECT_HANDOFF, because a document
+that cites a file by name has to be re-read every time the name changes. The
+name is now fixed at 0.188 and the coverage line above says what it actually
+covers.
+
+**1a. Head is 0.189. THREE things are unverified, not two.** The two long-term
+ones carry code that has never executed and cannot be made to on demand:
+`onRenderProcessGone` (§2) and the `getPageList` ceiling (§9e), both parked in
+Needs verifying deliberately. The third is simply new: **0.189 has not been on a
+device at all** — see §10. Everything from 0.150 to 0.188 is verified.
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -94,6 +103,7 @@ loop had been read while writing the change. That is §0.5 of
 | 0.177–0.186 | Ten attempts to make a video RENDER | `b6de0ba`…`9f87702` | All failed — §9g |
 | 0.187 | Extract the media url instead | `c72cc47` | Verified |
 | 0.188 | Show the dialog on a screen that composes | `38225cd` | Verified |
+| 0.189 | Headless player; scan the chapter on screen | `a1056b4` | **NOT VERIFIED** |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -731,7 +741,7 @@ different path entirely.
 
 ## 10. State of the tree
 
-Head is `38225cd` (0.188). Build environment unchanged from 0.134: Kotlin
+Head is `556b753`; the last app change is `a1056b4` (0.189). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -769,7 +779,14 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
-**The video feature (card 68) is done and verified**: Find videos on a series,
+**0.189 IS UNVERIFIED ON DEVICE.** It reworks the same feature card 68 closed:
+the embed page now loads offscreen and plays itself muted, so a working run
+should go Find videos → spinner → link dialog → MX Player with no blank screen
+in between. And "Find videos" now scans the chapter at the top of the list AS
+SORTED AND FILTERED, rather than `chapterList[0]` — on a descending sort those
+are opposite ends. Neither has been seen working.
+
+**The video feature (card 68) is done and verified through 0.188**: Find videos on a series,
 open the embedded player, tap the download icon, and the link opens in MX
 Player. §9g is the account; §9h is what stayed broken and stopped mattering.
 
