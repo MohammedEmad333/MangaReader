@@ -16,11 +16,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -249,6 +253,8 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
     val failed = DownloadQueue.failed
     val activeId = DownloadQueue.activeId
     val paused = DownloadQueue.paused
+    val pausedIds = DownloadQueue.pausedIds
+    var confirmCancelAll by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -265,16 +271,28 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.weight(1f))
             if (items.isNotEmpty()) {
-                TextButton(onClick = {
+                IconButton(onClick = {
                     DownloadService.start(
                         context,
                         if (paused) DownloadService.ACTION_RESUME
                         else DownloadService.ACTION_PAUSE
                     )
-                }) { Text(if (paused) "Resume" else "Pause") }
-                TextButton(onClick = {
-                    DownloadService.start(context, DownloadService.ACTION_CANCEL_ALL)
-                }) { Text("Cancel all") }
+                }) {
+                    Icon(
+                        if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        contentDescription = if (paused) "Resume all downloads"
+                        else "Pause all downloads"
+                    )
+                }
+                // Confirmed, unlike before: this discards the whole queue and
+                // there is no undo. Every other destructive action in this app
+                // asks first — see 0.44's rule about delete buttons.
+                IconButton(onClick = { confirmCancelAll = true }) {
+                    Icon(
+                        Icons.Default.DeleteSweep,
+                        contentDescription = "Cancel all downloads"
+                    )
+                }
             }
         }
         HorizontalDivider()
@@ -380,6 +398,7 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
 
             items(items, key = { it.chapterId }) { item ->
                 val isActive = item.chapterId == activeId
+                val itemPaused = item.chapterId in pausedIds
                 val progress = DownloadQueue.progress[item.chapterId]
 
                 ListItem(
@@ -431,7 +450,13 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                                 // outstanding; a ratio means it came back and
                                 // says how much has landed. They have different
                                 // causes, so they read differently.
+                                // "On hold" is this chapter's own pause and
+                                // "Paused" is the queue-wide one. Two mechanisms
+                                // can hold a row now, and one word for both would
+                                // be the mistake this screen just finished
+                                // undoing.
                                 when {
+                                    itemPaused -> "On hold"
                                     !isActive && paused -> "Paused"
                                     !isActive -> "Queued"
                                     progress == null -> "Starting"
@@ -442,7 +467,25 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            TextButton(onClick = {
+                            IconButton(onClick = {
+                                DownloadService.start(
+                                    context,
+                                    if (itemPaused) DownloadService.ACTION_RESUME_ITEM
+                                    else DownloadService.ACTION_PAUSE_ITEM,
+                                    item.chapterId
+                                )
+                            }) {
+                                Icon(
+                                    if (itemPaused) Icons.Default.PlayArrow
+                                    else Icons.Default.Pause,
+                                    contentDescription = if (itemPaused) {
+                                        "Resume this chapter"
+                                    } else {
+                                        "Pause this chapter"
+                                    }
+                                )
+                            }
+                            IconButton(onClick = {
                                 DownloadQueue.remove(context, item.chapterId)
                                 // Removing the one being fetched has to reach the
                                 // service too, or it carries on downloading a
@@ -454,12 +497,40 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                                         item.chapterId
                                     )
                                 }
-                            }) { Text("Remove") }
+                            }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove from queue"
+                                )
+                            }
                         }
                     }
                 )
                 HorizontalDivider()
             }
         }
+    }
+
+    if (confirmCancelAll) {
+        AlertDialog(
+            onDismissRequest = { confirmCancelAll = false },
+            title = { Text("Cancel all downloads?") },
+            text = {
+                Text(
+                    "Everything in the queue is dropped, including the chapter " +
+                        "being downloaded now. Pages already saved stay on disk, " +
+                        "so queuing a chapter again resumes rather than restarts."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    DownloadService.start(context, DownloadService.ACTION_CANCEL_ALL)
+                    confirmCancelAll = false
+                }) { Text("Cancel all") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCancelAll = false }) { Text("Keep") }
+            }
+        )
     }
 }
