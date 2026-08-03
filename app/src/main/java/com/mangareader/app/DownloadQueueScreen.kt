@@ -380,7 +380,7 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
 
             items(items, key = { it.chapterId }) { item ->
                 val isActive = item.chapterId == activeId
-                val percent = DownloadQueue.progress[item.chapterId]
+                val progress = DownloadQueue.progress[item.chapterId]
 
                 ListItem(
                     headlineContent = {
@@ -403,11 +403,14 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                                 val bar = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 4.dp)
-                                // No percent yet means the page list request
-                                // hasn't come back, so there's no ratio to show —
-                                // an indeterminate bar is the honest one until the
-                                // page count is known.
-                                if (percent == null || percent == 0) {
+                                // Indeterminate only while there is no ratio to
+                                // be had — the page list hasn't landed, or it
+                                // landed empty. A real 0 of N now draws an empty
+                                // determinate bar, because "the source answered
+                                // and nothing is arriving" is a different thing
+                                // to show than "the source hasn't answered".
+                                val percent = progress?.percent
+                                if (percent == null) {
                                     LinearProgressIndicator(modifier = bar)
                                 } else {
                                     LinearProgressIndicator(
@@ -421,11 +424,20 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
+                                // Four active states where there used to be
+                                // two labels. "Starting" now means only the
+                                // gap before the service picks the chapter up;
+                                // "Fetching pages" is the page list request
+                                // outstanding; a ratio means it came back and
+                                // says how much has landed. They have different
+                                // causes, so they read differently.
                                 when {
-                                    isActive && percent != null && percent > 0 -> "$percent%"
-                                    isActive -> "Starting"
-                                    paused -> "Paused"
-                                    else -> "Queued"
+                                    !isActive && paused -> "Paused"
+                                    !isActive -> "Queued"
+                                    progress == null -> "Starting"
+                                    progress.total == null -> "Fetching pages"
+                                    progress.total == 0 -> "No pages"
+                                    else -> "${progress.ready} of ${progress.total}"
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary

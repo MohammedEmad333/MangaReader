@@ -103,8 +103,31 @@ object DownloadQueue {
     var failed by mutableStateOf<List<FailedDownload>>(emptyList())
         private set
 
-    /** chapterId -> percent, for the chapter being downloaded right now. */
-    var progress by mutableStateOf<Map<String, Int>>(emptyMap())
+    /**
+     * How far the chapter being downloaded right now has got.
+     *
+     * **Two integers rather than a percent, deliberately.** A ratio cannot say
+     * "I don't know the denominator yet", and that was the bug: the queue wrote
+     * 0 both while the page list request was still out *and* once it had come
+     * back with nothing downloaded, so the one screen that exists to explain a
+     * stalled download could not tell "the source hasn't answered" from "the
+     * source answered and no images are arriving". Those have different causes
+     * and different fixes. [total] is null until the page list lands, which is
+     * the distinction the old percent could not carry.
+     */
+    data class DownloadProgress(val ready: Int, val total: Int?) {
+        /**
+         * Whole percent, or null when there is no honest ratio to show — no
+         * page list yet, or a page list with nothing in it. Callers with room
+         * for only a number use this; callers with room for words should say
+         * [ready] of [total] instead, which is strictly more informative.
+         */
+        val percent: Int?
+            get() = if (total == null || total == 0) null else ready * 100 / total
+    }
+
+    /** chapterId -> progress, for the chapter being downloaded right now. */
+    var progress by mutableStateOf<Map<String, DownloadProgress>>(emptyMap())
         private set
 
     /** Chapter id currently being fetched, or null when idle. */
@@ -237,8 +260,15 @@ object DownloadQueue {
         activeId = chapterId
     }
 
-    fun setProgress(chapterId: String, percent: Int) {
-        progress = progress + (chapterId to percent)
+    /**
+     * Records progress for [chapterId].
+     *
+     * [total] null means the page list has not come back yet. Pass it null
+     * rather than 0 — 0 is a page list that arrived empty, which is a different
+     * and much rarer thing.
+     */
+    fun setProgress(chapterId: String, ready: Int, total: Int?) {
+        progress = progress + (chapterId to DownloadProgress(ready, total))
     }
 
     /**

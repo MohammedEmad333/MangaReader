@@ -416,7 +416,7 @@ internal fun SeriesScreen(
     sourceId: String,
     sourceName: String,
     canDownload: Boolean,
-    downloadProgress: Map<String, Int>,
+    downloadProgress: Map<String, DownloadQueue.DownloadProgress>,
     downloadTick: Int,
     downloadingAll: Boolean,
     onDownload: (Chapter) -> Unit,
@@ -1057,7 +1057,14 @@ internal fun SeriesScreen(
                                 )
                             }
                             if (canDownload) {
-                                val percent = downloadProgress[ch.id]
+                                // A percent, not "12 of 36", purely on width:
+                                // this is a trailing badge on a chapter row, not
+                                // the download queue. The queue is the screen
+                                // that has to be precise about which state it is
+                                // in; here the ellipsis versus a number is
+                                // enough, and null percent covers both "no page
+                                // list yet" and "it was empty".
+                                val percent = downloadProgress[ch.id]?.percent
                                 val downloaded = remember(ch.id, downloadTick) {
                                     Downloads.isComplete(context, ch.id)
                                 }
