@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 180,
+            name = "0.180",
+            header = "A play button on the player screen",
+            body = "The video was loading fine and simply never started \u2014 "  +
+                "the site\u2019s own play overlay does not draw here. There "  +
+                "is a play button in the bar now.\n\nIf it still refuses, "  +
+                "the reason appears in the line at the bottom.",
+        ),
+        ReleaseNote(
             code = 179,
             name = "0.179",
             header = "The player screen now says what it sees",
