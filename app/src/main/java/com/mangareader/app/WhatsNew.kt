@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 166,
+            name = "0.166",
+            header = "The drag handle reaches the end of every list",
+            body = "It always stopped a little short \u2014 about a fifth of "  +
+                "the last row on a list, a couple of chapters on a long "  +
+                "series, the Load more button on a grid. It was counting a "  +
+                "row half cut off by the edge of the screen as one that "  +
+                "fitted.\n\nThe handle also keeps clear of the status and "  +
+                "navigation bars now, which it did not on the series screen.",
+        ),
+        ReleaseNote(
             code = 165,
             name = "0.165",
             header = "The drag handle keeps clear of the screen edges",
