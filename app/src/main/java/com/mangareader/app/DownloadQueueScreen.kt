@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 // elsewhere does not reach and which the 0.98 CI failure was about.
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +76,23 @@ internal fun DownloadsTab(
     // back up to YomuApp for something no other screen cares about.
     var localTick by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
+
+    // Cleared from an EFFECT, not from the gesture lambda.
+    //
+    // 0.160 set the flag true and false in one pass, reasoning that a disk
+    // re-read has no honest "refreshing" period to show. The reasoning was
+    // right and the implementation was wrong: PullToRefreshBox only ever
+    // composed with `false`, never OBSERVED the transition, and so never ran
+    // its retract animation — the arrow stayed parked where the gesture left
+    // it until something else forced a recomposition.
+    //
+    // Clearing here gives the widget the two frames it needs to animate out.
+    // That is still not a padded delay: the re-read has already happened in
+    // the recomposition this flag triggered, so nothing is being waited on.
+    LaunchedEffect(refreshing) {
+        if (refreshing) refreshing = false
+    }
+
     val revision = downloadTick + localTick
 
     // Keyed on the revision so a chapter finishing, or a delete from anywhere
@@ -161,7 +179,6 @@ internal fun DownloadsTab(
             onRefresh = {
                 refreshing = true
                 localTick++
-                refreshing = false
             },
             modifier = Modifier.fillMaxSize()
         ) {

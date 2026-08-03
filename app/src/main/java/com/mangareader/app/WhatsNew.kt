@@ -43,6 +43,13 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 161,
+            name = "0.161",
+            header = "The refresh arrow goes away again",
+            body = "0.160 left it sitting on the screen after a pull, until "  +
+                "you tapped or scrolled. It retracts by itself now.",
+        ),
+        ReleaseNote(
             code = 160,
             name = "0.160",
             header = "Pull down to refresh History and Downloads",

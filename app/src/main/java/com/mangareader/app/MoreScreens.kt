@@ -86,6 +86,23 @@ internal fun HistoryScreen(
     onRefresh: () -> Unit
 ) {
     var refreshing by remember { mutableStateOf(false) }
+
+    // Cleared from an EFFECT, not from the gesture lambda.
+    //
+    // 0.160 set the flag true and false in one pass, reasoning that a disk
+    // re-read has no honest "refreshing" period to show. The reasoning was
+    // right and the implementation was wrong: PullToRefreshBox only ever
+    // composed with `false`, never OBSERVED the transition, and so never ran
+    // its retract animation — the arrow stayed parked where the gesture left
+    // it until something else forced a recomposition.
+    //
+    // Clearing here gives the widget the two frames it needs to animate out.
+    // That is still not a padded delay: the re-read has already happened in
+    // the recomposition this flag triggered, so nothing is being waited on.
+    LaunchedEffect(refreshing) {
+        if (refreshing) refreshing = false
+    }
+
     // Once for the screen. History caps at 40 entries so the per-row cost would
     // be survivable here, which is exactly the reasoning that put an O(library)
     // read inside a row three times already — the shared helper is free.
@@ -118,7 +135,6 @@ internal fun HistoryScreen(
             onRefresh = {
                 refreshing = true
                 onRefresh()
-                refreshing = false
             },
             modifier = Modifier.fillMaxSize()
         ) {
