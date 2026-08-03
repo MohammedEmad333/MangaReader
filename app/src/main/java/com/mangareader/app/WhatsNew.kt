@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 189,
+            name = "0.189",
+            header = "Find videos goes straight to the video",
+            body = "No more blank player screen. The page loads out of "  +
+                "sight, finds the video address by itself, and offers it to "  +
+                "your video player.\n\nIt also scans the chapter at the top "  +
+                "of the list you are looking at, rather than whichever one "  +
+                "happened to be first internally.",
+        ),
+        ReleaseNote(
             code = 188,
             name = "0.188",
             header = "The video link button actually opens now",
