@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 152,
+            name = "0.152",
+            header = "Pause stops the download you are watching",
+            body = "Pause only took effect between chapters, so pressing it "  +
+                "part-way through one did nothing until that chapter "  +
+                "finished \u2014 and against a source that is timing out, "  +
+                "that could be a quarter of an hour. It now stops the "  +
+                "chapter in flight.\n\nThe chapter stays in the queue and "  +
+                "keeps the pages it already had, so resuming carries on "  +
+                "rather than starting over.",
+        ),
+        ReleaseNote(
             code = 151,
             name = "0.151",
             header = "The download queue says which kind of waiting it is doing",
