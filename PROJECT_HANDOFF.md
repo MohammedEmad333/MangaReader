@@ -1,9 +1,15 @@
 # Yomu / MangaReader — Project Handoff
 
-**This document's body is stale by 82 releases.** It was last revised through
-0.106 and head is **0.188**. The banner below is current as of 2026-08-03
-afternoon; everything from §1 onward is 0.106-era except §9, which is new. Where
-they disagree, the banner and §9 win.
+**Consolidated 2026-08-04, at 0.189.** Three sections were deleted rather than
+updated: a release-by-release account of 0.52–0.106 that was mostly headed
+"Closed", a hand-maintained commit log that `git log` already owns, and a feature
+checklist from roughly 0.60 that had been true for a hundred releases. Git
+history has all of it.
+
+**What is left is what does not go stale**: §4, how the thing is built; §5, the
+lessons; §7, what is known broken. The banner below and
+`SESSION_HANDOFF_0.188.md` carry anything time-sensitive, because they are
+rewritten by the work rather than maintained beside it.
 
 **Read `SESSION_HANDOFF_0.188.md` §0 first.** It covers 0.150–0.188 and is the
 newest state of the tree.
@@ -30,7 +36,7 @@ earlier. Git history has all of them.
 
 ---
 
-## Current state, 0.149
+## Current state at 0.149 — kept for the minification account
 
 **Minification is on, working, and the card is closed.** 23,869,296 →
 11,731,348 bytes on the published debug asset — a 12.14 MB saving with
@@ -79,7 +85,7 @@ closed on 2026-08-03**, in opposite directions: Coomer is Blocked/Upstream (its
 own frontend gets the same 503 from its own API), and Manhwa18 was never a
 connection problem at all — `chapterListParse` selects `ul.list-chapters` and
 matched nothing, off the same document `mangaDetailsParse` parsed successfully.
-`SESSION_HANDOFF_0.157.md` §7.
+`SESSION_HANDOFF_0.188.md` §7.
 
 **The reader had a polish pass in 0.147–0.149.** The double-tap zoom animates,
 chapter turns wait for you instead of firing mid-fling, and the chapter list has
@@ -91,7 +97,7 @@ changed.** `DownloadQueue.progress` is no longer a percent — it is
 and `head()` no longer means "the first queued item", because a chapter can now
 be paused on its own and the worker walks past it. `downloadPage` also takes the
 fetch's host-failure tally and will refuse to retry a connect failure against a
-host already known bad. `SESSION_HANDOFF_0.157.md` §3, §5, §8.
+host already known bad. `SESSION_HANDOFF_0.188.md` §3, §5, §8, §9c.
 
 **AN INSTRUMENT BEATS A THEORY, AND THE OBJECTIVE BEATS THE SYMPTOM.** Ten
 releases went into making a video render inside a WebView; the goal was to watch
@@ -102,13 +108,13 @@ mechanism that merely fitted the symptom. `SESSION_HANDOFF_0.188.md` §9g.
 **CI LOGS CANNOT BE READ FROM THE AGENT ENVIRONMENT.** `/actions/jobs/{id}/logs`
 303-redirects to Azure blob storage, outside the network allowlist, so a red
 build reports only that it failed. The `mapping-debug` artifact IS reachable.
-Re-read the diff. `SESSION_HANDOFF_0.172.md` §9f.
+Re-read the diff. `SESSION_HANDOFF_0.188.md` §9f.
 
 **A TEST STEP THAT SAYS "reaches the last row" WILL PASS A HANDLE THAT STOPS 20%
 SHORT.** The scroll handle never reached the end of any list from 0.133 to
 0.167, through four separate sign-offs, because every step written for it
 checked that the last row was ON SCREEN rather than FULLY VISIBLE. Three wrong
-diagnoses followed. `SESSION_HANDOFF_0.167.md` §9b.
+diagnoses followed. `SESSION_HANDOFF_0.188.md` §9b.
 
 **THE FAULT THAT APPEARED FOUR TIMES IN ONE SESSION: one label standing for two
 mechanisms.** `Starting` in the download queue, `0 chapters` on the series
@@ -116,7 +122,7 @@ screen, the `Clear cookies` dialog, and the pause button. Each arrived as a
 cosmetic complaint and each was a state the code could not express. When a
 string or a control covers two causes, the fix is almost never the wording — it
 is that something upstream threw the distinction away.
-`SESSION_HANDOFF_0.157.md` §0.3.
+`SESSION_HANDOFF_0.188.md` §0.3.
 
 **Read TachiyomiSY.** §1's note that `mihon-ref` is "mostly a dead end" and §5's
 "Do not vendor from modern Mihon" are true **about the vendored API only**, and
@@ -144,782 +150,19 @@ the signing identity for this app. Any PAT pasted into a chat should be rotated.
 
 ---
 
-## 0. Where this was left — read this first
-
-### 0.88–0.106 — the reader, covers, source names, and reading the reference
-
-Full account in `SESSION_HANDOFF_0.106.md`.
-
-- **Resuming a chapter loads from the page you are on.** `startAt` on
-  `loadPagesProgressively` reorders *indices*, never the page list — the index
-  addresses the slot and the filename, and batch count, `BATCH_GAP_MS` and the
-  recycle cadence are all untouched, because requests-per-connection is the
-  manhwatoon variable. `startAt = 0` reproduces the old sequence exactly, so the
-  download path is unchanged. The tail runs **descending**, so the page one flick
-  above the reader comes back early rather than last; 0.88 shipped it ascending.
-- **0.88 woke a race by making a job outlive the screen.** Reordering meant
-  backing out at page 40 left pages 0–39 outstanding, so leaving reliably
-  cancelled a *live* job — and a cancelled coroutine's `finally` runs after its
-  replacement has started. The old load cleared the flag the new one had set, and
-  every page read "couldn't be loaded" for five seconds. The reader now has its
-  own `pagesLoading` rather than sharing `isLoading` with five other operations,
-  and a token claimed before launch means only the load that set the flag may
-  clear it. §5 has the general form.
-- **The right-to-left slider ran backwards, and was then mirrored wrongly.**
-  `reverseLayout` flips the pager while `currentPage` stays logical. 0.88
-  mirrored the *value*: direction right, fill backwards. 0.89 mirrors the widget
-  with `LocalLayoutDirection provides Rtl` around that Slider alone.
-- **The chapter picker opens on the chapter being read**, seeded into the list
-  state rather than scrolled from an effect.
-- **Covers repair themselves during a sweep (0.90). Verified: 233 fixed across
-  510 series visited, a 46% yield**, which is what justifies the doubled sweep
-  cost — the run measured 21.5/min against the 42.7/min on record. `CoverRepair.kt`
-  holds the candidate list; blank and loopback covers are free to find in stored
-  data, and stale ones are recorded by `CoverImage` when a draw returns a definite
-  404 or 410, so detection is paid by rendering that was happening anyway. Writes
-  batch through `Library.setCovers`. **`SESSION_HANDOFF_0.87.md` §6's premise was
-  wrong** — the sweep holds no fetched `SManga`, because `restoreSeries` makes no
-  network call, so a cover costs a real `loadDetails` and is spent only on
-  entries that need one.
-
-- **Resume aimed at the wrong chapter, and fixing it exposed a second bug
-  (0.91, 0.93).** `resumeIndex` was the first *unread* chapter; with imported
-  read state full of holes that is usually near the start, so a series read to
-  chapter 50 opened at chapter 3. It now takes the furthest chapter with any
-  progress — read state *or* a stored page. `History` cannot answer this: it is
-  capped at 40 entries for the whole app. **That promotion is what made
-  mark-unread a bug**: nothing had ever cleared `pos:`, which was harmless while
-  a saved page only fed the reader, and became wrong the moment Resume read it as
-  progress. `ReadState.setRead(false)` now clears it. §5 has the general form.
-- **The covers count was unreadable in the state you read it from (0.92).** It
-  was surfaced only in the `finishedAt > 0` arm of the settings row, and
-  `unfinished` precedes it — so every *stopped* sweep hid it. It was also
-  process-lifetime, so the first run's number was lost to an update. Now in both
-  arms and persisted with the other counters.
-- **BeeHentai is dead upstream and the probe proved it in one run.** 200, h2, no
-  `cf-mitigated` — and the body is ToonTop. `beehentai.com` now serves
-  `toontop.io`, so the extension's selectors match nothing.
-
-- **The chapter swipe is `me.saket.swipe`, not Material3 (0.103).**
-  `SwipeToDismissBox` exists to *remove* a row, so using it as an action means
-  refusing its own state change on every swipe — which is why it both misfired
-  while scrolling and failed to fire when meant. Mihon and SY both use
-  `me.saket.swipe:swipe:1.3.0` on this exact row. Two tuning rounds were spent
-  before reading the reference.
-- **The strip edge gesture was attempted twice, never fired once, and is
-  deleted (0.101, 0.102, 0.105).** Read `SESSION_HANDOFF_0.106.md` §5 before
-  trying a third time: **SY does not detect an edge at all** — its list already
-  holds the neighbouring chapters' pages, so scrolling continues into them.
-  0.106 gets the same behaviour from a *layout query* — "is the transition row
-  fully on screen" — which is the question `atStripEnd` already answers
-  reliably.
-- **Chapter transition rows at each end of a strip (0.104, 0.106),** modelled on
-  SY's. The risk in them is not the rows: they shift every list index, and four
-  places assumed list index == page index — including `atStripEnd`, which is what
-  marks a chapter read. One `headRows` value, added at all four.
-- **`SourceNames` (0.94–0.96)** closes the missing `sourceId → name` map that
-  §4 records against Group → Sources, and the raw ids the failure tally printed.
-  Names come from `listAllSources`, the repo index (**ids are bare there and need
-  the `tachi:` prefix**) and a Tachiyomi backup's field 101, which is the only
-  place a fork's built-in source survives.
-- **Writer and artist are separate fields (0.98).** `toSeries()` was joining
-  `SManga.author` and `.artist` with `", "` and `Series` had no artist field.
-- **Two scoped refreshes (0.98, 0.99)** — chosen sources, and series the index
-  has no counts for. Neither touches `RefreshCursor`.
-
-**Newest first: 0.84–0.87, and the board is at four.**
-`SESSION_HANDOFF_0.87.md`. `SManga.memo` and `SChapter.memo` are **non-null**,
-defaulting to `JsonObject(emptyMap())`, matching extensions-lib 1.6. 0.83
-vendored them nullable, which compiled clean and turned every guarded fallback in
-every extension that reads a memo into dead code. Nineteen of the 1367
-extensions read one; all nineteen index it directly, so all nineteen would have
-crashed. Binary compatible — the JVM signature is unchanged either way, since
-Kotlin nullability is metadata, not shape.
-
-**A rebuilt chapter handle is not always enough, and `DownloadService` now knows
-it.** The queue stores ids and reconstructs the `SChapter` when its turn comes,
-which yields url and name and nothing else. Asura builds its page URL from
-`chapter.memo["mangaSlug"]`, which only its own chapter-list parse produces, so
-no rebuild can ever supply it. `genuineChapter` re-lists the series and takes the
-matching entry — one extra request per series, cached per drain, and only on a
-failure at or before `getPageList`. **It shipped one release before the fix it
-depends on and was therefore inert**, which is worth knowing before trusting the
-next "the fallback didn't work" report.
-
-**Three board items closed in 0.86.** Stop on a series screen cancelled the whole
-queue and read "Stop" on every series screen while anything downloaded; it is now
-scoped by `DownloadQueue.hasSeries` / `removeSeries`. Roku Hentai had no Popular
-chip because it was nested inside `if (supportsLatest)`. The Sources list kept
-losing its scroll — fifth instance of the hoisting bug below.
-
-**0.86's scroll fix shipped broken and 0.87 fixed it, and the lesson is a rule.**
-The signature handed to `ScrollMemory.sync` included `lastUsedId`, and
-`openSource()` writes it — so the signature changed on exactly the trip the store
-exists to survive. Third scroll signature got wrong in this project, all three the
-same error. §5 has the rule.
-
-**Two new board items and they are one bug.** Library covers 404ing, and
-SpyFakku covers staying grey until each series is opened. `Library.healCover`
-fires only on a blank or loopback cover, never on a stale one, and nothing
-repairs the library in bulk. `SESSION_HANDOFF_0.87.md` §6 has the analysis and
-why the refresh sweep is where it belongs.
-
-**The "To add" column is now written down.** `SESSION_HANDOFF_0.87.md` §8
-records the eleven legible items and, more usefully, the reference UI on their
-attachments — the exact menu contents Mihon shows — which existed only as
-screenshots on Trello cards. Seven of the eleven are one pass over
-`SeriesScreen`. Two are already blocked by things recorded here: *Bookmarked*
-has no backing field (§4, "What the index still can't tell you") and *Migrate*
-is §7 item 17, not a menu row.
-
-**Newest first: the board is clear, and 0.80 is the piece that matters.**
-`SESSION_HANDOFF_0.83.md`. The vendored API now implements
-`getMangaUpdate` — the single call current extensions use to fetch a series'
-details and chapter list together, returning both in an `SMangaUpdate`. Sources
-that adopt it were previously unusable: they browse perfectly and then fail on
-every series, because the legacy `chapterListRequest`/`chapterListParse` pair
-they declare is `throw UnsupportedOperationException()`. **This was never an
-Elite Babes problem** and more sources will move to it.
-
-**"Elite Babes chapters have no pages" is closed as an upstream extension bug.**
-It was reproduced by browsing Popular, whose first page fetches the site's
-homepage — where `.list-gallery` now holds category tiles rather than galleries.
-Every "series" opened that way was a category page with one chapter pointing back
-at itself, and category pages have no images. Reading works via Latest; browsing
-is capped by a stale pagination selector. `SESSION_HANDOFF_0.83.md` §4 has the
-full URL and selector table, which is a complete bug report for Keiyoushi.
-Nothing about it is fixable in this app.
-
-**Extension APKs can be decompiled, and doing that is how this was found.**
-`SESSION_HANDOFF_0.83.md` §5 has the commands, and the result of running them. Grepping a dex shows which names
-are present; disassembling shows which methods are stubs, every selector and
-every URL. Two conclusions this session — "the parse returns nothing" and
-"Popular can't work" — were both wrong, and both times the extension's code was
-already on disk and unread.
-
-**0.73–0.78 were one extension update and everything it moved.**
-`SESSION_HANDOFF_0.83.md`. The short version: the Elite
-Babes extension was updated, and the new build asserts the *shape* of the app's
-OkHttp client by class name, then reaches for OkHttp classes the app didn't
-ship. Satisfying it forced Kotlin 2.2.21, compileSdk 36 and OkHttp 5.4.0, across
-six releases and four red CI runs. **The app is in good shape and Elite Babes is
-still broken** — it browses now, and lists no chapters. It is one source out of
-95 and the only outstanding item on the board.
-
-Two things from that arc belong in anyone's working memory. **An extension's
-`classes.dex` lists every class it references**, so unzipping the APK and
-grepping it produces the whole gap in one pass instead of one crash at a time —
-`SESSION_HANDOFF_0.83.md` §5 has the commands, and not doing this first cost
-several hours. And **`LinkageError` is not an `Exception`**: extension code is
-compiled against a vendored API, so a mismatch arrives as an `Error` that
-`catch (e: Exception)` lets through. That is now converted to `IOException` at
-the one boundary every extension call crosses, `TachiyomiSourceAdapter`, after
-two releases spent widening catch sites and still missing a path (§5 there).
-
-**0.72 closed the slow open**, and `SESSION_HANDOFF_0.83.md`
-for it and supersedes 0.70's, 0.71's and 0.71_RESULT's where they overlap.
-
-In short. **0.70's two fixes are verified** — covers on hotlink-protected sources
-and the Extensions tab refetching on every visit were both installed and
-confirmed working, closing two board items. The cover fix is confirmed *by
-effect*; the 403 it was aimed at was never actually observed, which matters if
-grey covers turn up on another source later. **0.71 added a Startup timings
-report** under Settings › Advanced and changed no behaviour, because four
-sessions had described the slow open without measuring it. **0.71's report did
-not name the culprit and its offsets did** — two marks 19.9 seconds apart bounded
-the cost to fifty lines of `LibraryScreens.kt`, and turning one setting off on
-the device confirmed it with no build at all. **0.72 fixed it**:
-`DownloadIndex.seriesIds()` replaces the `DownloadIndex.list()` call that was
-sizing every downloaded chapter and scanning the whole library before the first
-frame could draw. Cold start went from about thirty seconds to three, verified
-with badges on. 0.72 also puts the app icon on the startup screen instead of a
-blank rectangle.
-
-**The library refresh is now low priority.** It shipped across 0.67–0.68 and was
-the centre of five consecutive releases; two full sweeps have run and the index
-answers for roughly 3024 of 3571 series, so what is left on it is accounting
-rather than capability. The new order is Elite Babes, then the reader, then the
-manifest theme, then the refresh backlog — with the Feed / Updates tab coming
-down alongside the refresh it depends on. `SESSION_HANDOFF_0.83.md` §9.
-
-The library screen was rebuilt across three releases and **all of that is
-verified on device** — the user confirmed each build before the next was
-written. What shipped, in order: 0.52 category tabs with swipe, multi-select,
-search and an options menu, read entries dimmed, and the "What's new" dialog;
-0.53 bulk category editing plus a tab-sync fix; 0.54 the full Filter / Sort /
-Display / Group sheet.
-
-**0.55 and 0.56 are confirmed working.** The library keeps its scroll, tab and
-search across opening a series; random sort and reshuffle behave; per-source
-screens list rather than filter. The two entries worth reading are in §5 — one
-is a Compose behaviour that makes a working sort look broken, the other is the
-same state-hoisting bug found for the third time.
-
-**0.55–0.58 are done and confirmed**: library scroll/tab/search persistence,
-random sort, per-source screens that list rather than filter, long-strip page
-counting and drift, history covers, and the new repository index format. 0.57
-shipped a regression inside that run — chapters marking themselves read on open
-— which 0.58 fixed; both entries are in §5 and the pair is worth reading
-together, because the second was caused by the first.
-
-**0.59 through 0.65 are all confirmed on device.** The uninstall button, the
-reader's back arrow, the series-screen tag menu, swipeable Browse, the vertical
-slider, and the whole chapter index went in one build at a time and each was
-exercised before the next was written.
-
-**That run ended at 0.65, and it is worth being precise about how.** 0.67 shipped
-the library refresh and was installed without being run at all; 0.68 then rewrote
-the same three files before anyone had exercised 0.67, so for one session there
-were two unrun releases stacked on the same code path. 0.68's seven device checks
-(below) cleared most of that backlog at once, because the short tests exercise
-0.67's machinery on the way to testing 0.68's. What they did **not** reach is the
-branch where a sweep runs to completion — see "Still unrun" below. The lesson is
-the cheap one: the 0.67 handoff opened its test plan with "do this before writing
-anything new", and writing first cost nothing here only because the second change
-happened to be testable through the first.
-
-**0.66 is unaccounted for.** No `WhatsNew` entry, no line in §8, and no mention
-anywhere in the repository except as the version 0.67 bumped up from — so
-`WhatsNew.kt` reads 0.68 → 0.67 → 0.65. Either it shipped something nobody wrote
-down or the number went on a build fix. Recorded as a gap rather than guessed at;
-if anyone remembers, fill it in, because the missing entry looks like a bug in
-`WhatsNew`'s ordering to whoever finds it next.
-
-**Thread 1 closed in 0.88–0.90, having survived thirteen sessions.** The
-paragraph below is the record of why it lasted, and the diagnosis in it was
-right: 0.62 through 0.65 all touched the reader and were checked, but each check
-exercised the one path that release changed.
-The list of things nobody has ever run — paged right-to-left, grayscale and
-invert together, the chapter picker, whether settings survive reopening — has
-not shrunk. **Thread 2 is now half closed**: 0.64 fixed the white-on-white text,
-and what remains of it is one line of manifest.
-
-**The library refresh is built.** This entry named it for four sessions and it
-closed across 0.67 and 0.68 — see the two Closed sections below. It was treated
-as an import-scale operation rather than a loop, exactly as §5's "An import is a
-load test" and §7 item 1 required, and both of those entries have been rewritten
-to describe what exists instead of instructing someone to build it.
-
-**~~The named next piece of work is still open thread 1 — the reader~~ — done in
-0.88–0.90.** It was named here for thirteen sessions. Entering it through board
-item 3, rather than as speculative testing, is what worked: the item forced the
-page-fetch path open, and the two bugs actually found — the RTL slider and the
-chapter picker — were found by *reading* the file while in there, not by the
-item. Both had been sitting in plain sight the whole time. `SESSION_HANDOFF_0.106.md`
-§1. **Item 3's seek half is still open and this is the place it would be missed:**
-resume is done, reprioritising a fetch already in flight is not, and it needs a
-reorderable work queue rather than a parameter.
-
-A smaller, contained alternative: replace 0.81's per-series lock with a single
-`getMangaUpdate(fetchDetails = true, fetchChapters = true)` call. Opening a
-series currently asks twice and serialises the two; asking once is what the API
-is shaped for and halves the requests. It needs the app's `Source` interface to
-grow a way to request both at once. See `SESSION_HANDOFF_0.83.md` §2.
-
-**Elite Babes, which held this slot, is closed — upstream.** Before the extension was updated it listed chapters and only pages were
-empty; now chapter listing fails too, so the original board item sits *behind* a
-newer one. The immediate step is one screenshot: 0.78 makes source errors name
-their exception type, and nobody has read the resulting string yet. The cheapest
-experiment nobody has run is downgrading the extension — if the old version
-lists chapters on 0.78, the fault is entirely in the new extension.
-`SESSION_HANDOFF_0.83.md` §7.
-
-After that, the ordering from the ordering in `SESSION_HANDOFF_0.83.md` §9 stands: the reader
-(open thread 1, now eleven sessions untouched), the manifest theme, then the
-refresh backlog.
-
-**The Feed / Updates tab was the named next piece of work for three handoffs and
-has been moved down**, because it needs a diff of what a sweep changed and is
-therefore built on the refresh, which cannot be less important than the thing
-built on it. The rest of this paragraph is why it was chosen and stays true —
-§7 item 17's remaining half. It is on this list now because the sweep changed its price.
-The reason a "recently updated" view was expensive was that nothing in the app
-knew the whole library's chapter counts; the refresh now produces exactly that,
-and `latestChapterAt` is already in the index. What is still missing is a *diff*:
-the sweep overwrites counts rather than recording that a series gained three
-chapters, so this needs somewhere to put "what changed in this sweep" and is a
-genuine piece of work rather than a wiring job. It is nonetheless the largest
-remaining gap between what the app knows and what it can tell you.
-
-**Two refresh bugs are still open** — bug 3 (the counter race) and bug 6 (`done`
-doesn't reconcile), on the seven-item numbering in the seven-item numbering below.
-Sweep 2's arithmetic is short by **547**, split between them in unknown
-proportion. Both are now at the bottom of the list, not the top; the sweeps have
-run and the capability they were blocking is delivered.
-
-### 0.82–0.83 — two more dependencies, two more sources
-
-- **kotlinx-serialization 1.7.3 → 1.9.0.** From 1.8 the runtime gives
-  `GeneratedSerializer.typeParametersSerializers()` a default body, so the plugin
-  stopped emitting it; on 1.7.3 it is still abstract, and any extension built
-  since dies with `AbstractMethodError` the moment one of its `@Serializable`
-  classes is touched. That is most JSON-backed sources. Asura Scans and SpyFakku
-  were both dead on it. **1.9.0 specifically** — it is built on Kotlin 2.2.0 and
-  reads under 2.2.21, while 1.10.0 is built on Kotlin 2.3.0 and does not.
-- **`SManga.memo` and `SChapter.memo`**, `var memo: JsonObject?`. Scratch space
-  the extension owns and carries between its own calls — Asura stashes the JSON
-  it parsed a series from and reads it back in `getMangaUpdate`. Without it,
-  `NoSuchMethodError: No interface method setMemo(...)`. **Null is normal on
-  anything this app rebuilds rather than receives** (`restoreSeries`,
-  `rehydrateChapter`), so if a source works from Browse and fails from Library,
-  suspect this first.
-- **The API surface is now complete for the sampled ecosystem.** See
-  `SESSION_HANDOFF_0.83.md` §5 for the scan and how to widen it.
-
-### 0.79–0.81 — the API current extensions actually use
-
-**Three releases; one of them was wrong and was reverted.** Full account in
-`SESSION_HANDOFF_0.83.md`.
-
-- **Current extensions fetch details and chapters in one request.** They
-  implement `getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)` and
-  declare the legacy `chapterListRequest`/`chapterListParse` and
-  `mangaDetailsRequest`/`mangaDetailsParse` as
-  `throw UnsupportedOperationException()`. `HttpSource` now implements
-  `getMangaUpdate` with the old Rx path as its default body, so old extensions
-  are unaffected, and routes `getChapterList`/`getMangaDetails` through it.
-- **`SMangaUpdate(SManga?, List<SChapter>?)`'s constructor signature is fixed by
-  binary compatibility.** Extensions call it directly, so a changed shape means
-  `NoSuchMethodError` in every one of them. It was read out of a dex.
-- **An extension may refuse two concurrent updates for the same manga, and one
-  does.** This app fetches details and chapters simultaneously when opening a
-  series, so they raced — the same series worked or didn't depending on timing.
-  0.81 serialises them per series. Asking once for both is the better fix and is
-  the named alternative in §0.
-- **0.79 was a wrong diagnosis that shipped.** It changed the fetch path for all
-  seven entry points across every source on the theory that the request/parse
-  pair was what extensions override. Both routes end at the same stub, so it
-  fixed nothing and risked everything. **A change whose blast radius is every
-  source should not ride along with a fix for one source.**
-
-### 0.73–0.78 — one extension update, and the toolchain it dragged forward
-
-**Six releases, eleven commits, four red CI runs.** Full account in
-`SESSION_HANDOFF_0.83.md`memory.
-
-- **Extensions assert the shape of the default OkHttp client, by class name.**
-  The updated Elite Babes requires `UserAgentInterceptor`,
-  `CloudflareInterceptor` and `UncaughtExceptionInterceptor` to be present and
-  `BrotliInterceptor` / `IgnoreGzipInterceptor` to be absent, checked on
-  `javaClass.simpleName`. Two of those were vendored in `:source-api` and never
-  wired up — `UncaughtExceptionInterceptor` had zero references in the tree
-  despite its own KDoc saying it should be first, and `UserAgentInterceptor`'s
-  logic had been inlined as a lambda, which the check cannot see. **A lambda
-  doing the same work is not the same class.**
-- **Then it reached for OkHttp classes the app didn't ship**, and each fix forced
-  the next: `okhttp3.CompressionInterceptor` needs OkHttp ≥ 5.2.0 → every OkHttp
-  from 5.2.0 is built with Kotlin 2.2.x, which a 2.0 compiler cannot read →
-  Kotlin 2.2.21 → `okhttp-android:5.4.0` demands compileSdk 36 → three OkHttp
-  jars collide on an OSGi metadata file → `okhttp3.zstd.Zstd` needs the
-  `okhttp-zstd` artifact. **None of it was optional.**
-- **`:app` had been running OkHttp 5 while claiming 4.** It declared
-  `okhttp:4.12.0`; `:source-api` declared `okhttp-bom:5.0.0-alpha.12`; Gradle
-  resolves conflicts to the highest. Anyone reading the network code against the
-  4.x docs was reading the wrong docs. Both modules now pin `5.4.0`.
-- **`LinkageError` is not an `Exception`, and that is now handled at the
-  boundary.** Extension code compiled against a newer API raises
-  `NoClassDefFoundError` / `NoSuchMethodError`, which `catch (e: Exception)`
-  lets straight through to a process death. 0.75 widened eight call sites; 0.76
-  widened both services and added `CoroutineExceptionHandler`s; **it still
-  crashed from a path neither found**. 0.77 converts `LinkageError` to
-  `IOException` inside `TachiyomiSourceAdapter.onSourceThread`, the one boundary
-  every extension call crosses, which makes an extension *unable* to raise a
-  non-`Exception` into app code. Enumerating the ways out was unbounded; closing
-  the one way in was a single edit.
-- **`LIB_VERSION_MAX` is 1.6 and the surface is not implemented.**
-  `SMangaUpdate` is referenced by the extension and absent from `:source-api`,
-  along with `getMangaUpdate`, `getMangaByUrl` and `fetchRelatedMangaList`. It
-  is deliberately left at 1.6 — narrowing would refuse 1.6 extensions that work,
-  and the gate reads what an extension claims anyway. The boundary conversion is
-  the real gate now.
-- **Also shipped and verified:** the Downloads tab no longer hangs (0.74 — a
-  0.72 regression, since the library screen had been warming those memos by
-  accident), and source errors now name their exception type instead of showing
-  a generic line indistinguishable from an empty result (0.78).
-
-### Closed — 0.72, the slow open
-
-**Six device checks passed.** `dd2e00e`, 13 files. Full detail in
-`SESSION_HANDOFF_0.83.md`roject's memory.
-
-- **The cause was a badge.** `LibraryScreens.kt` asked
-  `DownloadIndex.list()` for a set of series ids. `list()` is the Downloads
-  tab's question — it sizes every downloaded chapter, sorts size-descending, and
-  runs an O(library) `ChapterCache` scan looking for downloads the index may
-  have lost track of. All on the composition thread before the first frame, and
-  it ran for everybody because `badgeDownloaded` defaults to true.
-- **`DownloadIndex.seriesIds()` is the same answer without that work.** It keeps
-  the `isComplete` check per record and drops sizing, sorting and recovery.
-- **Keeping `isComplete` is load-bearing, not conservatism.** `Downloads.delete`
-  → `forget()` invalidates the memo but never prunes the record from
-  `downloads_index.json`; only `deleteSeries` prunes and only
-  `DownloadQueueScreen` calls it. Without the disk check, deleting a series'
-  downloads from the series screen would leave its badge behind.
-- **Measured free.** Badge off on 0.71 was 3 s; badge on on 0.72 is 3 s. So
-  `seriesIds` costs nothing perceptible at this download volume, the unmeasured
-  tail after `LibraryScreens.kt:152` is about a second, and moving the lookup to
-  `produceState` on IO is struck from the plan rather than deferred.
-- **The sweep made the old cost worse and nothing would have connected them.**
-  0.67 step 6 writes a chapter list to `ChapterCache` for every series it counts,
-  so after the two sweeps the recovery scan read ~2900 files instead of the
-  handful that had ever been opened. A feature in one subsystem multiplying a
-  cost in another, two releases later.
-- **Also in it:** the app icon on the startup screen (the project's first
-  `res/values/themes.xml` — see Open thread 2), a mark in `onCreate` around the
-  true first prefs touch, entry counts in the Startup timings report, the sweep
-  summary persisted across process death, `resumed` shown in the finished row,
-  and a per-source failure tally. The tally does **not** fix bug 3; it means the
-  tally doesn't race even though `failed++` still does, so a disagreement
-  between them measures bug 3 for free.
-
-### Closed — 0.71, measuring instead of arguing
-
-`1595fe4`. One diagnostic screen, no behaviour change. Two lessons outlived it:
-
-- **The offset mattered more than the duration.** Both marks were cheap — 62 ms
-  and 64–80 ms — and the report never named the culprit. What did was the gap
-  between one mark finishing and the next beginning, which bounded 19.9 seconds
-  to fifty lines of one file. Duration alone would only have said "it's
-  elsewhere". **Keep the offset on every mark.**
-- **`Prefs first read: 0 ms` did not mean free.** `MainActivity.onCreate` touches
-  prefs before `setContent`, so the marks inside `Library` and `SeriesIndex`
-  recorded a cost already paid. 0.72 added the mark that can actually see it.
-
-### Closed — 0.68, resuming a stopped refresh
-
-**Seven device checks passed.** `2bac449`, five files. The full detail is in
-`SESSION_HANDOFF_0.83.md`roject's memory.
-
-- **0.67 shipped a claim it hadn't implemented.** Its release notes said stopping
-  a refresh was safe and that running it again would pick up the rest. The first
-  half was true — the worker's `finally` flushes whatever counts are in hand — and
-  the second was not: `sweep()` read the library from the top every time. That is
-  not cosmetic at this scale. The sweep's cost is one paced network request per
-  series, so a start-from-the-top refresh **capped how complete the index could
-  ever get at the length of the longest run the user left it alone for.** Stop it
-  at 600 twice and you have 600 counted, not 1200.
-- **`RefreshCursor`** is one persisted long: the start time of the sweep in
-  progress, or 0. **`SeriesCounts.sweptAt`** stamps every counted series with that
-  same timestamp, so "what's left" is a set comparison rather than a stored list
-  of thousands of ids. Cleared only on completion; deliberately survives a stop, a
-  crash and a process kill.
-- **Not an offset into the entry list**, because the library is re-read and
-  re-grouped on every start and one added series shifts every position after it —
-  "resume at 812" would mean a different 812 each run. The library went 3567 →
-  3571 during this session, so the concern was not hypothetical.
-- **`updatedAt` could not answer "has this been swept yet", and that is the
-  entry worth reading.** `record` refuses a write that changes nothing, so a
-  series that was swept and turned out unchanged has no new `updatedAt` and is
-  indistinguishable from one never swept at all. A resume trusting it would
-  re-fetch the whole library minus the few that moved. This is §5's "a
-  lazily-populated store has three states" arriving from the other side, and it is
-  the second time that shape has cost a release.
-- **Why `sweptAt` is affordable where a general last-checked stamp wasn't.** Only
-  `recordAll` sets it — a hundred series per whole-index write. `record`, which is
-  one series per user action and one full rewrite, carries the stored value
-  forward untouched, so opening a series is still not a write. Don't "simplify"
-  this by stamping on the `record` path; that is the trade this store has now
-  refused twice.
-- **`recordAll` keeps the stored `updatedAt`** when it writes an unchanged entry
-  just to advance `sweptAt`. Taking the candidate's would be the obvious line and
-  would stamp "changed just now" onto every series on every sweep, flattening the
-  one ordering `updatedAt` exists to provide. The write count is the same either
-  way.
-- **"Start over" exists beside "Resume"** because refreshing from the top is a
-  real request — a sweep that finished a week ago is stale — and after this change
-  a plain start would honour the stale cursor instead.
-- **Failures, empty chapter lists and series whose extension is missing are not
-  stamped**, so a resume retries them. Deliberate, and it is what the release
-  notes promise; the cost is that the "N of 3571 counted" label can't reach the
-  total while anything persistently fails.
-
-**The completion branch is now verified too, and 0.68 is done.** A full sweep ran
-to its own end on the night of 2026-07-29/30 and the Settings row afterwards read
-"Refresh library" **with no "Start over" button** — which only renders when
-`unfinished` is true, so its absence is direct proof that `RefreshCursor.clear()`
-ran. That single observation closes the whole branch: `completed` was set from
-`currentCoroutineIsActive()`, the worker's `finally` ran the last flush
-immediately before the clear, the notification tore itself down, and the service
-stopped. **The wake lock also held across the full run** — comfortably, as it
-turns out: the run took about 79 minutes against a 4-hour timeout, not the ~3
-hours an earlier revision of this file wrongly calculated.
-
-Sweep 1's summary was *not* captured — the row was tapped before anyone read it,
-and `finishedAt` and the counters are process-lifetime state with nothing
-persisting them. **Sweep 2's was**, at 01:45: `2902 counted • 22 failed •
-100 skipped` = 3024 against 3571, from a `resumed = 0` run. **The arithmetic is
-short by 547.**
-
-**Two bugs from the 0.67 review are still open** (numbering below is the
-canonical seven-item scheme from the seven-item numbering below — an earlier
-revision of this file renumbered the then-open four as 1–4, which collided with
-it and produced at least one mislabelled diagnosis):
-
-- **Bug 3 — the counters race.** `done++`, `counted++`, `failed++`, `skipped++`
-  from up to three coroutines. Display only, but it is what makes the end-of-sweep
-  arithmetic unreadable, and it is one of the two contributors to the 547.
-- **Bug 6 — `done` doesn't reconcile.** An empty chapter list lands in `done` and
-  in none of the other three. *Not writing* on an empty list stays correct (a
-  stored `total = 0` reads as "completed" in every filter); only the accounting is
-  wrong. Count it as a failure — from a live source it usually is a broken parse,
-  and sweep 2's first-error note (a spyfakku `kotlinx.serialization` missing-field
-  error) is that exact shape. **This is the only silent path in `refreshSource`**;
-  the neighbouring `counts != null` guard is dead code, since `countsFor`'s sole
-  null return is the empty-list case the outer `isNotEmpty()` already excludes.
-
-Bug 6's share of the 547 is countable directly — it is the number of library
-series whose source returns an empty chapter list. The remainder is bug 3.
-
-**Closed in 0.69:** bug 4 (`recordAll` atomicity — a `writeLock` now covers
-`record`, `recordAll`, `forget` and `save`; `all()` and `countsFor` stay outside
-it deliberately), bug 5 (`clearSummary()` now called from
-`LibraryRefreshService.start()`, plus a Dismiss button), and bug 7 (the memo is
-one `@Volatile` field).
-
-**The arithmetic to check at the end of a sweep changed in 0.68**:
-`counted + failed + skipped` against **`total − resumed`**, not against `total`.
-`done` is seeded from `resumed`, so checking against 3571 looks wrong on every
-resumed run even when nothing is broken.
-
-**`resumed` must come from outside the three counters.** It is not rendered in
-the finished summary — only in the in-progress note — so it is tempting to
-recover it as `total − (counted + failed + skipped)`. Don't: that makes the
-identity `x == x` and it will balance on any sweep no matter how broken. Read it
-off while the sweep runs, or derive it from cursor state. Surfacing it in the
-finished row is a one-line fix and is item 1 of the seven-item table below.
-
-### Closed — 0.67, the library refresh
-
-`dbbe38a` and `8fcd519`. Installed and only partly exercised on its own; most of
-its machinery was confirmed on the way to testing 0.68, above.
-
-- **One tap in Settings → Chapter counts** starts `LibraryRefreshService`:
-  foreground (`dataSync`), ongoing notification with a Stop action,
-  `PARTIAL_WAKE_LOCK` with a 4h timeout.
-- **Sources run `SOURCE_CONCURRENCY = 3` at a time; series within one source go
-  sequentially with `REQUEST_SPACING_MS = 250` between them.** That shape is the
-  manhwatoon lesson in §5 applied directly: per-connection request volume against
-  one host is the variable that matters, not total throughput.
-- **One network request per series.** `restoreSeries(id, title)` rebuilds the
-  url + title pair without a fetch, then `listChapters`. The details endpoint is
-  deliberately skipped — no metadata is being displayed. Note that
-  `Source.restoreSeries` *defaults* to `getSeries(id)` and only
-  `TachiyomiSourceAdapter` overrides it, so the one-request claim rests on
-  extensions overriding it and `LocalSource` being local. Both true today; both
-  quietly load-bearing if a third source type appears.
-- **Counts flush through `SeriesIndex.recordAll` every `FLUSH_EVERY = 100`
-  series** — about 36 whole-index writes over the library rather than 3567. This
-  is §7 item 1's requirement, and it was written before the sweep rather than
-  after measuring it.
-- **`dbbe38a` does not compile** and the version bump sits on it: the manifest
-  declared `.LibraryRefreshService` and `SettingsScreens.kt` referenced
-  `LibraryRefresh`, but `LibraryRefresh.kt` didn't land until `8fcd519` — the
-  first `cp` loop only picked up one of the files. Nothing to fix retroactively;
-  build releases from `8fcd519` or later. Third instance in §8 of a commit broken
-  by a file that didn't land or a signature that wasn't checked.
-- **It does not** download anything, fetch metadata, touch read state, add or
-  remove library entries, or diff which series gained chapters. The last of those
-  is what the Feed tab needs.
-
-### Closed — 0.65, the chapter index and three fixes
-
-**All six device checks passed.** The index is real, the badges distinguish
-un-counted from zero, and both scroll fixes hold.
-
-- **`SeriesIndex.kt`** — one JSON object keyed by series id holding
-  `{ total, read, latestChapterAt, updatedAt }`, memoised on the raw pref string
-  exactly like `Library.list`. It is written from `SeriesScreen`, the only place
-  in the app holding a chapter list, its source id and the series id at the same
-  moment — which is why the write lives there rather than next to the fetch in
-  `YomuApp`. Gated on library membership, so merely browsing doesn't grow it.
-- **A write that wouldn't change anything is refused.** Every write rewrites the
-  whole object and this runs on every series open, so without the equality check
-  reopening a series would serialise several thousand entries to change nothing.
-  That is also why `updatedAt` means "when the counts last moved" rather than
-  "when they were last checked" — a last-checked timestamp is the one field that
-  would guarantee every check is a write.
-- **What it unlocked, all in the same build:** an unread badge on covers,
-  Unread / Started / Completed tri-state filters, and sorts by unread count,
-  chapter count and latest chapter.
-- **`counts` is deliberately absent from the scroll-invalidation signature**
-  (`ordering`, handed to `ScrollMemory.sync`). It moves every time a chapter is
-  finished, so including it would throw the library's scroll away on every
-  return from the reader — reintroducing from the other end the exact bug that
-  mechanism exists to prevent. What it costs is a slightly stale anchor under an
-  index sort, and that is one series moving a few rows rather than the wholesale
-  reorder a position genuinely can't survive.
-- **The page number is outlined** — four offset copies in the opposite colour
-  under a normal one. Not `TextStyle(drawStyle = Stroke(...))`, which would be
-  one parameter instead of five composables: it spent a release behind
-  `@ExperimentalTextApi`, and with no compiler in this loop, finding out which
-  side of that line this Compose version falls on costs a CI round trip. 0.64
-  made the colour follow the background, which was only half an answer — the
-  number sits over the *page*, and a dark panel in a bright scan swallows black
-  text as readily as a white page swallows white.
-- **The chapter list keeps its scroll** across opening a chapter. Fourth
-  instance of the hoisting bug; see §5.
-- **Tapping a series cover opens it full screen and zoomable**, as a `Dialog`
-  rather than a routing branch — it needs nothing a branch buys and that chain
-  is delicate enough.
-
-### Closed — 0.64, the vertical slider
-
-Fixes to 0.63's vertical slider, plus a colour bug it sat next to. **Verified on
-device.**
-
-- **The slider was rotated anti-clockwise**, which put its start at the bottom,
-  so dragging down walked backwards through the chapter. Now `rotate(90f)`. The
-  rest of `VerticalSlider` was right: Compose has no vertical slider, and
-  rotating one is half the job because `Modifier.rotate` changes what is drawn
-  and never what was measured — a rotated slider still claims its full length
-  horizontally, so the `layout` block reports the swapped footprint and centres
-  the child inside it.
-- **Length is half the screen height**, not a fixed 240dp, which was a quarter
-  of a tall phone.
-- **Page numbers were hardcoded white.** Invisible on the White background, and
-  a coin toss on Theme. Both that and the failed-page message now take their
-  colour from the background's luminance.
-
-Worth generalising the first one: **a symmetric mistake looks correct at rest.**
-A slider rotated the wrong way is indistinguishable from a right one until it is
-dragged, and neither a screenshot nor a code read catches it. The same is true
-of reversed sort order, mirrored RTL paging, and inverted scroll deltas.
-
-### Closed — 0.62, reader zoom and the page slider
-
-**Reader zoom** and **a page slider**, done together at the user's call after I
-argued for splitting them. Both are in `ReaderScreen.kt`, the file with the
-worst track record in this project, so treat a failure here as likely mine
-rather than exotic.
-
-- **Zoom is paged-only**, via telephoto's `ZoomableAsyncImage` — the
-  `zoomable-image-coil` dependency had been sitting in `build.gradle` unused
-  since before this session. Its signature was checked against the 0.14.0 source
-  on GitHub rather than assumed: `colorFilter` is a real parameter, so grayscale
-  and invert survive, and `onClick` exists, which matters because a zoomable
-  page consumes its own pointer events. That is why the tap-to-show-controls
-  detector moved off the pager and onto the pages, placeholders included —
-  a detector above a gesture-consuming child never fires.
-- **Long strip is untouched.** A pinch there fights the scroll the mode exists
-  for. Doing it properly means zooming the viewport rather than an item, and
-  that is a piece of work, not a flag.
-- **The slider commits on release**, not during the drag. Every intermediate
-  value would otherwise be a scroll request *and* a `savePage` write *and* a
-  `History.touch`, since `onProgress` fires on every page change.
-
-### Closed — 0.59 and 0.60
-
-Backlog items, deliberately kept apart from each other and from anything
-load-bearing:
-
-- **Tag menu** on the series screen. Genre chips had an empty `onClick`; they
-  now open a menu offering a source search, a global search, or copy. Both
-  searches clear `activeSeries` so the chain falls through to a branch that can
-  show results — the source search *keeps* the adopted source, unlike `onBack`,
-  because searching that source is the entire request. **0.60 shipped this
-  without a way back**: clearing `activeSeries` made the search a one-way trip
-  and back fell through to the bottom nav, landing on Library. `tagSearchReturn`
-  holds the series and both search branches' `onBack` restore it; `openSeries`
-  clears it, because opening a result is navigating onward rather than
-  detouring. `chapterList` is deliberately no longer cleared — nothing below
-  branch 3 reads it, and keeping it makes the return instant.
-- **Browse swipes.** `TabRow` over a `HorizontalPager`. No outward report of the
-  position exists here, so the feedback loop §5 records could not be recreated:
-  the pager owns it, tabs only call `animateScrollToPage`.
-
-- **Uninstall button** on installed extension rows. Shipped broken in 0.59 and
-  fixed in 0.61: `ACTION_DELETE` needs `REQUEST_DELETE_PACKAGES` declared, which
-  the manifest didn't have, and the request was refused before any dialog
-  appeared. It now goes through an `ActivityResultLauncher` (so the dialog stays
-  in this task and the screen hears about the result) and reports when the
-  package is still installed afterwards. The row's "Installed" label is gone —
-  the section header said the same thing and that slot is where an action
-  belongs.
-- **Reader back button** is now `Ui.BackButton` like everywhere else.
-
-The one thing worth checking beyond "does it work": the Extensions list refetches
-the whole index on the resume *after* an install or uninstall, gated on a flag
-so an ordinary resume doesn't. That index is 1.3 MB. If it feels slow, the fix
-is to cache the parsed list and re-query only the installed flags — not to drop
-the refresh, or the row will lie about what's installed.
-
-### Closed — 0.57's four reports
-
-0.55 and 0.56 are done and confirmed. 0.57 is four fixes from one report, none
-of them exercised:
-
-- **Long strip never reached its last page**, so chapters read in that mode were
-  never marked read — `currentPage` was `firstVisibleItemIndex`, and the last
-  page is visible at the bottom of the screen long before it reaches the top.
-  **The 0.57 fix for this was wrong and shipped a worse bug** — see "Layout
-  state does not exist yet" in §5. 0.58 tests whether the last item's bottom
-  edge is inside the viewport instead.
-- **State damage from 0.57 is not repaired.** Chapters opened in long strip
-  under that build were marked read and had `lastIndex` written as their resume
-  position. Mark unread from the chapter list; positions correct themselves on
-  a re-read. Worth knowing before trusting read state in this library.
-- **Long strip drifted while untouched.** An `AsyncImage` with unbounded height
-  measures zero until its bitmap decodes, so every page was a zero-height row
-  until it arrived. Pages now carry `heightIn(min = 240.dp)`. This is the fix
-  I'd least trust: the mechanism is certain, that it accounts for *all* of the
-  observed movement is not.
-- **History covers were opened as files.** One-line fix, `coverModel()` in
-  `Ui.kt`. The library and downloads grids pass their cover strings straight to
-  Coil and were never affected.
-- **The extension list collapsed to two entries.** Repo-side format change; the
-  parser now reads both shapes. **The repo URL still has to be changed by hand**
-  — see §5.
-
-- **Random sort, and its reshuffle button.** Both symptoms had one cause and it
-  wasn't the sort — see "A keyed lazy list re-anchors" in §5. The shuffle
-  function was also replaced (`LibraryPrefs.shuffleKey`); that part is cosmetic
-  and independent.
-- **Scroll position and the library search** now survive opening a series, via
-  `ScrollMemory` and two more hoisted values in `YomuApp`.
-- **Default on a per-source screen** was fixed to the §4 rule in 0.55 and then
-  **deleted along with the whole chip row in 0.56** — see "A filter nobody could
-  have used" in §5. The per-source screen now has Popular / Latest / Filter and
-  no category filtering at all.
-
-**Reported and *not* a bug:** on some sources a series appears in Popular but
-its own search can't find it. Ruled out app-side — the filter list carried into
-`getSearchManga` was the suspect, and resetting the source's filters changed
-nothing. Extension search endpoints commonly index differently from their
-listing pages. Don't spend another session on it without new evidence.
-
-### Closed — open thread 1, the reader
-
-**Closed in 0.88–0.90 after thirteen sessions.** Everything the list below calls
-untried has now been run on device: paged right-to-left and its slider, grayscale
-and invert together, the chapter picker, and whether settings survive reopening a
-chapter. The colour filters and settings persistence were correct as written; the
-RTL slider and the picker were not, and both are fixed. The `configChanges`
-commit at the end of the list is also exercised — rotation no longer bounces the
-reader back to the Library. `SESSION_HANDOFF_0.106.md` §1. The rest of this entry
-is kept as the record of what was unknown, and what the cost of leaving it that
-way turned out to be.
-
-**Two of its bugs surfaced in 0.57** and both had been there since the rewrite:
-long strip could not report its last page, and undecoded pages measured zero
-tall. See §5. That is two found by ordinary use, in the one mode a tester is
-least likely to open — the list below is still the list, and it has not shrunk
-by much.
-
-The reader was rebuilt from 152 lines to ~630 (§4) at the very end of the
-session, and the session stopped before most of it was exercised.
-
-- **Known working:** it builds, a chapter opens, tapping raises the bars, and the
-  settings sheet opens and applies. That is all that was actually seen.
-- **Never tried:** paged right-to-left, long strip, the colour filters
-  (especially grayscale + invert together, which uses its own precomputed
-  matrix and can be wrong while each alone looks right), the chapter picker, and
-  whether settings survive reopening a chapter.
-- **The last commit is unverified.** Enabling Rotation → Landscape put the app in
-  a loop: every chapter open bounced straight back to the Library. The fix —
-  `android:configChanges` on `MainActivity` — was written and pushed but never
-  run. If the loop is still there, that is where to look. See §5, because the
-  underlying fragility is worth understanding before touching anything that
-  might recreate the Activity.
+## 0. What is still open from before 0.150
+
+**Everything else that was here has been deleted.** It was a release-by-release
+account of 0.52–0.106 — thirty-odd subsections, most of them headed "Closed" —
+describing work that shipped, was verified, and is now just the behaviour of the
+app. Git history has it, and `git log --follow` on this file reaches all of it.
+
+**What was in it that mattered has already moved.** Mechanisms are in §4,
+lessons in §5, and anything still contested is on a Trello card. A closed item
+re-described in prose is a third copy that can disagree with the other two —
+which is the failure §5 records against a "known-good" figure nobody re-measured.
+
+Four things from that range are genuinely unfinished, and they are below.
 
 ### Open thread 2 — one line of manifest
 
@@ -954,97 +197,6 @@ the insets controller, from the answer `AppTheme.load` already has in
 The reason it keeps surviving is that the test device runs in dark mode, where
 the bug is invisible — which is worth knowing about every other
 appearance-in-light-mode item too.
-
-### Closed — 0.52–0.54, the library screen
-
-Every item verified on device. The design notes are in §4 "The library screen";
-what matters here is that none of it is outstanding.
-
-- **Category tabs replaced the filter chips.** No "All" tab — the tabs are
-  exactly the groups. `ScrollableTabRow` over a `HorizontalPager`, so they swipe.
-- **The active tab survives opening a series.** It was a `remember` inside
-  `LibraryTab`, which the routing chain destroys the moment a series opens; it
-  now lives in `YomuApp` as a `rememberSaveable`. Backing out returns to the tab
-  you left.
-- **Multi-select.** Long press starts it, tap toggles, back exits. The
-  contextual bar selects all in the tab, edits categories, or removes — the last
-  two through batched writes (`Library.removeAll`, `Categories.applyCategories`)
-  rather than a loop of the per-series call, which is the quadratic write §5
-  keeps finding.
-- **Bulk category editing is tri-state.** A mixed selection starts a category
-  Indeterminate meaning *leave alone*, so saving doesn't silently rewrite the
-  entries that were already right.
-- **Search and an options sheet** in the bar. Four tabs, all settings in
-  `LibraryPrefs`, written on tap rather than on dismiss.
-- **Read entries are dimmed** everywhere, not only in the Read tab.
-- **"What's new" after an update.** `WhatsNew.kt`. Newest release expanded,
-  intermediate ones collapsed behind a chevron.
-
-### Closed earlier — the Tachiyomi import, and scaling to it
-
-A whole Tachiyomi/SY backup now imports: 3567 series, 19001 chapters, read
-state, saved pages, history and categories. Architecture in §4, and **the
-protobuf field-number table is there** — it was read off a real backup by hand
-and is expensive to recover.
-
-Then everything else that broke because of it:
-
-- **Category chips froze** the app — an O(n) parse inside a filter over n items.
-- **Scrolling chapters, sources and tabs was slow** — per-row filesystem stats
-  and PackageManager IPC that `remember` was never holding onto.
-- **The Downloads tab was slow** twice over: a repair scan that read every
-  library entry's chapter cache off disk on every open, and an uncached
-  folder-walk per chapter to size it.
-- **Opening a series** from the library or Downloads waited on two network round
-  trips before drawing anything.
-- **Default was empty** though it held 2950 series — see §4, it is not a
-  category.
-- **1078 series were imported that were never in the library** — protobuf field
-  100, see §4. A re-import removes them.
-
-All verified on device. The perf work is the bulk of §5's new material.
-
-### Closed earlier — the manhwatoon 400s, and how
-
-`cdn.manhwatoon.me` now downloads whole chapters with **zero failed pages**,
-which was the stated bar and had never been met. The fix was to **delete**
-`.protocols(listOf(Protocol.HTTP_1_1))` from `NetworkHelper` — the line added
-specifically to fix it.
-
-Every previous attempt tuned that constraint tighter. The full account is in §5;
-the short version is that the forced HTTP/1.1 was never the cure, and while it
-sat there it was quietly causing a *second*, unrelated-looking bug on other
-sources. `recycleConnections()` appears to have been the thing that actually
-worked, and removing 1.1 cost it nothing.
-
-**One clean chapter is good evidence, not proof.** The failure was always a rate
-— 3-8% of pages at last measurement — so a single 36-page chapter completing
-clean is roughly what you'd expect to see one time in three by luck. Two or three
-more clean chapters closes it properly.
-
-### Closed earlier — Cloudflare, covers, and two bugs
-
-Recorded here because the reasoning matters more than the diff; details in §4
-and the lessons in §5.
-
-- **HentaiSco browses.** The blocker was never the missing UI. It was that the
-  headless WebView was being told to claim the app's *desktop* User-Agent so it
-  would match what OkHttp sends — inside an Android WebView, where every other
-  signal a challenge reads says phone. That contradiction is unpassable by
-  construction. The WebView now keeps its own UA and the winning string is
-  recorded per host in `ClearanceUserAgents` for OkHttp to reuse.
-- **A visible WebView exists anyway** (`WebViewScreen.kt`), reached from an
-  "Open in WebView" action on the browse error. It was written for the
-  interactive checkbox and is still the answer for genuinely interactive
-  challenges — and the natural home for logging in to sources that need an
-  account.
-- **Covers load.** Coil had its own OkHttpClient: no cookie jar, no UA, no
-  Cloudflare interceptor. `App` is now an `ImageLoaderFactory` handing Coil the
-  extension client.
-- **SpyFakku works.** Its mirrors return image URLs pointing at `127.0.0.1`;
-  `TachiyomiSourceAdapter` repoints loopback hosts at the source's `baseUrl`.
-- **The reader stopped reopening itself** when backing out mid-download, and the
-  "Downloads" nav label stopped wrapping onto two lines.
 
 ### Still broken, low value — the `fakku.cc` mirror
 
@@ -1178,87 +330,27 @@ They generally prefer receiving **complete files to drop in** rather than
 
 ## 2. Current state — it works
 
-As of the source-visibility commit, verified on device:
+**This section was a feature checklist "as of the source-visibility commit",
+which is roughly 0.60.** Every line on it has been true for a hundred releases
+and none of it distinguished a working build from a broken one, so it earned
+nothing and could still go stale. Deleted.
 
-- ~~**26/26 extensions load, 95 sources total.**~~ **Superseded: 20/20 load, 37
-  sources, measured on device 2026-08-02. See the banner.**
-- Browsing, chapter lists, and page rendering work end to end.
-- Library with categories works.
-- Per-source search + pagination work.
-- Extension index filter and cross-source global search work.
-- Extension sources are cached between calls (`3e28e81`).
-- Sources and Extensions tabs match Mihon's layout (`646d959`).
-- Per-source settings from `ConfigurableSource` (`03cabb3`).
-- Global search limited to pinned sources, with a toggle (`0023c81`).
-- The Compose UI is split across nine files (`4fc763e`) — see §4.
-- Extension **updates** are detected and offered (`e1913c2`).
-- Series screen: cover backdrop, metadata, chapter dates, Start/Resume (`364d1ce`).
-- Back from a series returns where you came from (`7ff563f`).
-- The reader opens before the chapter finishes downloading.
-- **Chapter downloads** (`44ae521`) and **offline reading** (`eca6caa`) work —
-  download a chapter, go into airplane mode, read it.
-- **Source visibility** screen + global search scope chips (`1f60936`).
-- **Downloads run in a foreground service** with a persistent queue, so they
-  survive the app being backgrounded or swiped away.
-- **Failed downloads say why** — the page exception is carried up instead of
-  swallowed — and can be retried from the queue screen.
-- **Downloads tab** lists series with chapters saved on device, and opens them
-  offline.
-- **A Tachiyomi/SY backup imports** — 3567 series with read state, saved pages,
-  history and categories (`931cf5f` and after). See §4.
-- **The library screen is complete** (`62e7267`) — category tabs with swipe,
-  multi-select with batched bulk category editing, in-library search, four
-  display modes, sorting, tri-state filtering, and grouping. Verified on device
-  across 0.52–0.54. What it deliberately doesn't do, and the one index that
-  would change that, is in §4.
-- **Updates announce themselves** — a "What's new" dialog on the first launch
-  after a version bump, newest release expanded and intermediate ones collapsed.
-- **The library counts chapters** (`c5266d7`) — unread badges on covers,
-  Unread / Started / Completed filters, and sorts by unread count, chapter count
-  and latest chapter, all off one aggregate index. See §4.
-- **And it can count the whole library, not just what you've opened** — Settings →
-  Library → Chapter counts sweeps every saved series in a foreground service
-  (`8fcd519`), and a stopped sweep resumes where it left off rather than starting
-  again (`2bac449`). This is what makes the badges, filters and sorts above answer
-  for all 3571 entries instead of a browsing history.
-- **The app is usable at that scale** — category filtering, list scrolling, the
-  Downloads tab and opening a series were all rebuilt around it (`0810bed`
-  through `3052571`).
-- **Multi-select chapters** — long-press to select, then download, mark
-  read/unread or delete in bulk (`0557acf`).
-- **Source filters** from `getFilterList()` (`940fc34`), Popular/Latest and grid
-  view options (`6c95fa1`), and a **connection probe** that reports what a source
-  actually returns (`5dbd024`).
-- **Cloudflare challenges are solved** — JS ones headlessly, interactive ones
-  through a visible WebView the user taps through. HentaiSco browses.
-- **Covers and page images go through the extension's OkHttp client**, so they
-  carry cookies, the User-Agent and the Cloudflare interceptor.
-- **Sources that hand out loopback image URLs work** (SpyFakku).
-- Backing out of a chapter mid-download no longer reopens it.
-- **The reader has overlay bars, a chapter picker and a settings sheet** — but
-  see §0 before trusting any of it.
+What is actually current lives in two places that cannot drift, because they are
+written by the work rather than beside it:
 
-Added this session, all verified on device:
+- **The banner at the top of this file**, revised whenever a release changes
+  something a newcomer would trip over.
+- **`SESSION_HANDOFF_0.188.md` §0 and §10**, which carry the head commit, what
+  is verified on device, and what is not.
 
-- **A Settings screen** reached from More, with eight sections (§4).
-- **Backup and restore** — every SharedPreferences store, as JSON.
-- **Automatic backups** on a WorkManager schedule.
-- **A user-chosen storage location** for downloads and backups, via
-  `MANAGE_EXTERNAL_STORAGE` rather than SAF (§5 — this is the load-bearing
-  decision of the session).
-- **A readable download tree**: `<picked>/Yomu/downloads/<Source>/<Series>/<Chapter>`,
-  with a reorganise action for chapters in the old flat layout.
-- **One back button.** `Ui.BackButton` replaced three different affordances.
-- **Per-chapter download delete**, and **multi-select** on the chapter list —
-  long-press to start, then download / mark read / mark unread / delete.
-- **Popular and Latest** on per-source browse, search behind an icon, and three
-  grid densities (`BrowseView`).
-- **Source filters** — the source's own `getFilterList()`, rendered.
-- **A connection probe** (§6) that reports what a source actually returns.
-- **Cloudflare solving from the series screen**, not only from browse.
+**The one measured figure worth keeping here**, because a wrong version of it
+was carried across five handoffs as an acceptance criterion nobody could meet:
+**20 extension packages, 20/20 loading, 37 sources, 37 cached.** Measured on
+device 2026-08-02 via Settings → diagnose. The earlier "26/26, 95 sources" was
+never re-measured and was probably wrong when written. Re-measuring cost one
+tap. §5 has the full account.
 
-`MainActivity.kt` is **~1130 lines** — the Activity, `YomuApp`, and the shared
-prefs helpers. `ReaderScreen.kt` is **634**, `SettingsScreens.kt` is **~1335**, `SourceBrowseScreens.kt` is **~900**.
+---
 
 ## 3. Build environment
 
@@ -1885,7 +977,8 @@ other half of it: where a store's coldness is visible to the user, an empty
 Unread tab has to explain itself or it reads as a broken filter.
 
 **Closing the gap was a library refresh, not a change here** — built in 0.67 and
-made resumable in 0.68; see §0. It needed no new data model on this side, only a
+made resumable in 0.68 (the account was in §0 and went with the consolidation;
+`git log` has it). It needed no new data model on this side, only a
 bulk write (`recordAll`) and, for the resume, one new field (`sweptAt`) that
 `updatedAt` could not stand in for. **What the index still can't tell you, after
 all that, is what *changed*** — the sweep overwrites counts rather than recording
@@ -3457,194 +2550,15 @@ Roughly in order of value:
 
 ---
 
-## 8. Recent commit history (newest last)
+## 8. Commit history
 
-```
-Fix SourceFactory detection: type-check instance, not metadata key
-Vendor Tachiyomi 0.15 source-api, flattened to a single source set
-Switch to mihonapp injekt fork
-Strip WebView stack, replace NetworkHelper and awaitSingle
-Register Injekt bindings for extension dependencies
-Add CatalogueSource adapter and wire extensions into SourceManager
-Fix CatalogueSource import and cover type handling
-Add Browse tab, extension repos settings, remove Komga
-Feed extension sources from the real loader
-Fix brace in DisposableEffect
-Add Library tab with category-on-save
-Add search, pagination, and direct series lookup          602b212  verified OK
-Add extension index filter and cross-source global search e85abbe  verified OK
-Cache loaded extension sources between calls              3e28e81  verified OK
-Remove repo editor from Extensions tab; it lives in More  6728165  verified OK
-Rework Sources and Extensions tabs                        646d959  verified OK
-Update handoff for source cache and Browse tab rework     362b003
-Add per-source settings from ConfigurableSource           03cabb3  verified OK
-Limit global search to pinned sources with a toggle       0023c81  verified OK
-Split MainActivity into per-screen files                  4fc763e  verified OK
-Fix lateinit crash when a source's details fetch fails    ddaed36  verified OK
-Detect and offer extension updates                        e1913c2  verified OK
-Reopen library entries without a details fetch            c5887f3  verified OK
-Rework series screen with backdrop, metadata, resume      364d1ce  verified OK
-Return to the right screen when backing out of a series   7ff563f  verified OK
-Update handoff through the series screen rework
-Open the reader before the chapter finishes downloading            verified OK
-Add chapter downloads for offline reading                 44ae521  verified OK
-Cache chapter lists so downloaded chapters open offline   eca6caa  verified OK
-Add source visibility screen and global search scope chips 1f60936  verified OK
-Default to Multi and English only
-Move downloads into a foreground service with a persistent queue         9782a75  verified OK
-Report why a download failed, add retry, and add a Downloads tab        52865df  verified OK
-Report the failing image URL on page download errors                    bb1db95  verified OK
-Retry transient page failures with backoff                              5f8a5c5  did NOT fix the 400s
-Refresh the default UA, send browser headers, name Cloudflare blocks    ca59da9  detection works
-Force HTTP/1.1 and halve page concurrency to stop CDN 400s              aaa3d85  33% -> 18%, not fixed
-Solve Cloudflare JS challenges in a headless WebView; force HTTP/1.1    1c2c8c7  HentaiSco still 403
-Recycle pooled connections to stop per-connection CDN 400s                       33%/18% -> 3-8%, not fixed
-Fix KDoc block terminated early in NetworkHelper                        f1b5eea  build fix
-Add visible WebView screen for interactive Cloudflare challenges        fbe6bfe  UI only, looped
-Solve Cloudflare challenges under the WebView's own UA                  28a4524  verified OK
-Load covers through the extension client; stop the reader reopening     7a397b4  verified OK
-Show why covers fail in debug builds; stop the Downloads label wrapping 4cb4f6c  verified OK
-Repoint loopback image URLs at the source's base URL                    867fba8  verified OK
-Update handoff through the Cloudflare and image-pipeline session
-Rebuild the reader with overlay bars, chapter picker and settings        fc2aee8  did not compile
-Add missing verticalScroll import                                       d395222  builds; reader barely tested
-Handle configuration changes instead of being recreated by them                  UNVERIFIED
-Add a Settings screen reached from More                                 912707a  verified OK
-Add backup, restore and a storage location under Data and storage       10ae342  verified OK
-Let downloads and backups live in a folder the user picks               b9b4206  verified OK
-File downloads under source, series and chapter in a Yomu folder        5590fec  verified OK
-Add a reorganise action for downloads in the old flat layout            8e43778  verified OK
-Use one back button everywhere; update the handoff                      95850be  verified OK
-Solve Cloudflare challenges from the series screen; delete single downloads 3e14a7f  verified OK
-Add Popular/Latest, an icon search and grid view options to source browse 6c95fa1  verified OK
-Add source filters, and explain HTTP errors that mean the site is down   940fc34  verified OK
-Add a connection probe that reports what a source actually returns       5dbd024  verified OK
-Stop forcing HTTP/1.1 globally; it contradicted the Chrome UA            d2e6b30  fixed manhwatoon
-Select multiple chapters to download, mark read/unread or delete           0557acf  verified OK
-Dim read chapters instead of labelling them                             0fe6eab  verified OK
-Reduce chapter row actions to icons; explain a .tachibk given to restore af5fcc6  verified OK
-Import a Tachiyomi backup                                               931cf5f  verified OK
-Do one parse per category filter instead of one per series              0810bed  verified OK
-Fix healCover: Series.cover is Any?, not String                         c1198af  verified OK
-Cache download-completion stats and extension icons                     c57a91d  DID NOT COMPILE
-Fix misplaced @Composable; Default means uncategorised; skip non-library entries 54c4c0d  verified OK
-Open library series on cached data; gate the downloads recovery scan    32dacaf  verified OK
-Cache chapter sizes and the downloads listing; open downloads from cache 3052571  verified OK
-Fix vertical slider direction and length, and page number contrast      2f0e3b2  verified OK
-Add a per-series chapter index; outline the page number; keep the
-  chapter list's scroll; open covers full screen                        c5266d7  verified OK
-(0.66 — no record; see §0)                                                       UNKNOWN
-Refresh the whole library's chapter counts in a foreground service       dbbe38a  DID NOT COMPILE
-Add the library refresh service and the index bulk write                 8fcd519  builds; see §0
-Resume a stopped library refresh instead of restarting it                2bac449  verified OK
-Re-list a series when a rebuilt chapter handle isn't enough              4264dea  inert until 21628af
-Make memo non-null, as extensions-lib declares it                       21628af  verified OK
-Scope Stop to one series, keep Sources scroll, always offer Popular      0db1971  3 of 4 checks
-Keep lastUsedId out of the Sources scroll signature                     62f412d  verified OK
-Load a resumed chapter from the current page forward; RTL slider; picker bf2241d  3 of 6 checks
-Own the reader's loading flag per load; nearest-first wrap; RTL slider    1b358a2  verified OK
-Repair stale and missing library covers during the refresh sweep         3189c8d  verified OK
-Fold the 0.88-0.90 run into the handoffs; close open thread 1            6dcc166  docs
-Resume from the furthest chapter with progress; cover size note          5d26494  verified OK
-Report repaired covers after a stop, and persist the count               fca3ca3  verified OK
-Clear the resume position when a chapter is marked unread                ba1fd5d  verified OK
-Record source names; group the library by source                        55e6144  reverted 3189c8d's half
-Name source tabs; learn names from the repo index                       c0cce75  verified OK
-Search by title or author; keep backup source names                     1de57e4  reverted 5d26494
-Restore the Resume target and the grid's cover reporting                1b5064b  verified OK
-Keep writer and artist apart; refresh only chosen sources               a180424  CI RED (import)
-Add the missing width import                                            f0b4f8a  verified OK
-Add a refresh scoped to series with no chapter count                    7506c00  verified OK
-Swipe to mark read (Material3); scoped run keeps off the cursor          2307f9e  swipe unreliable
-Strip edge gesture, post-scroll                                         dc1ce88  NEVER FIRED
-Edge gesture on pre-scroll; no flash between chapters                   76edcc9  flash fixed, gesture dead
-Rebuild the chapter swipe on me.saket.swipe                             a43348d  verified OK
-Add chapter transition rows to the strip                                f96cd14  verified OK
-Delete the dead edge gesture                                            86d8f2d  removal only
-Change chapter when a transition row scrolls into view                  4cc33fb  verified OK
-```
+**Deleted.** This was a hand-maintained list of commit subjects, last extended
+somewhere around 0.120 and describing a fraction of the 189 releases since. `git
+log --oneline` is the same thing, always current, and cannot fall behind.
 
-**`55e6144` and `1de57e4` are a new failure mode in this list: commits that
-shipped correct code and silently reverted an earlier fix**, because a whole file
-was regenerated from a stale snapshot. `1b5064b` restores both. §5 has the
-countermeasure. **`dc1ce88` and `76edcc9` are two more that shipped and did
-nothing at all** — an edge gesture that never fired on either nested-scroll
-phase; `86d8f2d` deletes it and `4cc33fb` replaces it with a layout query.
-
-`bf2241d` is a fourth entry in the pattern below: it shipped correct in
-isolation and broke something only in combination with what was already there —
-by making a job outlive the screen, it turned a latent cancellation race into a
-reliable one. `1b358a2` fixed that plus two things `bf2241d` got half right, and
-is the release that closed open thread 1. `3189c8d` was pushed while the sweep
-needed to test it was running, and was confirmed on the resume afterwards.
-**The whole 0.88–0.93 run carries no untested tail**, which is not this project's
-base rate — each release was small and each was pushed while something slow was
-already running, so there was nothing to do but exercise the last one.
-
-The 0.84–0.87 run is `SESSION_HANDOFF_0.87.md`. Three annotations from it belong
-here. **`4264dea` is another commit that shipped correct and did nothing** — it
-depends on `21628af`, which landed a release later, so its fallback was reached
-and immediately defeated by the very bug it was meant to route around. A fix
-whose first action is the call that is failing cannot be verified before that
-call works, and nothing said so at the time. **`0db1971` shipped three fixes and
-one was inert for a reason one grep would have settled**: `openSource` writes
-`lastUsedId`, which was in the scroll signature it added — the same shape as
-`dbbe38a` and `c57a91d`, an identifier's behaviour assumed rather than checked.
-And **`21628af` is the best ratio in this list** — one character on four
-declarations, against three releases and two wrong diagnoses spent around it.
-
-`dbbe38a` and `8fcd519` are one piece of work split by an accident: the version
-bump landed on the commit that doesn't build, because the first `cp` loop found
-only one of the two files it needed. **Build releases from `8fcd519` or later.**
-That is now the third entry in this list broken by something a `grep` would have
-settled — `c57a91d`, the 0.45 attempt, and this — and the fourth, `fc2aee8`, was a
-missing import. The countermeasure that has actually worked twice is the one
-described under `c5266d7` below and repeated for `2bac449`: check the risky
-identifiers against the tree before pushing rather than recalling them. `2bac449`
-renamed a field (`LibraryRefresh.updated` → `counted`) that a second file read,
-which is exactly the `dbbe38a` failure shape, and it built first time.
-
-`c5266d7` is the largest single change in this project's history — 553
-insertions across nine files, one of them new — and it went in uncompiled like
-everything else here. It built first time and all six device checks passed,
-which is worth recording precisely because it is not the base rate: `c57a91d`
-and the 0.45 attempt are both in this list as single-assumption CI failures. The
-difference was not care, it was that the risky parts were checked by `grep`
-rather than recalled — `Chapter.dateUploaded`, `chapterKeyOf`'s signature, the
-`ZoomableAsyncImage` parameter list already in use in `ReaderScreen`, and
-whether `when (sort)` was exhaustive after three new enum values.
-
-"verified OK" means it was exercised on device; the annotations on the rest are
-deliberately not that. Note `fbe6bfe` — the visible WebView shipped and did *not*
-work, because the UA bug underneath it was still there; `28a4524` is what made it
-pass. A screen landing and a screen working are separate events.
-
-`fc2aee8` and `d395222` are open thread 1 in §0: the reader builds and is barely
-exercised. Everything from `912707a` down was checked on device as it landed —
-each push was installed and used before the next was written, which is why that
-run carries no untested tail.
-
-`c57a91d` is the annotation-placement failure written up in §5: the cache it
-added was correct and shipped unchanged in `54c4c0d`, which only moved it above
-the KDoc. `0.45` never reached a commit for the same class of reason — a
-signature declared against `Series.cover` as `String` when it is `Any?`. Two CI
-round trips in one session, both from an assumption a `grep` would have settled.
-
-The run from `931cf5f` to `3052571` is one continuous thread: import a real
-library, then fix everything the real library broke.
-
-Komga support was removed entirely (`KomgaSource.kt` deleted); only local
-folders and extensions remain as source types.
-
-The 0.67–0.71 run is recorded in the per-session files rather than here:
-`SESSION_HANDOFF_0.83.md`.71.md`. Two entries in it
-are worth carrying forward as commit-history annotations. `1595fe4` (0.71) was
-pushed to a branch called `startup-timings` before being merged to `main`, and
-built nothing until the merge — CI is `on: push: branches: [main]` and a branch
-push is silent, not red. And 0.70's covers fix is marked verified on the strength
-of the symptom disappearing rather than the error being read; the debug overlay
-in `Ui.kt`'s `CoverImage` is still the only thing that distinguishes a 403 from a
-missing `thumbnail_url`, and it was never made to speak.
+A copy of a fact the tool already owns is the shape §5 keeps recording: the
+"known-good" figure nobody re-measured, the item count restated beside the list
+that owns it, the stated cost that rots faster than a stated mechanism.
 
 ---
 
