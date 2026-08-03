@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 151,
+            name = "0.151",
+            header = "The download queue says which kind of waiting it is doing",
+            body = "A download that had not started yet and one that had "  +
+                "asked for its pages and received none both said \"Starting\" " +
+                "with the same spinner \u2014 which are opposite problems. "  +
+                "The queue now separates them, and once the page count is "  +
+                "known it counts: \"12 of 36\".\n\nSo a download stuck on "  +
+                "\"Fetching pages\" is the source not answering, and one "  +
+                "stuck on \"0 of 36\" is the images not arriving.",
+        ),
+        ReleaseNote(
             code = 150,
             name = "0.150",
             header = "The app no longer closes if the browser view dies",

@@ -175,7 +175,9 @@ class DownloadService : Service() {
      */
     private suspend fun runItem(item: DownloadItem) {
         DownloadQueue.setActive(item.chapterId)
-        DownloadQueue.setProgress(item.chapterId, 0)
+        // total null, not 0: the page list request has not gone out yet, and
+        // "I don't know how many pages" is not "no pages have arrived".
+        DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
         notifyNow()
         var failure: String? = null
         try {
@@ -265,11 +267,13 @@ class DownloadService : Service() {
     /** One download attempt, reporting progress into the queue as pages land. */
     private suspend fun fetchPages(src: Source, item: DownloadItem, chapter: Chapter) {
         src.loadPagesProgressively(chapter, persist = true) { partial ->
-            val total = partial.size
-            val ready = partial.count { it != null }
+            // The first callback carries the whole list, so partial.size IS
+            // the page count and its arrival is what "the page list came back"
+            // means. Stored rather than divided away.
             DownloadQueue.setProgress(
                 item.chapterId,
-                if (total == 0) 0 else ready * 100 / total
+                ready = partial.count { it != null },
+                total = partial.size
             )
             notifyThrottled()
         }
@@ -395,7 +399,8 @@ class DownloadService : Service() {
     private fun buildNotification(): Notification {
         val remaining = DownloadQueue.items.size
         val current = DownloadQueue.items.firstOrNull()
-        val percent = current?.let { DownloadQueue.progress[it.chapterId] } ?: 0
+        val progress = current?.let { DownloadQueue.progress[it.chapterId] }
+        val percent = progress?.percent
         val isPaused = DownloadQueue.paused
 
         val open = PendingIntent.getActivity(
@@ -422,7 +427,11 @@ class DownloadService : Service() {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setProgress(100, percent, current == null || percent == 0)
+            // Indeterminate while there is no ratio to show — no chapter, no
+            // page list yet, or an empty one. Previously this also went
+            // indeterminate at a genuine 0 of N, which looked identical to not
+            // having asked yet.
+            .setProgress(100, percent ?: 0, current == null || percent == null)
 
         builder.addAction(
             0,
