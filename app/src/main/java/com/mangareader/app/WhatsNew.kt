@@ -43,6 +43,20 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 156,
+            name = "0.156",
+            header = "Giving up on a dead server takes a minute, not five",
+            body = "0.155 stopped a chapter whose images were all on one "  +
+                "unreachable server, but took about four and a half minutes "  +
+                "to do it \u2014 each page was retried three times, and "  +
+                "every retry waited the full timeout. Retrying a server that "  +
+                "just failed to answer buys nothing, so it no longer "  +
+                "does, and the error counts only the pages actually "  +
+                "tried.\n\nAnd "  +
+                "expanding a series description now shows every tag, "  +
+                "wrapped, instead of hiding them off the right edge.",
+        ),
+        ReleaseNote(
             code = 155,
             name = "0.155",
             header = "A chapter stops asking a host that is not answering",
