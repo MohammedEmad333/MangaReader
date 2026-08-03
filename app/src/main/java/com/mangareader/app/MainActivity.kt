@@ -1512,7 +1512,10 @@ fun YomuApp() {
                         onClearAll = {
                             History.list(context).forEach { History.remove(context, it.chapterKey) }
                             history = History.list(context)
-                        }
+                        },
+                        // The same re-read every other mutation here does, so
+                        // the gesture and the existing paths cannot drift.
+                        onRefresh = { history = History.list(context) }
                     )
                     3 -> DownloadsTab(
                         downloadTick = downloadTick + DownloadQueue.tick,

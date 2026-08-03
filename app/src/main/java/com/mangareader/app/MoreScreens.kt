@@ -37,6 +37,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+// PullToRefreshBox lives in a SUB-PACKAGE of material3. The wildcard above does
+// NOT reach it — that is exactly the 0.98 CI failure.
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,8 +76,16 @@ internal fun HistoryScreen(
     onDelete: (HistoryEntry) -> Unit,
     /** Bumped when library state moves; refreshes the corner markers. */
     libraryTick: Int,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    /**
+     * Re-reads the history file. Unlike the series screen's refresh this is a
+     * disk read rather than a network call, so there is no honest "refreshing"
+     * period and the flag below is set and cleared in one pass rather than
+     * padded to make the spinner look busy.
+     */
+    onRefresh: () -> Unit
 ) {
+    var refreshing by remember { mutableStateOf(false) }
     // Once for the screen. History caps at 40 entries so the per-row cost would
     // be survivable here, which is exactly the reasoning that put an O(library)
     // read inside a row three times already — the shared helper is free.
@@ -102,7 +113,16 @@ internal fun HistoryScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Nothing read yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        } else Box(modifier = Modifier.fillMaxSize()) {
+        } else PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                onRefresh()
+                refreshing = false
+            },
+            modifier = Modifier.fillMaxSize()
+        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // The caller card 47 missed on its first pass. History caps at 40
             // entries, so this is the shortest list to carry a handle — but it
             // is also the one where every row is a full ListItem with a cover,
@@ -178,6 +198,7 @@ internal fun HistoryScreen(
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
+        } // PullToRefreshBox
     }
 
     // Both of these ask first. Removing one entry is small and recoverable only
