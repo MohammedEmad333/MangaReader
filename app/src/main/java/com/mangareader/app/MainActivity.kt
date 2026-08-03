@@ -787,7 +787,7 @@ fun YomuApp() {
             videoScan = try {
                 withContext(Dispatchers.IO) { src.scanVideos(chapter) }
             } catch (e: Throwable) {
-                VideoScan(emptyList(), sourceFailureMessage(e, "The scan failed"))
+                VideoScan(emptyList(), note = sourceFailureMessage(e, "The scan failed"))
             }
             videoScanning = false
         }
@@ -1668,11 +1668,46 @@ fun YomuApp() {
                     // directly and never asks the extension. It explained a
                     // cause that had not produced what was on screen, which is
                     // worse than saying nothing. It reports the document now.
-                    scan == null || scan.links.isEmpty() -> Column {
+                    scan == null || (scan.links.isEmpty() && scan.embeds.isEmpty()) -> Column {
                         Text("No playable video found on this chapter's page.")
                         Spacer(Modifier.height(12.dp))
                         Text(
                             scan?.note ?: "The scan returned nothing at all.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    // Embeds only, no direct link. Opening these goes to the
+                    // BROWSER rather than a video player: the url is a page
+                    // whose script builds the player, not a media file, and
+                    // handing it to MX Player would fail in a way that looks
+                    // like this feature is broken.
+                    scan.links.isEmpty() -> Column {
+                        val plural = if (scan.embeds.size == 1) "player" else "players"
+                        Text("No direct video file, but this page embeds ${scan.embeds.size} $plural.")
+                        Spacer(Modifier.height(12.dp))
+                        scan.embeds.forEachIndexed { index, url ->
+                            TextButton(
+                                onClick = {
+                                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    runCatching { context.startActivity(view) }
+                                        .onFailure {
+                                            errorMessage = "Nothing here can open that link"
+                                        }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "Open player ${index + 1}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            scan.note ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace
                         )
