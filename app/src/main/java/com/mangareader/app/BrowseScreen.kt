@@ -726,15 +726,10 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
             val availableExts = shownExtensions.filterNot { it.isInstalled }
                 .sortedBy { it.name.lowercase() }
 
-            // The list's item count, not the data's, and this caller has the
-            // most conditional version of it in the app: THREE optional section
-            // headers, each a lazy item that scrollToItem counts, each present
-            // only when its section is non-empty. Count them the same way the
-            // list builds them or the handle stops short of the end.
-            val extListItems = shownExtensions.size +
-                (if (updatableExts.isNotEmpty()) 1 else 0) +
-                (if (installedExts.isNotEmpty()) 1 else 0) +
-                (if (availableExts.isNotEmpty()) 1 else 0)
+            // This caller used to hand-count its items — three optional section
+            // headers plus the rows — which was the most conditional version of
+            // that arithmetic in the app and the most likely to rot. The handle
+            // reads the count off the list now; see ListScrollHandle.
             val extListState = rememberLazyListState()
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -783,7 +778,6 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
             }
             ListScrollHandle(
                 state = extListState,
-                totalItems = extListItems,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
             }

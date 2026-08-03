@@ -194,15 +194,11 @@ internal fun GlobalSearchScreen(
         ) {
             // Fourth caller of ListScrollHandle.
             //
-            // totalItems is shown.size: one lazy item PER SOURCE, not per
-            // series. Each item draws a source header and a horizontal row of
-            // covers, so the list is short in items and tall in pixels — the
-            // handle seeks by item index, which is the right unit here even
-            // though a single item can be most of a screen.
-            //
-            // `shown`, not the unfiltered results, for the same reason the
-            // chapter list spans `visible`: the handle has to reach the end of
-            // what is actually drawn.
+            // One lazy item PER SOURCE here, not per series: each draws a
+            // source header and a horizontal row of covers, so this list is
+            // short in items and tall in pixels. The handle seeks by item
+            // index, which is still the right unit even when one item is most
+            // of a screen.
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
@@ -290,7 +286,6 @@ internal fun GlobalSearchScreen(
             }
             ListScrollHandle(
                 state = listState,
-                totalItems = shown.size,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
