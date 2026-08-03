@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 164,
+            name = "0.164",
+            header = "The drag handle reaches the end of a grid",
+            body = "On Browse and in the Library, dragging the handle all "  +
+                "the way down stopped a row short when the last row was not "  +
+                "full \u2014 the last one or two covers stayed just below "  +
+                "the edge.\n\nIt measures in rows now instead of individual "  +
+                "covers, so the bottom of the drag is the bottom of the grid.",
+        ),
+        ReleaseNote(
             code = 163,
             name = "0.163",
             header = "Refreshing Downloads really does look at the disk now",

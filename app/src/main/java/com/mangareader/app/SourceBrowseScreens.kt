@@ -346,15 +346,6 @@ internal fun LibraryScreen(
             // "an import is a load test".
             val marks = rememberEntryMarks(libraryTick)
 
-            // Held in state and scrolled from a keyed effect rather than
-            // launched per drag delta — a launch { scrollToItem() } per delta
-            // queues on the scroll mutex and runs in order, so the grid arrives
-            // where the finger was half a second ago. That was the 0.133 lag.
-            var seekTo by remember { mutableIntStateOf(-1) }
-            LaunchedEffect(seekTo) {
-                if (seekTo >= 0) gridState.scrollToItem(seekTo)
-            }
-
             // NO PullToRefreshBox here. 0.162 added one and it broke the scroll
             // handle's ability to reach the last cell — verified working in
             // 0.158, broken in 0.162, and the only change between them was this
@@ -403,20 +394,20 @@ internal fun LibraryScreen(
                 }
             }
 
-            // ScrollHandle directly, not ListScrollHandle: this is a GRID, and
-            // LazyGridState and LazyListState share no supertype exposing what
-            // the handle needs. Same call shape as the library grid.
+            // GridScrollHandle, which seeks in ROWS. 0.158 used ScrollHandle
+            // with cell indices and could not reach the last cell: scrollToItem
+            // aligns the row containing an index to the top, so the start gets
+            // pulled back to a row boundary and the final partial row drops
+            // below the fold. 0.163 wrongly blamed a PullToRefreshBox wrapper
+            // and reverting it changed nothing, because the arithmetic was
+            // always the cause.
             //
             // shown.size + 1 when there is a next page, because "Load more" is
-            // a lazy item and scrollToItem counts it. Every caller has its own
-            // version of this number, and getting it wrong is what stops a
-            // handle short of the end.
-            ScrollHandle(
-                firstVisibleIndex = gridState.firstVisibleItemIndex,
-                visibleItems = gridState.layoutInfo.visibleItemsInfo.size,
+            // a lazy item and scrollToItem counts it. It spans the full width,
+            // so it is its own row and the row arithmetic handles it.
+            GridScrollHandle(
+                state = gridState,
                 totalItems = shown.size + if (hasNext) 1 else 0,
-                isScrolling = gridState.isScrollInProgress,
-                onSeek = { index -> seekTo = index },
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
             }
