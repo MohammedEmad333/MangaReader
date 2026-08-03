@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -1463,16 +1464,29 @@ internal fun SeriesScreen(
                 // `primaryContainer`, and AppPrefs moves only `primary` when the
                 // accent changes — deliberately, so nothing else in the scheme
                 // has to be re-checked per accent. The result was a Start button
-                // that stayed baseline lavender whatever accent was picked,
-                // which is the report.
+                // that stayed baseline lavender whatever accent was picked.
                 //
                 // Fixed here rather than by deriving primaryContainer from the
                 // accent: that would change every other primaryContainer user
                 // at once and break exactly the property AppPrefs is protecting.
-                // `primary`/`onPrimary` is the pair AppPrefs already guarantees
-                // stays legible for every accent.
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                // NOT onPrimary. AppPrefs leaves that at the Material baseline
+                // too, and its comment defends the choice on CONTRAST — "every
+                // pair in AccentColor stays well clear of it" — which was never
+                // the thing that failed. Baseline onPrimary is a dark purple, so
+                // against an amber accent it is perfectly legible and obviously
+                // left over from a different palette. Contrast was fine; the hue
+                // was not.
+                //
+                // Luminance picks black or white against whatever the accent is,
+                // which is the one rule that needs no per-accent re-checking —
+                // the same property AppPrefs is protecting, arrived at without
+                // touching the scheme.
+                contentColor = if (MaterialTheme.colorScheme.primary.luminance() > 0.5f) {
+                    Color.Black
+                } else {
+                    Color.White
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)

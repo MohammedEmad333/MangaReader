@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -101,8 +102,16 @@ internal fun HistoryScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Nothing read yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+        } else Box(modifier = Modifier.fillMaxSize()) {
+            // The caller card 47 missed on its first pass. History caps at 40
+            // entries, so this is the shortest list to carry a handle — but it
+            // is also the one where every row is a full ListItem with a cover,
+            // so forty of them is a long scroll in pixels.
+            //
+            // totalItems is history.size: no headers, no spacer, so the list's
+            // item count is the data count.
+            val listState = rememberLazyListState()
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(history) { entry ->
                     // History holds entries for series that may since have been
                     // removed from the library, so most of these carry nothing.
@@ -163,6 +172,11 @@ internal fun HistoryScreen(
                     HorizontalDivider()
                 }
             }
+            ListScrollHandle(
+                state = listState,
+                totalItems = history.size,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 
