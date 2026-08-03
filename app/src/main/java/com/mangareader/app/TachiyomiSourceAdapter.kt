@@ -332,6 +332,14 @@ class TachiyomiSourceAdapter(
         // exactly once, so this is the same work in a different sequence.
         val order = fetchOrder(pages.size, startAt)
 
+        // Consecutive connect failures per host, for THIS fetch only.
+        //
+        // Scoped to the call rather than the process on purpose: a host down now
+        // may be up in a minute, and a breaker outliving the fetch turns a blip
+        // into a source that stays broken until restart. Nothing has to remember
+        // to reset it, because it goes out of scope with the chapter.
+        val hostFailures = HashMap<String, Int>()
+
         order.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
             chunk.map { index ->
                 async {
@@ -339,14 +347,52 @@ class TachiyomiSourceAdapter(
                     // the batch, because it is no longer the position in the
                     // sequence — it is the page's own number, and it addresses
                     // both the slot below and the file on disk.
-                    index to runCatching { downloadPage(pages[index], dir, index) }
-                        .onFailure { firstError.compareAndSet(null, it) }
-                        .getOrNull()
+                    val outcome = runCatching { downloadPage(pages[index], dir, index) }
+                    outcome.exceptionOrNull()?.let { firstError.compareAndSet(null, it) }
+                    Triple(index, outcome.getOrNull(), outcome.exceptionOrNull())
                 }
-            }.awaitAll().forEach { (index, file) ->
+            }.awaitAll().forEach { (index, file, error) ->
                 done[index] = file
+                // Only CONNECT failures count, and only consecutively. A 404 on
+                // one page says nothing about the host, so it leaves the streak
+                // untouched rather than advancing it; a success clears it, so a
+                // source with a few dead images among good ones never trips.
+                val host = failingHost(error) ?: hostOf(pages[index].imageUrl)
+                if (host != null) {
+                    when {
+                        error == null -> hostFailures[host] = 0
+                        isConnectFailure(error) ->
+                            hostFailures[host] = (hostFailures[host] ?: 0) + 1
+                        else -> Unit
+                    }
+                }
             }
             onUpdate(done.toList())
+
+            // Checked per completed batch, because pages are fetched
+            // concurrently and failures arrive together rather than in order.
+            val dead = hostFailures.entries
+                .firstOrNull { it.value >= HOST_CONNECT_FAILURE_LIMIT }
+            if (dead != null) {
+                // Named, because the host IS the diagnosis for this failure
+                // class. Without it a chapter targeting one unreachable host
+                // spends pages x connectTimeout discovering that one page at a
+                // time, with nothing remembering the previous attempts and no
+                // user-visible error until the very end.
+                val stopped = IOException(
+                    "Could not connect to ${dead.key} — gave up after " +
+                        "${dead.value} consecutive failures"
+                )
+                // Thrown on BOTH paths. The download path wraps it so the
+                // chapter fails rather than being stored partial; the reader
+                // surfaces it through sourceFailureMessage instead of sitting
+                // on spinners.
+                if (persist) {
+                    throw ChapterDownloadException(done.count { it == null }, pages.size, stopped)
+                }
+                throw stopped
+            }
+
             if ((batch + 1) * PAGE_CONCURRENCY < order.size) {
                 // Cap how many requests any one connection carries. This is the
                 // preventative half of recycleConnections() — retrying on a fresh
@@ -450,8 +496,42 @@ class TachiyomiSourceAdapter(
         runCatching { httpClient?.connectionPool?.evictAll() }
     }
 
-    private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {
-        var attempt = 0
+    /** Host of [url], or null if it has none or cannot be parsed. */
+    private fun hostOf(url: String?): String? =
+        if (url.isNullOrBlank()) null
+        else runCatching { java.net.URI(url).host }.getOrNull()
+
+    /**
+     * The host a page failure was against, taken from the failure itself.
+     *
+     * [PageDownloadException] already carries the URL it was fetching, and that
+     * is more reliable than re-reading `page.imageUrl`: for a source that
+     * resolves the image URL lazily, the field may still be null on the page
+     * object while the exception knows exactly what it tried.
+     */
+    private fun failingHost(error: Throwable?): String? =
+        (error as? PageDownloadException)?.let { hostOf(it.url) }
+
+    /**
+     * Whether this failure means "no connection was made", as opposed to a
+     * server that answered with something unwelcome.
+     *
+     * The distinction is the whole point of the breaker: a 404 or a decode
+     * error says something about ONE page, while a connect timeout or a refusal
+     * says something about the host, and only the second generalises. Walks the
+     * cause chain because the page path wraps failures twice.
+     */
+    private fun isConnectFailure(error: Throwable?): Boolean {
+        var e = error
+        var depth = 0
+        while (e != null && depth++ < CAUSE_CHAIN_LIMIT) {
+            if (e is java.net.SocketTimeoutException || e is java.net.ConnectException) return true
+            e = e.cause
+        }
+        return false
+    }
+
+    private suspend fun downloadPage(page: TachiPage, dir: File, index: Int): File {        var attempt = 0
         while (true) {
             try {
                 return fetchPage(page, dir, index)
@@ -651,6 +731,20 @@ class TachiyomiSourceAdapter(
          * feel slow, since each recycle costs a TCP and TLS handshake.
          */
         const val CONNECTION_RECYCLE_BATCHES = 4
+
+        /**
+         * Consecutive connect failures to one host before a fetch gives up.
+         *
+         * Six, against PAGE_CONCURRENCY = 2, is three batches — enough that a
+         * brief network stumble does not end a chapter, and short enough that
+         * an unreachable host costs about ninety seconds rather than one
+         * connectTimeout per page. AHottie against a blocked imgbox was
+         * 36 x 30s: eighteen minutes of silence for a fact available in one.
+         */
+        const val HOST_CONNECT_FAILURE_LIMIT = 6
+
+        /** Depth limit when walking a cause chain, so a cycle cannot hang. */
+        const val CAUSE_CHAIN_LIMIT = 6
 
         /**
          * Worth retrying. 408/429/5xx are the textbook ones; 400 is here because
