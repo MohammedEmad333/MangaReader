@@ -488,10 +488,15 @@ private val VIDEO_PROBE_JS = """
       var v = document.querySelectorAll('video');
       if (!v.length) return 'no <video> in the DOM' + extra;
       return extra + Array.prototype.map.call(v, function (e, i) {
+        var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
+        var frames = q ? q.totalVideoFrames :
+          (typeof e.webkitDecodedFrameCount === 'number' ? e.webkitDecodedFrameCount : -1);
+        var dropped = q ? q.droppedVideoFrames : -1;
         return i + ': media ' + e.videoWidth + 'x' + e.videoHeight +
           '  box ' + e.clientWidth + 'x' + e.clientHeight +
           '  t=' + (e.currentTime || 0).toFixed(1) +
-          (e.paused ? '  PAUSED' : '  playing');
+          (e.paused ? '  PAUSED' : '  playing') +
+          '  frames=' + frames + ' dropped=' + dropped;
       }).join('\n');
     })()
 """.trimIndent()
