@@ -65,6 +65,17 @@ class DownloadService : Service() {
     )
     private var worker: Job? = null
     private var itemJob: Job? = null
+
+    /**
+     * Set while a pause is cancelling the chapter in flight.
+     *
+     * Volatile because it is written from `onStartCommand` on the main thread
+     * and read from `runItem`'s finally on a worker one. It distinguishes the
+     * two reasons `itemJob` gets cancelled: SKIP and CANCEL_ALL mean the
+     * chapter is going away, PAUSE means it is coming back.
+     */
+    @Volatile
+    private var pausing = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastNotifyAt = 0L
 
@@ -96,8 +107,25 @@ class DownloadService : Service() {
         }
 
         when (intent?.action) {
-            ACTION_PAUSE -> DownloadQueue.setPaused(this, true)
-            ACTION_RESUME -> DownloadQueue.setPaused(this, false)
+            ACTION_PAUSE -> {
+                DownloadQueue.setPaused(this, true)
+                // Cancel the chapter in flight as well as stopping the loop.
+                //
+                // Without this, pause is only checked between chapters: the
+                // loop's `paused` test sits above a `job.join()` that waits for
+                // the whole current chapter. A 30-page chapter against a dead
+                // host burns 30s per page, so Pause did nothing visible for
+                // fifteen minutes and read as a broken button.
+                //
+                // `pausing` tells runItem's finally that this cancellation must
+                // NOT drop the item — see there.
+                pausing = true
+                itemJob?.cancel()
+            }
+            ACTION_RESUME -> {
+                pausing = false
+                DownloadQueue.setPaused(this, false)
+            }
             ACTION_SKIP -> {
                 val id = intent.getStringExtra(EXTRA_CHAPTER_ID)
                 if (id == null || id == DownloadQueue.activeId) itemJob?.cancel()
@@ -180,6 +208,7 @@ class DownloadService : Service() {
         DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
         notifyNow()
         var failure: String? = null
+        var cancelledByPause = false
         try {
             if (Downloads.isComplete(this, item.chapterId)) {
                 DownloadIndex.record(this, item)
@@ -236,6 +265,9 @@ class DownloadService : Service() {
                 failure = "Finished without marking the chapter complete"
             }
         } catch (e: CancellationException) {
+            // Recorded before rethrowing, because the finally cannot tell a
+            // pause from a skip and the two must not do the same thing.
+            cancelledByPause = pausing
             throw e
         } catch (e: Throwable) {
             // Throwable, not Exception. This calls into an extension, so it can
@@ -244,7 +276,17 @@ class DownloadService : Service() {
             // letting the failure reach the default handler.
             failure = sourceFailureMessage(e, e.javaClass.simpleName)
         } finally {
-            DownloadQueue.finish(this, item, failure)
+            if (cancelledByPause) {
+                // Paused mid-chapter. The item STAYS at the head of the queue —
+                // finish() would remove it, and with no failure recorded it
+                // would vanish as though it had succeeded. Its partial pages are
+                // already on disk, so resuming re-runs this and picks up where
+                // it stopped.
+                DownloadQueue.setActive(null)
+                DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
+            } else {
+                DownloadQueue.finish(this, item, failure)
+            }
         }
     }
 
