@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 177,
+            name = "0.177",
+            header = "Embedded players open inside the app",
+            body = "Opening one in the browser got an error page, because "  +
+                "the player refuses requests that do not come from the "  +
+                "gallery page. It now opens in the app, which can say where "  +
+                "it came from.\n\nAnalytics frames are also no longer "  +
+                "offered as players.",
+        ),
+        ReleaseNote(
             code = 176,
             name = "0.176",
             header = "Find videos can open an embedded player",

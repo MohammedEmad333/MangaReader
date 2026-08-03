@@ -265,3 +265,79 @@ private fun hasClearanceCookie(url: String): Boolean =
 /** Host part of a URL for the title bar, falling back to the whole string. */
 private fun hostOf(url: String): String =
     runCatching { android.net.Uri.parse(url).host ?: url }.getOrDefault(url)
+
+/**
+ * A plain WebView for an embedded player, loaded WITH A REFERER.
+ *
+ * Separate from [ChallengeWebViewScreen] deliberately: that one polls for a
+ * clearance cookie and reports success to a caller waiting on it. This one just
+ * shows a page. Sharing them would give the challenge screen a second meaning,
+ * which is the fault this project keeps finding in its own labels.
+ *
+ * **The Referer is the whole point.** cossora.stream/embed/<uuid> is the player
+ * behind CosplayTele's galleries, and opening it directly in a browser answers
+ * `{"error": true, "message": "Unknown Error xD"}` — an embed-only player
+ * refusing a request that did not come from a page allowed to embed it. Sent
+ * from the gallery it is embedded on, it should behave as it does in the site's
+ * own page.
+ *
+ * If it still errors with the header set, the check is not the referer — it
+ * would then be a cookie, a session, or a token bound to the embedding page,
+ * and none of those are reachable this way.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EmbedWebViewScreen(
+    url: String,
+    referer: String,
+    onBack: () -> Unit
+) {
+    var progress by remember { mutableIntStateOf(0) }
+    BackHandler { onBack() }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Player", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            navigationIcon = { BackButton(onBack) }
+        )
+        if (progress in 1..99) {
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    // Players are the main reason this exists, and many will not
+                    // start without it.
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    webViewClient = object : WebViewClient() {
+                        override fun onRenderProcessGone(
+                            v: WebView?,
+                            detail: RenderProcessGoneDetail?
+                        ): Boolean {
+                            runCatching {
+                                (v?.parent as? ViewGroup)?.removeView(v)
+                                v?.destroy()
+                            }
+                            return true
+                        }
+                    }
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onProgressChanged(v: WebView?, newProgress: Int) {
+                            progress = newProgress
+                        }
+                    }
+                    loadUrl(url, mapOf("Referer" to referer))
+                }
+            }
+        )
+    }
+}

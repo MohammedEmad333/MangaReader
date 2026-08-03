@@ -216,6 +216,7 @@ class TachiyomiSourceAdapter(
         val embeds = doc.select("iframe[src]")
             .map { it.attr("abs:src") }
             .filter { it.startsWith("http", ignoreCase = true) }
+            .filterNot { url -> ANALYTICS_FRAMES.any { url.contains(it, ignoreCase = true) } }
             .distinct()
 
         if (links.isNotEmpty()) return@onSourceThread VideoScan(links, embeds)
@@ -926,6 +927,28 @@ class TachiyomiSourceAdapter(
          * chapter at all. A tighter limit would start refusing real content, and
          * refusing real content is worse than the failure it guards against.
          */
+        /**
+         * Iframe hosts that are never a player.
+         *
+         * The http-only filter was not enough: CosplayTele's two frames are the
+         * player AND googletagmanager.com/ns.html, which is the GTM noscript
+         * beacon. Offering that as "Open player 1" is worse than offering
+         * nothing, because it looks like the feature found something.
+         *
+         * A denylist, not an allowlist: a new player host should still show up
+         * without anyone editing this, whereas a new tracker only costs one
+         * useless row until someone adds it here.
+         */
+        val ANALYTICS_FRAMES = listOf(
+            "googletagmanager.com",
+            "google-analytics.com",
+            "doubleclick.net",
+            "googlesyndication.com",
+            "facebook.net",
+            "facebook.com/plugins",
+            "disqus.com"
+        )
+
         const val PAGE_LIST_MAX = 2000
 
         /**
