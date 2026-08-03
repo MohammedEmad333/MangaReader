@@ -1,23 +1,22 @@
-# Session handoff — 0.150 to 0.156, two cards that were wrong, and a label that was four times the same mistake
+# Session handoff — 0.150 to 0.157, two cards that were wrong, and a label that was four times the same mistake
 
 Written 2026-08-03. Nothing here supersedes anything.
 `SESSION_HANDOFF_0.83.md`, `SESSION_HANDOFF_0.87.md`, `SESSION_HANDOFF_0.106.md`,
 `SESSION_HANDOFF_0.120.md`, `SESSION_HANDOFF_0.143.md` and
 `SESSION_HANDOFF_0.149.md` all remain live reference.
 
-Seven releases. **Two of them were written against cards whose stated premise
+Eight releases. **Two of them were written against cards whose stated premise
 turned out to be false**, one fixed a bug that had been invisible for as long
 as the feature existed, one fixed a bug this session had introduced two hours
 earlier, and one corrected a prediction this session had got wrong by a factor
-of five. Everything except §2 and §9 is verified on device.
+of five. Everything except §2 is verified on device.
 
 ---
 
 ## 0. Read this before touching anything
 
-**1. Head is 0.156 and the whole range is verified except `onRenderProcessGone`
-and the tag change.** 0.151 through 0.156 were exercised on device. 0.150 was
-not and cannot be (§2); the chevron/tags change is untested (§9).
+**1. Head is 0.157 and the whole range is verified except `onRenderProcessGone`.**
+0.151 through 0.157 were exercised on device. 0.150 was not and cannot be — §2.
 
 **2. `DownloadQueue.progress` is no longer a percent, and `head()` no longer
 means "the first item".** Two contract changes in one day, both in §3 and §5.
@@ -58,7 +57,8 @@ loop had been read while writing the change. That is §0.5 of
 | 0.153 | Per-download pause; queue screen icons; two one-liners | `fe71519` | Verified |
 | 0.154 | `Resume all` when holds are the only thing stopping the queue | `d1ac443` | Verified |
 | 0.155 | A per-host circuit breaker for one page fetch | `ca4365c` | Superseded by 0.156 |
-| 0.156 | Attempt-level counting, retry suppression, tags on the chevron | `b52cbf0` | Breaker verified; tags not |
+| 0.156 | Attempt-level counting, retry suppression, tags on the chevron | `b52cbf0` | Verified |
+| 0.157 | Scroll handles on Downloads and global search; the chevron gap | `68e989a` | Verified |
 
 \* 0.150 was `83e3a56`, force-pushed to `0801208` after backticks in a commit
 message were shell-expanded and blanked two words. If a future session wonders
@@ -370,17 +370,44 @@ that menu is the reason a tag stopped being decoration.
 its declaration** — `SESSION_HANDOFF_0.149.md` §5. Both annotation blocks were
 re-checked as contiguous afterwards.
 
-**NOT VERIFIED, and one gap left deliberately.** The chevron only renders when
-there *is* a description, so a series with tags and no description still cannot
-expand them. That is the same shape as §6's dead loop — a control that cannot
-reach a state — and it is noted on card 64 rather than fixed, because widening
-that file further in one day was not worth the risk.
+**The gap it left, closed in 0.157.** The chevron only rendered inside the
+description block, so a series with tags and no description had no way to expand
+them. That is the same shape as §6's dead loop — a control that cannot reach a
+state — and it is the **third** appearance of that shape in one session, after
+the `Starting` label and the all-held pause button. It now renders above the
+tags when there is no description to sit under.
+
+**Worth a grep next time rather than a report.** Three of the four instances
+this session were found by someone looking at a screen, not by anyone looking
+for them.
+
+---
+
+## 9a. 0.157 — scroll handles on two more lists
+
+Card 47's claim held: with `ListScrollHandle` doing the wiring, each new caller
+really is a hoisted state, a `Box` and the handle. **What is not shared is the
+item count, and the two added here differ in an instructive way.**
+
+- **Downloads tab: `series.size`.** No header, no actions block, no trailing
+  spacer, so the list's item count *is* the data count — unlike the chapter
+  list's `visible.size + 3`.
+- **Global search: `shown.size`, which is one lazy item PER SOURCE**, not per
+  series. Each item draws a source header and a horizontal row of covers, so
+  the list is short in items and tall in pixels. Seeking by item index is still
+  the right unit. `shown` rather than the unfiltered results, for the same
+  reason the chapter list spans `visible`.
+
+Four of N done: library grid (0.133), chapter list (0.149), these two.
+**Left: per-source browse and the Extensions list.** Browse is a *grid*, so it
+would call `ScrollHandle` directly with four integers the way the library does,
+not `ListScrollHandle`.
 
 ---
 
 ## 10. State of the tree
 
-Head is `b52cbf0` (0.156). Build environment unchanged from 0.134: Kotlin
+Head is `68e989a` (0.157). Build environment unchanged from 0.134: Kotlin
 2.2.21, AGP 8.5.2, Gradle 8.9, JDK 17, compileSdk 36, targetSdk 34, minSdk 24,
 OkHttp 5.4.0, kotlinx-serialization 1.9.0, Compose BOM 2024.09.03, Coil 2.7.0,
 `me.saket.swipe:swipe:1.3.0`. `isMinifyEnabled = true` on debug and still
@@ -389,7 +416,7 @@ working.
 Files changed across the range: `CloudflareInterceptor.kt`, `WebViewScreen.kt`,
 `DownloadQueue.kt`, `DownloadService.kt`, `DownloadQueueScreen.kt`,
 `SourceBrowseScreens.kt`, `SettingsScreens.kt`, `TachiyomiSourceAdapter.kt`,
-`WhatsNew.kt`, `app/build.gradle.kts`.
+`GlobalSearchScreen.kt`, `WhatsNew.kt`, `app/build.gradle.kts`.
 
 **Three notes for anyone reading this code cold.** `onRenderProcessGone` is API
 26 and `minSdk` is 24; the override is never invoked below 26 and CI runs no
@@ -418,19 +445,20 @@ the queue screen pass (82, now closed); the all-held loop (85, now closed).
 **Needs verifying holds one card: 73**, and it cannot be emptied without adb or
 a challenge.
 
-**Needs verifying also holds 64**, the tag change — §9.
+**Needs verifying holds only 73.** Everything else shipped this session is
+verified.
 
 ### Open, roughly by value
 
 - **Telling a real zero from an unparsed one** (80) — §4. Touches every source,
   so settle the shape first.
-- **Scroll handles on the remaining five lists** (47) — `ListScrollHandle` makes
-  each three lines.
+- **Scroll handles on the last two lists** (47) — per-source browse (a grid) and
+  Extensions. §9a.
 - **`onRenderProcessGone` verification** (73) — §2.
 - **A ceiling on `getPageList`** (77) — latent, no known instance. Do not close
   it by fixing a source.
 - **Fling the zoom pan** (67) — read `SESSION_HANDOFF_0.106.md` §5 first.
 - **Scroll-to-refresh elsewhere**, **a feed tab in Browse**, **SY theme
-  settings**, **tags on the series chevron**, **videos**.
+  settings**, **videos**.
 - **AHottie**, **BeeHentai**, **Elite Babes**, **Coomer** — Blocked/Upstream.
 - **Manhwa18** — upstream extension or a login gate. §7.

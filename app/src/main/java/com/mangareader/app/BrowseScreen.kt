@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -725,7 +726,19 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
             val availableExts = shownExtensions.filterNot { it.isInstalled }
                 .sortedBy { it.name.lowercase() }
 
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // The list's item count, not the data's, and this caller has the
+            // most conditional version of it in the app: THREE optional section
+            // headers, each a lazy item that scrollToItem counts, each present
+            // only when its section is non-empty. Count them the same way the
+            // list builds them or the handle stops short of the end.
+            val extListItems = shownExtensions.size +
+                (if (updatableExts.isNotEmpty()) 1 else 0) +
+                (if (installedExts.isNotEmpty()) 1 else 0) +
+                (if (availableExts.isNotEmpty()) 1 else 0)
+            val extListState = rememberLazyListState()
+
+            Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = extListState, modifier = Modifier.fillMaxSize()) {
                 if (updatableExts.isNotEmpty()) {
                     item { SectionHeader("Update available (${updatableExts.size})") }
                     items(updatableExts) { ext ->
@@ -767,6 +780,12 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                         )
                     }
                 }
+            }
+            ListScrollHandle(
+                state = extListState,
+                totalItems = extListItems,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
             }
         }
     }
