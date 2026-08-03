@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 175,
+            name = "0.175",
+            header = "Find videos can open an embedded player",
+            body = "Some pages build their player with a script, so there is "  +
+                "no video file to find. Where that happens the scan now "  +
+                "offers the embedded player itself, which opens in your "  +
+                "browser.",
+        ),
+        ReleaseNote(
             code = 174,
             name = "0.174",
             header = "Find videos now says what it found instead",

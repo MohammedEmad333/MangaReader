@@ -359,8 +359,21 @@ class ChapterDownloadException(
  * it.
  */
 data class VideoScan(
-    /** Playable urls found, in document order. */
+    /** Direct, playable urls — a <video> the page served itself. */
     val links: List<String>,
-    /** What the document held, when [links] is empty. Null when not applicable. */
-    val note: String?
+    /**
+     * Iframe urls, which are where an embedded player usually lives.
+     *
+     * CosplayTele is the worked example: its page has ONE embedded video and no
+     * <video> element, no .mp4 and no .m3u8 anywhere in 286KB of served HTML —
+     * the player is built by the iframe's own script. Nothing this app can
+     * select will ever reach the media file, but the iframe url IS in the HTML,
+     * and handing that to a browser gets a working player.
+     *
+     * Kept separate from [links] because they are not the same promise. A link
+     * plays; an embed opens a page that might.
+     */
+    val embeds: List<String> = emptyList(),
+    /** What the document held, when nothing playable was found. */
+    val note: String? = null
 )

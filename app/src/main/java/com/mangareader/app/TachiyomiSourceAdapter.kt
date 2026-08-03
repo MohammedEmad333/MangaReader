@@ -185,20 +185,20 @@ class TachiyomiSourceAdapter(
      */
     override suspend fun scanVideos(chapter: Chapter): VideoScan = onSourceThread {
         val http = delegate as? HttpSource
-            ?: return@onSourceThread VideoScan(emptyList(), "Not an HTTP source.")
+            ?: return@onSourceThread VideoScan(emptyList(), note = "Not an HTTP source.")
         val sChapter = chapter.handle as? SChapter
-            ?: return@onSourceThread VideoScan(emptyList(), "This chapter has no source handle.")
+            ?: return@onSourceThread VideoScan(emptyList(), note = "This chapter has no source handle.")
         val url = http.baseUrl + sChapter.url
 
         val body = http.client.newCall(GET(url, http.headers)).execute().use { response ->
             if (!response.isSuccessful) {
                 return@onSourceThread VideoScan(
                     emptyList(),
-                    "The page answered HTTP ${response.code}."
+                    note = "The page answered HTTP ${response.code}."
                 )
             }
             response.body?.string()
-                ?: return@onSourceThread VideoScan(emptyList(), "The page returned no body.")
+                ?: return@onSourceThread VideoScan(emptyList(), note = "The page returned no body.")
         }
 
         // `abs:src` resolves against the document's own base, so the second
@@ -209,7 +209,16 @@ class TachiyomiSourceAdapter(
             .filter { it.isNotBlank() }
             .distinct()
 
-        if (links.isNotEmpty()) return@onSourceThread VideoScan(links, null)
+        // Iframes are collected whether or not a direct link was found: a page
+        // can carry both, and the embed is the fallback when the media file is
+        // built by the player's own script rather than served in the markup.
+        // Data-uri and about:blank frames are dropped — those are ad slots.
+        val embeds = doc.select("iframe[src]")
+            .map { it.attr("abs:src") }
+            .filter { it.startsWith("http", ignoreCase = true) }
+            .distinct()
+
+        if (links.isNotEmpty()) return@onSourceThread VideoScan(links, embeds)
 
         // NOTHING FOUND, so report what the document DID hold. Counting the
         // elements a video could hide in separates "no video anywhere in the
@@ -238,12 +247,18 @@ class TachiyomiSourceAdapter(
 
         VideoScan(
             emptyList(),
+            embeds,
             buildString {
                 append("Page fetched, ${body.length} chars.\n")
                 append("video=$videos  iframe=$iframes  source=$sources\n")
                 append("\".mp4\"×$mp4  \".m3u8\"×$m3u8\n")
                 if (excerpt != null) append("\nAround the first match:\n…$excerpt…")
                 else append("\nNo .mp4, .m3u8 or <video anywhere in the HTML.")
+                if (embeds.isNotEmpty()) {
+                    append("\n\nThe media is built by an embedded player's own ")
+                    append("script, so no selector here can reach the file. ")
+                    append("The frame below opens it.")
+                }
             }
         )
     }
