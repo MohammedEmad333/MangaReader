@@ -270,7 +270,6 @@ internal fun DownloadsTab(
             }
             ListScrollHandle(
                 state = listState,
-                totalItems = series.size,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }

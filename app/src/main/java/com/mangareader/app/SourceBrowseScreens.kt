@@ -430,7 +430,6 @@ internal fun LibraryScreen(
             // so it is its own row and the row arithmetic handles it.
             GridScrollHandle(
                 state = gridState,
-                totalItems = shown.size + if (hasNext) 1 else 0,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
             }
@@ -1290,19 +1289,14 @@ internal fun SeriesScreen(
         // A series can carry a four-figure chapter list, which is the longest
         // scroll in the app after the library itself.
         //
-        // `visible.size + 3` counts the LIST's items, not the chapters: the
-        // cover header, the actions block and the trailing spacer are all lazy
-        // items, and seeking is `scrollToItem`, which counts them too. Using
-        // `visible.size` would leave the handle short of the end by three rows
-        // — worse, it would be short by three rows only sometimes, because two
-        // of those items change height with the series.
-        //
-        // `visible`, not `chapters`: the handle has to span what the filter is
-        // showing, which is the same reasoning as the selection bar's
-        // "select all" below.
+        // This used to pass `visible.size + 3` — the chapters plus the cover
+        // header, the count block and the trailing spacer. It went wrong when
+        // 0.157 added two more lazy items to this screen (the tag row, and the
+        // chevron for a series with tags and no description) and left the `+ 3`
+        // alone, so the handle stopped two chapters short and nothing in the
+        // code looked wrong. The count comes off the list itself now.
         ListScrollHandle(
             state = listState,
-            totalItems = visible.size + 3,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
 

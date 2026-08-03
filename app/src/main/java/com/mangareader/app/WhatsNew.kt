@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 167,
+            name = "0.167",
+            header = "The handle reaches the last chapter too",
+            body = "The chapter list was the last one still stopping short. "  +
+                "It was counting its own rows by hand, and the number had "  +
+                "been left behind when the tag row was added.\n\nEvery list "  +
+                "now asks itself how many rows it has instead of being told, "  +
+                "so the count cannot fall out of date again.",
+        ),
+        ReleaseNote(
             code = 166,
             name = "0.166",
             header = "The drag handle reaches the end of every list",

@@ -210,7 +210,6 @@ internal fun HistoryScreen(
             }
             ListScrollHandle(
                 state = listState,
-                totalItems = history.size,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }

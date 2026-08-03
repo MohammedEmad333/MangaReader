@@ -510,9 +510,22 @@ internal fun MiniBadge(text: String, colour: Color) {
 @Composable
 internal fun ListScrollHandle(
     state: LazyListState,
-    totalItems: Int,
     modifier: Modifier = Modifier
 ) {
+    // The count comes from the LIST, not from the caller.
+    //
+    // Every caller used to pass its own arithmetic — `visible.size + 3` for the
+    // chapter list, a three-way conditional for Extensions, `shown.size` for
+    // global search — and each was a hand-maintained restatement of something
+    // the LazyColumn already knows exactly. The chapter list's went wrong the
+    // moment 0.157 added two lazy items to that screen and left the `+ 3`
+    // alone: the handle then stopped two chapters short, and nothing about the
+    // code looked wrong.
+    //
+    // layoutInfo.totalItemsCount cannot drift from the composition, because it
+    // IS the composition's count. Deleting the parameter deletes the whole
+    // class of bug rather than this instance of it.
+    val totalItems = state.layoutInfo.totalItemsCount
     var seekTo by remember { mutableIntStateOf(-1) }
     LaunchedEffect(seekTo) {
         if (seekTo >= 0) state.scrollToItem(seekTo)
@@ -565,10 +578,12 @@ internal fun ListScrollHandle(
 @Composable
 internal fun GridScrollHandle(
     state: LazyGridState,
-    totalItems: Int,
     modifier: Modifier = Modifier
 ) {
     val info = state.layoutInfo
+    // From the grid itself — see ListScrollHandle for why no caller passes this.
+    // Cells, not rows; the conversion below is what makes it a row count.
+    val totalItems = info.totalItemsCount
     // maxOf(column) + 1 rather than a span calculation: with Adaptive columns
     // this is the only place the real count exists. Coerced because an empty
     // or not-yet-measured grid reports nothing and a zero would divide.

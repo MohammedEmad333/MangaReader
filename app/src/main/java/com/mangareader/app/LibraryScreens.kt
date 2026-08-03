@@ -776,7 +776,6 @@ private fun LibraryGrid(
         // KDoc — this was latent here since 0.133 and only surfaced on browse.
         GridScrollHandle(
             state = gridState,
-            totalItems = shown.size,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
