@@ -1,11 +1,13 @@
 package com.mangareader.app
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -352,6 +354,10 @@ internal fun EmbedWebViewScreen(
                 domNote = raw.removeSurrounding("\"")
                     .replace("\\n", "\n")
                     .replace("\\\"", "\"")
+                    // evaluateJavascript JSON-escapes '<' as \u003C, which
+                    // showed up literally in "no \u003Cvideo> in the DOM".
+                    .replace("\\u003C", "<", ignoreCase = true)
+                    .replace("\\u003E", ">", ignoreCase = true)
             }
         }
     }
@@ -422,7 +428,27 @@ internal fun EmbedWebViewScreen(
                     // on — so making it explicit is the one lever left here.
                     setLayerType(View.LAYER_TYPE_HARDWARE, null)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    // The player's host is the only place this screen may go.
+                    val allowedHost = runCatching { Uri.parse(url).host }.getOrNull()
                     webViewClient = object : WebViewClient() {
+                        // POPUNDERS. These free embed hosts monetise clicks: a
+                        // tap anywhere on the page navigates the whole WebView
+                        // to an advertiser, and the player is gone. Blocking
+                        // off-host navigation is not politeness, it is the
+                        // difference between a usable player and one that
+                        // cannot be touched.
+                        //
+                        // Host-scoped rather than a blocklist: the page may
+                        // legitimately move within its own domain, and naming
+                        // advertisers one at a time is a race nobody wins.
+                        override fun shouldOverrideUrlLoading(
+                            v: WebView?,
+                            request: WebResourceRequest?
+                        ): Boolean {
+                            val target = request?.url?.host ?: return false
+                            return allowedHost != null && target != allowedHost
+                        }
+
                         override fun onRenderProcessGone(
                             v: WebView?,
                             detail: RenderProcessGoneDetail?
@@ -434,6 +460,11 @@ internal fun EmbedWebViewScreen(
                             return true
                         }
                     }
+                    // window.open and target=_blank take a different path and
+                    // would sail past the check above. Refused outright: this
+                    // screen has one job.
+                    settings.setSupportMultipleWindows(true)
+                    settings.javaScriptCanOpenWindowsAutomatically = false
                     webChromeClient = object : WebChromeClient() {
                         override fun onProgressChanged(v: WebView?, newProgress: Int) {
                             progress = newProgress
