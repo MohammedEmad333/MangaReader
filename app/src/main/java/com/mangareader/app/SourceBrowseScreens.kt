@@ -346,17 +346,40 @@ internal fun LibraryScreen(
             // "an import is a load test".
             val marks = rememberEntryMarks(libraryTick)
 
-            // NO PullToRefreshBox here. 0.162 added one and it broke the scroll
-            // handle's ability to reach the last cell — verified working in
-            // 0.158, broken in 0.162, and the only change between them was this
-            // wrapper. Reverted rather than debugged, because it was a FEATURE
-            // bundled into a bug-fix release and the bug fix is the part that
-            // matters. It can come back on its own, with its own test pass.
-            Box(
+            // RESTORED in 0.165. 0.163 took this back out on the theory that
+            // it broke the scroll handle's reach — it did not. Reverting it
+            // changed nothing, the arithmetic was the cause (0.164), and the
+            // wrapper was blamed only because it was the most recent change.
+            // Removing it was still the right call at the time: it was a
+            // feature bundled into a bug-fix release, and a real fix should not
+            // wait behind one.
+            var refreshing by remember { mutableStateOf(false) }
+            // Cleared from an EFFECT: PullToRefreshBox has to observe the flag
+            // go true and then false to run its retract animation, and clearing
+            // it inline leaves the arrow parked on screen (0.160/0.161).
+            LaunchedEffect(refreshing) {
+                if (refreshing) refreshing = false
+            }
+            PullToRefreshBox(
+                // onRescan already reloads page one with the current query and
+                // mode, and is what the ⋮ menu calls, so the gesture and the
+                // menu cannot drift into meaning different things.
+                //
+                // This one IS a network call, unlike Downloads and History, and
+                // the indicator still retracts immediately rather than tracking
+                // it. Deliberate: `loading` is app-wide and written by six
+                // launch blocks in YomuApp, and binding a gesture to it is how
+                // the series screen came to need a chapters.isNotEmpty() gate.
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    onRescan()
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
             ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 // List is the same grid with one column, so paging, the empty
                 // state and "Load more" stay on one code path instead of two.
@@ -411,6 +434,7 @@ internal fun LibraryScreen(
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
             }
+            } // PullToRefreshBox
         }
     }
 }

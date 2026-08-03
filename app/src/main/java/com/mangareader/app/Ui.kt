@@ -610,7 +610,21 @@ internal fun ScrollHandle(
     }
     val handleAlpha by animateFloatAsState(if (settled) 1f else 0f, label = "handleAlpha")
 
-    BoxWithConstraints(modifier = modifier.fillMaxHeight().width(HANDLE_WIDTH)) {
+    // Inset from the top and bottom of whatever it is aligned in.
+    //
+    // The track used to be fillMaxHeight, which put the thumb's travel flush
+    // against both screen edges. Two problems, and only the first was reported:
+    // it looks wrong, and the BOTTOM of the travel lands in the system
+    // navigation gesture zone — so the last stretch of a drag competes with the
+    // back/home gesture and can be intercepted before the list reaches its end.
+    // If a handle ever "stops short" without the arithmetic being wrong, this
+    // is the first thing to suspect.
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .padding(vertical = HANDLE_EDGE_INSET)
+            .width(HANDLE_WIDTH)
+    ) {
         val density = LocalDensity.current
         val trackPx = with(density) { maxHeight.toPx() }
         val thumbPx = with(density) { HANDLE_HEIGHT.toPx() }
@@ -651,5 +665,13 @@ internal fun ScrollHandle(
 // target is 48dp and this is well under it, which is why the thumb is tall — the
 // finger finds it vertically, and the width only has to be visible.
 private val HANDLE_WIDTH = 16.dp
+
+/**
+ * Keeps the thumb's travel clear of the top and bottom screen edges.
+ *
+ * Sized to clear a gesture-navigation bar rather than to look tidy: at the
+ * bottom the alternative is a drag the system takes for a back or home swipe.
+ */
+private val HANDLE_EDGE_INSET = 24.dp
 private val HANDLE_HEIGHT = 56.dp
 private const val HANDLE_LINGER_MS = 1500L
