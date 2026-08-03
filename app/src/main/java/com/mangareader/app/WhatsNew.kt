@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 162,
+            name = "0.162",
+            header = "Pulling to refresh Downloads actually re-reads the disk",
+            body = "It was re-reading a list the app had already cached, so a "  +
+                "series you deleted with a file manager stayed on the "  +
+                "Downloads tab until you restarted. The pull now discards "  +
+                "that cache first, which is the only way to notice a change "  +
+                "the app did not make itself.\n\nBrowse gets the gesture "  +
+                "too, reloading the first page of whatever you are looking "  +
+                "at.",
+        ),
+        ReleaseNote(
             code = 161,
             name = "0.161",
             header = "The refresh arrow goes away again",

@@ -355,11 +355,35 @@ internal fun LibraryScreen(
                 if (seekTo >= 0) gridState.scrollToItem(seekTo)
             }
 
-            Box(
+            var refreshing by remember { mutableStateOf(false) }
+            // Cleared from an effect, not inline: PullToRefreshBox has to
+            // OBSERVE the flag go true and then false to run its retract
+            // animation, and 0.160 learned that the hard way by clearing it in
+            // the same pass and leaving the arrow parked on screen.
+            LaunchedEffect(refreshing) {
+                if (refreshing) refreshing = false
+            }
+            PullToRefreshBox(
+                // onRescan already reloads page one with the current query and
+                // mode — the same call the ⋮ menu makes — so the gesture and the
+                // menu cannot drift into meaning different things.
+                //
+                // Unlike Downloads and History this one IS a network call, so
+                // the indicator retracting immediately is arguably premature.
+                // Left that way deliberately: `loading` is app-wide and shared
+                // by six launch blocks in YomuApp, and binding a gesture to it
+                // is how the series screen ended up needing a chapters.isNotEmpty()
+                // gate to stop the spinner firing on every ordinary open.
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    onRescan()
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
             ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 // List is the same grid with one column, so paging, the empty
                 // state and "Load more" stay on one code path instead of two.
@@ -414,6 +438,7 @@ internal fun LibraryScreen(
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
             }
+            } // PullToRefreshBox
         }
     }
 }
