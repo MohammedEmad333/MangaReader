@@ -1,7 +1,9 @@
 package com.mangareader.app
 
 import android.annotation.SuppressLint
+import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -70,6 +72,13 @@ internal fun ChallengeWebViewScreen(
     var progress by remember { mutableIntStateOf(0) }
     var solved by remember { mutableStateOf(false) }
 
+    // The renderer is a separate process and can die under us. When it does the
+    // WebView is unusable and must not be touched again — but the screen is
+    // still here, so it says so and offers the way out rather than showing a
+    // blank rectangle. See the client below for why not handling this at all
+    // would close the app.
+    var rendererDied by remember(url) { mutableStateOf(false) }
+
     // Whether clearance existed *before* the user got here. If it did, its
     // presence proves nothing — the request 403'd while holding it, so it was
     // stale or rejected — and auto-finishing on it would bounce straight back to
@@ -94,7 +103,27 @@ internal fun ChallengeWebViewScreen(
         // Keeps navigation inside this WebView. Without a client set, a redirect
         // can be handed to the system browser — where the user would solve the
         // challenge into Chrome's cookie store, which this app cannot read.
-        view.webViewClient = WebViewClient()
+        //
+        // And it answers for a dead renderer. That runs in its own sandboxed
+        // process; if it dies and nothing claims to have handled it, Android
+        // kills the app — with no Java exception, so CrashLog never sees it and
+        // the user just watches the app vanish. Returning true keeps us alive.
+        view.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(
+                v: WebView?,
+                detail: RenderProcessGoneDetail?
+            ): Boolean {
+                rendererDied = true
+                // Detached before destroying: a WebView still in the hierarchy
+                // must not be destroyed, and the composition is about to stop
+                // drawing it anyway.
+                runCatching {
+                    (v?.parent as? ViewGroup)?.removeView(v)
+                    v?.destroy()
+                }
+                return true
+            }
+        }
         view.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(v: WebView?, newProgress: Int) {
                 progress = newProgress
@@ -109,9 +138,12 @@ internal fun ChallengeWebViewScreen(
     // reasoning as the interceptor, which learned it the hard way.
     LaunchedEffect(url, hadClearance) {
         if (hadClearance) return@LaunchedEffect
-        while (!hasClearanceCookie(url)) {
+        // A dead renderer will never write the cookie, so the poll has to end
+        // rather than spin for as long as the screen is open.
+        while (!rendererDied && !hasClearanceCookie(url)) {
             delay(POLL_MS)
         }
+        if (rendererDied) return@LaunchedEffect
         // Flush before handing back: the cookie store is written asynchronously,
         // and the retry is about to read it from another process-level store.
         runCatching { CookieManager.getInstance().flush() }
@@ -130,15 +162,21 @@ internal fun ChallengeWebViewScreen(
     DisposableEffect(webView) {
         onDispose {
             runCatching { CookieManager.getInstance().flush() }
-            runCatching {
-                webView.stopLoading()
-                webView.destroy()
+            // Already destroyed on the renderer-death path. Destroying twice is
+            // not something to rely on being harmless.
+            if (!rendererDied) {
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
             }
         }
     }
 
     BackHandler {
-        if (webView.canGoBack()) webView.goBack() else onBack()
+        // canGoBack() on a destroyed WebView is exactly the kind of call this
+        // whole change exists to avoid making.
+        if (!rendererDied && webView.canGoBack()) webView.goBack() else onBack()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -176,20 +214,33 @@ internal fun ChallengeWebViewScreen(
         }
 
         Text(
-            text = if (solved) "Challenge solved \u2014 returning\u2026"
-            else "Complete the check below. This closes by itself once it passes.",
+            text = when {
+                rendererDied -> "The browser view stopped unexpectedly. Go " +
+                    "back and try again."
+                solved -> "Challenge solved \u2014 returning\u2026"
+                else -> "Complete the check below. This closes by itself once " +
+                    "it passes."
+            },
             style = MaterialTheme.typography.bodySmall,
-            color = if (solved) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = when {
+                rendererDied -> MaterialTheme.colorScheme.error
+                solved -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
         )
 
-        AndroidView(
-            factory = { webView },
-            modifier = Modifier.fillMaxSize()
-        )
+        // Dropped from the tree once the renderer is gone. The view has been
+        // destroyed by then, and handing a destroyed WebView to AndroidView is
+        // the second way this could take the app down.
+        if (!rendererDied) {
+            AndroidView(
+                factory = { webView },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 

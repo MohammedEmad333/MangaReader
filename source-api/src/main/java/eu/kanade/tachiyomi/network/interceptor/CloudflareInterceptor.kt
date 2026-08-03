@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import eu.kanade.tachiyomi.network.AndroidCookieJar
@@ -14,6 +15,7 @@ import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -44,6 +46,16 @@ import java.util.concurrent.atomic.AtomicReference
  * and fail with the original 403 so the error message stays honest; the browse
  * screen turns that into an "Open in WebView" button, which is where a human
  * answers it.
+ *
+ * **A dead renderer fails this interception instead of killing the app.** The
+ * WebView's renderer is a separate process; if it dies and the client does not
+ * say it has handled that, Android kills the host process. There is no Java
+ * exception in ours, so nothing can catch it and CrashLog cannot see it — the
+ * app just closes, which is the worst diagnostic profile in this codebase. The
+ * client below answers, the wait stops early, and the challenge reports the
+ * same failure it would for any other unsolved challenge: the original 403.
+ * Not reproduced — this is read off the code — but every Cloudflare source
+ * goes through here.
  */
 class CloudflareInterceptor(
     private val context: Context,
@@ -116,6 +128,12 @@ class CloudflareInterceptor(
         // twenty separate thirty-second waits for one challenge. Queued behind
         // the lock, the first solves it and the rest find the cookie already
         // there and return immediately.
+        //
+        // The lock is a `synchronized` block rather than a hand-held monitor
+        // precisely so no failure path has to remember to release it — the
+        // renderer-death path included, which returns normally, and any throw,
+        // which unwinds through it. Anything added here should keep that
+        // property rather than reintroduce a release that can be missed.
         return synchronized(locks.getOrPut(origin.host) { Any() }) {
             if (hasClearance(origin)) true else runChallenge(request, origin)
         }
@@ -137,6 +155,13 @@ class CloudflareInterceptor(
         val webView = AtomicReference<WebView?>(null)
         val solvedWith = AtomicReference<String?>(null)
 
+        // Set from onRenderProcessGone below, read by the wait loop.
+        //
+        // Without this the renderer can die two seconds in and the loop still
+        // polls a cookie that is never coming for the remaining twenty-eight,
+        // holding the host lock the whole time.
+        val rendererGone = AtomicBoolean(false)
+
         handler.post {
             runCatching {
                 val view = WebView(context)
@@ -150,10 +175,30 @@ class CloudflareInterceptor(
                     setAcceptCookie(true)
                     setAcceptThirdPartyCookies(view, true)
                 }
-                // A plain client keeps navigation inside the WebView; without one
-                // a redirect can be handed off to the system browser, where the
+                // A client keeps navigation inside the WebView; without one a
+                // redirect can be handed off to the system browser, where the
                 // cookie would land somewhere this app can't read.
-                view.webViewClient = WebViewClient()
+                //
+                // It also has to survive the renderer dying. The renderer is a
+                // separate sandboxed process, and when it goes — OOM, a Chrome
+                // bug, the system reclaiming it — the framework asks the client
+                // what to do. A client that does not answer means Android kills
+                // THIS process: no Java exception, nothing for CrashLog to
+                // catch, the app simply closes. Answering `true` says we have
+                // handled it and keeps the app alive.
+                view.webViewClient = object : WebViewClient() {
+                    override fun onRenderProcessGone(
+                        v: WebView?,
+                        detail: RenderProcessGoneDetail?
+                    ): Boolean {
+                        rendererGone.set(true)
+                        // Cleared before destroying so the cleanup block below
+                        // cannot touch a view that is already gone.
+                        webView.set(null)
+                        runCatching { v?.destroy() }
+                        return true
+                    }
+                }
                 view.loadUrl(request.url.toString())
             }
         }
@@ -161,6 +206,9 @@ class CloudflareInterceptor(
         val deadline = System.currentTimeMillis() + TIMEOUT_MS
         var solved = false
         while (System.currentTimeMillis() < deadline) {
+            // Checked before the cookie: once the renderer is gone nothing is
+            // going to write one, so the remaining wait is pure dead time.
+            if (rendererGone.get()) break
             if (hasClearance(origin)) {
                 solved = true
                 break
