@@ -408,6 +408,19 @@ internal fun EmbedWebViewScreen(
                     // Players are the main reason this exists, and many will not
                     // start without it.
                     settings.mediaPlaybackRequiresUserGesture = false
+                    // AIMED, not hopeful. The DOM branch is exhausted: the
+                    // element fills the viewport (rect 0,0 392x680 against a
+                    // 392x680 viewport), opacity 1, visible, display block,
+                    // decoding 341 frames with none dropped. Nothing in the page
+                    // explains a white screen, so what is left is the WebView
+                    // not compositing the video's own layer.
+                    //
+                    // Inline HTML5 video needs a hardware layer; without one the
+                    // audio plays and the picture never reaches the screen,
+                    // which is exactly the reading. Nothing in this app disables
+                    // acceleration — no setLayerType anywhere, manifest default
+                    // on — so making it explicit is the one lever left here.
+                    setLayerType(View.LAYER_TYPE_HARDWARE, null)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webViewClient = object : WebViewClient() {
                         override fun onRenderProcessGone(
