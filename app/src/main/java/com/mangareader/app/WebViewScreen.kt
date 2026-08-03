@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.annotation.SuppressLint
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
@@ -8,6 +9,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -293,11 +297,42 @@ internal fun EmbedWebViewScreen(
     onBack: () -> Unit
 ) {
     var progress by remember { mutableIntStateOf(0) }
-    BackHandler { onBack() }
+    // The page's own title, shown in the bar. A blank page WITH a title means
+    // the page loaded and the problem is rendering; a blank page with no title
+    // means it never arrived. Cheap, and it separates two very different
+    // failures without another release.
+    var pageTitle by remember { mutableStateOf<String?>(null) }
+    // The view a player hands over when it asks for HTML5 fullscreen.
+    var fullscreenView by remember { mutableStateOf<View?>(null) }
+    // Held so leaving fullscreen can TELL THE PAGE. Dropping the view without
+    // calling this leaves the player believing it is still fullscreen, and the
+    // next tap on its own exit button does nothing.
+    var fullscreenExit by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
 
+    // Back leaves fullscreen first, then the screen. Without the first step the
+    // only way out of a fullscreen video is to leave the player entirely.
+    fun leaveFullscreen() {
+        fullscreenExit?.onCustomViewHidden()
+        fullscreenExit = null
+        fullscreenView = null
+    }
+    BackHandler { if (fullscreenView != null) leaveFullscreen() else onBack() }
+
+    // OVERLAID, NOT SWAPPED. Returning early here and drawing only the
+    // fullscreen view would take the WebView out of the composition, and a
+    // WebView that leaves the tree stops playing — the video would die at the
+    // moment it went fullscreen. So the page stays mounted underneath and the
+    // handed-over view is drawn on top of it.
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Player", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            title = {
+                Text(
+                    pageTitle?.takeIf { it.isNotBlank() } ?: "Player",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
             navigationIcon = { BackButton(onBack) }
         )
         if (progress in 1..99) {
@@ -307,7 +342,10 @@ internal fun EmbedWebViewScreen(
             )
         }
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            // weight, not fillMaxSize: as the last child of a Column that
+            // already spent height on the bar, fillMaxSize asks for the whole
+            // screen and the bottom of the page falls off it.
+            modifier = Modifier.fillMaxWidth().weight(1f),
             factory = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
@@ -334,10 +372,43 @@ internal fun EmbedWebViewScreen(
                         override fun onProgressChanged(v: WebView?, newProgress: Int) {
                             progress = newProgress
                         }
+
+                        override fun onReceivedTitle(v: WebView?, title: String?) {
+                            pageTitle = title
+                        }
+
+                        // WITHOUT THIS THE PAGE GOES BLANK AND THE VIDEO PLAYS
+                        // ANYWAY. A player asking for HTML5 fullscreen pulls its
+                        // video out of the document and hands it here; a
+                        // WebChromeClient that does not implement this drops it,
+                        // so the page renders empty while the media keeps
+                        // streaming. That is exactly what 0.177 did — a white
+                        // screen at 1MB/s.
+                        override fun onShowCustomView(
+                            view: View?,
+                            callback: CustomViewCallback?
+                        ) {
+                            fullscreenExit = callback
+                            fullscreenView = view
+                        }
+
+                        override fun onHideCustomView() {
+                            fullscreenExit = null
+                            fullscreenView = null
+                        }
                     }
                     loadUrl(url, mapOf("Referer" to referer))
                 }
             }
         )
+    }
+
+    val handedOver = fullscreenView
+    if (handedOver != null) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            factory = { handedOver }
+        )
+    }
     }
 }
