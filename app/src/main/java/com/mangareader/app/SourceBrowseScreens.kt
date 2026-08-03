@@ -918,7 +918,18 @@ internal fun SeriesScreen(
                     // Says so when rows are hidden. A filtered list that just
                     // reports a smaller number reads as chapters having gone
                     // missing, which is the report this would otherwise produce.
+                    //
+                    // And zero is words, not a number. "0 chapters" reads as a
+                    // count this app measured, which it did not: an extension
+                    // whose selector matched nothing returns the same empty list
+                    // as a series that genuinely has none, because Jsoup's
+                    // select() yields an empty set rather than throwing. Saying
+                    // the source returned nothing claims only what is known.
+                    // The honest half — telling those two apart at all — needs
+                    // the source layer to record that a fetch completed, and is
+                    // still open on its own card.
                     when {
+                        chapters.isEmpty() -> "This source returned no chapters"
                         visible.size != chapters.size ->
                             "${visible.size} of ${chapters.size} chapters"
                         chapters.size == 1 -> "1 chapter"
