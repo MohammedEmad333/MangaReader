@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -301,6 +302,8 @@ private fun hostOf(url: String): String =
 internal fun EmbedWebViewScreen(
     url: String,
     referer: String,
+    /** Media urls scraped out of the player, for an external app to open. */
+    onMediaFound: (List<String>) -> Unit,
     onBack: () -> Unit
 ) {
     var progress by remember { mutableIntStateOf(0) }
@@ -317,7 +320,6 @@ internal fun EmbedWebViewScreen(
     var fullscreenExit by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     // The live WebView, kept so the DOM can be interrogated.
     var webView by remember { mutableStateOf<WebView?>(null) }
-    var domNote by remember { mutableStateOf("reading the page\u2026") }
 
     // Back leaves fullscreen first, then the screen. Without the first step the
     // only way out of a fullscreen video is to leave the player entirely.
@@ -333,35 +335,6 @@ internal fun EmbedWebViewScreen(
     // WebView that leaves the tree stops playing — the video would die at the
     // moment it went fullscreen. So the page stays mounted underneath and the
     // handed-over view is drawn on top of it.
-    // ASKS THE PAGE WHAT IT HAS, rather than guessing again.
-    //
-    // 0.177 showed a blank page while streaming at 1MB/s and the cause was
-    // assumed to be HTML5 fullscreen; 0.178 implemented that and the page was
-    // still blank, still streaming, now with a title. Two guesses, both fitting
-    // the symptom, neither checked. So this reports the facts a fix has to be
-    // built on: whether a <video> exists at all, whether it is playing, the
-    // media's own dimensions, and the size the page has given it on screen.
-    //
-    // videoWidth > 0 with clientHeight == 0 is a LAYOUT problem. currentTime
-    // advancing while the box has size is a RENDERING one. No <video> at all
-    // means something else is playing the media and none of the work so far
-    // applies.
-    LaunchedEffect(webView) {
-        val view = webView ?: return@LaunchedEffect
-        while (true) {
-            delay(1500)
-            view.evaluateJavascript(VIDEO_PROBE_JS) { raw ->
-                domNote = raw.removeSurrounding("\"")
-                    .replace("\\n", "\n")
-                    .replace("\\\"", "\"")
-                    // evaluateJavascript JSON-escapes '<' as \u003C, which
-                    // showed up literally in "no \u003Cvideo> in the DOM".
-                    .replace("\\u003C", "<", ignoreCase = true)
-                    .replace("\\u003E", ">", ignoreCase = true)
-            }
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -384,13 +357,24 @@ internal fun EmbedWebViewScreen(
                 // should be permitted; if it is refused, the console message
                 // lands in the strip below and says why.
                 IconButton(onClick = {
-                    webView?.evaluateJavascript(PLAY_JS) { result ->
-                        if (result != null && result != "null" && result != "\"\"") {
-                            domNote = result.removeSurrounding("\"")
-                        }
-                    }
+                    webView?.evaluateJavascript(PLAY_JS, null)
                 }) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+                }
+                IconButton(onClick = {
+                    webView?.evaluateJavascript(MEDIA_URLS_JS) { raw ->
+                        val found = raw.removeSurrounding("\"")
+                            .replace("\\n", "\n")
+                            .replace("\\/", "/")
+                            .replace("\\u003C", "<", ignoreCase = true)
+                            .split("\n")
+                            .filter { it.isNotBlank() }
+                            .map { it.substringAfter('|') }
+                            .distinct()
+                        onMediaFound(found)
+                    }
+                }) {
+                    Icon(Icons.Default.FileDownload, contentDescription = "Get video link")
                 }
             }
         )
@@ -404,11 +388,7 @@ internal fun EmbedWebViewScreen(
             // weight, not fillMaxSize: as the last child of a Column that
             // already spent height on the bar, fillMaxSize asks for the whole
             // screen and the bottom of the page falls off it.
-            // BLACK behind the transparent WebView. If the video is composited
-            // back there it shows; if there is no surface at all the screen goes
-            // black rather than white, and the two readings are distinguishable
-            // without another release.
-            modifier = Modifier.fillMaxWidth().weight(1f).background(Color.Black),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             factory = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
@@ -418,25 +398,6 @@ internal fun EmbedWebViewScreen(
                     // Players are the main reason this exists, and many will not
                     // start without it.
                     settings.mediaPlaybackRequiresUserGesture = false
-                    // THE LAST THEORY, and the only one that explains WHITE
-                    // rather than black.
-                    //
-                    // WebView can composite video on a surface placed BEHIND the
-                    // page, visible through a transparent hole where the <video>
-                    // sits. This page sets an opaque background on <html>
-                    // (class bg-white — elementFromPoint named it), which paints
-                    // straight over that hole. Audio plays, frames climb, the
-                    // element measures correctly and nothing hides it, and the
-                    // screen shows the page's own white.
-                    //
-                    // So: make the WebView itself transparent, and clear the
-                    // page's backgrounds once it loads. If the video is behind,
-                    // it appears. If the screen goes BLACK instead, the hole
-                    // theory is wrong and the surface is simply not there — a
-                    // useful answer either way, and the two are distinguishable
-                    // at a glance.
-                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-
                     // NO setLayerType HERE, AND THAT IS DELIBERATE. 0.183 set
                     // LAYER_TYPE_HARDWARE on the reasoning that inline video
                     // needs a hardware layer; frames went from 341 to 1352 and
@@ -465,10 +426,6 @@ internal fun EmbedWebViewScreen(
                         ): Boolean {
                             val target = request?.url?.host ?: return false
                             return allowedHost != null && target != allowedHost
-                        }
-
-                        override fun onPageFinished(v: WebView?, finishedUrl: String?) {
-                            v?.evaluateJavascript(CLEAR_BACKGROUND_JS, null)
                         }
 
                         override fun onRenderProcessGone(
@@ -520,14 +477,6 @@ internal fun EmbedWebViewScreen(
                 }.also { webView = it }
             }
         )
-        // Under the page, not over it: a diagnostic that covers the thing being
-        // diagnosed is its own bug.
-        Text(
-            domNote,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.fillMaxWidth().padding(8.dp)
-        )
     }
 
     val handedOver = fullscreenView
@@ -540,62 +489,7 @@ internal fun EmbedWebViewScreen(
     }
 }
 
-/**
- * Reports what the page's <video> elements are doing.
- *
- * Written as one expression returning a string, because evaluateJavascript
- * hands back a JSON-encoded value and a string is the one shape that survives
- * that legibly.
- */
-private val VIDEO_PROBE_JS = """
-    (function () {
-      var note = document.getElementById('yomu-note');
-      var extra = note ? note.textContent + '\n' : '';
-      var v = document.querySelectorAll('video');
-      if (!v.length) return extra + 'no video element in the DOM';
 
-      // EVERY video, not just the first. A page can carry an ad's video and the
-      // content's, and reporting only v[0] would describe the wrong one without
-      // ever saying so.
-      var lines = [];
-      for (var i = 0; i < v.length; i++) {
-        var e = v[i];
-        var r = e.getBoundingClientRect();
-        var q = e.getVideoPlaybackQuality ? e.getVideoPlaybackQuality() : null;
-        lines.push(i + ': ' + e.videoWidth + 'x' + e.videoHeight +
-          ' rect ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-          ' t=' + (e.currentTime || 0).toFixed(1) +
-          (e.paused ? ' PAUSED' : ' play') +
-          ' f=' + (q ? q.totalVideoFrames : -1));
-      }
-
-      // THE ANCESTOR CHAIN. getComputedStyle(video).opacity is the element's OWN
-      // opacity and says nothing about a parent set to 0 — the same for
-      // transform, filter and clip. An ancestor can hide a perfectly healthy
-      // video and every reading taken so far would still look correct.
-      var hidden = [];
-      var n = v[0];
-      while (n && n.nodeType === 1 && n.tagName !== 'HTML') {
-        var c = window.getComputedStyle(n);
-        var why = [];
-        if (parseFloat(c.opacity) < 1) why.push('opacity=' + c.opacity);
-        if (c.visibility !== 'visible') why.push('vis=' + c.visibility);
-        if (c.transform && c.transform !== 'none') why.push('transform');
-        if (c.filter && c.filter !== 'none') why.push('filter=' + c.filter);
-        if (c.clipPath && c.clipPath !== 'none') why.push('clip');
-        if (parseInt(c.zIndex, 10) < 0) why.push('z=' + c.zIndex);
-        if (why.length) {
-          hidden.push(n.tagName + (n.className ? '.' + String(n.className).split(' ')[0] : '') +
-            ' ' + why.join(' '));
-        }
-        n = n.parentElement;
-      }
-
-      return extra + 'videos=' + v.length + '\n' + lines.join('\n') + '\n' +
-        (hidden.length ? 'ancestors hiding it:\n' + hidden.join('\n')
-                       : 'no ancestor hides it');
-    })()
-""".trimIndent()
 
 /**
  * Starts the first <video> and reports what happened.
@@ -625,25 +519,36 @@ private val PLAY_JS = """
 """.trimIndent()
 
 /**
- * Strips opaque backgrounds so a video composited behind the page can show.
+ * Pulls the media URL out of the player, rather than trying to render it.
  *
- * Only the document-level backgrounds, and only backgrounds — nothing that would
- * move or resize anything. If this reveals the picture, the page was painting
- * over it; if the screen turns black, there was no surface behind to reveal and
- * the theory is dead.
+ * Ten releases went into making the video DRAW in this WebView and it never
+ * did — audio plays, frames decode, nothing reaches the screen. But the point
+ * was never to render it here; it was to watch it. The element knows its own
+ * source, and the browser keeps a record of every file the player fetched, so
+ * the URL is available even though the picture is not.
+ *
+ * TWO SOURCES, because one of them often is not usable:
+ *   - currentSrc: what the element is playing. If it is an ordinary https url,
+ *     any player can open it.
+ *   - performance resource entries: every media file actually requested. This
+ *     is what saves the case where currentSrc is a `blob:` — Media Source
+ *     Extensions feeds the element from JavaScript, and a blob url means
+ *     nothing outside this page. The real segments or manifest still show up
+ *     here.
  */
-private val CLEAR_BACKGROUND_JS = """
+private val MEDIA_URLS_JS = """
     (function () {
-      ['html', 'body'].forEach(function (sel) {
-        var e = document.querySelector(sel);
-        if (e) {
-          e.style.setProperty('background', 'transparent', 'important');
-          e.style.setProperty('background-color', 'transparent', 'important');
-        }
-      });
+      var out = [];
       var v = document.querySelector('video');
-      if (v && v.parentElement) {
-        v.parentElement.style.setProperty('background', 'transparent', 'important');
-      }
+      if (v && v.currentSrc) out.push('src|' + v.currentSrc);
+      try {
+        var res = performance.getEntriesByType('resource');
+        for (var i = 0; i < res.length; i++) {
+          var u = res[i].name;
+          if (/\.(m3u8|mpd|mp4|webm|mkv|ts)(\?|$)/i.test(u)) out.push('net|' + u);
+        }
+      } catch (e) {}
+      // Longest first: a manifest or a whole file beats one segment of it.
+      return out.filter(function (x, i) { return out.indexOf(x) === i; }).join('\n');
     })()
 """.trimIndent()
