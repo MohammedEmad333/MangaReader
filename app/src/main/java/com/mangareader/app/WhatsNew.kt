@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 165,
+            name = "0.165",
+            header = "The drag handle keeps clear of the screen edges",
+            body = "It used to run right to the top and bottom of the "  +
+                "screen. That looked wrong, and the bottom of it sat in the "  +
+                "same strip as the system back and home gestures \u2014 so "  +
+                "the end of a drag was competing with them.\n\nPull to "  +
+                "refresh is back on Browse as well.",
+        ),
+        ReleaseNote(
             code = 164,
             name = "0.164",
             header = "The drag handle reaches the end of a grid",
