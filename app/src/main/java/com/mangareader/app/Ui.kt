@@ -517,9 +517,24 @@ internal fun ListScrollHandle(
     LaunchedEffect(seekTo) {
         if (seekTo >= 0) state.scrollToItem(seekTo)
     }
+    // visibleItemsInfo.size counts PARTIALLY visible items too, and that was the
+    // bug behind every "the handle stops short" report: `span = totalItems -
+    // visibleItems` treats a row clipped by the viewport edge as one that fits,
+    // so the maximum index it can seek to is short by however many are clipped —
+    // one at each end, usually. Measured on device: thumb hard against the
+    // bottom of its track, list still 20% short of the last row.
+    //
+    // Counting only the ones that fit ENTIRELY gives the true capacity, and the
+    // true capacity is what makes `totalItems - visibleItems` the index that
+    // puts the last item flush with the bottom.
+    val info = state.layoutInfo
+    val fullyVisible = info.visibleItemsInfo.count {
+        it.offset >= info.viewportStartOffset && it.offset + it.size <= info.viewportEndOffset
+    }.coerceAtLeast(1)
+
     ScrollHandle(
         firstVisibleIndex = state.firstVisibleItemIndex,
-        visibleItems = state.layoutInfo.visibleItemsInfo.size,
+        visibleItems = fullyVisible,
         totalItems = totalItems,
         isScrolling = state.isScrollInProgress,
         onSeek = { seekTo = it },
@@ -558,7 +573,18 @@ internal fun GridScrollHandle(
     // this is the only place the real count exists. Coerced because an empty
     // or not-yet-measured grid reports nothing and a zero would divide.
     val columns = ((info.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1).coerceAtLeast(1)
-    val visibleRows = info.visibleItemsInfo.map { it.row }.distinct().size.coerceAtLeast(1)
+    // Rows that fit ENTIRELY, not rows with any pixel on screen. A row clipped
+    // by the viewport edge counted as one that fits, which made the seekable
+    // span short by a row at each end — see ListScrollHandle for the measurement.
+    val visibleRows = info.visibleItemsInfo
+        .filter {
+            it.offset.y >= info.viewportStartOffset &&
+                it.offset.y + it.size.height <= info.viewportEndOffset
+        }
+        .map { it.row }
+        .distinct()
+        .size
+        .coerceAtLeast(1)
     val totalRows = (totalItems + columns - 1) / columns
 
     var seekRow by remember { mutableIntStateOf(-1) }
@@ -622,6 +648,14 @@ internal fun ScrollHandle(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
+            // System bars FIRST, then the fixed inset.
+            //
+            // 0.165 used the fixed inset alone and it was not enough on the
+            // series screen, whose Box runs edge to edge behind the status bar
+            // so the cover art can — so 24dp from the top of that Box is still
+            // level with the clock. Screens that already sit inside the insets
+            // consume them, so this adds nothing there and does not double up.
+            .windowInsetsPadding(WindowInsets.systemBars)
             .padding(vertical = HANDLE_EDGE_INSET)
             .width(HANDLE_WIDTH)
     ) {
