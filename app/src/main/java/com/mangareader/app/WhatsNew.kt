@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 155,
+            name = "0.155",
+            header = "A chapter stops asking a host that is not answering",
+            body = "A chapter whose images all live on one unreachable "  +
+                "server used to try every page in turn, waiting the full "  +
+                "timeout each time \u2014 eighteen minutes of nothing for a "  +
+                "thirty-page chapter, with no message until the end.\n\nIt "  +
+                "now gives up after a few failures in a row and tells you "  +
+                "which server would not answer. A page failing here and "  +
+                "there among working ones does not trigger it.",
+        ),
+        ReleaseNote(
             code = 154,
             name = "0.154",
             header = "Resume works when every chapter is on hold",
