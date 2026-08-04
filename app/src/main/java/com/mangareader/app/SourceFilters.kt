@@ -55,6 +55,7 @@ import eu.kanade.tachiyomi.source.model.Filter
  * something this doesn't handle; a gap is better than a control that does
  * nothing.
  */
+
 @Composable
 internal fun SourceFilterDialog(
     source: Source,
@@ -76,19 +77,18 @@ internal fun SourceFilterDialog(
                 if (adapter == null) {
                     Text("This source has no filters.")
                 } else {
-                    // Read inside key() so bumping the counter redraws every row
-                    // against the objects' current state. The list is read here
-                    // rather than captured above because Reset replaces it.
                     val filters = adapter.filterList
                     if (filters.isEmpty()) {
                         Text("This source has no filters.")
                     } else {
                         filters.forEach { filter ->
                             if (filter is Filter.Text) {
-                                FilterEntry(filter, 0) { revision++ }
+                                // Text fields keep their own local state so the IME works.
+                                // revision is passed in so Reset can re-initialise them.
+                                FilterEntry(filter, 0, revision) { revision++ }
                             } else {
                                 key(revision) {
-                                    FilterEntry(filter, 0) { revision++ }
+                                    FilterEntry(filter, 0, revision) { revision++ }
                                 }
                             }
                         }
@@ -109,16 +109,19 @@ internal fun SourceFilterDialog(
     )
 }
 
-
 /**
  * One filter, and its children if it has any.
  *
- * [depth] only drives indentation. Groups nest one level in practice, but the
- * recursion costs nothing and a source that nests further renders correctly
- * instead of flattening.
+ * @param revision Bumped by the dialog on Reset. Text fields use it to re-sync
+ *                 their local state with the (possibly reset) filter object.
  */
 @Composable
-private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
+private fun FilterEntry(
+    filter: Filter<*>,
+    depth: Int,
+    revision: Int,
+    onChange: () -> Unit
+) {
     val indent = (depth * 12).dp
 
     when (filter) {
@@ -151,9 +154,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
             Text(filter.name, style = MaterialTheme.typography.bodyMedium)
         }
 
-        // Three states, one tap each: ignored, include, exclude. The glyph
-        // carries the meaning because there is no tri-state checkbox in
-        // material3 and a checkbox with a third value would read as broken.
         is Filter.TriState -> Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -181,18 +181,27 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
             Text(filter.name, style = MaterialTheme.typography.bodyMedium)
         }
 
-        is Filter.Text -> OutlinedTextField(
-            value = filter.state,
-            onValueChange = {
-                filter.state = it
-                onChange()
-            },
-            label = { Text(filter.name) },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = indent, top = 4.dp, bottom = 4.dp)
-        )
+        is Filter.Text -> {
+            // Local Compose state is required for BasicTextField/OutlinedTextField
+            // to display IME input correctly.  Keying by (filter, revision) means
+            // Reset re-initialises the field without wrapping the whole row in
+            // key(revision) (which would destroy focus on every keystroke).
+            var text by remember(filter, revision) { mutableStateOf(filter.state) }
+            OutlinedTextField(
+                value = text,
+                onValueChange = {
+                    text = it
+                    filter.state = it
+                    // Intentionally NOT calling onChange() — bumping revision here
+                    // would recreate the TextField node and drop the keyboard focus.
+                },
+                label = { Text(filter.name) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = indent, top = 4.dp, bottom = 4.dp)
+            )
+        }
 
         is Filter.Select<*> -> {
             Text(
@@ -200,8 +209,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(start = indent, top = 8.dp, bottom = 4.dp)
             )
-            // Scrolls rather than wraps: FlowRow is still experimental on this
-            // Compose version, same as the genre chips and the reader's sheet.
             Row(
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
@@ -234,9 +241,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            // Tapping the active row flips direction; tapping a
-                            // different one selects it descending, which is what
-                            // "sort by this" almost always means.
                             filter.state = if (active) {
                                 Filter.Sort.Selection(index, !(selection?.ascending ?: false))
                             } else {
@@ -266,13 +270,15 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(start = indent, top = 12.dp, bottom = 4.dp)
             )
-            // A group's state is its children. They're declared as List<V>, so
-            // the type has to be recovered before they can be drawn.
             (filter.state as? List<*>)
                 ?.filterIsInstance<Filter<*>>()
-                ?.forEach { child -> FilterEntry(child, depth + 1, onChange) }
+                ?.forEach { child ->
+                    FilterEntry(child, depth + 1, revision, onChange)
+                }
         }
 
         else -> Unit
     }
 }
+ 
+        
