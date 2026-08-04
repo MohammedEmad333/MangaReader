@@ -81,15 +81,19 @@ internal fun SourceFilterDialog(
                     // rather than captured above because Reset replaces it.
                     key(revision) {
                         val filters = adapter.filterList
-                        if (filters.isEmpty()) {
-                            Text("This source has no filters.")
-                        } else {
-                            filters.forEach { filter ->
-                                FilterEntry(filter, 0) { revision++ }
-                            }
-                        }
-                    }
-                }
+if (filters.isEmpty()) {
+    Text("This source has no filters.")
+} else {
+    filters.forEach { filter ->
+        if (filter is Filter.Text) {
+            FilterEntry(filter, 0) { revision++ }
+        } else {
+            key(revision) {
+                FilterEntry(filter, 0) { revision++ }
+            }
+        }
+    }
+}
             }
         },
         confirmButton = { Button(onClick = onApply) { Text("Apply") } },
