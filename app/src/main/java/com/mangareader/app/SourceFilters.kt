@@ -93,6 +93,7 @@ if (filters.isEmpty()) {
         }
     }
 }
+                }
         },
         confirmButton = { Button(onClick = onApply) { Text("Apply") } },
         dismissButton = {
