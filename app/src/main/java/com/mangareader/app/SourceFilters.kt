@@ -79,8 +79,7 @@ internal fun SourceFilterDialog(
                     // Read inside key() so bumping the counter redraws every row
                     // against the objects' current state. The list is read here
                     // rather than captured above because Reset replaces it.
-                    key(revision) {
-                        val filters = adapter.filterList
+                    val filters = adapter.filterList
 if (filters.isEmpty()) {
     Text("This source has no filters.")
 } else {
@@ -94,7 +93,6 @@ if (filters.isEmpty()) {
         }
     }
 }
-            }
         },
         confirmButton = { Button(onClick = onApply) { Text("Apply") } },
         dismissButton = {
