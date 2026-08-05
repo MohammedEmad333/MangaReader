@@ -25,6 +25,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -181,18 +182,23 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, onChange: () -> Unit) {
             Text(filter.name, style = MaterialTheme.typography.bodyMedium)
         }
 
-        is Filter.Text -> OutlinedTextField(
-            value = filter.state,
-            onValueChange = {
-                filter.state = it
-                onChange()
-            },
-            label = { Text(filter.name) },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = indent, top = 4.dp, bottom = 4.dp)
-        )
+        is Filter.Text -> {
+    var text by remember(filter) { mutableStateOf(filter.state) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            filter.state = it
+            onChange()
+        },
+        label = { Text(filter.name) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = indent, top = 4.dp, bottom = 4.dp)
+    )
+        }
+        
 
         is Filter.Select<*> -> {
             Text(
