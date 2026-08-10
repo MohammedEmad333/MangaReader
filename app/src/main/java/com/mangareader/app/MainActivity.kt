@@ -32,12 +32,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.History as HistoryIcon
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -1624,13 +1622,13 @@ fun YomuApp() {
                         // glyph and stays the same in every theme; a vector here
                         // is tinted by NavigationBarItem from the scheme, so the
                         // bar picks up the theme's colour the way SY's does.
-                        icon = { Icon(Icons.Filled.CollectionsBookmark, contentDescription = null) }
+                        icon = { Icon(Icons.Filled.Bookmark, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 1,
                         onClick = { currentTab = 1 },
                         label = { NavLabel("Browse") },
-                        icon = { Icon(Icons.Filled.Explore, contentDescription = null) }
+                        icon = { Icon(Icons.Filled.Search, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 2,
@@ -1639,7 +1637,7 @@ fun YomuApp() {
                             history = History.list(context)
                         },
                         label = { NavLabel("History") },
-                        icon = { Icon(HistoryIcon, contentDescription = null) }
+                        icon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 3,
@@ -1651,7 +1649,7 @@ fun YomuApp() {
                         selected = currentTab == 4,
                         onClick = { currentTab = 4 },
                         label = { NavLabel("More") },
-                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = null) }
+                        icon = { Icon(Icons.Filled.MoreVert, contentDescription = null) }
                     )
                 }
             }

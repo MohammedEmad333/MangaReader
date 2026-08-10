@@ -33,13 +33,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 // PullToRefreshBox lives in a SUB-PACKAGE of material3. The wildcard above does
 // NOT reach it — that is exactly the 0.98 CI failure.
@@ -298,7 +297,7 @@ internal fun MoreTab(
         // Both switches read the same key, and this tab is disposed while Settings
         // is open, so the one here re-reads on the way back rather than going stale.
         ListItem(
-            leadingContent = { MoreIcon(Icons.Filled.VisibilityOff) },
+            leadingContent = { MoreIcon(Icons.Filled.Visibility) },
             headlineContent = { Text("Incognito mode") },
             supportingContent = { Text("Pause reading-history logging") },
             trailingContent = {
@@ -337,7 +336,7 @@ internal fun MoreTab(
         HorizontalDivider()
 
         ListItem(
-            leadingContent = { MoreIcon(Icons.Filled.Label) },
+            leadingContent = { MoreIcon(Icons.Filled.List) },
             headlineContent = { Text("Categories") },
             supportingContent = { Text("Create and delete library categories") },
             modifier = Modifier.clickable { showCategories = true }
@@ -357,7 +356,7 @@ internal fun MoreTab(
         HorizontalDivider()
 
         ListItem(
-            leadingContent = { MoreIcon(Icons.Filled.Info) },
+            leadingContent = { MoreIcon(Icons.Filled.Star) },
             headlineContent = { Text("About Yomu") },
             supportingContent = {
                 Text("Native Kotlin manga reader \u00b7 ${BuildConfig.VERSION_NAME}")
