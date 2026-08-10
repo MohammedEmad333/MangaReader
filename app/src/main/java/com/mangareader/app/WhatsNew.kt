@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 196,
+            name = "0.196",
+            header = "Theme picker redesign",
+            body = "The theme setting now shows a live preview of each theme and " +
+                "a System / Light / Dark toggle, matching the look you'd expect. " +
+                "Same themes and pure-black option as before, easier to see.",
+        ),
+        ReleaseNote(
             code = 195,
             name = "0.195",
             header = "Full colour themes, and a pure-black mode",
