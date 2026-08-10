@@ -32,10 +32,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 // PullToRefreshBox lives in a SUB-PACKAGE of material3. The wildcard above does
 // NOT reach it — that is exactly the 0.98 CI failure.
@@ -294,6 +298,7 @@ internal fun MoreTab(
         // Both switches read the same key, and this tab is disposed while Settings
         // is open, so the one here re-reads on the way back rather than going stale.
         ListItem(
+            leadingContent = { MoreIcon(Icons.Filled.VisibilityOff) },
             headlineContent = { Text("Incognito mode") },
             supportingContent = { Text("Pause reading-history logging") },
             trailingContent = {
@@ -312,6 +317,7 @@ internal fun MoreTab(
         val queued = DownloadQueue.items.size
         val failedDownloads = DownloadQueue.failed.size
         ListItem(
+            leadingContent = { MoreIcon(Icons.Filled.Download) },
             headlineContent = { Text("Download queue") },
             supportingContent = {
                 Text(
@@ -331,6 +337,7 @@ internal fun MoreTab(
         HorizontalDivider()
 
         ListItem(
+            leadingContent = { MoreIcon(Icons.Filled.Label) },
             headlineContent = { Text("Categories") },
             supportingContent = { Text("Create and delete library categories") },
             modifier = Modifier.clickable { showCategories = true }
@@ -342,6 +349,7 @@ internal fun MoreTab(
         // storage rows in particular were walking the whole download tree during
         // composition, on the main thread, every time this tab was opened.
         ListItem(
+            leadingContent = { MoreIcon(Icons.Filled.Settings) },
             headlineContent = { Text("Settings") },
             supportingContent = { Text("Appearance, reader, downloads, storage, privacy") },
             modifier = Modifier.clickable { onOpenSettings() }
@@ -349,6 +357,7 @@ internal fun MoreTab(
         HorizontalDivider()
 
         ListItem(
+            leadingContent = { MoreIcon(Icons.Filled.Info) },
             headlineContent = { Text("About Yomu") },
             supportingContent = {
                 Text("Native Kotlin manga reader \u00b7 ${BuildConfig.VERSION_NAME}")
@@ -579,5 +588,22 @@ internal fun SourceDialog(
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/**
+ * A leading icon for a More-tab row, tinted with the theme accent.
+ *
+ * SY's More screen colours these; Yomu's rows had no icon at all. `primary`
+ * rather than `onSurfaceVariant` on purpose — that is the part the user asked
+ * to see take the theme's colour, and it is the same accent the nav bar and the
+ * selected chip already use, so the screen reads as one palette.
+ */
+@Composable
+private fun MoreIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.primary
     )
 }
