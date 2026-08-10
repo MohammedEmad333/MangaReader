@@ -575,6 +575,7 @@ private fun LibraryEmpty(allEmpty: Boolean, modifier: Modifier = Modifier) {
  * press always starts a selection — are the same on every page and worth having
  * in one place.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryGrid(
     shown: List<LibraryEntry>,
