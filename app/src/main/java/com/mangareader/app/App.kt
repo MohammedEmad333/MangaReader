@@ -2,8 +2,11 @@ package com.mangareader.app
 
 import android.app.Application
 import android.content.Context
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.Injekt
@@ -81,6 +84,27 @@ class App : Application(), ImageLoaderFactory {
                     .newBuilder()
                     .addInterceptor(CoverHeaders.interceptor(this))
                     .build()
+            }
+            .components {
+                // Without this, Coil's default BitmapFactoryDecoder still
+                // "succeeds" on a GIF or animated WebP cover — it just decodes
+                // frame zero and stops. No error, no grey box, nothing
+                // CoverImage's failure overlay could ever catch: the cover is
+                // there and looks completely normal, it just never moves.
+                // That is the whole shape of "some series have animated
+                // pictures" — the app was never told the format could animate.
+                //
+                // ImageDecoderDecoder wraps Android's own ImageDecoder and
+                // covers GIF, animated WebP and animated HEIF in one pass, but
+                // it's API 28+ only. GifDecoder (Movie-based) is the fallback
+                // for minSdk 24..27 and only understands GIF — an animated
+                // WebP cover on API 24-27 still renders as a still frame,
+                // which is a platform ceiling, not something to chase here.
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
             }
             .build()
 }
