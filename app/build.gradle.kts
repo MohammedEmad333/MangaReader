@@ -179,6 +179,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-gif:2.7.0")
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
     implementation("me.saket.swipe:swipe:1.3.0")
     // Through the BOM rather than a hard 4.12.0 pin, and the same BOM version
