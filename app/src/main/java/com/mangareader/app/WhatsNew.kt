@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 199,
+            name = "0.199",
+            header = "Light themes get colour too, plus Tidal Wave",
+            body = "Light mode now carries each theme's colour instead of plain " +
+                "white \u2014 backgrounds, nav bar and cards all take a soft tint. " +
+                "Added a new Tidal Wave (ocean blue) theme.",
+        ),
+        ReleaseNote(
             code = 198,
             name = "0.198",
             header = "Stronger theme colours",
