@@ -476,13 +476,22 @@ internal fun LibraryTab(
             // above re-runs when it bumps, and Library.list / SeriesIndex.all /
             // Categories.list each re-read prefs and compare their cached raw
             // string on that next call, so an out-of-band change is picked up
-            // for free. The one exception is DownloadIndex, which holds a
-            // process cache with no such check — invalidated in onLibraryPull
-            // below so a series whose files were deleted with a file manager
-            // stops showing the downloaded badge. Same stale-read the Downloads
-            // pull was added to fix.
+            // for free.
+            //
+            // The download badge needs more than the index cleared, and this is
+            // where the first cut of this card got it wrong. The badge reads
+            // DownloadIndex.seriesIds, which filters records through
+            // Downloads.isComplete — and isComplete answers from its OWN
+            // completion memo. DownloadIndex.invalidate() drops the index and
+            // forces seriesIds to recompute, but the recompute calls isComplete
+            // again and gets the same cached "complete", so a series whose files
+            // were deleted with a file manager KEEPS its badge. That is the
+            // identical two-layer trap 0.162 hit on the Downloads tab.
+            // Downloads.invalidateCompletion() clears the completion and size
+            // memos AND the index — the whole point of it is "files moved or
+            // vanished out of band", which is exactly what a pull asserts.
             val onLibraryPull: () -> Unit = {
-                DownloadIndex.invalidate()
+                Downloads.invalidateCompletion()
                 localTick++
             }
             HorizontalPager(
