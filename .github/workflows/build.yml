@@ -49,17 +49,20 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        # Non-fatal: this is a convenience copy for pulling a specific commit's
+        # build, and it is subject to the account-wide Actions STORAGE quota,
+        # which rejects uploads outright when full rather than evicting old
+        # ones. The installable APK ships as a release asset below — Releases do
+        # NOT count against that quota — so a failed upload here must not take
+        # the release down with it. Before this, a full quota failed this step
+        # and every step after it was skipped, INCLUDING the release publish.
+        continue-on-error: true
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
-          # The installable APK also ships as an asset on the "latest"
-          # release below, which is what the phone actually installs from
-          # and isn't subject to this quota. This copy is only for pulling a
-          # specific commit's build without hunting through releases, so it
-          # doesn't need to survive long — the default retention (90 days,
-          # unset here previously) is what silently grew this to 357
-          # artifacts / ~3.9 GB and tripped the account's storage quota,
-          # which fails uploads outright rather than evicting anything.
+          # Short retention so this can't silently reaccumulate — the default
+          # (90 days, unset originally) is what grew this to 357 artifacts /
+          # ~3.9 GB and tripped the quota in the first place.
           retention-days: 7
 
       # R8's own account of what it did, from app/build/outputs/mapping/:
@@ -76,15 +79,17 @@ jobs:
       # how people learn to ignore warnings.
       - name: Upload R8 mapping
         if: always()
+        # Same non-fatal treatment as the APK upload above and for the same
+        # reason: a full storage quota must not fail the job or skip the
+        # release. always() still tries it on a failed build (the run that most
+        # needs the mapping), continue-on-error keeps a rejected upload from
+        # turning green into red.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: mapping-debug
           path: app/build/outputs/mapping/
           if-no-files-found: ignore
-          # Same reasoning as app-debug above: this is a live-debugging aid
-          # for a build that just failed, not something worth keeping for
-          # months. Short retention here is what keeps the fix from being
-          # temporary.
           retention-days: 7
 
       - name: Publish to "latest" release
