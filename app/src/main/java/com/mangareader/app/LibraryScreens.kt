@@ -628,6 +628,11 @@ private fun LibraryGrid(
         },
         modifier = modifier.fillMaxSize()
     ) {
+    // if / else, not two early returns from this lambda: the grid branch calls
+    // rememberRestoredGridState and the list branch rememberRestoredListState,
+    // and a remember reached on one composition and skipped on the next (which
+    // is what an early return between them would do when display flips) desyncs
+    // the slot table. Each branch keeps its own remember inside its own group.
     if (display == LibraryDisplay.LIST) {
         LazyColumn(
             // Suffixed, because list and grid measure position in different
@@ -694,8 +699,7 @@ private fun LibraryGrid(
                 }
             }
         }
-        return@PullToRefreshBox
-    }
+    } else {
 
     // Hoisted out of the LazyVerticalGrid call so the scroll handle beside it
     // reads the same state object. Two would give the handle a state that never
@@ -831,6 +835,7 @@ private fun LibraryGrid(
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
+    } // else (grid)
     } // PullToRefreshBox
 }
 
