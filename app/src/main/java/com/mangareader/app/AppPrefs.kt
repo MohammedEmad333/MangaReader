@@ -47,16 +47,13 @@ internal enum class ThemeMode(val key: String, val label: String) {
 /**
  * The accent the whole app is tinted with.
  *
- * Each entry carries **two** colours, and that is the point of the enum rather
- * than a stored hex. A single colour cannot serve both themes: an accent light
- * enough to read on a dark surface is invisible on a white one, and vice versa.
- * The dark values sit around Material 3's tone 80 and the light ones around
- * tone 30, which is the pairing `darkColorScheme` / `lightColorScheme` already
- * assume for `onPrimary` — leaving `onPrimary` alone is what keeps a filled
- * button legible, and is why this offers a palette rather than a free picker.
- *
- * [VIOLET] is the pair the app has always shipped, so the default changes
- * nothing for anyone who never opens the setting.
+ * SUPERSEDED by [AppColorTheme] in AppThemes.kt as of the theme-settings card.
+ * That enum carries a whole [ColorScheme] per variant instead of a single accent
+ * pair, so surfaces move with the theme rather than every theme being the same
+ * grey with a different button. This is kept only so the one-time preference
+ * migration in [AppTheme.load] can read a user's old accent key and map it to the
+ * nearest new theme; nothing else references it and it can be deleted once that
+ * migration has shipped for long enough.
  */
 internal enum class AccentColor(
     val key: String,
@@ -73,6 +70,19 @@ internal enum class AccentColor(
 
     companion object {
         fun from(key: String?) = entries.firstOrNull { it.key == key } ?: VIOLET
+
+        /**
+         * The theme a pre-migration accent maps to. Only the accents that have a
+         * clear new home are mapped; the rest fall to [AppColorTheme.DEFAULT],
+         * which is the old baseline-plus-lavender look, so no one is moved
+         * somewhere jarring. Green → Green Apple and Rose → Strawberry are the
+         * two obvious ones; Violet was the default and stays Default.
+         */
+        fun toTheme(key: String?): AppColorTheme = when (from(key)) {
+            GREEN -> AppColorTheme.GREEN_APPLE
+            ROSE -> AppColorTheme.STRAWBERRY
+            else -> AppColorTheme.DEFAULT
+        }
     }
 }
 
@@ -80,23 +90,51 @@ internal object AppTheme {
 
     private const val KEY_THEME = "app_theme"
     private const val KEY_ACCENT = "app_accent"
+    private const val KEY_COLOR_THEME = "app_color_theme"
+    private const val KEY_AMOLED = "app_amoled"
     private const val KEY_SECURE_SCREEN = "secure_screen"
 
     var mode by mutableStateOf(ThemeMode.DARK)
         private set
 
     /**
-     * Snapshot state like [mode], and for the same reason: written from a
-     * settings row eight levels down, read by `MainActivity.setContent` at the
-     * root, so Compose recomposes the whole tree on its own.
+     * The full colour scheme, snapshot state like [mode] and for the same
+     * reason: written from a settings row deep in the tree, read by
+     * `MainActivity.setContent` at the root, so Compose repaints the whole app
+     * on its own when it changes.
      */
-    var accent by mutableStateOf(AccentColor.VIOLET)
+    var colorTheme by mutableStateOf(AppColorTheme.DEFAULT)
+        private set
+
+    /**
+     * Pure-black surfaces in dark mode, for OLED screens. Only bites when the
+     * resolved variant is dark — see [yomuColorScheme]. Snapshot state so the
+     * toggle repaints instantly.
+     */
+    var amoled by mutableStateOf(false)
         private set
 
     /** Called once from `MainActivity.onCreate`, before the first composition. */
     fun load(context: Context) {
-        mode = ThemeMode.from(prefs(context).getString(KEY_THEME, null))
-        accent = AccentColor.from(prefs(context).getString(KEY_ACCENT, null))
+        val p = prefs(context)
+        mode = ThemeMode.from(p.getString(KEY_THEME, null))
+
+        // One-time migration off the old accent-only setting. If the new key is
+        // absent but an old accent was stored, carry the user to the nearest new
+        // theme and write it forward, so this runs once. A fresh install has
+        // neither key and lands on DEFAULT, which is the historic look anyway.
+        colorTheme = when {
+            p.contains(KEY_COLOR_THEME) ->
+                AppColorTheme.from(p.getString(KEY_COLOR_THEME, null))
+            p.contains(KEY_ACCENT) -> {
+                val migrated = AccentColor.toTheme(p.getString(KEY_ACCENT, null))
+                p.edit().putString(KEY_COLOR_THEME, migrated.key).apply()
+                migrated
+            }
+            else -> AppColorTheme.DEFAULT
+        }
+
+        amoled = p.getBoolean(KEY_AMOLED, false)
     }
 
     fun setMode(context: Context, value: ThemeMode) {
@@ -104,9 +142,14 @@ internal object AppTheme {
         prefs(context).edit().putString(KEY_THEME, value.key).apply()
     }
 
-    fun setAccent(context: Context, value: AccentColor) {
-        accent = value
-        prefs(context).edit().putString(KEY_ACCENT, value.key).apply()
+    fun setColorTheme(context: Context, value: AppColorTheme) {
+        colorTheme = value
+        prefs(context).edit().putString(KEY_COLOR_THEME, value.key).apply()
+    }
+
+    fun setAmoled(context: Context, value: Boolean) {
+        amoled = value
+        prefs(context).edit().putBoolean(KEY_AMOLED, value).apply()
     }
 
     // ---- secure screen ----
@@ -131,7 +174,16 @@ internal object AppTheme {
     }
 }
 
-/** The scheme `MainActivity` wraps the app in. Recomposes when [AppTheme.mode] changes. */
+/**
+ * The scheme `MainActivity` wraps the app in. Recomposes when [AppTheme.mode],
+ * [AppTheme.colorTheme] or [AppTheme.amoled] change.
+ *
+ * Three inputs, resolved in order: the theme supplies a full light and dark
+ * scheme, [mode] chooses which, and AMOLED — only when the chosen one is dark —
+ * drops the backgrounds and surfaces to true black. The accent survives the
+ * AMOLED override untouched, which is the whole point of AMOLED: black canvas,
+ * theme colour still on the buttons.
+ */
 @Composable
 internal fun yomuColorScheme(): ColorScheme {
     val dark = when (AppTheme.mode) {
@@ -139,40 +191,42 @@ internal fun yomuColorScheme(): ColorScheme {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    // Primary is darkened a step from the Material 3 baseline. It is the accent
-    // on the Resume button, the filter icon while filtering, and the saved-page
-    // line on a chapter row, so it sits against the surface far more often than
-    // it sits behind text — and the baseline lavender is bright enough on a
-    // dark surface to pull the eye off the covers.
-    //
-    // onPrimary MOVES WITH IT, as of 0.172. It used to be left alone, on the
-    // argument that every pair in [AccentColor] stays clear of the baseline on
-    // contrast. That argument was true and it was about the wrong property:
-    // baseline onPrimary is a dark purple, so every filled Button in the app
-    // drew legible purple text on an amber accent, which reads as left over
-    // from another palette. It was reported four times before anyone traced it
-    // here — see the Start button card, which fixed the same thing at one call
-    // site in 0.159 and noted that everything else was still wrong.
-    //
-    // DERIVING onPrimary FROM primary IS NOT THE THING 0.158 WARNED AGAINST.
-    // That warning was about primaryContainer and the other container roles,
-    // which are separate SURFACES and would change unrelated controls. onPrimary
-    // has no meaning except "legible on top of primary", so computing it from
-    // primary is the definition, not a side effect.
-    //
-    // Luminance rather than a per-accent table: a table is another thing to keep
-    // in step with [AccentColor], and this needs no re-checking when an accent
-    // is added.
-    val accent = AppTheme.accent
-    return if (dark) {
-        val primary = Color(accent.dark)
-        darkColorScheme(primary = primary, onPrimary = onAccent(primary))
-    } else {
-        val primary = Color(accent.light)
-        lightColorScheme(primary = primary, onPrimary = onAccent(primary))
-    }
+    val theme = AppTheme.colorTheme
+    val scheme = if (dark) theme.dark() else theme.light()
+
+    // AMOLED only touches dark. On a light theme "pure black" is meaningless,
+    // and forcing it would just break the light scheme.
+    return if (dark && AppTheme.amoled) scheme.toAmoled() else scheme
+}
+
+/**
+ * The same scheme with every canvas role forced to true black.
+ *
+ * Only the surfaces move — `background`, `surface`, and the surface-tint roles a
+ * dark theme actually paints large areas with. The accent roles (`primary`,
+ * `secondary`, `tertiary` and their `on-` pairs) and `onSurface` are left as the
+ * theme set them, so text stays legible and the buttons keep the theme's colour
+ * against the black. `surfaceVariant` becomes a near-black rather than #000000 so
+ * a chip or a divider drawn on it is still faintly distinguishable from the page
+ * behind it — pure-black-on-pure-black would erase those edges entirely.
+ */
+private fun ColorScheme.toAmoled(): ColorScheme {
+    val black = Color(0xFF000000)
+    val nearBlack = Color(0xFF0A0A0A)
+    return copy(
+        background = black,
+        onBackground = onBackground,
+        surface = black,
+        onSurface = onSurface,
+        surfaceVariant = nearBlack,
+        surfaceContainerLowest = black,
+        surfaceContainerLow = black,
+        surfaceContainer = nearBlack,
+        surfaceContainerHigh = nearBlack,
+        surfaceContainerHighest = nearBlack,
+    )
 }
 
 /** Black or white, whichever stays legible on [background]. */
-private fun onAccent(background: Color): Color =
+internal fun onAccent(background: Color): Color =
     if (background.luminance() > 0.5f) Color.Black else Color.White
