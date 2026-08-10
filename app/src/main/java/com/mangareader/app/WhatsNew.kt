@@ -43,6 +43,13 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 200,
+            name = "0.200",
+            header = "Downloaded chapters show their size",
+            body = "A downloaded chapter now shows how much space it takes, next " +
+                "to its date on the series screen.",
+        ),
+        ReleaseNote(
             code = 199,
             name = "0.199",
             header = "Light themes get colour too, plus Tidal Wave",
