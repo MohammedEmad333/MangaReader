@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 194,
+            name = "0.194",
+            header = "Refresh now clears deleted-download badges",
+            body = "If you deleted a series' files outside the app, its "  +
+                "downloaded badge could linger. Pulling to refresh the Library, "  +
+                "or refreshing a series, now re-checks what's actually on disk "  +
+                "and drops the badge.",
+        ),
+        ReleaseNote(
             code = 193,
             name = "0.193",
             header = "Pull down to refresh the Library",
