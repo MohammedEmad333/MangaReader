@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 195,
+            name = "0.195",
+            header = "Full colour themes, and a pure-black mode",
+            body = "Settings \u2192 Appearance now offers complete colour themes "  +
+                "\u2014 Midnight Dusk, Green Apple, Strawberry, Tako and more \u2014 "  +
+                "each setting the whole palette, not just the accent. There's also "  +
+                "a pure-black (AMOLED) toggle for true-black backgrounds in dark "  +
+                "mode. Your old accent carries over automatically.",
+        ),
+        ReleaseNote(
             code = 194,
             name = "0.194",
             header = "Refresh now clears deleted-download badges",
