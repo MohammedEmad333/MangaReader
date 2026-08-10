@@ -52,6 +52,15 @@ jobs:
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          # The installable APK also ships as an asset on the "latest"
+          # release below, which is what the phone actually installs from
+          # and isn't subject to this quota. This copy is only for pulling a
+          # specific commit's build without hunting through releases, so it
+          # doesn't need to survive long — the default retention (90 days,
+          # unset here previously) is what silently grew this to 357
+          # artifacts / ~3.9 GB and tripped the account's storage quota,
+          # which fails uploads outright rather than evicting anything.
+          retention-days: 7
 
       # R8's own account of what it did, from app/build/outputs/mapping/:
       # missing_rules.txt (rules R8 wants and cannot infer), seeds.txt (what
@@ -72,6 +81,11 @@ jobs:
           name: mapping-debug
           path: app/build/outputs/mapping/
           if-no-files-found: ignore
+          # Same reasoning as app-debug above: this is a live-debugging aid
+          # for a build that just failed, not something worth keeping for
+          # months. Short retention here is what keeps the fix from being
+          # temporary.
+          retention-days: 7
 
       - name: Publish to "latest" release
         env:
