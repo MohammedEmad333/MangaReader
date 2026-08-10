@@ -65,7 +65,7 @@ internal enum class AppColorTheme(
             primary = Color(0xFFFF6E86),
             secondary = Color(0xFFF3A3B0),
             tertiary = Color(0xFF87CEEB),
-            background = Color(0xFF1B1A2E),
+            background = Color(0xFF1A1830),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFFB4232F),
@@ -89,7 +89,7 @@ internal enum class AppColorTheme(
             primary = Color(0xFF5FD068),
             secondary = Color(0xFFA7D9A0),
             tertiary = Color(0xFFE6C176),
-            background = Color(0xFF14211A),
+            background = Color(0xFF0F2417),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF1F7A28),
@@ -113,7 +113,7 @@ internal enum class AppColorTheme(
             primary = Color(0xFFFF5C6A),
             secondary = Color(0xFFF7A9A0),
             tertiary = Color(0xFFF3C969),
-            background = Color(0xFF261A1D),
+            background = Color(0xFF2E1519),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFFBB1A2A),
@@ -137,7 +137,7 @@ internal enum class AppColorTheme(
             primary = Color(0xFFF3B94D),
             secondary = Color(0xFFE0C08A),
             tertiary = Color(0xFF9F86D6),
-            background = Color(0xFF2A2440),
+            background = Color(0xFF241A3D),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF8B6A16),
@@ -161,7 +161,7 @@ internal enum class AppColorTheme(
             primary = Color(0xFFC9B4FF),
             secondary = Color(0xFFD6C9F0),
             tertiary = Color(0xFF9CC7F5),
-            background = Color(0xFF201C33),
+            background = Color(0xFF1E1940),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF6A4FC2),
@@ -291,15 +291,17 @@ private fun tintedDark(
         onBackground = onColor,
         surface = background,
         onSurface = onColor,
-        surfaceVariant = mix(background, white, 0.14f),
+        surfaceVariant = mix(background, white, 0.20f),
         onSurfaceVariant = onVariant,
         // The container ladder M3 1.3 uses for the nav bar, sheets and cards.
         // Each step is a little further toward white, so elevation still reads
-        // while every level keeps the theme's colour.
-        surfaceContainerLowest = mix(background, Color.Black, 0.30f),
-        surfaceContainerLow = mix(background, white, 0.04f),
-        surfaceContainer = mix(background, white, 0.08f),
-        surfaceContainerHigh = mix(background, white, 0.12f),
-        surfaceContainerHighest = mix(background, white, 0.16f),
+        // while every level keeps the theme's colour. Lifted a touch more than
+        // the M3 baseline so cards and the nav bar separate clearly from the
+        // saturated background rather than melting into it.
+        surfaceContainerLowest = mix(background, Color.Black, 0.25f),
+        surfaceContainerLow = mix(background, white, 0.06f),
+        surfaceContainer = mix(background, white, 0.11f),
+        surfaceContainerHigh = mix(background, white, 0.16f),
+        surfaceContainerHighest = mix(background, white, 0.21f),
     )
 }
