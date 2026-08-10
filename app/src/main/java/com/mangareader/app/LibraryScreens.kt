@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -462,6 +463,28 @@ internal fun LibraryTab(
         if (groups.isEmpty()) {
             LibraryEmpty(allEmpty = true, modifier = Modifier.weight(1f))
         } else {
+            // A refresh that re-reads the on-disk state without starting the
+            // Settings sweep. Passed down into LibraryGrid rather than wrapped
+            // around the pager here: PullToRefreshBox reads the vertical
+            // overscroll off its child through nested scroll, and a
+            // HorizontalPager sitting between the box and the grid intercepts
+            // that signal — the gesture would attach but never fire. Each
+            // page's grid IS a scroll container, so the box goes there, exactly
+            // as it wraps the list on History, Downloads and browse.
+            //
+            // localTick is what "refresh" moves. Every remember(tick) read
+            // above re-runs when it bumps, and Library.list / SeriesIndex.all /
+            // Categories.list each re-read prefs and compare their cached raw
+            // string on that next call, so an out-of-band change is picked up
+            // for free. The one exception is DownloadIndex, which holds a
+            // process cache with no such check — invalidated in onLibraryPull
+            // below so a series whose files were deleted with a file manager
+            // stops showing the downloaded badge. Same stale-read the Downloads
+            // pull was added to fix.
+            val onLibraryPull: () -> Unit = {
+                DownloadIndex.invalidate()
+                localTick++
+            }
             HorizontalPager(
                 state = pagerState,
                 // A swipe that also drags entries around is not a swipe. Held
@@ -496,6 +519,7 @@ internal fun LibraryTab(
                     onToggle = { id ->
                         selected = if (id in selected) selected - id else selected + id
                     },
+                    onRefresh = onLibraryPull,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -569,20 +593,48 @@ private fun LibraryGrid(
     selecting: Boolean,
     onOpen: (LibraryEntry) -> Unit,
     onToggle: (String) -> Unit,
+    /**
+     * Pull-to-refresh handler. Re-reads on-disk state (see the call site) — it
+     * does NOT start the library sweep. Lives on the grid rather than the pager
+     * because PullToRefreshBox needs its scrollable child directly beneath it.
+     */
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (shown.isEmpty()) {
+        // Outside the refresh box on purpose, matching History and Downloads:
+        // the empty state has no scrollable child to feed the box's overscroll,
+        // so wrapping it would be a gesture that can't fire. A tab with nothing
+        // in it is refreshed by switching to a populated one, or by the pull on
+        // any other tab bumping the shared localTick.
         LibraryEmpty(allEmpty = allEmpty, modifier = modifier)
         return
     }
 
+    // Cleared from an effect, not the gesture lambda — History and Downloads do
+    // the same (0.161). onRefresh is synchronous (a cache invalidate and a tick
+    // bump, both already applied by the recomposition this flag triggers), so
+    // there is no honest "refreshing" period; the flag exists only to give the
+    // widget the two frames it needs to animate the arrow back out. Set true
+    // and false in one pass and PullToRefreshBox never observes the transition.
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) { if (refreshing) refreshing = false }
+
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            onRefresh()
+        },
+        modifier = modifier.fillMaxSize()
+    ) {
     if (display == LibraryDisplay.LIST) {
         LazyColumn(
             // Suffixed, because list and grid measure position in different
             // units — item index in a column isn't item index in a four-wide
             // grid — so switching display mode shouldn't restore the other's.
             state = rememberRestoredListState(scroll, "$scrollKey#list", ordering),
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp)
         ) {
@@ -642,7 +694,7 @@ private fun LibraryGrid(
                 }
             }
         }
-        return
+        return@PullToRefreshBox
     }
 
     // Hoisted out of the LazyVerticalGrid call so the scroll handle beside it
@@ -659,7 +711,7 @@ private fun LibraryGrid(
     // target in state and scrolling from a keyed effect cancels the superseded
     // one on every new value.
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         // A fixed count when the user has set one, otherwise size-driven.
         columns = if (perRow > 0) GridCells.Fixed(perRow)
@@ -779,6 +831,7 @@ private fun LibraryGrid(
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
+    } // PullToRefreshBox
 }
 
 /**
