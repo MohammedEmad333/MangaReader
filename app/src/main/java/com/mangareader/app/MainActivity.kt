@@ -805,6 +805,15 @@ fun YomuApp() {
         val src = activeSource ?: return
         val series = activeSeries ?: return
         errorMessage = null
+        // A manual refresh is the user asserting "re-check this series", and that
+        // includes its download state, not only its chapter list. The per-chapter
+        // download ticks and the cover badge both answer from Downloads.isComplete,
+        // which memoises — so without this a chapter deleted with a file manager
+        // keeps its downloaded marker through a refresh. invalidateCompletion drops
+        // that memo (and the index) the same way the Downloads and Library pulls
+        // do; downloadTick++ makes this screen's isComplete reads recompute.
+        Downloads.invalidateCompletion()
+        downloadTick++
         enrichSeries(src, series)
         scope.launch {
             isLoading = true
