@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 192,
+            name = "0.192",
+            header = "Animated covers now animate",
+            body = "Series with a GIF or animated cover used to show it "  +
+                "frozen on the first frame. It now plays, the same as it "  +
+                "would in a browser.",
+        ),
+        ReleaseNote(
             code = 189,
             name = "0.189",
             header = "Find videos goes straight to the video",
