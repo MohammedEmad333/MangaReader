@@ -61,19 +61,11 @@ internal enum class AppColorTheme(
 
     /** Desaturated rose on deep navy. SY's most recognisable theme. */
     MIDNIGHT_DUSK("midnight_dusk", "Midnight Dusk") {
-        override fun dark() = darkColorScheme(
+        override fun dark() = tintedDark(
             primary = Color(0xFFFF6E86),
-            onPrimary = onAccent(Color(0xFFFF6E86)),
             secondary = Color(0xFFF3A3B0),
-            onSecondary = onAccent(Color(0xFFF3A3B0)),
             tertiary = Color(0xFF87CEEB),
-            onTertiary = onAccent(Color(0xFF87CEEB)),
-            background = Color(0xFF16151D),
-            onBackground = Color(0xFFE9E1EC),
-            surface = Color(0xFF16151D),
-            onSurface = Color(0xFFE9E1EC),
-            surfaceVariant = Color(0xFF302B3A),
-            onSurfaceVariant = Color(0xFFCAC0D6),
+            background = Color(0xFF1B1A2E),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFFB4232F),
@@ -93,19 +85,11 @@ internal enum class AppColorTheme(
 
     /** Warm green, leaf on charcoal. */
     GREEN_APPLE("green_apple", "Green Apple") {
-        override fun dark() = darkColorScheme(
+        override fun dark() = tintedDark(
             primary = Color(0xFF5FD068),
-            onPrimary = onAccent(Color(0xFF5FD068)),
             secondary = Color(0xFFA7D9A0),
-            onSecondary = onAccent(Color(0xFFA7D9A0)),
             tertiary = Color(0xFFE6C176),
-            onTertiary = onAccent(Color(0xFFE6C176)),
-            background = Color(0xFF14181A),
-            onBackground = Color(0xFFE1E4DE),
-            surface = Color(0xFF14181A),
-            onSurface = Color(0xFFE1E4DE),
-            surfaceVariant = Color(0xFF2A312C),
-            onSurfaceVariant = Color(0xFFC2C9C0),
+            background = Color(0xFF14211A),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF1F7A28),
@@ -125,19 +109,11 @@ internal enum class AppColorTheme(
 
     /** Bright strawberry red, warm and high-contrast. */
     STRAWBERRY("strawberry", "Strawberry Daiquiri") {
-        override fun dark() = darkColorScheme(
+        override fun dark() = tintedDark(
             primary = Color(0xFFFF5C6A),
-            onPrimary = onAccent(Color(0xFFFF5C6A)),
             secondary = Color(0xFFF7A9A0),
-            onSecondary = onAccent(Color(0xFFF7A9A0)),
             tertiary = Color(0xFFF3C969),
-            onTertiary = onAccent(Color(0xFFF3C969)),
-            background = Color(0xFF1A1516),
-            onBackground = Color(0xFFEDE0E0),
-            surface = Color(0xFF1A1516),
-            onSurface = Color(0xFFEDE0E0),
-            surfaceVariant = Color(0xFF362A2B),
-            onSurfaceVariant = Color(0xFFD8C1C2),
+            background = Color(0xFF261A1D),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFFBB1A2A),
@@ -157,19 +133,11 @@ internal enum class AppColorTheme(
 
     /** Aubergine purple — SY's "Tako". */
     TAKO("tako", "Tako") {
-        override fun dark() = darkColorScheme(
+        override fun dark() = tintedDark(
             primary = Color(0xFFF3B94D),
-            onPrimary = onAccent(Color(0xFFF3B94D)),
             secondary = Color(0xFFE0C08A),
-            onSecondary = onAccent(Color(0xFFE0C08A)),
             tertiary = Color(0xFF9F86D6),
-            onTertiary = onAccent(Color(0xFF9F86D6)),
-            background = Color(0xFF21212E),
-            onBackground = Color(0xFFE6E1F0),
-            surface = Color(0xFF21212E),
-            onSurface = Color(0xFFE6E1F0),
-            surfaceVariant = Color(0xFF39394D),
-            onSurfaceVariant = Color(0xFFC9C4DB),
+            background = Color(0xFF2A2440),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF8B6A16),
@@ -189,19 +157,11 @@ internal enum class AppColorTheme(
 
     /** Soft lavender, gentler than the default violet. */
     LAVENDER("lavender", "Lavender") {
-        override fun dark() = darkColorScheme(
+        override fun dark() = tintedDark(
             primary = Color(0xFFC9B4FF),
-            onPrimary = onAccent(Color(0xFFC9B4FF)),
             secondary = Color(0xFFD6C9F0),
-            onSecondary = onAccent(Color(0xFFD6C9F0)),
             tertiary = Color(0xFF9CC7F5),
-            onTertiary = onAccent(Color(0xFF9CC7F5)),
-            background = Color(0xFF1A1823),
-            onBackground = Color(0xFFE9E3F2),
-            surface = Color(0xFF1A1823),
-            onSurface = Color(0xFFE9E3F2),
-            surfaceVariant = Color(0xFF322E40),
-            onSurfaceVariant = Color(0xFFCAC2DB),
+            background = Color(0xFF201C33),
         )
         override fun light() = lightColorScheme(
             primary = Color(0xFF6A4FC2),
@@ -284,3 +244,62 @@ private fun baselineLight(primary: Color, secondary: Color, tertiary: Color) =
         tertiary = tertiary,
         onTertiary = onAccent(tertiary),
     )
+
+/** Channel-wise blend, [t] from 0 (all [a]) to 1 (all [b]). */
+private fun mix(a: Color, b: Color, t: Float): Color = Color(
+    red = a.red + (b.red - a.red) * t,
+    green = a.green + (b.green - a.green) * t,
+    blue = a.blue + (b.blue - a.blue) * t,
+)
+
+/**
+ * A dark scheme whose SURFACES carry the theme's hue, not just its accent.
+ *
+ * This is what makes a theme read as itself across the whole app the way SY's
+ * do — the background, the nav bar, the cards are all a tint of one coloured
+ * dark, not a shared neutral grey with a coloured button on top. Give it the
+ * three accents and ONE [background] colour (a dark, saturated version of the
+ * theme's hue) and it derives the rest:
+ *
+ * - the surface roles step from [background] a little way toward white, so the
+ *   nav bar and raised cards sit just above the page while keeping the hue;
+ * - `surfaceVariant` is that same step, used by the swatch card and chips;
+ * - the `on-` text roles are near-white with a trace of the hue mixed back in,
+ *   which reads as part of the theme rather than pure grey text dropped on top.
+ *
+ * The accents' `on-` roles are still luminance-derived by [onAccent], the same
+ * rule the rest of the file uses, so a filled button stays legible whatever the
+ * accent is.
+ */
+private fun tintedDark(
+    primary: Color,
+    secondary: Color,
+    tertiary: Color,
+    background: Color,
+): ColorScheme {
+    val white = Color.White
+    val onColor = mix(white, primary, 0.10f)          // near-white, faint hue
+    val onVariant = mix(white, primary, 0.28f)        // dimmer, for supporting text
+    return darkColorScheme(
+        primary = primary,
+        onPrimary = onAccent(primary),
+        secondary = secondary,
+        onSecondary = onAccent(secondary),
+        tertiary = tertiary,
+        onTertiary = onAccent(tertiary),
+        background = background,
+        onBackground = onColor,
+        surface = background,
+        onSurface = onColor,
+        surfaceVariant = mix(background, white, 0.14f),
+        onSurfaceVariant = onVariant,
+        // The container ladder M3 1.3 uses for the nav bar, sheets and cards.
+        // Each step is a little further toward white, so elevation still reads
+        // while every level keeps the theme's colour.
+        surfaceContainerLowest = mix(background, Color.Black, 0.30f),
+        surfaceContainerLow = mix(background, white, 0.04f),
+        surfaceContainer = mix(background, white, 0.08f),
+        surfaceContainerHigh = mix(background, white, 0.12f),
+        surfaceContainerHighest = mix(background, white, 0.16f),
+    )
+}

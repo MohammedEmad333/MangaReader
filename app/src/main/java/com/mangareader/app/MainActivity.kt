@@ -32,6 +32,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.History as HistoryIcon
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -1615,13 +1620,17 @@ fun YomuApp() {
                         selected = currentTab == 0,
                         onClick = { currentTab = 0 },
                         label = { NavLabel("Library") },
-                        icon = { Text("📚") }
+                        // Vector icons, not emoji. An emoji is a fixed-colour
+                        // glyph and stays the same in every theme; a vector here
+                        // is tinted by NavigationBarItem from the scheme, so the
+                        // bar picks up the theme's colour the way SY's does.
+                        icon = { Icon(Icons.Filled.CollectionsBookmark, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 1,
                         onClick = { currentTab = 1 },
                         label = { NavLabel("Browse") },
-                        icon = { Text("🧭") }
+                        icon = { Icon(Icons.Filled.Explore, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 2,
@@ -1630,19 +1639,19 @@ fun YomuApp() {
                             history = History.list(context)
                         },
                         label = { NavLabel("History") },
-                        icon = { Text("🕒") }
+                        icon = { Icon(HistoryIcon, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 3,
                         onClick = { currentTab = 3 },
                         label = { NavLabel("Downloads") },
-                        icon = { Text("⬇️") }
+                        icon = { Icon(Icons.Filled.Download, contentDescription = null) }
                     )
                     NavigationBarItem(
                         selected = currentTab == 4,
                         onClick = { currentTab = 4 },
                         label = { NavLabel("More") },
-                        icon = { Text("⚙️") }
+                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = null) }
                     )
                 }
             }
