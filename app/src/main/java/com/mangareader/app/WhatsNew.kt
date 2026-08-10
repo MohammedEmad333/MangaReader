@@ -43,6 +43,13 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 198,
+            name = "0.198",
+            header = "Stronger theme colours",
+            body = "Themed backgrounds now carry more of the theme's colour, and " +
+                "cards and the nav bar separate from them more clearly.",
+        ),
+        ReleaseNote(
             code = 197,
             name = "0.197",
             header = "Themes now colour the whole app",
