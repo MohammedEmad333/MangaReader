@@ -170,27 +170,41 @@ private fun AppearanceSettings() {
                 onSelect = { AppTheme.setMode(context, ThemeMode.entries[it]) }
             )
             // Named chips rather than colour swatches, and the reason is that
-            // the swatch is unnecessary here: setting an accent recomposes the
+            // the swatch is unnecessary here: setting a theme recomposes the
             // whole tree from the root, so tapping a chip repaints the entire
-            // screen — including these chips — before your finger is off it.
-            // The preview is the app.
+            // screen — surfaces and all — before your finger is off it. The
+            // preview is the app.
             //
-            // (A swatch would also mean four new imports in this file, which
-            // uses a curated import list rather than the wildcard block. That
-            // is the shape of two CI failures already in §8.)
+            // (A swatch would also mean new imports in this file, which uses a
+            // curated import list rather than the wildcard block. That is the
+            // shape of two CI failures already in §8.)
             PrefChipRow(
-                label = "Accent colour",
-                options = AccentColor.entries.map { it.label },
-                selected = AccentColor.entries.indexOf(AppTheme.accent),
-                onSelect = { AppTheme.setAccent(context, AccentColor.entries[it]) }
+                label = "Colour theme",
+                options = AppColorTheme.entries.map { it.label },
+                selected = AppColorTheme.entries.indexOf(AppTheme.colorTheme),
+                onSelect = { AppTheme.setColorTheme(context, AppColorTheme.entries[it]) }
             )
         }
+
+        // Below the pickers rather than beside them: it modifies whatever theme
+        // is chosen rather than being a theme itself, and it only does anything
+        // in dark — the summary says so rather than the control disappearing in
+        // light, which would read as a bug the first time someone on a light
+        // theme goes looking for it.
+        PrefSwitchRow(
+            title = "Pure black (AMOLED)",
+            checked = AppTheme.amoled,
+            summary = "True black backgrounds in dark mode. Saves battery on " +
+                "OLED screens; no effect on a light theme.",
+            onChange = { AppTheme.setAmoled(context, it) }
+        )
+
         PrefNote(
-            "Dark is the default and the only one with any mileage on it \u2014 every " +
-                "screen in this app was built against it. The reader keeps its own " +
-                "background setting either way.\n\nEach accent is a pair, one shade " +
-                "for dark mode and a darker one for light, so switching theme keeps " +
-                "it readable. Violet is what the app has always used."
+            "Dark is the default and the most tested \u2014 every screen was built " +
+                "against it. The reader keeps its own background setting either way." +
+                "\n\nEach colour theme sets the whole palette, not just an accent, " +
+                "and carries its own light and dark shades so switching theme stays " +
+                "readable. Default is what the app has always used."
         )
     }
 }
