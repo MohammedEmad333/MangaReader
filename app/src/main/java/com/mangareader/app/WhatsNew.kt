@@ -43,6 +43,15 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 193,
+            name = "0.193",
+            header = "Pull down to refresh the Library",
+            body = "The Library tab now refreshes on a pull-down, the same as "  +
+                "History and Downloads. It re-reads what's on the device — so "  +
+                "a series whose files you deleted elsewhere stops showing as "  +
+                "downloaded — without kicking off a full chapter fetch.",
+        ),
+        ReleaseNote(
             code = 192,
             name = "0.192",
             header = "Animated covers now animate",
