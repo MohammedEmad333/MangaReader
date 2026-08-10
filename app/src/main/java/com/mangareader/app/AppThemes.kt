@@ -67,19 +67,27 @@ internal enum class AppColorTheme(
             tertiary = Color(0xFF87CEEB),
             background = Color(0xFF1A1830),
         )
-        override fun light() = lightColorScheme(
+        override fun light() = tintedLight(
             primary = Color(0xFFB4232F),
-            onPrimary = onAccent(Color(0xFFB4232F)),
             secondary = Color(0xFF8C4A54),
-            onSecondary = onAccent(Color(0xFF8C4A54)),
             tertiary = Color(0xFF1B6E8C),
-            onTertiary = onAccent(Color(0xFF1B6E8C)),
-            background = Color(0xFFFBF8FD),
-            onBackground = Color(0xFF1B1B1F),
-            surface = Color(0xFFFBF8FD),
-            onSurface = Color(0xFF1B1B1F),
-            surfaceVariant = Color(0xFFEDE0E9),
-            onSurfaceVariant = Color(0xFF4C444D),
+            background = Color(0xFFFBF2F4),
+        )
+    },
+
+    /** Ocean blue on deep navy. SY's Tidal Wave. */
+    TIDAL_WAVE("tidal_wave", "Tidal Wave") {
+        override fun dark() = tintedDark(
+            primary = Color(0xFF4FC3F7),
+            secondary = Color(0xFF90CAF9),
+            tertiary = Color(0xFF80DEEA),
+            background = Color(0xFF0E1B2E),
+        )
+        override fun light() = tintedLight(
+            primary = Color(0xFF00659B),
+            secondary = Color(0xFF4A6472),
+            tertiary = Color(0xFF006874),
+            background = Color(0xFFEFF6FC),
         )
     },
 
@@ -91,19 +99,11 @@ internal enum class AppColorTheme(
             tertiary = Color(0xFFE6C176),
             background = Color(0xFF0F2417),
         )
-        override fun light() = lightColorScheme(
+        override fun light() = tintedLight(
             primary = Color(0xFF1F7A28),
-            onPrimary = onAccent(Color(0xFF1F7A28)),
             secondary = Color(0xFF4A6B44),
-            onSecondary = onAccent(Color(0xFF4A6B44)),
             tertiary = Color(0xFF7A5A12),
-            onTertiary = onAccent(Color(0xFF7A5A12)),
-            background = Color(0xFFF8FBF3),
-            onBackground = Color(0xFF191D17),
-            surface = Color(0xFFF8FBF3),
-            onSurface = Color(0xFF191D17),
-            surfaceVariant = Color(0xFFDEE5D8),
-            onSurfaceVariant = Color(0xFF424940),
+            background = Color(0xFFF3FAF2),
         )
     },
 
@@ -115,19 +115,11 @@ internal enum class AppColorTheme(
             tertiary = Color(0xFFF3C969),
             background = Color(0xFF2E1519),
         )
-        override fun light() = lightColorScheme(
+        override fun light() = tintedLight(
             primary = Color(0xFFBB1A2A),
-            onPrimary = onAccent(Color(0xFFBB1A2A)),
             secondary = Color(0xFF8C4A45),
-            onSecondary = onAccent(Color(0xFF8C4A45)),
             tertiary = Color(0xFF7A5A12),
-            onTertiary = onAccent(Color(0xFF7A5A12)),
-            background = Color(0xFFFFF8F7),
-            onBackground = Color(0xFF201A1A),
-            surface = Color(0xFFFFF8F7),
-            onSurface = Color(0xFF201A1A),
-            surfaceVariant = Color(0xFFF3DDDD),
-            onSurfaceVariant = Color(0xFF524343),
+            background = Color(0xFFFEF2F1),
         )
     },
 
@@ -139,19 +131,11 @@ internal enum class AppColorTheme(
             tertiary = Color(0xFF9F86D6),
             background = Color(0xFF241A3D),
         )
-        override fun light() = lightColorScheme(
+        override fun light() = tintedLight(
             primary = Color(0xFF8B6A16),
-            onPrimary = onAccent(Color(0xFF8B6A16)),
             secondary = Color(0xFF5F5A70),
-            onSecondary = onAccent(Color(0xFF5F5A70)),
             tertiary = Color(0xFF4F3D8A),
-            onTertiary = onAccent(Color(0xFF4F3D8A)),
-            background = Color(0xFFF6F4FB),
-            onBackground = Color(0xFF1B1B23),
-            surface = Color(0xFFF6F4FB),
-            onSurface = Color(0xFF1B1B23),
-            surfaceVariant = Color(0xFFE4E1F0),
-            onSurfaceVariant = Color(0xFF47464F),
+            background = Color(0xFFF5F2FB),
         )
     },
 
@@ -163,19 +147,11 @@ internal enum class AppColorTheme(
             tertiary = Color(0xFF9CC7F5),
             background = Color(0xFF1E1940),
         )
-        override fun light() = lightColorScheme(
+        override fun light() = tintedLight(
             primary = Color(0xFF6A4FC2),
-            onPrimary = onAccent(Color(0xFF6A4FC2)),
             secondary = Color(0xFF625B70),
-            onSecondary = onAccent(Color(0xFF625B70)),
             tertiary = Color(0xFF2E4F82),
-            onTertiary = onAccent(Color(0xFF2E4F82)),
-            background = Color(0xFFFBF8FF),
-            onBackground = Color(0xFF1B1A22),
-            surface = Color(0xFFFBF8FF),
-            onSurface = Color(0xFF1B1A22),
-            surfaceVariant = Color(0xFFE6E1F0),
-            onSurfaceVariant = Color(0xFF48454F),
+            background = Color(0xFFF6F3FE),
         )
     },
 
@@ -303,5 +279,57 @@ private fun tintedDark(
         surfaceContainer = mix(background, white, 0.11f),
         surfaceContainerHigh = mix(background, white, 0.16f),
         surfaceContainerHighest = mix(background, white, 0.21f),
+    )
+}
+/**
+ * A light scheme whose surfaces carry the theme's hue, the light-mode twin of
+ * [tintedDark].
+ *
+ * SY's light themes are not white with a coloured accent — they are a very pale
+ * wash of the theme's own colour, so a lavender theme's "white" is faintly
+ * lilac and the nav bar and cards sit on that same tint. Before this the light
+ * schemes were near-#FFF and read as stark white next to SY (see the light-mode
+ * side-by-side on the card).
+ *
+ * Given the three accents and one very light, faintly-saturated [background],
+ * it derives:
+ * - surfaces a hair darker than the background, so cards and the bar separate
+ *   downward the way M3 light elevation does (light mode lowers, it doesn't
+ *   raise toward white);
+ * - `on-` text roles a very dark version of the hue rather than pure black, so
+ *   text still belongs to the theme.
+ *
+ * `onAccent` still decides each accent's `on-` colour by luminance.
+ */
+private fun tintedLight(
+    primary: Color,
+    secondary: Color,
+    tertiary: Color,
+    background: Color,
+): ColorScheme {
+    val black = Color.Black
+    val onColor = mix(black, primary, 0.16f)          // near-black, faint hue
+    val onVariant = mix(black, primary, 0.32f)
+    return lightColorScheme(
+        primary = primary,
+        onPrimary = onAccent(primary),
+        secondary = secondary,
+        onSecondary = onAccent(secondary),
+        tertiary = tertiary,
+        onTertiary = onAccent(tertiary),
+        background = background,
+        onBackground = onColor,
+        surface = background,
+        onSurface = onColor,
+        surfaceVariant = mix(background, black, 0.08f),
+        onSurfaceVariant = onVariant,
+        // Light elevation steps DOWN from the background (toward a slightly
+        // deeper tint), the opposite of dark, so a raised card reads as raised
+        // without going toward white and washing the hue out.
+        surfaceContainerLowest = background,
+        surfaceContainerLow = mix(background, black, 0.03f),
+        surfaceContainer = mix(background, black, 0.05f),
+        surfaceContainerHigh = mix(background, black, 0.08f),
+        surfaceContainerHighest = mix(background, black, 0.11f),
     )
 }
