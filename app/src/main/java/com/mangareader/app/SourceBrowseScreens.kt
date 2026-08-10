@@ -1170,9 +1170,27 @@ internal fun SeriesScreen(
                         )
                     },
                     supportingContent = {
+                        // Only walk the folder for a chapter that's actually on
+                        // disk. sizeOf memoises per chapter id and the walk is
+                        // cheap, but isComplete gates it so a 171-row series
+                        // isn't statting 171 absent folders on every recompose.
+                        // Keyed on downloadTick so deleting or finishing a
+                        // download updates the line — the same tick the trailing
+                        // control reads.
+                        val sizeLabel = remember(ch.id, downloadTick) {
+                            if (Downloads.isComplete(context, ch.id)) {
+                                formatBytes(Downloads.sizeOf(context, ch.id))
+                            } else null
+                        }
                         val bits = listOfNotNull(
                             formatChapterDate(ch.dateUploaded),
                             ch.scanlator,
+                            // Size sits with the other chapter facts rather than
+                            // by the download control: it describes the chapter,
+                            // like its date, and the trailing area is already the
+                            // delete target. Present only when downloaded, so an
+                            // undownloaded row doesn't carry an empty slot.
+                            sizeLabel,
                             // No "Read" label: the whole row dims instead. A
                             // word costs a line of subtitle on every finished
                             // chapter to say what the colour already says, and on
