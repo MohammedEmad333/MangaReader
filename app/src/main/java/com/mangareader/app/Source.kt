@@ -149,6 +149,23 @@ interface Source {
      */
     suspend fun filteredSeries(page: Int): SeriesPage = searchSeries("", page)
 
+    /**
+     * Set a genre/tag filter matching [genre], returning whether the source had
+     * one. This is what makes a tapped tag search *by genre* rather than run the
+     * genre's text as a title query: a source that lists "Romance" as a filter
+     * has it selected, and a [filteredSeries] browse then returns everything
+     * tagged Romance instead of everything with "Romance" in its title.
+     *
+     * Resets other filters to their defaults first, so a tapped tag searches for
+     * exactly that tag and nothing carried over from a manual filter set — the
+     * same thing Tachiyomi/Mihon's genre click does.
+     *
+     * Callers fall back to a title [searchSeries] when this returns false, since
+     * many sources still match a genre inside their text search. The default
+     * matches nothing (LocalSource, and any source without filters).
+     */
+    fun applyGenreFilter(genre: String): Boolean = false
+
     suspend fun searchSeries(query: String, page: Int): SeriesPage {
         if (page > 1) return SeriesPage(emptyList(), hasNext = false)
         val hits = listSeries().filter { it.title.contains(query, ignoreCase = true) }
