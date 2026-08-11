@@ -4,10 +4,9 @@ Written 2026-08-11. Nothing here supersedes anything. `SESSION_HANDOFF_0.188.md`
 (0.150–0.189) and every file under it remain live reference.
 
 One release, two Backlog cards cleared: **History is one row per series** (103)
-and **tapping a tag searches by genre** (100). Both are now in **Needs
-verifying**, because neither ran on a device — this session had no build
-environment (CI-only, as always), so both shipped as a code change reasoned from
-the source, not a device run.
+and **tapping a tag searches by genre** (100). Both shipped in 0.201 and are
+**verified on device** — history collapses to one row per series, and the tag
+chips search by genre — so both cards are in **Done**.
 
 ---
 
@@ -24,10 +23,9 @@ cannot, because the session that shipped them left no notes and this one did not
 do the work. **Do not read the jump from 0.189 to 0.201 here as those releases
 being reverted or missing; they shipped, they are just undocumented.**
 
-**2. HEAD IS 0.201 AND NOTHING IN IT RAN ON A DEVICE.** Two card fixes, both
-reasoned from the code and checked for compilation by eye, not by a build. Build
-and verify before trusting either. The two cards in Needs verifying carry the
-exact on-device checks.
+**2. HEAD IS 0.201, VERIFIED ON DEVICE.** Both card fixes were installed and
+checked: History shows one row per series (existing multi-chapter history
+collapsed too), and tapping a tag searches by genre. Both cards are in Done.
 
 **3. `History.touch` CHANGED CONTRACT: it upserts BY SERIES now, not by
 chapter.** §1. Anything that writes a `HistoryEntry` should know that a second
@@ -135,11 +133,11 @@ Files changed this session: `History.kt`, `MainActivity.kt`, `Source.kt`,
 `TachiyomiSourceAdapter.kt`, `WhatsNew.kt` (a `ReleaseNote` for 201),
 `app/build.gradle.kts` (200 → 201). No new files.
 
-**Nothing in 0.201 is verified on device.** Both cards sit in Needs verifying
-with their checks. Needs verifying now holds five cards — these two plus 73
+**0.201 is verified on device** — both cards passed their checks and are in
+Done. Needs verifying is back to the three cards that predate this session — 73
 (`onRenderProcessGone`), 77 (`getPageList` ceiling) and the 0.200 chapter-size
-card, all three of which predate this session and none of which can be exercised
-without adb, a Cloudflare challenge, or a runaway source that does not exist.
+card — none of which can be exercised without adb, a Cloudflare challenge, or a
+runaway source that does not exist.
 
 **Housekeeping, unchanged and still true:** `debug.keystore` and
 `release.keystore` are committed at the repo root, and the release keystore is
