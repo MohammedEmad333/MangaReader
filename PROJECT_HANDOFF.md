@@ -21,7 +21,7 @@ Live session files, newest first:
 
 | File | Covers | Why it is still here |
 |---|---|---|
-| `SESSION_HANDOFF_0.201.md` | 0.201 | Newest. Two Backlog cards — History collapsed to one row per series (§1), tag chips search by genre via `Source.applyGenreFilter` (§2). §0 also names the undocumented 0.190–0.200 gap. Neither card verified on device |
+| `SESSION_HANDOFF_0.201.md` | 0.201 | Newest. Two Backlog cards, both verified on device — History collapsed to one row per series (§1), tag chips search by genre via `Source.applyGenreFilter` (§2). §0 also names the undocumented 0.190–0.200 gap |
 | `SESSION_HANDOFF_0.188.md` | 0.150–0.189 | The download queue's two pauses, a per-host circuit breaker, §9b — a bug signed off four times because the test step was worded wrong — §9d, the same bug reported four times because a rule was applied past its edge — and §9g, ten releases spent on a symptom while the objective sat in reach |
 | `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Minification closed, the reader polish pass |
 | `SESSION_HANDOFF_0.143.md` | 0.135–0.146 | The five R8 attempts and their two root causes |
