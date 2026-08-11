@@ -54,6 +54,15 @@ import eu.kanade.tachiyomi.source.model.Filter
  * onto stale local state from before. Ordinary taps never touch [revision], so
  * they only recompose the one row that changed.
  *
+ * **That last sentence was false from the start and it is why the sheet felt
+ * slow.** Every row was handed an `onChange` callback wired to `revision++`, so
+ * one checkbox tap bumped the counter, invalidated *every* row's
+ * `remember(filter, revision)`, and recomposed the whole list — dozens of rows
+ * for a genre group, per tap. The callback did nothing else: Reset bumps
+ * [revision] itself and Apply reads `filter.state` directly, so nothing between
+ * taps needed notifying. It is removed, and a tap now recomposes only its row,
+ * which is what the paragraph above always claimed.
+ *
  * Unknown filter types are skipped rather than drawn as an empty row. Extensions
  * subclass these freely and a source built against a newer library may carry
  * something this doesn't handle; a gap is better than a control that does
@@ -85,7 +94,7 @@ internal fun SourceFilterDialog(
                         Text("This source has no filters.")
                     } else {
                         filters.forEach { filter ->
-                            FilterEntry(filter, 0, revision) { revision++ }
+                            FilterEntry(filter, 0, revision)
                         }
                     }
                 }
@@ -117,7 +126,7 @@ internal fun SourceFilterDialog(
  * on a *different* row (which doesn't change revision) never touches this one.
  */
 @Composable
-private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: () -> Unit) {
+private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int) {
     val indent = (depth * 12).dp
 
     when (filter) {
@@ -138,7 +147,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                     .clickable {
                         filter.state = !filter.state
                         checked = filter.state
-                        onChange()
                     }
                     .padding(start = indent, top = 2.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -148,7 +156,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                     onCheckedChange = {
                         filter.state = it
                         checked = it
-                        onChange()
                     }
                 )
                 Text(filter.name, style = MaterialTheme.typography.bodyMedium)
@@ -166,7 +173,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                     .clickable {
                         filter.state = (filter.state + 1) % 3
                         state = filter.state
-                        onChange()
                     }
                     .padding(start = indent, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -196,7 +202,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                 onValueChange = {
                     text = it
                     filter.state = it
-                    onChange()
                 },
                 label = { Text(filter.name) },
                 singleLine = true,
@@ -227,7 +232,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                         onClick = {
                             filter.state = index
                             selected = index
-                            onChange()
                         },
                         label = { Text(value.toString()) }
                     )
@@ -258,7 +262,6 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
                             }
                             filter.state = newSelection
                             selection = newSelection
-                            onChange()
                         }
                         .padding(start = indent, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -286,7 +289,7 @@ private fun FilterEntry(filter: Filter<*>, depth: Int, revision: Int, onChange: 
             // the type has to be recovered before they can be drawn.
             (filter.state as? List<*>)
                 ?.filterIsInstance<Filter<*>>()
-                ?.forEach { child -> FilterEntry(child, depth + 1, revision, onChange) }
+                ?.forEach { child -> FilterEntry(child, depth + 1, revision) }
         }
 
         else -> Unit

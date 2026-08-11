@@ -43,6 +43,14 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 202,
+            name = "0.202",
+            header = "The filter sheet is snappy again",
+            body = "Ticking a genre or any other option in a source's filter " +
+                "used to lag, because every tap quietly rebuilt the whole sheet. " +
+                "Now a tap updates only the row you touched.",
+        ),
+        ReleaseNote(
             code = 201,
             name = "0.201",
             header = "History by series, and tags search by genre",
