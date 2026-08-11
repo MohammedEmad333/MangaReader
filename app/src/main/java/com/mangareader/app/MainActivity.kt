@@ -333,7 +333,7 @@ fun YomuApp() {
 
     var configs by remember { mutableStateOf(SourceManager.list(context)) }
     var extensionSources by remember { mutableStateOf<List<Source>>(emptyList()) }
-    var history by remember { mutableStateOf(History.list(context)) }
+    var history by remember { mutableStateOf(History.forDisplay(context)) }
 
     var showSourceDialog by remember { mutableStateOf(false) }
     var editingConfig by remember { mutableStateOf<SourceConfig?>(null) }
@@ -1364,7 +1364,7 @@ fun YomuApp() {
                     pagesLoading = false
                     activeChapterIdx = null
                     pages = emptyList()
-                    history = History.list(context)
+                    history = History.forDisplay(context)
                     readTick++
                 }
             )
@@ -1479,11 +1479,21 @@ fun YomuApp() {
                     tagSearchReturn = activeSeries
                     activeSeries = null
                     errorMessage = null
+                    // Search BY GENRE when the source has a matching filter: a
+                    // tag is a genre, so tapping "Romance" should list what is
+                    // tagged Romance, not what has "Romance" in its title. When
+                    // the source has no such filter, fall back to the title
+                    // search — many still match a genre inside their text query.
+                    //
                     // Keeps the adopted source rather than dropping it the way
                     // onBack does for a non-BROWSE origin — searching *this*
                     // source is the whole request, so the browse screen it falls
                     // through to is the destination, not a stranding.
-                    openSource(src, tag, browseMode)
+                    if (src.applyGenreFilter(tag)) {
+                        openSource(src, "", BrowseMode.FILTER)
+                    } else {
+                        openSource(src, tag, browseMode)
+                    }
                 }
             },
             onGlobalSearchTag = { tag ->
@@ -1634,7 +1644,7 @@ fun YomuApp() {
                         selected = currentTab == 2,
                         onClick = {
                             currentTab = 2
-                            history = History.list(context)
+                            history = History.forDisplay(context)
                         },
                         label = { NavLabel("History") },
                         icon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
@@ -1724,16 +1734,16 @@ fun YomuApp() {
                         onOpen = { openFromHistory(it) },
                         onDelete = {
                             History.remove(context, it.chapterKey)
-                            history = History.list(context)
+                            history = History.forDisplay(context)
                         },
                         libraryTick = libraryTick,
                         onClearAll = {
                             History.list(context).forEach { History.remove(context, it.chapterKey) }
-                            history = History.list(context)
+                            history = History.forDisplay(context)
                         },
                         // The same re-read every other mutation here does, so
                         // the gesture and the existing paths cannot drift.
-                        onRefresh = { history = History.list(context) }
+                        onRefresh = { history = History.forDisplay(context) }
                     )
                     3 -> DownloadsTab(
                         downloadTick = downloadTick + DownloadQueue.tick,

@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 201,
+            name = "0.201",
+            header = "History by series, and tags search by genre",
+            body = "History now shows one entry per series — the latest " +
+                "chapter and the page you were on — instead of a separate " +
+                "row for every chapter. And tapping a tag on a series now " +
+                "searches that source by genre where it can, so you get " +
+                "everything tagged with it rather than everything with the word " +
+                "in its title.",
+        ),
+        ReleaseNote(
             code = 200,
             name = "0.200",
             header = "Downloaded chapters show their size",

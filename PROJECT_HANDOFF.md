@@ -11,14 +11,18 @@ lessons; §7, what is known broken. The banner below and
 `SESSION_HANDOFF_0.188.md` carry anything time-sensitive, because they are
 rewritten by the work rather than maintained beside it.
 
-**Read `SESSION_HANDOFF_0.188.md` §0 first.** It covers 0.150–0.188 and is the
-newest state of the tree.
+**Read `SESSION_HANDOFF_0.201.md` §0 first**, then `SESSION_HANDOFF_0.188.md`
+§0. The 0.201 file is the newest state of the tree; the 0.188 file is the last
+deep session before it. **Mind the gap the 0.201 file names: 0.190–0.200 has no
+handoff** — those releases shipped (theme settings, animated images,
+pull-to-refresh, chapter sizes) and are recorded only on Trello and in `git log`.
 
 Live session files, newest first:
 
 | File | Covers | Why it is still here |
 |---|---|---|
-| `SESSION_HANDOFF_0.188.md` | 0.150–0.188 | Newest. The download queue's two pauses, a per-host circuit breaker, §9b — a bug signed off four times because the test step was worded wrong — §9d, the same bug reported four times because a rule was applied past its edge — and §9g, ten releases spent on a symptom while the objective sat in reach |
+| `SESSION_HANDOFF_0.201.md` | 0.201 | Newest. Two Backlog cards — History collapsed to one row per series (§1), tag chips search by genre via `Source.applyGenreFilter` (§2). §0 also names the undocumented 0.190–0.200 gap. Neither card verified on device |
+| `SESSION_HANDOFF_0.188.md` | 0.150–0.189 | The download queue's two pauses, a per-host circuit breaker, §9b — a bug signed off four times because the test step was worded wrong — §9d, the same bug reported four times because a rule was applied past its edge — and §9g, ten releases spent on a symptom while the objective sat in reach |
 | `SESSION_HANDOFF_0.149.md` | 0.144–0.149 | Minification closed, the reader polish pass |
 | `SESSION_HANDOFF_0.143.md` | 0.135–0.146 | The five R8 attempts and their two root causes |
 | `SESSION_HANDOFF_0.106.md` | 0.88–0.106 | §5 (why two edge gestures never fired) is cited by an open card; §11 is the three-chapter reader design |
