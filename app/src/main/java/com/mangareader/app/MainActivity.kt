@@ -387,6 +387,9 @@ fun YomuApp() {
     // Display filter, not a scope: empty sources are kept in globalResults so
     // this can show or hide them without re-running the search.
     var globalHasResultsOnly by remember { mutableStateOf(true) }
+    // Past queries, newest first — hoisted so the empty-state chips update the
+    // instant a search runs, without the screen re-reading prefs.
+    var globalRecents by remember { mutableStateOf(SourcePrefs.recentSearches(context)) }
 
     // How the current series was reached. Opening from Library or History has to
     // adopt its source to load chapters and pages, which would otherwise strand
@@ -625,6 +628,7 @@ fun YomuApp() {
             return
         }
         globalRunning = true
+        globalRecents = SourcePrefs.addRecentSearch(context, query)
         globalJob = scope.launch {
             try {
                 val targets = withContext(Dispatchers.IO) {
@@ -1531,6 +1535,12 @@ fun YomuApp() {
             onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
             hasResultsOnly = globalHasResultsOnly,
             onToggleHasResultsOnly = { globalHasResultsOnly = it },
+            recents = globalRecents,
+            onRemoveRecent = { globalRecents = SourcePrefs.removeRecentSearch(context, it) },
+            onClearRecents = {
+                SourcePrefs.clearRecentSearches(context)
+                globalRecents = emptyList()
+            },
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },

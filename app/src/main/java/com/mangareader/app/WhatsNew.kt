@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 204,
+            name = "0.204",
+            header = "Global search remembers your recent queries",
+            body = "Searching every source at once now keeps a short list of " +
+                "your recent searches. When the search box is empty they show " +
+                "up as chips underneath it, so re-running a search is one tap " +
+                "instead of retyping. Tap a chip to run it again, the × to " +
+                "forget one, or Clear to drop them all.",
+        ),
+        ReleaseNote(
             code = 203,
             name = "0.203",
             header = "An empty source now tells you why",
