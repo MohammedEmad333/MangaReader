@@ -43,6 +43,17 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 203,
+            name = "0.203",
+            header = "An empty source now tells you why",
+            body = "When a source's listing comes back empty, the screen used " +
+                "to say only “Nothing found.” Now, when the site " +
+                "loaded fine but no titles could be read from it — almost " +
+                "always because the site changed and the extension is behind — " +
+                "it says so and offers the connection probe, so you can tell a " +
+                "source that needs updating from one that's genuinely empty.",
+        ),
+        ReleaseNote(
             code = 202,
             name = "0.202",
             header = "The filter sheet is snappy again",
