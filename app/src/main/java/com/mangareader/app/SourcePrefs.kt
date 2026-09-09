@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import org.json.JSONArray
 
 /**
  * Per-source UI state for the Sources list: which sources are pinned, and which
@@ -21,6 +22,10 @@ object SourcePrefs {
     private const val KEY_HIDDEN = "hidden_sources"
     private const val KEY_ENABLED_LANGS = "enabled_langs"
     private const val KEY_SHOW_NSFW = "show_nsfw"
+    private const val KEY_RECENT_SEARCHES = "global_search_recents"
+
+    /** How many past global-search queries are remembered. */
+    private const val RECENT_SEARCHES_MAX = 12
 
     /**
      * Languages shown before anyone chooses. 95 sources across 30-odd languages
@@ -170,4 +175,54 @@ object SourcePrefs {
         showNsfw: Boolean
     ): Boolean =
         id !in hidden && lang in enabledLangs && (showNsfw || !isNsfw)
+
+    // ---- recent global searches ----
+    //
+    // A short, most-recent-first list of past queries, so re-running a search is
+    // a tap instead of retyping. Stored as an ordered JSON array rather than a
+    // StringSet — order is the whole point here, and a StringSet has none.
+
+    /** Past queries, newest first. Empty on a fresh install or if the store is corrupt. */
+    fun recentSearches(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_RECENT_SEARCHES, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Records a query at the front, de-duplicated case-insensitively so re-running
+     * an old search promotes it rather than adding a twin, and capped at
+     * [RECENT_SEARCHES_MAX]. Blank queries are ignored. Returns the new list.
+     */
+    fun addRecentSearch(context: Context, query: String): List<String> {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return recentSearches(context)
+        val next = ArrayList<String>()
+        next.add(trimmed)
+        for (q in recentSearches(context)) {
+            if (!q.equals(trimmed, ignoreCase = true)) next.add(q)
+            if (next.size >= RECENT_SEARCHES_MAX) break
+        }
+        store(context, next)
+        return next
+    }
+
+    /** Drops one query from the list. Returns what remains. */
+    fun removeRecentSearch(context: Context, query: String): List<String> {
+        val next = recentSearches(context).filterNot { it.equals(query, ignoreCase = true) }
+        store(context, next)
+        return next
+    }
+
+    fun clearRecentSearches(context: Context) {
+        prefs(context).edit().remove(KEY_RECENT_SEARCHES).apply()
+    }
+
+    private fun store(context: Context, queries: List<String>) {
+        val arr = JSONArray()
+        queries.forEach { arr.put(it) }
+        prefs(context).edit().putString(KEY_RECENT_SEARCHES, arr.toString()).apply()
+    }
 }
