@@ -50,7 +50,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -373,6 +375,7 @@ internal fun MoreTab(
 @Composable
 internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
     var newRepo by remember { mutableStateOf("") }
 
@@ -425,10 +428,20 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                                     Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 },
                                 trailingContent = {
-                                    TextButton(onClick = {
-                                        ExtensionRepos.remove(context, url)
-                                        repos = ExtensionRepos.list(context)
-                                    }) { Text("Remove") }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        TextButton(onClick = {
+                                            clipboard.setText(AnnotatedString(url))
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Copied repo URL",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }) { Text("Copy") }
+                                        TextButton(onClick = {
+                                            ExtensionRepos.remove(context, url)
+                                            repos = ExtensionRepos.list(context)
+                                        }) { Text("Remove") }
+                                    }
                                 }
                             )
                             HorizontalDivider()
