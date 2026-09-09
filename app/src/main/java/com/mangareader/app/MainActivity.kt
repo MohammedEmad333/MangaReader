@@ -991,6 +991,125 @@ fun YomuApp() {
     /** Queues every not-yet-downloaded chapter, oldest first. */
     fun downloadAll(src: Source, chapters: List<Chapter>) = queueDownloads(src, chapters)
 
+    // ---------- library bulk actions ----------
+
+    /**
+     * A selection's chapters, cache first and the source only as a fallback.
+     *
+     * The cached list is what most library entries already have — every series
+     * that has been opened or that a refresh has swept — so the common path
+     * makes no request at all. A series with nothing cached is resolved through
+     * its source exactly as [openFromLibrary] does (`restoreSeries` then
+     * `listChapters`), and an empty return means "couldn't load it", which the
+     * callers count and report rather than silently doing nothing.
+     *
+     * Always on [Dispatchers.IO]: called from a loop over the selection, each
+     * iteration a pref read and possibly two requests.
+     */
+    suspend fun chaptersForBulk(entry: LibraryEntry, src: Source?): List<Chapter> =
+        withContext(Dispatchers.IO) {
+            val cached = ChapterCache.load(context, entry.seriesId)
+                .map { src?.rehydrateChapter(it) ?: it }
+            if (cached.isNotEmpty()) return@withContext cached
+            if (src == null) return@withContext emptyList()
+            val series = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
+                .getOrNull() ?: return@withContext emptyList()
+            runCatching { src.listChapters(series) }
+                .onSuccess { if (it.isNotEmpty()) ChapterCache.save(context, entry.seriesId, it) }
+                .getOrDefault(emptyList())
+        }
+
+    /**
+     * Marks every chapter of each selected series read (or unread) at once.
+     *
+     * The read flags and the [SeriesIndex] counts are the same two halves a
+     * single series keeps in step: the flags come first through [ReadState], then
+     * [SeriesIndex.record] recomputes the stored read count from them so the
+     * unread badge and the Unread/Started/Completed filters move with the change.
+     * `record` per series is one index write each, which is fine for a selection
+     * and is not the whole-library loop its KDoc warns off.
+     */
+    fun bulkSetRead(ids: Set<String>, value: Boolean) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            val (changed, skipped) = withContext(Dispatchers.IO) {
+                val sources = SourceManager.listAllSources(context).associateBy { it.id }
+                val entries = Library.list(context).filter { it.seriesId in ids }
+                var changed = 0
+                var skipped = 0
+                for (entry in entries) {
+                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
+                    if (chapters.isEmpty()) { skipped++; continue }
+                    chapters.forEach {
+                        ReadState.setRead(context, chapterKeyOf(entry.sourceId, it), value)
+                    }
+                    SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
+                    changed++
+                }
+                changed to skipped
+            }
+            libraryTick++
+            val verb = if (value) "read" else "unread"
+            val msg = buildString {
+                append("Marked $changed series $verb")
+                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Queues every chapter of each selected series for download.
+     *
+     * Builds the [DownloadItem]s straight from the [LibraryEntry] rather than
+     * routing through [queueDownloads], which reads title and cover off
+     * `activeSeries` — there is no active series here. `enqueue` drops anything
+     * already downloaded or already queued, so re-running this is safe and the
+     * count reported is only what it actually added.
+     */
+    fun bulkDownload(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            val (items, skipped) = withContext(Dispatchers.IO) {
+                val sources = SourceManager.listAllSources(context).associateBy { it.id }
+                val entries = Library.list(context).filter { it.seriesId in ids }
+                val items = ArrayList<DownloadItem>()
+                var skipped = 0
+                for (entry in entries) {
+                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
+                    if (chapters.isEmpty()) { skipped++; continue }
+                    chapters.forEach { ch ->
+                        items.add(
+                            DownloadItem(
+                                sourceId = entry.sourceId,
+                                chapterId = ch.id,
+                                chapterName = ch.name,
+                                seriesTitle = entry.title,
+                                seriesId = entry.seriesId,
+                                cover = entry.cover
+                            )
+                        )
+                    }
+                }
+                items to skipped
+            }
+            val added = DownloadQueue.enqueue(context, items)
+            if (added > 0) {
+                if (DownloadQueue.paused) DownloadQueue.setPaused(context, false)
+                DownloadService.start(context)
+            }
+            downloadTick++
+            val msg = buildString {
+                append(
+                    if (added > 0) "Queued $added ${if (added == 1) "chapter" else "chapters"}"
+                    else "Nothing to download — already downloaded or queued"
+                )
+                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     /**
      * Stops the downloads for one series, leaving the rest of the queue alone.
      *
@@ -1697,7 +1816,10 @@ fun YomuApp() {
                             // serialisations. Same reason mergeAll exists.
                             Library.removeAll(context, ids)
                             libraryTick++
-                        }
+                        },
+                        onMarkRead = { ids -> bulkSetRead(ids, true) },
+                        onMarkUnread = { ids -> bulkSetRead(ids, false) },
+                        onDownloadMany = { ids -> bulkDownload(ids) }
                     )
                     1 -> BrowseTab(
                         configs = configs,

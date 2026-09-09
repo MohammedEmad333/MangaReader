@@ -43,6 +43,18 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 205,
+            name = "0.205",
+            header = "Mark read and download a whole selection",
+            body = "Long-press in the library to select series, then use the " +
+                "overflow menu in the selection bar to mark them all read or " +
+                "unread, or queue every chapter for download — alongside the " +
+                "category and remove actions that were already there. Chapters " +
+                "come from the offline cache where a series has one; any that " +
+                "can't be loaded are skipped and counted so nothing fails " +
+                "silently.",
+        ),
+        ReleaseNote(
             code = 204,
             name = "0.204",
             header = "Global search remembers your recent queries",
