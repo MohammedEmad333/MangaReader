@@ -222,4 +222,11 @@ dependencies {
     // 5.2+ put in front of Kotlin 2.0.20 earlier tonight. Moving past 1.9.x
     // means moving Kotlin first.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+
+    // JVM unit tests (src/test), run by `gradle testDebugUnitTest`. These cover
+    // the pure-logic pieces that have no Android dependency — chapter-number
+    // recognition first, where a regex tweak can silently change how a whole
+    // library sorts. Nothing here ships in the APK; it's the debug unit-test
+    // classpath only.
+    testImplementation("junit:junit:4.13.2")
 }
