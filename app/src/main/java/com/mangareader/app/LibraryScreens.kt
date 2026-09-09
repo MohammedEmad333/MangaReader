@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -85,7 +86,10 @@ internal fun LibraryTab(
     onSearchOpenChange: (Boolean) -> Unit,
     scroll: ScrollMemory,
     onOpen: (LibraryEntry) -> Unit,
-    onRemoveMany: (Set<String>) -> Unit
+    onRemoveMany: (Set<String>) -> Unit,
+    onMarkRead: (Set<String>) -> Unit,
+    onMarkUnread: (Set<String>) -> Unit,
+    onDownloadMany: (Set<String>) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -122,6 +126,7 @@ internal fun LibraryTab(
     var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var assignOpen by remember { mutableStateOf(false) }
+    var bulkMenuOpen by remember { mutableStateOf(false) }
     val selecting = selected.isNotEmpty()
 
     // "Read" is a normal user category, so this is a name match rather than a
@@ -385,6 +390,42 @@ internal fun LibraryTab(
                         selected = emptySet()
                     }) {
                         Icon(Icons.Default.Delete, contentDescription = "Remove from library")
+                    }
+                    // The heavier actions — each resolves a chapter list per
+                    // series — live in an overflow so the bar stays legible.
+                    Box {
+                        IconButton(onClick = { bulkMenuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = bulkMenuOpen,
+                            onDismissRequest = { bulkMenuOpen = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Mark as read") },
+                                onClick = {
+                                    onMarkRead(selected)
+                                    bulkMenuOpen = false
+                                    selected = emptySet()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mark as unread") },
+                                onClick = {
+                                    onMarkUnread(selected)
+                                    bulkMenuOpen = false
+                                    selected = emptySet()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Download") },
+                                onClick = {
+                                    onDownloadMany(selected)
+                                    bulkMenuOpen = false
+                                    selected = emptySet()
+                                }
+                            )
+                        }
                     }
                 }
             )

@@ -43,6 +43,38 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 206,
+            name = "0.206",
+            header = "Migrate a series to another source",
+            body = "When a source goes dead or loses a series, open the series' " +
+                "menu and pick “Migrate to another source.” That searches every " +
+                "source for the title; tap the one you want and the entry moves " +
+                "there, carrying its categories and its read progress (matched " +
+                "by chapter number), and the old copy is removed.",
+        ),
+        ReleaseNote(
+            code = 205,
+            name = "0.205",
+            header = "Mark read and download a whole selection",
+            body = "Long-press in the library to select series, then use the " +
+                "overflow menu in the selection bar to mark them all read or " +
+                "unread, or queue every chapter for download — alongside the " +
+                "category and remove actions that were already there. Chapters " +
+                "come from the offline cache where a series has one; any that " +
+                "can't be loaded are skipped and counted so nothing fails " +
+                "silently.",
+        ),
+        ReleaseNote(
+            code = 204,
+            name = "0.204",
+            header = "Global search remembers your recent queries",
+            body = "Searching every source at once now keeps a short list of " +
+                "your recent searches. When the search box is empty they show " +
+                "up as chips underneath it, so re-running a search is one tap " +
+                "instead of retyping. Tap a chip to run it again, the × to " +
+                "forget one, or Clear to drop them all.",
+        ),
+        ReleaseNote(
             code = 203,
             name = "0.203",
             header = "An empty source now tells you why",

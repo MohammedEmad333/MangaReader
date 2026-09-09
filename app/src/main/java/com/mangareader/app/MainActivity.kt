@@ -119,6 +119,9 @@ internal enum class SeriesOrigin { BROWSE, LIBRARY, HISTORY, GLOBAL_SEARCH, DOWN
 
 internal class GlobalResult(val source: Source, val series: List<Series>)
 
+/** The library series a migration is moving away from, while the picker is open. */
+internal class MigrateFrom(val seriesId: String, val sourceId: String, val title: String)
+
 /** Everything needed to jump straight back into a chapter from a history row. */
 internal class ResumeTarget(
     val source: Source,
@@ -387,6 +390,16 @@ fun YomuApp() {
     // Display filter, not a scope: empty sources are kept in globalResults so
     // this can show or hide them without re-running the search.
     var globalHasResultsOnly by remember { mutableStateOf(true) }
+    // Past queries, newest first — hoisted so the empty-state chips update the
+    // instant a search runs, without the screen re-reading prefs.
+    var globalRecents by remember { mutableStateOf(SourcePrefs.recentSearches(context)) }
+
+    // Source migration. When [migrateFrom] is set, the global-search screen is
+    // the target picker for moving that library series to another source, and a
+    // tapped result opens the confirm dialog ([migrateTarget]) instead of the
+    // series.
+    var migrateFrom by remember { mutableStateOf<MigrateFrom?>(null) }
+    var migrateTarget by remember { mutableStateOf<Pair<Source, Series>?>(null) }
 
     // How the current series was reached. Opening from Library or History has to
     // adopt its source to load chapters and pages, which would otherwise strand
@@ -625,6 +638,7 @@ fun YomuApp() {
             return
         }
         globalRunning = true
+        globalRecents = SourcePrefs.addRecentSearch(context, query)
         globalJob = scope.launch {
             try {
                 val targets = withContext(Dispatchers.IO) {
@@ -986,6 +1000,208 @@ fun YomuApp() {
 
     /** Queues every not-yet-downloaded chapter, oldest first. */
     fun downloadAll(src: Source, chapters: List<Chapter>) = queueDownloads(src, chapters)
+
+    // ---------- library bulk actions ----------
+
+    /**
+     * A selection's chapters, cache first and the source only as a fallback.
+     *
+     * The cached list is what most library entries already have — every series
+     * that has been opened or that a refresh has swept — so the common path
+     * makes no request at all. A series with nothing cached is resolved through
+     * its source exactly as [openFromLibrary] does (`restoreSeries` then
+     * `listChapters`), and an empty return means "couldn't load it", which the
+     * callers count and report rather than silently doing nothing.
+     *
+     * Always on [Dispatchers.IO]: called from a loop over the selection, each
+     * iteration a pref read and possibly two requests.
+     */
+    suspend fun chaptersForBulk(entry: LibraryEntry, src: Source?): List<Chapter> =
+        withContext(Dispatchers.IO) {
+            val cached = ChapterCache.load(context, entry.seriesId)
+                .map { src?.rehydrateChapter(it) ?: it }
+            if (cached.isNotEmpty()) return@withContext cached
+            if (src == null) return@withContext emptyList()
+            val series = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
+                .getOrNull() ?: return@withContext emptyList()
+            runCatching { src.listChapters(series) }
+                .onSuccess { if (it.isNotEmpty()) ChapterCache.save(context, entry.seriesId, it) }
+                .getOrDefault(emptyList())
+        }
+
+    /**
+     * Marks every chapter of each selected series read (or unread) at once.
+     *
+     * The read flags and the [SeriesIndex] counts are the same two halves a
+     * single series keeps in step: the flags come first through [ReadState], then
+     * [SeriesIndex.record] recomputes the stored read count from them so the
+     * unread badge and the Unread/Started/Completed filters move with the change.
+     * `record` per series is one index write each, which is fine for a selection
+     * and is not the whole-library loop its KDoc warns off.
+     */
+    fun bulkSetRead(ids: Set<String>, value: Boolean) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            val (changed, skipped) = withContext(Dispatchers.IO) {
+                val sources = SourceManager.listAllSources(context).associateBy { it.id }
+                val entries = Library.list(context).filter { it.seriesId in ids }
+                var changed = 0
+                var skipped = 0
+                for (entry in entries) {
+                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
+                    if (chapters.isEmpty()) { skipped++; continue }
+                    chapters.forEach {
+                        ReadState.setRead(context, chapterKeyOf(entry.sourceId, it), value)
+                    }
+                    SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
+                    changed++
+                }
+                changed to skipped
+            }
+            libraryTick++
+            val verb = if (value) "read" else "unread"
+            val msg = buildString {
+                append("Marked $changed series $verb")
+                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Queues every chapter of each selected series for download.
+     *
+     * Builds the [DownloadItem]s straight from the [LibraryEntry] rather than
+     * routing through [queueDownloads], which reads title and cover off
+     * `activeSeries` — there is no active series here. `enqueue` drops anything
+     * already downloaded or already queued, so re-running this is safe and the
+     * count reported is only what it actually added.
+     */
+    fun bulkDownload(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            val (items, skipped) = withContext(Dispatchers.IO) {
+                val sources = SourceManager.listAllSources(context).associateBy { it.id }
+                val entries = Library.list(context).filter { it.seriesId in ids }
+                val items = ArrayList<DownloadItem>()
+                var skipped = 0
+                for (entry in entries) {
+                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
+                    if (chapters.isEmpty()) { skipped++; continue }
+                    chapters.forEach { ch ->
+                        items.add(
+                            DownloadItem(
+                                sourceId = entry.sourceId,
+                                chapterId = ch.id,
+                                chapterName = ch.name,
+                                seriesTitle = entry.title,
+                                seriesId = entry.seriesId,
+                                cover = entry.cover
+                            )
+                        )
+                    }
+                }
+                items to skipped
+            }
+            val added = DownloadQueue.enqueue(context, items)
+            if (added > 0) {
+                if (DownloadQueue.paused) DownloadQueue.setPaused(context, false)
+                DownloadService.start(context)
+            }
+            downloadTick++
+            val msg = buildString {
+                append(
+                    if (added > 0) "Queued $added ${if (added == 1) "chapter" else "chapters"}"
+                    else "Nothing to download — already downloaded or queued"
+                )
+                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Moves a saved series from one source to another.
+     *
+     * The point of migration is a source that has gone dead or lost the series:
+     * the entry is re-created under [toSource]/[toSeries], its categories are
+     * carried over, and read progress is transferred **by chapter number** —
+     * the only key both sides share, since chapter ids are per-source. A target
+     * chapter counts as read when a numbered source chapter with the same number
+     * was read; anything unnumbered is left alone rather than guessed at. The old
+     * entry, its categories, and its index row are then removed.
+     *
+     * Best-effort by design: if the target's chapter list can't be fetched the
+     * entry still moves (so a dead source isn't a trap), it just carries no
+     * transferred progress.
+     */
+    fun performMigration(from: MigrateFrom, toSource: Source, toSeries: Series) {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val readNumbers = ChapterCache.load(context, from.seriesId)
+                        .filter {
+                            it.number > Chapter.NO_NUMBER &&
+                                ReadState.isRead(context, chapterKeyOf(from.sourceId, it))
+                        }
+                        .map { it.number }
+                        .toSet()
+
+                    val toChapters = runCatching { toSource.listChapters(toSeries) }
+                        .getOrDefault(emptyList())
+                    if (toChapters.isNotEmpty()) {
+                        ChapterCache.save(context, toSeries.id, toChapters)
+                        val readKeys = toChapters
+                            .filter { it.number > Chapter.NO_NUMBER && it.number in readNumbers }
+                            .map { chapterKeyOf(toSource.id, it) }
+                        ReadState.setReadBulk(context, readKeys)
+                        SeriesIndex.record(context, toSource.id, toSeries.id, toChapters)
+                    }
+
+                    val cats = Categories.categoriesFor(context, from.seriesId)
+                    val cover = (toSeries.cover as? String)
+                        ?: (toSeries.cover as? File)?.absolutePath
+                        ?: ""
+                    Library.add(
+                        context,
+                        LibraryEntry(
+                            seriesId = toSeries.id,
+                            sourceId = toSource.id,
+                            title = toSeries.title,
+                            cover = cover,
+                            addedAt = System.currentTimeMillis()
+                        )
+                    )
+                    Categories.setCategoriesFor(context, toSeries.id, cats)
+
+                    // Only after the new entry is in place: a crash between the
+                    // two would otherwise lose the series from the library
+                    // entirely rather than leaving the old copy to retry from.
+                    Library.remove(context, from.seriesId)
+                    Categories.setCategoriesFor(context, from.seriesId, emptySet())
+                    SeriesIndex.forget(context, setOf(from.seriesId))
+                }.isSuccess
+            }
+            migrateTarget = null
+            migrateFrom = null
+            if (ok) {
+                cancelGlobalSearch()
+                globalSearchOpen = false
+                seriesList = null
+                tagSearchReturn = null
+                activeSeries = null
+                activeSource = null
+                activeSourceId = null
+                currentTab = 0
+                libraryTick++
+                android.widget.Toast
+                    .makeText(context, "Migrated to ${toSource.name}", android.widget.Toast.LENGTH_SHORT)
+                    .show()
+            } else {
+                errorMessage = "Couldn't migrate this series"
+            }
+        }
+    }
 
     /**
      * Stops the downloads for one series, leaving the rest of the queue alone.
@@ -1503,6 +1719,22 @@ fun YomuApp() {
                 globalSearchOpen = true
                 runGlobalSearch(tag)
             },
+            onMigrate = {
+                val s = activeSeries
+                val sid = activeSourceId
+                if (s != null && sid != null) {
+                    // Same detour mechanism the tag search uses: remember the
+                    // series so Back from the picker returns to it, and open the
+                    // global-search screen — which becomes the target picker
+                    // while migrateFrom is set — pre-seeded with the title.
+                    migrateFrom = MigrateFrom(s.id, sid, s.title)
+                    tagSearchReturn = s
+                    activeSeries = null
+                    errorMessage = null
+                    globalSearchOpen = true
+                    runGlobalSearch(s.title)
+                }
+            },
             onSolveChallenge = solveFromSeries,
             onBack = {
                 activeSeries = null
@@ -1531,14 +1763,27 @@ fun YomuApp() {
             onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
             hasResultsOnly = globalHasResultsOnly,
             onToggleHasResultsOnly = { globalHasResultsOnly = it },
+            recents = globalRecents,
+            onRemoveRecent = { globalRecents = SourcePrefs.removeRecentSearch(context, it) },
+            onClearRecents = {
+                SourcePrefs.clearRecentSearches(context)
+                globalRecents = emptyList()
+            },
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
-            onOpenSeries = { src, s -> openGlobalResult(src, s) },
+            migrating = migrateFrom != null,
+            onOpenSeries = { src, s ->
+                // In migrate mode a tapped result is the chosen target, not a
+                // series to open — confirm before moving anything.
+                if (migrateFrom != null) migrateTarget = src to s
+                else openGlobalResult(src, s)
+            },
             libraryTick = libraryTick,
             onBack = {
                 cancelGlobalSearch()
                 globalSearchOpen = false
+                migrateFrom = null
                 seriesList = null
                 val cameFromTag = tagSearchReturn
                 if (cameFromTag != null) {
@@ -1556,6 +1801,29 @@ fun YomuApp() {
                 }
             }
         )
+        migrateTarget?.let { (targetSource, targetSeries) ->
+            val from = migrateFrom
+            AlertDialog(
+                onDismissRequest = { migrateTarget = null },
+                title = { Text("Migrate series") },
+                text = {
+                    Text(
+                        "Move “${from?.title}” to ${targetSource.name}? " +
+                            "Your categories and read progress move with it, and the " +
+                            "old entry is removed."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        enabled = from != null,
+                        onClick = { if (from != null) performMigration(from, targetSource, targetSeries) }
+                    ) { Text("Migrate") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { migrateTarget = null }) { Text("Cancel") }
+                }
+            )
+        }
     } else if (activeSource != null) {
         // Only extension sources backed by an HttpSource have a site to open;
         // for anything else the button is absent rather than broken.
@@ -1687,7 +1955,10 @@ fun YomuApp() {
                             // serialisations. Same reason mergeAll exists.
                             Library.removeAll(context, ids)
                             libraryTick++
-                        }
+                        },
+                        onMarkRead = { ids -> bulkSetRead(ids, true) },
+                        onMarkUnread = { ids -> bulkSetRead(ids, false) },
+                        onDownloadMany = { ids -> bulkDownload(ids) }
                     )
                     1 -> BrowseTab(
                         configs = configs,
