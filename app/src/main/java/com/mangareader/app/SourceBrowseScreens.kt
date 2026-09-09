@@ -333,10 +333,58 @@ internal fun LibraryScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (!loading) {
-                    Text(
-                        "Nothing found in this source.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Three different silences look identical in an empty grid, so
+                    // name which one this is. An outright failure already has the
+                    // banner above, and repeating a generic line under it says
+                    // nothing new. A blank search that finds nothing is a real "no
+                    // matches" and means the source is working. But a listing tab
+                    // (Popular/Latest/Filter) that comes back empty with NO error is
+                    // the case that keeps getting read as a dead source when it
+                    // isn't: the request succeeded and the parse found zero titles,
+                    // which on these sites almost always means the site changed its
+                    // markup and the installed extension is behind. Say that, and
+                    // point at the probe — the one thing that settles whether the
+                    // site is reachable (parse problem, update the extension) or not
+                    // (DNS/block, a different fix). See NetworkProbe.
+                    when {
+                        error != null -> Text(
+                            "Nothing found in this source.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        query.isNotBlank() -> Text(
+                            "No results for “$query”.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        isLocalSource -> Text(
+                            "Nothing found in this source.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        ) {
+                            Text(
+                                "This source returned no results.",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "The request succeeded but no titles could be read " +
+                                    "from the page. The site has most likely changed " +
+                                    "and the extension needs updating. Run the " +
+                                    "connection probe to check the site is reachable.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = onDiagnose) {
+                                Text("Connection probe")
+                            }
+                        }
+                    }
                 }
             }
         } else {
