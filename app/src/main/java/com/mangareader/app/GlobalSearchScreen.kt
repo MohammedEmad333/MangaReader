@@ -31,6 +31,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -67,7 +69,7 @@ import java.io.File
  * the pinned ones when that chip is on. Rows appear as their batch finishes;
  * sources that error out or return nothing are simply absent.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun GlobalSearchScreen(
     query: String,
@@ -79,6 +81,17 @@ internal fun GlobalSearchScreen(
     onTogglePinnedOnly: (Boolean) -> Unit,
     hasResultsOnly: Boolean,
     onToggleHasResultsOnly: (Boolean) -> Unit,
+    /** Past queries, newest first, for the one-tap-to-rerun chips. */
+    recents: List<String>,
+    onRemoveRecent: (String) -> Unit,
+    onClearRecents: () -> Unit,
+    /**
+     * Migration mode: the screen is a target picker for moving a library series
+     * to another source. A tapped result is the chosen target rather than a
+     * series to open, and per-source "See all" is hidden because there is
+     * nothing to browse into here.
+     */
+    migrating: Boolean = false,
     onSearch: (String) -> Unit,
     onCancel: () -> Unit,
     onOpenSource: (Source) -> Unit,
@@ -103,9 +116,18 @@ internal fun GlobalSearchScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Search all sources") },
+            title = { Text(if (migrating) "Migrate to…" else "Search all sources") },
             navigationIcon = { BackButton(onBack) }
         )
+
+        if (migrating) {
+            Text(
+                "Pick the source to move this series to.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -172,11 +194,13 @@ internal fun GlobalSearchScreen(
         }
 
         if (shown.isEmpty()) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     when {
@@ -184,8 +208,64 @@ internal fun GlobalSearchScreen(
                         query.isBlank() -> "Type something to search every source at once."
                         else -> "No source returned a match for \u201c$query\u201d."
                     },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
                 )
+                // Recent queries turn a re-search into a single tap. Hidden while a
+                // search is in flight \u2014 the counter above already speaks for that
+                // state, and re-running mid-search would just fight the running job.
+                if (!running && recents.isNotEmpty()) {
+                    Spacer(Modifier.height(24.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Recent searches",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onClearRecents) { Text("Clear") }
+                    }
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        recents.forEach { q ->
+                            InputChip(
+                                selected = false,
+                                onClick = {
+                                    field = q
+                                    onSearch(q)
+                                },
+                                label = {
+                                    Text(q, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.History,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Remove \u201c$q\u201d",
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clickable { onRemoveRecent(q) }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
             }
         } else Box(
             modifier = Modifier
@@ -218,7 +298,7 @@ internal fun GlobalSearchScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        if (result.series.isNotEmpty()) {
+                        if (result.series.isNotEmpty() && !migrating) {
                             TextButton(onClick = { onOpenSource(result.source) }) {
                                 Text("See all")
                             }

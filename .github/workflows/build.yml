@@ -38,6 +38,13 @@ jobs:
           # Explicit: write the cache from main so later runs can read it.
           cache-read-only: false
 
+      # Fast JVM logic tests before the APK is built, so a regression in
+      # something like chapter-number recognition fails the run here instead of
+      # shipping in the "latest" build. These are pure unit tests (src/test) and
+      # take seconds; anything needing a device is not run here.
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --build-cache
+
       - name: Build debug APK
         run: gradle assembleDebug --build-cache
 

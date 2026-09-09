@@ -641,6 +641,8 @@ internal fun SeriesScreen(
     onSearchTag: (String) -> Unit,
     /** Runs [String] across every searchable source. */
     onGlobalSearchTag: (String) -> Unit,
+    /** Opens the target picker to move this (library) series to another source. */
+    onMigrate: () -> Unit,
     onSolveChallenge: (() -> Unit)?,
     /** Re-fetches the chapter list without disturbing where Back goes. */
     onRefresh: () -> Unit,
@@ -1526,6 +1528,13 @@ internal fun SeriesScreen(
                                 onClick = {
                                     showOptionsMenu = false
                                     showCategories = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Migrate to another source") },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onMigrate()
                                 }
                             )
                         }
