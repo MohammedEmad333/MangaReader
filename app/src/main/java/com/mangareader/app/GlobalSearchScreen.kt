@@ -85,6 +85,13 @@ internal fun GlobalSearchScreen(
     recents: List<String>,
     onRemoveRecent: (String) -> Unit,
     onClearRecents: () -> Unit,
+    /**
+     * Migration mode: the screen is a target picker for moving a library series
+     * to another source. A tapped result is the chosen target rather than a
+     * series to open, and per-source "See all" is hidden because there is
+     * nothing to browse into here.
+     */
+    migrating: Boolean = false,
     onSearch: (String) -> Unit,
     onCancel: () -> Unit,
     onOpenSource: (Source) -> Unit,
@@ -109,9 +116,18 @@ internal fun GlobalSearchScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Search all sources") },
+            title = { Text(if (migrating) "Migrate to…" else "Search all sources") },
             navigationIcon = { BackButton(onBack) }
         )
+
+        if (migrating) {
+            Text(
+                "Pick the source to move this series to.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -282,7 +298,7 @@ internal fun GlobalSearchScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        if (result.series.isNotEmpty()) {
+                        if (result.series.isNotEmpty() && !migrating) {
                             TextButton(onClick = { onOpenSource(result.source) }) {
                                 Text("See all")
                             }
