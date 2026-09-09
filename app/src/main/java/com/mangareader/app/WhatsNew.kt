@@ -43,6 +43,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 206,
+            name = "0.206",
+            header = "Migrate a series to another source",
+            body = "When a source goes dead or loses a series, open the series' " +
+                "menu and pick “Migrate to another source.” That searches every " +
+                "source for the title; tap the one you want and the entry moves " +
+                "there, carrying its categories and its read progress (matched " +
+                "by chapter number), and the old copy is removed.",
+        ),
+        ReleaseNote(
             code = 205,
             name = "0.205",
             header = "Mark read and download a whole selection",
