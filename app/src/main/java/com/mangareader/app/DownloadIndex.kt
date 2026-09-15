@@ -75,6 +75,10 @@ object DownloadIndex {
     fun record(context: Context, item: DownloadItem) {
         invalidate()
         if (item.seriesId.isBlank()) return
+        // Keep the cover with the offline data as soon as the first chapter of
+        // the series finishes. ensure() is idempotent, so later chapters reuse
+        // the same file instead of fetching the image again.
+        val localCover = DownloadCovers.ensure(context, item)
         val current = read(context).associateBy { it.chapterId }.toMutableMap()
         current[item.chapterId] = Record(
             chapterId = item.chapterId,
@@ -82,7 +86,7 @@ object DownloadIndex {
             sourceId = item.sourceId,
             seriesId = item.seriesId,
             title = item.seriesTitle,
-            cover = item.cover
+            cover = localCover
         )
         write(context, current.values.toList())
     }
@@ -281,11 +285,12 @@ object DownloadIndex {
 
     // ---------- deleting ----------
 
-    /** Deletes every downloaded chapter of a series, pages included. */
+    /** Deletes every downloaded chapter of a series, pages and cover included. */
     @Synchronized
     fun deleteSeries(context: Context, series: DownloadedSeries) {
         invalidate()
         series.chapters.forEach { Downloads.delete(context, it.chapterId) }
+        DownloadCovers.delete(context, series.seriesId)
         val gone = series.chapters.map { it.chapterId }.toSet()
         write(context, read(context).filterNot { it.chapterId in gone })
     }
