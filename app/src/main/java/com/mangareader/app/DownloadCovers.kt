@@ -8,16 +8,20 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 
 /**
- * Persists one cover per downloaded series beside its chapter folders.
+ * Persists one cover per downloaded series for offline use.
  *
- * The queue already carries the series cover URL/path with every chapter. The
- * first completed chapter stores the original bytes under the series folder and
- * later chapters simply reuse that file, so downloading ten chapters does not
- * download the same cover ten times.
+ * Covers deliberately live under filesDir rather than inside the readable
+ * <Source>/<Series> download tree. A cover file inside that tree would make a
+ * series directory look non-empty after its last chapter is deleted, preventing
+ * the existing empty-folder cleanup from removing it.
  */
 internal object DownloadCovers {
 
-    private const val FILE_NAME = ".cover"
+    private fun dir(context: Context): File =
+        File(context.applicationContext.filesDir, "download_covers").apply { mkdirs() }
+
+    private fun fileFor(context: Context, seriesId: String): File =
+        File(dir(context), offlineKey(seriesId) + ".cover")
 
     /**
      * Ensures the series cover exists locally and returns the local absolute path.
@@ -27,13 +31,7 @@ internal object DownloadCovers {
     fun ensure(context: Context, item: DownloadItem): String {
         if (item.cover.isBlank() || item.seriesId.isBlank()) return item.cover
 
-        val relativeChapterPath = DownloadPaths.pathFor(context, item.chapterId)
-            ?: return item.cover
-        val chapterDir = File(Downloads.downloadsRoot(context), relativeChapterPath)
-        val seriesDir = chapterDir.parentFile ?: return item.cover
-        if (!seriesDir.exists() && !seriesDir.mkdirs()) return item.cover
-
-        val target = File(seriesDir, FILE_NAME)
+        val target = fileFor(context, item.seriesId)
         if (target.isFile && target.length() > 0L) return target.absolutePath
 
         val source = File(item.cover)
@@ -47,6 +45,15 @@ internal object DownloadCovers {
         }
 
         return if (saved) target.absolutePath else item.cover
+    }
+
+    fun delete(context: Context, seriesId: String) {
+        if (seriesId.isBlank()) return
+        runCatching { fileFor(context, seriesId).delete() }
+    }
+
+    fun clear(context: Context) {
+        runCatching { dir(context).deleteRecursively() }
     }
 
     private fun download(context: Context, url: String, target: File): Boolean {
