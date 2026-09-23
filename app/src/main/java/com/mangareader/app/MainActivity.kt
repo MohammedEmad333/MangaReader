@@ -1450,117 +1450,87 @@ fun YomuApp() {
             onOpenDownloadQueue = { downloadsOpen = true }
         )
     } else {
-        Scaffold(
-            bottomBar = {
-                MainBottomNavigation(
-                    currentTab = currentTab,
-                    onSelectTab = { tab ->
-                        currentTab = tab
-                        if (tab == 2) {
-                            history = History.forDisplay(context)
-                        }
-                    }
-                )
-            }
-
-        ) { innerPadding ->
-            Box(modifier = Modifier.padding(innerPadding)) {
-                when (currentTab) {
-                    0 -> LibraryTab(
-                        libraryTick = libraryTick,
-                        error = errorMessage,
-                        activeCategory = libraryCategory,
-                        onCategoryChange = {
-                            libraryCategory = it
-                            LibraryPrefs.setLastCategory(context, it)
-                        },
-                        search = librarySearch,
-                        onSearchChange = { librarySearch = it },
-                        searchOpen = librarySearchOpen,
-                        onSearchOpenChange = { librarySearchOpen = it },
-                        scroll = libraryScroll,
-                        onOpen = { openFromLibrary(it) },
-                        onRemoveMany = { ids ->
-                            // removeAll, not remove-in-a-loop: each remove()
-                            // rewrites the whole library JSON, so a hundred
-                            // selected entries would be a hundred growing
-                            // serialisations. Same reason mergeAll exists.
-                            Library.removeAll(context, ids)
-                            libraryTick++
-                        },
-                        onMarkRead = { ids -> bulkSetRead(ids, true) },
-                        onMarkUnread = { ids -> bulkSetRead(ids, false) },
-                        onDownloadMany = { ids -> bulkDownload(ids) }
-                    )
-                    1 -> BrowseTab(
-                        configs = configs,
-                        extensions = extensionSources,
-                        scroll = sourcesScroll,
-                        onGlobalSearch = {
-                            globalSearchOpen = true
-                            if (globalQuery.isNotBlank() &&
-                                globalResults.isEmpty() &&
-                                !globalRunning
-                            ) {
-                                runGlobalSearch(globalQuery)
-                            }
-                        },
-                        onAdd = {
-                            editingConfig = SourceConfig(SourceManager.newId(), "local", "")
-                            showSourceDialog = true
-                        },
-                        onOpenConfig = { openSourceConfig(it) },
-                        onOpenExtension = { openSource(it) },
-                        onEdit = {
-                            editingConfig = it
-                            showSourceDialog = true
-                        },
-                        onDelete = {
-                            SourceManager.remove(context, it.id)
-                            configs = SourceManager.list(context)
-                        },
-                        onExtensionsChanged = {
-                            scope.launch {
-                                extensionSources = withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        SourceManager.listAllSources(context)
-                                            .filter { it.id.startsWith("tachi:") }
-                                    }.getOrDefault(emptyList())
-                                }
-                            }
-                        }
-                    )
-                    2 -> HistoryScreen(
-                        history = history,
-                        loading = isLoading,
-                        error = errorMessage,
-                        onOpen = { openFromHistory(it) },
-                        onDelete = {
-                            History.remove(context, it.chapterKey)
-                            history = History.forDisplay(context)
-                        },
-                        libraryTick = libraryTick,
-                        onClearAll = {
-                            History.list(context).forEach { History.remove(context, it.chapterKey) }
-                            history = History.forDisplay(context)
-                        },
-                        // The same re-read every other mutation here does, so
-                        // the gesture and the existing paths cannot drift.
-                        onRefresh = { history = History.forDisplay(context) }
-                    )
-                    3 -> DownloadsTab(
-                        downloadTick = downloadTick + DownloadQueue.tick,
-                        libraryTick = libraryTick,
-                        onOpen = { openFromDownloads(it) },
-                        onOpenQueue = { downloadsOpen = true }
-                    )
-                    4 -> MoreTab(
-                        onOpenDownloads = { downloadsOpen = true },
-                        onOpenSettings = { settingsOpen = true }
-                    )
+        MainTabsRoute(
+            currentTab = currentTab,
+            onSelectTab = { tab ->
+                currentTab = tab
+                if (tab == 2) {
+                    history = History.forDisplay(context)
                 }
-            }
-        }
+            },
+            libraryTick = libraryTick,
+            error = errorMessage,
+            libraryCategory = libraryCategory,
+            onLibraryCategoryChange = {
+                libraryCategory = it
+                LibraryPrefs.setLastCategory(context, it)
+            },
+            librarySearch = librarySearch,
+            onLibrarySearchChange = { librarySearch = it },
+            librarySearchOpen = librarySearchOpen,
+            onLibrarySearchOpenChange = { librarySearchOpen = it },
+            libraryScroll = libraryScroll,
+            onOpenLibrary = { openFromLibrary(it) },
+            onRemoveLibraryMany = { ids ->
+                Library.removeAll(context, ids)
+                libraryTick++
+            },
+            onMarkRead = { ids -> bulkSetRead(ids, true) },
+            onMarkUnread = { ids -> bulkSetRead(ids, false) },
+            onDownloadMany = { ids -> bulkDownload(ids) },
+            configs = configs,
+            extensions = extensionSources,
+            sourcesScroll = sourcesScroll,
+            onGlobalSearch = {
+                globalSearchOpen = true
+                if (globalQuery.isNotBlank() &&
+                    globalResults.isEmpty() &&
+                    !globalRunning
+                ) {
+                    runGlobalSearch(globalQuery)
+                }
+            },
+            onAddSource = {
+                editingConfig = SourceConfig(SourceManager.newId(), "local", "")
+                showSourceDialog = true
+            },
+            onOpenConfig = { openSourceConfig(it) },
+            onOpenExtension = { openSource(it) },
+            onEditConfig = {
+                editingConfig = it
+                showSourceDialog = true
+            },
+            onDeleteConfig = {
+                SourceManager.remove(context, it.id)
+                configs = SourceManager.list(context)
+            },
+            onExtensionsChanged = {
+                scope.launch {
+                    extensionSources = withContext(Dispatchers.IO) {
+                        runCatching {
+                            SourceManager.listAllSources(context)
+                                .filter { it.id.startsWith("tachi:") }
+                        }.getOrDefault(emptyList())
+                    }
+                }
+            },
+            history = history,
+            loading = isLoading,
+            onOpenHistory = { openFromHistory(it) },
+            onDeleteHistory = {
+                History.remove(context, it.chapterKey)
+                history = History.forDisplay(context)
+            },
+            onClearHistory = {
+                History.list(context).forEach { History.remove(context, it.chapterKey) }
+                history = History.forDisplay(context)
+            },
+            onRefreshHistory = { history = History.forDisplay(context) },
+            downloadTick = downloadTick + DownloadQueue.tick,
+            onOpenDownload = { openFromDownloads(it) },
+            onOpenDownloadQueue = { downloadsOpen = true },
+            onOpenSettings = { settingsOpen = true }
+        )
     }
 
     val scan = videoScan
