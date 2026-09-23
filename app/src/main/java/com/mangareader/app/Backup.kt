@@ -1,7 +1,6 @@
 package com.mangareader.app
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -12,7 +11,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -134,11 +132,11 @@ internal object Backup {
     /** The whole payload as JSON text. Small enough to hold in memory. */
     fun payload(context: Context): String {
         val stores = JSONObject()
-        storeNames(context).forEach { name ->
+        BackupCodec.storeNames(context, APP_PREFS).forEach { name ->
             val map = context.applicationContext
                 .getSharedPreferences(name, Context.MODE_PRIVATE)
                 .all
-            stores.put(name, encode(map, skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet()))
+            stores.put(name, BackupCodec.encode(map, skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet()))
         }
         return JSONObject()
             .put("version", VERSION)
@@ -260,7 +258,7 @@ internal object Backup {
                 .getSharedPreferences(name, Context.MODE_PRIVATE)
                 .edit()
             editor.clear()
-            restored += decodeInto(editor, entries)
+            restored += BackupCodec.decodeInto(editor, entries)
             if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
             editor.commit()
         }
@@ -271,77 +269,5 @@ internal object Backup {
         restored
     }
 
-    // ---------- encoding ----------
-    //
-    // SharedPreferences values are one of six types and getAll() erases which,
-    // so each entry carries a tag. Without it a Long comes back as an Int and
-    // the next getLong() throws ClassCastException on a value that looks fine
-    // in the file.
 
-    private fun encode(map: Map<String, *>, skip: Set<String>): JSONObject {
-        val out = JSONObject()
-        map.forEach { (key, value) ->
-            if (key in skip) return@forEach
-            val entry = when (value) {
-                is Boolean -> JSONObject().put("t", "b").put("v", value)
-                is Int -> JSONObject().put("t", "i").put("v", value)
-                is Long -> JSONObject().put("t", "l").put("v", value)
-                is Float -> JSONObject().put("t", "f").put("v", value.toDouble())
-                is String -> JSONObject().put("t", "s").put("v", value)
-                is Set<*> -> JSONObject().put("t", "ss").put(
-                    "v",
-                    JSONArray().apply { value.filterIsInstance<String>().forEach { put(it) } }
-                )
-                else -> null
-            }
-            if (entry != null) out.put(key, entry)
-        }
-        return out
-    }
-
-    private fun decodeInto(editor: SharedPreferences.Editor, entries: JSONObject): Int {
-        var count = 0
-        for (key in entries.keys()) {
-            val entry = entries.optJSONObject(key) ?: continue
-            when (entry.optString("t")) {
-                "b" -> editor.putBoolean(key, entry.optBoolean("v"))
-                "i" -> editor.putInt(key, entry.optInt("v"))
-                "l" -> editor.putLong(key, entry.optLong("v"))
-                "f" -> editor.putFloat(key, entry.optDouble("v").toFloat())
-                "s" -> editor.putString(key, entry.optString("v"))
-                "ss" -> {
-                    val arr = entry.optJSONArray("v") ?: JSONArray()
-                    editor.putStringSet(
-                        key,
-                        (0 until arr.length()).mapNotNull { arr.optString(it) }.toSet()
-                    )
-                }
-                // An unknown tag is a key from a future version. Dropped, not fatal.
-                else -> continue
-            }
-            count++
-        }
-        return count
-    }
-
-    /**
-     * Which pref files exist, read off disk rather than guessed.
-     *
-     * The `source_<id>` stores are created by [SourceSettings] the first time an
-     * extension writes a preference, so there's no list of them anywhere in the
-     * app to enumerate — only the extensions currently installed, which isn't
-     * the same set. The directory is.
-     */
-    private fun storeNames(context: Context): List<String> {
-        val dir = File(context.applicationContext.applicationInfo.dataDir, "shared_prefs")
-        val found = runCatching {
-            dir.listFiles()
-                ?.filter { it.isFile && it.name.endsWith(".xml") }
-                ?.map { it.name.removeSuffix(".xml") }
-                ?.filter { it == APP_PREFS || it.startsWith("source_") }
-                .orEmpty()
-        }.getOrDefault(emptyList())
-        // APP_PREFS may not have been flushed to disk yet on a fresh install.
-        return if (APP_PREFS in found) found else found + APP_PREFS
-    }
 }

@@ -1,9 +1,6 @@
 package com.mangareader.app
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
 
 /** One downloaded chapter, as shown under its series. */
 data class DownloadedChapter(
@@ -47,20 +44,6 @@ data class DownloadedSeries(
  */
 object DownloadIndex {
 
-    private const val FILE = "downloads_index.json"
-
-    private data class Record(
-        val chapterId: String,
-        val chapterName: String,
-        val sourceId: String,
-        val seriesId: String,
-        val title: String,
-        val cover: String
-    )
-
-    private fun file(context: Context) =
-        File(context.applicationContext.filesDir, FILE)
-
     // ---------- writing ----------
 
     /**
@@ -79,8 +62,8 @@ object DownloadIndex {
         // the series finishes. ensure() is idempotent, so later chapters reuse
         // the same file instead of fetching the image again.
         val localCover = DownloadCovers.ensure(context, item)
-        val current = read(context).associateBy { it.chapterId }.toMutableMap()
-        current[item.chapterId] = Record(
+        val current = DownloadIndexStorage.read(context).associateBy { it.chapterId }.toMutableMap()
+        current[item.chapterId] = DownloadIndexRecord(
             chapterId = item.chapterId,
             chapterName = item.chapterName,
             sourceId = item.sourceId,
@@ -88,7 +71,7 @@ object DownloadIndex {
             title = item.seriesTitle,
             cover = localCover
         )
-        write(context, current.values.toList())
+        DownloadIndexStorage.write(context, current.values.toList())
     }
 
     // ---------- reading ----------
@@ -176,24 +159,24 @@ object DownloadIndex {
      */
     fun seriesIds(context: Context): Set<String> {
         cachedIds?.let { return it }
-        return read(context)
+        return DownloadIndexStorage.read(context)
             .filter { Downloads.isComplete(context, it.chapterId) }
             .mapTo(mutableSetOf()) { it.seriesId }
             .also { cachedIds = it }
     }
 
     private fun build(context: Context): List<DownloadedSeries> {
-        val live = read(context).filter { Downloads.isComplete(context, it.chapterId) }
+        val live = DownloadIndexStorage.read(context).filter { Downloads.isComplete(context, it.chapterId) }
         val known = live.map { it.chapterId }.toMutableSet()
 
-        val recovered = mutableListOf<Record>()
+        val recovered = mutableListOf<DownloadIndexRecord>()
         val scanned = needsRecovery(context, known)
         if (scanned) for (entry in Library.list(context)) {
             for (chapter in ChapterCache.load(context, entry.seriesId)) {
                 if (chapter.id in known) continue
                 if (!Downloads.isComplete(context, chapter.id)) continue
                 known.add(chapter.id)
-                recovered += Record(
+                recovered += DownloadIndexRecord(
                     chapterId = chapter.id,
                     chapterName = chapter.name,
                     sourceId = entry.sourceId,
@@ -292,44 +275,8 @@ object DownloadIndex {
         series.chapters.forEach { Downloads.delete(context, it.chapterId) }
         DownloadCovers.delete(context, series.seriesId)
         val gone = series.chapters.map { it.chapterId }.toSet()
-        write(context, read(context).filterNot { it.chapterId in gone })
+        DownloadIndexStorage.write(context, DownloadIndexStorage.read(context).filterNot { it.chapterId in gone })
     }
 
-    // ---------- storage ----------
 
-    private fun read(context: Context): List<Record> = runCatching {
-        val f = file(context)
-        if (!f.exists()) return emptyList()
-        val arr = JSONArray(f.readText())
-        (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Record(
-                chapterId = o.getString("chapterId"),
-                chapterName = o.optString("chapterName"),
-                sourceId = o.optString("sourceId"),
-                seriesId = o.optString("seriesId"),
-                title = o.optString("title"),
-                cover = o.optString("cover")
-            )
-        }
-    }.getOrDefault(emptyList())
-
-    private fun write(context: Context, records: List<Record>) {
-        runCatching {
-            val arr = JSONArray()
-            records.forEach { r ->
-                arr.put(
-                    JSONObject().apply {
-                        put("chapterId", r.chapterId)
-                        put("chapterName", r.chapterName)
-                        put("sourceId", r.sourceId)
-                        put("seriesId", r.seriesId)
-                        put("title", r.title)
-                        put("cover", r.cover)
-                    }
-                )
-            }
-            file(context).writeText(arr.toString())
-        }
-    }
 }
