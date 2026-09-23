@@ -48,7 +48,7 @@ dependencies {
     // `api` so the app module can see these when registering Injekt bindings.
     api("com.github.mihonapp:injekt:91edab2317")
     api("io.reactivex:rxjava:1.3.8")
-    api("org.jsoup:jsoup:1.17.2")
+    api("org.jsoup:jsoup:1.23.2")
     api("org.nanohttpd:nanohttpd:2.3.1")
 
     // 5.4.0, not 5.0.0-alpha.12. Extensions built for current Mihon construct
