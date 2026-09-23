@@ -131,17 +131,11 @@ internal fun EmbedWebViewScreen(
         val view = webView ?: return@LaunchedEffect
         repeat(20) {
             delay(500)
-            view.evaluateJavascript(SILENT_PLAY_JS, null)
+            view.evaluateJavascript(EmbeddedPlayerScripts.SILENT_PLAY, null)
             delay(500)
             var done = false
-            view.evaluateJavascript(MEDIA_URLS_JS) { raw ->
-                val found = raw.removeSurrounding("\"")
-                    .replace("\\n", "\n")
-                    .replace("\\/", "/")
-                    .split("\n")
-                    .filter { it.isNotBlank() }
-                    .map { it.substringAfter('|') }
-                    .distinct()
+            view.evaluateJavascript(EmbeddedPlayerScripts.MEDIA_URLS) { raw ->
+                val found = EmbeddedPlayerScripts.parseMediaUrls(raw)
                 if (found.isNotEmpty()) {
                     done = true
                     onMediaFound(found)
@@ -171,20 +165,13 @@ internal fun EmbedWebViewScreen(
                 // an automatic action is just a way to wonder whether it worked.
                 if (!reveal) return@TopAppBar
                 IconButton(onClick = {
-                    webView?.evaluateJavascript(PLAY_JS, null)
+                    webView?.evaluateJavascript(EmbeddedPlayerScripts.PLAY, null)
                 }) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Play")
                 }
                 IconButton(onClick = {
-                    webView?.evaluateJavascript(MEDIA_URLS_JS) { raw ->
-                        val found = raw.removeSurrounding("\"")
-                            .replace("\\n", "\n")
-                            .replace("\\/", "/")
-                            .replace("\\u003C", "<", ignoreCase = true)
-                            .split("\n")
-                            .filter { it.isNotBlank() }
-                            .map { it.substringAfter('|') }
-                            .distinct()
+                    webView?.evaluateJavascript(EmbeddedPlayerScripts.MEDIA_URLS) { raw ->
+                        val found = EmbeddedPlayerScripts.parseMediaUrls(raw)
                         onMediaFound(found)
                     }
                 }) {
@@ -343,89 +330,3 @@ internal fun EmbedWebViewScreen(
     }
     }
 }
-
-
-
-/**
- * Starts the first <video> and reports what happened.
- *
- * A promise rejection here is the answer to "why is it paused" — autoplay
- * policy, a decode failure, or a source the element could not open all reject
- * with a named error, and the message goes straight to the strip.
- */
-private val PLAY_JS = """
-    (function () {
-      var v = document.querySelector('video');
-      if (!v) return 'no <video> to play';
-      var p = v.play();
-      if (p && p.catch) {
-        p.catch(function (e) {
-          var el = document.getElementById('yomu-note');
-          if (!el) {
-            el = document.createElement('div');
-            el.id = 'yomu-note';
-            document.body.appendChild(el);
-          }
-          el.textContent = 'play() rejected: ' + e.name + ' ' + e.message;
-        });
-      }
-      return 'play() called';
-    })()
-""".trimIndent()
-
-/**
- * Pulls the media URL out of the player, rather than trying to render it.
- *
- * Ten releases went into making the video DRAW in this WebView and it never
- * did — audio plays, frames decode, nothing reaches the screen. But the point
- * was never to render it here; it was to watch it. The element knows its own
- * source, and the browser keeps a record of every file the player fetched, so
- * the URL is available even though the picture is not.
- *
- * TWO SOURCES, because one of them often is not usable:
- *   - currentSrc: what the element is playing. If it is an ordinary https url,
- *     any player can open it.
- *   - performance resource entries: every media file actually requested. This
- *     is what saves the case where currentSrc is a `blob:` — Media Source
- *     Extensions feeds the element from JavaScript, and a blob url means
- *     nothing outside this page. The real segments or manifest still show up
- *     here.
- */
-private val MEDIA_URLS_JS = """
-    (function () {
-      var out = [];
-      var v = document.querySelector('video');
-      if (v && v.currentSrc) out.push('src|' + v.currentSrc);
-      try {
-        var res = performance.getEntriesByType('resource');
-        for (var i = 0; i < res.length; i++) {
-          var u = res[i].name;
-          if (/\.(m3u8|mpd|mp4|webm|mkv|ts)(\?|$)/i.test(u)) out.push('net|' + u);
-        }
-      } catch (e) {}
-      // Longest first: a manifest or a whole file beats one segment of it.
-      return out.filter(function (x, i) { return out.indexOf(x) === i; }).join('\n');
-    })()
-""".trimIndent()
-
-/**
- * Mutes and starts the video, for the headless pass.
- *
- * MUTED MATTERS. This runs with the WebView invisible, so unmuted autoplay would
- * blare the soundtrack at someone who only asked for a link. Muted playback is
- * also the case browsers permit most freely, so it is likelier to start at all.
- *
- * Playing is not optional: the element sits at t=0 PAUSED until told otherwise,
- * and neither currentSrc nor the resource timeline is populated before it does.
- */
-private val SILENT_PLAY_JS = """
-    (function () {
-      var v = document.querySelector('video');
-      if (!v) return 'no video yet';
-      v.muted = true;
-      v.volume = 0;
-      var p = v.play();
-      if (p && p.catch) p.catch(function () {});
-      return 'started';
-    })()
-""".trimIndent()
