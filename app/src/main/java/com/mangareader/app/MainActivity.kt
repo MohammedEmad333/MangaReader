@@ -7,14 +7,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1187,125 +1184,36 @@ fun YomuApp() {
             }
         )
     } else if (activeSeries != null) {
-        // `fun()` rather than a lambda for the same reason as the browse branch
-        // below: a brace directly after `else` opens a block, so a lambda there
-        // needs a second pair and reads like a typo.
+        val series = activeSeries!!
         val seriesSite = activeSource?.siteUrl()
         val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
             challengeUrl = seriesSite
         }
-        SeriesScreen(
-            series = activeSeries!!,
+        SeriesRoute(
+            series = series,
             chapters = chapterList,
-            // Empty means three different things; this says which. See its
-            // declaration.
             chaptersFetched = chaptersFetched,
-            onFindVideos = { chapter -> findVideos(chapter) },
-            sourceId = activeSourceId ?: "",
-            sourceName = activeSource?.name ?: "",
-            canDownload = activeSource?.supportsDownload == true,
-            downloadProgress = DownloadQueue.progress,
-            // Either side can invalidate the on-disk reads in the chapter list:
-            // the service finishing a chapter, or this screen deleting them.
-            downloadTick = downloadTick + DownloadQueue.tick,
-            // Scoped to this series, not "is the queue busy". It read
-            // DownloadQueue.items.isNotEmpty(), so every series screen showed
-            // Stop while any download anywhere was running — and tapping it
-            // cancelled all of them.
-            downloadingAll = DownloadQueue.hasSeries(activeSeries!!.id),
-            onDownload = { ch -> activeSource?.let { downloadChapter(it, ch) } },
-            onDownloadAll = { activeSource?.let { downloadAll(it, chapterList) } },
-            onCancelDownloads = { cancelSeriesDownloads(activeSeries?.id ?: "") },
-            onDeleteDownloads = {
-                chapterList.forEach { Downloads.delete(context, it.id) }
-                downloadTick++
-            },
-            // Same primitive as the bulk delete above, one chapter at a time.
-            // Downloads.delete already prunes the emptied series and source
-            // folders and drops the DownloadPaths entry; DownloadIndex needs no
-            // call because list() filters on what's actually complete on disk.
-            onDeleteChapter = { ch ->
-                Downloads.delete(context, ch.id)
-                downloadTick++
-            },
-            // Explicit value rather than a toggle: a bulk "mark read" over a
-            // mixed selection has to end with everything read, and toggling each
-            // would flip half of them the wrong way. One readTick bump for the
-            // whole batch, not one per chapter.
-            onSetRead = { list, value ->
-                list.forEach {
-                    ReadState.setRead(context, chapterKeyOf(activeSourceId ?: "", it), value)
-                }
-                readTick++
-            },
-            // Same batched shape as onSetRead, and the same readTick bump: the
-            // chapter rows read their bookmark alongside their read flag, so one
-            // signal repaints both rather than adding a second tick nothing else
-            // would ever read.
-            onSetBookmarked = { list, value ->
-                Bookmarks.setBookmarkedBulk(
-                    context,
-                    list.map { chapterKeyOf(activeSourceId ?: "", it) },
-                    value
-                )
-                readTick++
-            },
+            source = activeSource,
+            sourceId = activeSourceId,
             loading = isLoading,
             error = errorMessage,
             readTick = readTick,
             scroll = seriesScroll,
-            // By id, not by index. The series screen draws a filtered and
-            // sorted view now, so its positions are not this list's positions —
-            // and openChapter indexes this one. Resolving here keeps chapterList
-            // canonical and means the reader's Prev/Next, which are index
-            // arithmetic, stay in source order and stay correct.
-            //
-            // A miss can only mean the list was refetched under the tap, so it
-            // does nothing rather than opening chapter 0.
-            onOpen = { chapterId ->
-                val index = chapterList.indexOfFirst { it.id == chapterId }
-                if (index >= 0) openChapter(index)
-            },
+            localDownloadTick = downloadTick,
+            onFindVideos = { findVideos(it) },
+            onDownload = { src, chapter -> downloadChapter(src, chapter) },
+            onDownloadAll = { src, chapters -> downloadAll(src, chapters) },
+            onCancelDownloads = { cancelSeriesDownloads(it) },
+            onDownloadStateChanged = { downloadTick++ },
+            onOpenChapter = { openChapter(it) },
             onRefresh = { refreshChapters() },
-            // Resolved here rather than inside the screen: `Series.handle` is
-            // the extension's own object and asking the source for a url is a
-            // call across the adapter boundary, which is not a thing to do from
-            // inside a composable.
-            // Keyed on the **handle**, not just the id. `openFromLibrary` puts
-            // a stub on screen first — title and cover, no handle (§4) — and
-            // replaces it with the fetched series a moment later under the same
-            // id. Keyed on the id alone this resolved against the stub, got
-            // null because there was no `SManga` to ask, and never ran again:
-            // Share was simply missing on every series opened from the Library.
-            //
-            // The general form: an id is stable across exactly the transition
-            // that fills the object in, so it is the wrong key for anything
-            // derived from the object's contents.
-            seriesUrl = remember(activeSeries?.handle, activeSourceId) {
-                activeSeries?.let { s -> activeSource?.seriesUrl(s) }
-            },
+            onReadStateChanged = { readTick++ },
             onLibraryChanged = { libraryTick++ },
-            // Both leave the series behind deliberately: a tag search is a
-            // request to go and look at other things, and the results have to
-            // land on a branch below this one to be visible at all.
             onSearchTag = { tag ->
                 activeSource?.let { src ->
-                    // chapterList is deliberately left alone: it still belongs
-                    // to this series, nothing below branch 3 reads it, and
-                    // keeping it is what makes coming back instant.
                     tagSearchReturn = activeSeries
                     activeSeries = null
                     errorMessage = null
-                    // Search BY GENRE when the source has a matching filter: a
-                    // tag is a genre, so tapping "Romance" should list what is
-                    // tagged Romance, not what has "Romance" in its title. When
-                    // the source has no such filter, fall back to the title
-                    // search — many still match a genre inside their text query.
-                    //
-                    // Keeps the adopted source rather than dropping it the way
-                    // onBack does for a non-BROWSE origin — searching *this*
-                    // source is the whole request, so the browse screen it falls
-                    // through to is the destination, not a stranding.
                     if (src.applyGenreFilter(tag)) {
                         openSource(src, "", BrowseMode.FILTER)
                     } else {
@@ -1324,10 +1232,6 @@ fun YomuApp() {
                 val s = activeSeries
                 val sid = activeSourceId
                 if (s != null && sid != null) {
-                    // Same detour mechanism the tag search uses: remember the
-                    // series so Back from the picker returns to it, and open the
-                    // global-search screen — which becomes the target picker
-                    // while migrateFrom is set — pre-seeded with the title.
                     migrateFrom = MigrateFrom(s.id, sid, s.title)
                     tagSearchReturn = s
                     activeSeries = null
@@ -1341,9 +1245,6 @@ fun YomuApp() {
                 activeSeries = null
                 chapterList = emptyList()
                 errorMessage = null
-                // Only a series reached by browsing has a source listing to go
-                // back to. Everything else drops the adopted source so the chain
-                // falls through to the tab the user actually came from.
                 if (seriesOrigin != SeriesOrigin.BROWSE) {
                     activeSource = null
                     activeSourceId = null
@@ -1352,9 +1253,7 @@ fun YomuApp() {
             }
         )
     } else if (globalSearchOpen) {
-        // Sits below SeriesScreen in this chain on purpose: opening a hit shows the
-        // series, and backing out of it lands on the results again.
-        GlobalSearchScreen(
+        GlobalSearchRoute(
             query = globalQuery,
             results = globalResults,
             running = globalRunning,
@@ -1375,8 +1274,6 @@ fun YomuApp() {
             onOpenSource = { openGlobalSource(it) },
             migrating = migrateFrom != null,
             onOpenSeries = { src, s ->
-                // In migrate mode a tapped result is the chosen target, not a
-                // series to open — confirm before moving anything.
                 if (migrateFrom != null) migrateTarget = src to s
                 else openGlobalResult(src, s)
             },
@@ -1388,80 +1285,48 @@ fun YomuApp() {
                 seriesList = null
                 val cameFromTag = tagSearchReturn
                 if (cameFromTag != null) {
-                    // Same detour as the per-source case. The adopted-source
-                    // problem below doesn't apply: nothing was opened from these
-                    // results, so activeSource is still the series' own.
                     tagSearchReturn = null
                     activeSeries = cameFromTag
                 } else {
-                    // Opening a result adopted that result's source. Leaving
-                    // search has to give it back, or the chain lands on a browse
-                    // screen with nothing in it.
                     activeSource = null
                     activeSourceId = null
                 }
+            },
+            migrateFrom = migrateFrom,
+            migrateTarget = migrateTarget,
+            onDismissMigration = { migrateTarget = null },
+            onConfirmMigration = { from, targetSource, targetSeries ->
+                performMigration(from, targetSource, targetSeries)
             }
         )
-        migrateTarget?.let { (targetSource, targetSeries) ->
-            val from = migrateFrom
-            AlertDialog(
-                onDismissRequest = { migrateTarget = null },
-                title = { Text("Migrate series") },
-                text = {
-                    Text(
-                        "Move “${from?.title}” to ${targetSource.name}? " +
-                            "Your categories and read progress move with it, and the " +
-                            "old entry is removed."
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        enabled = from != null,
-                        onClick = { if (from != null) performMigration(from, targetSource, targetSeries) }
-                    ) { Text("Migrate") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { migrateTarget = null }) { Text("Cancel") }
-                }
-            )
-        }
     } else if (activeSource != null) {
-        // Only extension sources backed by an HttpSource have a site to open;
-        // for anything else the button is absent rather than broken.
-        val site = activeSource?.siteUrl()
-        // `fun()` rather than a lambda: a brace directly after `else` opens a
-        // block, so a lambda there has to be wrapped in a second pair and reads
-        // like a typo. An anonymous function is the same value with no ambiguity.
+        val source = activeSource!!
+        val site = source.siteUrl()
         val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
             challengeUrl = site
         }
-        LibraryScreen(
-            title = activeSource!!.name,
+        SourceBrowseRoute(
+            source = source,
+            sourceId = activeSourceId,
             series = seriesList,
             loading = isLoading,
             error = errorMessage,
-            supportsSearch = activeSource!!.supportsSearch,
-            supportsLatest = activeSource!!.supportsLatest,
-            supportsFilters = activeSource!!.supportsFilters,
-            onOpenFilters = { filtersOpen = true },
-            onDiagnose = { probeOpen = true },
+            filtersOpen = { filtersOpen = true },
+            diagnose = { probeOpen = true },
             mode = browseMode,
-            onModeChange = { m -> activeSource?.let { openSource(it, "", m) } },
+            onModeChange = { m -> openSource(source, "", m) },
             query = browseQuery,
             hasNext = browseHasNext,
             loadingMore = loadingMore,
-            onSearch = { q -> activeSource?.let { openSource(it, q, browseMode) } },
+            onSearch = { q -> openSource(source, q, browseMode) },
             onLoadMore = { loadMoreSeries() },
-            onRescan = { activeSource?.let { openSource(it, browseQuery, browseMode) } },
+            onRescan = { openSource(source, browseQuery, browseMode) },
             onOpen = { openSeries(it) },
             onBack = {
                 seriesList = null
                 errorMessage = null
                 val cameFromTag = tagSearchReturn
                 if (cameFromTag != null) {
-                    // Back to the series the tag was on. The source stays: it is
-                    // that series' own source, which the series screen needs for
-                    // chapters and pages.
                     tagSearchReturn = null
                     activeSeries = cameFromTag
                 } else {
@@ -1470,10 +1335,6 @@ fun YomuApp() {
                 }
             },
             libraryTick = libraryTick,
-            // Local folder sources carry their own ids; everything loaded from
-            // an extension is prefixed, which is the same test the library grid
-            // uses for its Local chip.
-            isLocalSource = !(activeSourceId ?: "").startsWith("tachi:"),
             scroll = browseScroll,
             onSolveChallenge = startChallenge
         )
@@ -1490,117 +1351,87 @@ fun YomuApp() {
             onOpenDownloadQueue = { downloadsOpen = true }
         )
     } else {
-        Scaffold(
-            bottomBar = {
-                MainBottomNavigation(
-                    currentTab = currentTab,
-                    onSelectTab = { tab ->
-                        currentTab = tab
-                        if (tab == 2) {
-                            history = History.forDisplay(context)
-                        }
-                    }
-                )
-            }
-
-        ) { innerPadding ->
-            Box(modifier = Modifier.padding(innerPadding)) {
-                when (currentTab) {
-                    0 -> LibraryTab(
-                        libraryTick = libraryTick,
-                        error = errorMessage,
-                        activeCategory = libraryCategory,
-                        onCategoryChange = {
-                            libraryCategory = it
-                            LibraryPrefs.setLastCategory(context, it)
-                        },
-                        search = librarySearch,
-                        onSearchChange = { librarySearch = it },
-                        searchOpen = librarySearchOpen,
-                        onSearchOpenChange = { librarySearchOpen = it },
-                        scroll = libraryScroll,
-                        onOpen = { openFromLibrary(it) },
-                        onRemoveMany = { ids ->
-                            // removeAll, not remove-in-a-loop: each remove()
-                            // rewrites the whole library JSON, so a hundred
-                            // selected entries would be a hundred growing
-                            // serialisations. Same reason mergeAll exists.
-                            Library.removeAll(context, ids)
-                            libraryTick++
-                        },
-                        onMarkRead = { ids -> bulkSetRead(ids, true) },
-                        onMarkUnread = { ids -> bulkSetRead(ids, false) },
-                        onDownloadMany = { ids -> bulkDownload(ids) }
-                    )
-                    1 -> BrowseTab(
-                        configs = configs,
-                        extensions = extensionSources,
-                        scroll = sourcesScroll,
-                        onGlobalSearch = {
-                            globalSearchOpen = true
-                            if (globalQuery.isNotBlank() &&
-                                globalResults.isEmpty() &&
-                                !globalRunning
-                            ) {
-                                runGlobalSearch(globalQuery)
-                            }
-                        },
-                        onAdd = {
-                            editingConfig = SourceConfig(SourceManager.newId(), "local", "")
-                            showSourceDialog = true
-                        },
-                        onOpenConfig = { openSourceConfig(it) },
-                        onOpenExtension = { openSource(it) },
-                        onEdit = {
-                            editingConfig = it
-                            showSourceDialog = true
-                        },
-                        onDelete = {
-                            SourceManager.remove(context, it.id)
-                            configs = SourceManager.list(context)
-                        },
-                        onExtensionsChanged = {
-                            scope.launch {
-                                extensionSources = withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        SourceManager.listAllSources(context)
-                                            .filter { it.id.startsWith("tachi:") }
-                                    }.getOrDefault(emptyList())
-                                }
-                            }
-                        }
-                    )
-                    2 -> HistoryScreen(
-                        history = history,
-                        loading = isLoading,
-                        error = errorMessage,
-                        onOpen = { openFromHistory(it) },
-                        onDelete = {
-                            History.remove(context, it.chapterKey)
-                            history = History.forDisplay(context)
-                        },
-                        libraryTick = libraryTick,
-                        onClearAll = {
-                            History.list(context).forEach { History.remove(context, it.chapterKey) }
-                            history = History.forDisplay(context)
-                        },
-                        // The same re-read every other mutation here does, so
-                        // the gesture and the existing paths cannot drift.
-                        onRefresh = { history = History.forDisplay(context) }
-                    )
-                    3 -> DownloadsTab(
-                        downloadTick = downloadTick + DownloadQueue.tick,
-                        libraryTick = libraryTick,
-                        onOpen = { openFromDownloads(it) },
-                        onOpenQueue = { downloadsOpen = true }
-                    )
-                    4 -> MoreTab(
-                        onOpenDownloads = { downloadsOpen = true },
-                        onOpenSettings = { settingsOpen = true }
-                    )
+        MainTabsRoute(
+            currentTab = currentTab,
+            onSelectTab = { tab ->
+                currentTab = tab
+                if (tab == 2) {
+                    history = History.forDisplay(context)
                 }
-            }
-        }
+            },
+            libraryTick = libraryTick,
+            error = errorMessage,
+            libraryCategory = libraryCategory,
+            onLibraryCategoryChange = {
+                libraryCategory = it
+                LibraryPrefs.setLastCategory(context, it)
+            },
+            librarySearch = librarySearch,
+            onLibrarySearchChange = { librarySearch = it },
+            librarySearchOpen = librarySearchOpen,
+            onLibrarySearchOpenChange = { librarySearchOpen = it },
+            libraryScroll = libraryScroll,
+            onOpenLibrary = { openFromLibrary(it) },
+            onRemoveLibraryMany = { ids ->
+                Library.removeAll(context, ids)
+                libraryTick++
+            },
+            onMarkRead = { ids -> bulkSetRead(ids, true) },
+            onMarkUnread = { ids -> bulkSetRead(ids, false) },
+            onDownloadMany = { ids -> bulkDownload(ids) },
+            configs = configs,
+            extensions = extensionSources,
+            sourcesScroll = sourcesScroll,
+            onGlobalSearch = {
+                globalSearchOpen = true
+                if (globalQuery.isNotBlank() &&
+                    globalResults.isEmpty() &&
+                    !globalRunning
+                ) {
+                    runGlobalSearch(globalQuery)
+                }
+            },
+            onAddSource = {
+                editingConfig = SourceConfig(SourceManager.newId(), "local", "")
+                showSourceDialog = true
+            },
+            onOpenConfig = { openSourceConfig(it) },
+            onOpenExtension = { openSource(it) },
+            onEditConfig = {
+                editingConfig = it
+                showSourceDialog = true
+            },
+            onDeleteConfig = {
+                SourceManager.remove(context, it.id)
+                configs = SourceManager.list(context)
+            },
+            onExtensionsChanged = {
+                scope.launch {
+                    extensionSources = withContext(Dispatchers.IO) {
+                        runCatching {
+                            SourceManager.listAllSources(context)
+                                .filter { it.id.startsWith("tachi:") }
+                        }.getOrDefault(emptyList())
+                    }
+                }
+            },
+            history = history,
+            loading = isLoading,
+            onOpenHistory = { openFromHistory(it) },
+            onDeleteHistory = {
+                History.remove(context, it.chapterKey)
+                history = History.forDisplay(context)
+            },
+            onClearHistory = {
+                History.list(context).forEach { History.remove(context, it.chapterKey) }
+                history = History.forDisplay(context)
+            },
+            onRefreshHistory = { history = History.forDisplay(context) },
+            downloadTick = downloadTick + DownloadQueue.tick,
+            onOpenDownload = { openFromDownloads(it) },
+            onOpenDownloadQueue = { downloadsOpen = true },
+            onOpenSettings = { settingsOpen = true }
+        )
     }
 
     val scan = videoScan
@@ -1629,51 +1460,35 @@ fun YomuApp() {
         )
     }
 
-    val probeSourceRef = activeSource
-    if (probeOpen && probeSourceRef != null) {
-        NetworkProbeDialog(source = probeSourceRef, onDismiss = { probeOpen = false })
-    }
+    MainOverlayDialogs(
+        activeSource = activeSource,
+        probeOpen = probeOpen,
+        onDismissProbe = { probeOpen = false },
+        filtersOpen = filtersOpen,
+        onApplyFilters = { source ->
+            filtersOpen = false
+            openSource(source, "", BrowseMode.FILTER)
+        },
+        onDismissFilters = { filtersOpen = false },
+        whatsNewOpen = whatsNewOpen,
+        releaseNotes = releaseNotes,
+        onDismissWhatsNew = {
+            whatsNewOpen = false
+            WhatsNew.markSeen(context)
+        },
+        showSourceDialog = showSourceDialog,
+        editingConfig = editingConfig,
+        onEditingConfigChange = { editingConfig = it },
+        onDismissSourceDialog = {
+            showSourceDialog = false
+            editingConfig = null
+        },
+        onSaveSource = { saved ->
+            SourceManager.upsert(context, saved)
+            configs = SourceManager.list(context)
+            showSourceDialog = false
+            editingConfig = null
+        }
+    )
 
-    val filterSource = activeSource
-    if (filtersOpen && filterSource != null) {
-        SourceFilterDialog(
-            source = filterSource,
-            onApply = {
-                filtersOpen = false
-                // Re-runs the listing as a filtered search from page 1. The
-                // filters themselves live on the adapter, so nothing about them
-                // has to be carried through here.
-                openSource(filterSource, "", BrowseMode.FILTER)
-            },
-            onDismiss = { filtersOpen = false }
-        )
-    }
-
-    if (whatsNewOpen) {
-        WhatsNewDialog(
-            notes = releaseNotes,
-            onDismiss = {
-                whatsNewOpen = false
-                WhatsNew.markSeen(context)
-            }
-        )
-    }
-
-    val editing = editingConfig
-    if (showSourceDialog && editing != null) {
-        SourceDialog(
-            value = editing,
-            onChange = { editingConfig = it },
-            onDismiss = {
-                showSourceDialog = false
-                editingConfig = null
-            },
-            onSave = { saved ->
-                SourceManager.upsert(context, saved)
-                configs = SourceManager.list(context)
-                showSourceDialog = false
-                editingConfig = null
-            }
-        )
-    }
 }
