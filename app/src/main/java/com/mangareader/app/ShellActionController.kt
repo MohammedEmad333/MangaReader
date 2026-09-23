@@ -1,272 +1,153 @@
 package com.mangareader.app
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 internal class ShellActionController(
-    private val context: Context,
-    private val scope: CoroutineScope,
-    private val appState: AppUiState,
-    private val browseState: SourceBrowseState,
-    private val seriesState: SeriesNavigationState,
-    private val globalSearch: GlobalSearchState,
-    private val migrationState: MigrationNavigationState,
-    private val mediaState: MediaNavigationState,
-    private val openSource: (Source, String, BrowseMode) -> Unit,
-    private val runGlobalSearch: (String) -> Unit
+    context: Context,
+    scope: CoroutineScope,
+    appState: AppUiState,
+    browseState: SourceBrowseState,
+    seriesState: SeriesNavigationState,
+    globalSearch: GlobalSearchState,
+    migrationState: MigrationNavigationState,
+    mediaState: MediaNavigationState,
+    openSource: (Source, String, BrowseMode) -> Unit,
+    runGlobalSearch: (String) -> Unit
 ) {
-    fun selectTab(tab: Int) {
-        appState.currentTab = tab
-        if (tab == 2) {
-            refreshHistory()
-        }
-    }
+    private val appShell = AppShellActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        openSource = openSource
+    )
 
-    fun removeLibrary(ids: Set<String>) {
-        Library.removeAll(context, ids)
-        appState.libraryTick++
-    }
+    private val navigation = RootNavigationActionController(
+        context = context,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        globalSearch = globalSearch,
+        migrationState = migrationState,
+        openSource = openSource,
+        runGlobalSearch = runGlobalSearch
+    )
 
-    fun openGlobalSearch() {
-        globalSearch.open = true
-        if (
-            globalSearch.query.isNotBlank() &&
-            globalSearch.results.isEmpty() &&
-            !globalSearch.running
-        ) {
-            runGlobalSearch(globalSearch.query)
-        }
-    }
+    private val media = MediaShellActionController(
+        context = context,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        mediaState = mediaState
+    )
 
-    fun addSource() {
-        appState.editingConfig = SourceConfig(
-            SourceManager.newId(),
-            "local",
-            ""
-        )
-        appState.showSourceDialog = true
-    }
+    fun selectTab(tab: Int) =
+        appShell.selectTab(tab)
 
-    fun editSource(config: SourceConfig) {
-        appState.editingConfig = config
-        appState.showSourceDialog = true
-    }
+    fun removeLibrary(ids: Set<String>) =
+        appShell.removeLibrary(ids)
 
-    fun deleteSource(config: SourceConfig) {
-        SourceManager.remove(context, config.id)
-        reloadConfigs()
-    }
+    fun addSource() =
+        appShell.addSource()
 
-    fun refreshExtensions() {
-        scope.launch {
-            appState.extensionSources = withContext(Dispatchers.IO) {
-                runCatching {
-                    SourceManager.listAllSources(context)
-                        .filter { it.id.startsWith("tachi:") }
-                }.getOrDefault(emptyList())
-            }
-        }
-    }
+    fun editSource(config: SourceConfig) =
+        appShell.editSource(config)
 
-    fun deleteHistory(entry: HistoryEntry) {
-        History.remove(context, entry.chapterKey)
-        refreshHistory()
-    }
+    fun deleteSource(config: SourceConfig) =
+        appShell.deleteSource(config)
 
-    fun clearHistory() {
-        History.list(context).forEach {
-            History.remove(context, it.chapterKey)
-        }
-        refreshHistory()
-    }
+    fun refreshExtensions() =
+        appShell.refreshExtensions()
 
-    fun refreshHistory() {
-        appState.history = History.forDisplay(context)
-    }
+    fun deleteHistory(entry: HistoryEntry) =
+        appShell.deleteHistory(entry)
 
-    fun openDownloadQueue() {
-        appState.downloadsOpen = true
-    }
+    fun clearHistory() =
+        appShell.clearHistory()
 
-    fun closeDownloadQueue() {
-        appState.downloadsOpen = false
-    }
+    fun refreshHistory() =
+        appShell.refreshHistory()
 
-    fun openSettings() {
-        appState.settingsOpen = true
-    }
+    fun openDownloadQueue() =
+        appShell.openDownloadQueue()
 
-    fun closeSettings() {
-        appState.settingsOpen = false
-    }
+    fun closeDownloadQueue() =
+        appShell.closeDownloadQueue()
 
-    fun showFilters() {
-        appState.filtersOpen = true
-    }
+    fun openSettings() =
+        appShell.openSettings()
 
-    fun dismissFilters() {
-        appState.filtersOpen = false
-    }
+    fun closeSettings() =
+        appShell.closeSettings()
 
-    fun applyFilters(source: Source) {
-        dismissFilters()
-        openSource(source, "", BrowseMode.FILTER)
-    }
+    fun showFilters() =
+        appShell.showFilters()
 
-    fun showProbe() {
-        appState.probeOpen = true
-    }
+    fun dismissFilters() =
+        appShell.dismissFilters()
 
-    fun dismissProbe() {
-        appState.probeOpen = false
-    }
+    fun applyFilters(source: Source) =
+        appShell.applyFilters(source)
 
-    fun setEditingConfig(config: SourceConfig?) {
-        appState.editingConfig = config
-    }
+    fun showProbe() =
+        appShell.showProbe()
 
-    fun dismissSourceDialog() {
-        appState.showSourceDialog = false
-        appState.editingConfig = null
-    }
+    fun dismissProbe() =
+        appShell.dismissProbe()
 
-    fun saveSource(config: SourceConfig) {
-        SourceManager.upsert(context, config)
-        reloadConfigs()
-        dismissSourceDialog()
-    }
+    fun setEditingConfig(config: SourceConfig?) =
+        appShell.setEditingConfig(config)
 
-    fun dismissVideoScan() {
-        mediaState.scan = null
-    }
+    fun dismissSourceDialog() =
+        appShell.dismissSourceDialog()
 
-    fun openEmbed(url: String) {
-        val page = seriesState.active?.let { series ->
-            browseState.source?.seriesUrl(series)
-        }
-        mediaState.scan = null
-        mediaState.embed = url to page.orEmpty()
-    }
+    fun saveSource(config: SourceConfig) =
+        appShell.saveSource(config)
 
-    fun openExternalVideo(url: String) {
-        val view = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(url), "video/*")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        runCatching {
-            context.startActivity(view)
-        }.onFailure {
-            appState.error =
-                "No app on this device can play that link"
-        }
-    }
+    fun openGlobalSearch() =
+        navigation.openGlobalSearch()
 
-    fun backFromSourceBrowse() {
-        browseState.series = null
-        appState.error = null
+    fun backFromSourceBrowse() =
+        navigation.backFromSourceBrowse()
 
-        val cameFromTag = seriesState.tagReturn
-        if (cameFromTag != null) {
-            seriesState.tagReturn = null
-            seriesState.active = cameFromTag
-        } else {
-            browseState.source = null
-            browseState.sourceId = null
-        }
-    }
+    fun backFromSeries() =
+        navigation.backFromSeries()
 
-    fun backFromSeries() {
-        seriesState.clear()
-        appState.error = null
-        if (seriesState.origin != SeriesOrigin.BROWSE) {
-            browseState.clearSource()
-        }
-    }
+    fun searchSeriesTag(tag: String) =
+        navigation.searchSeriesTag(tag)
 
-    fun searchSeriesTag(tag: String) {
-        val source = browseState.source ?: return
-        seriesState.tagReturn = seriesState.active
-        seriesState.active = null
-        appState.error = null
+    fun searchGlobalTag(tag: String) =
+        navigation.searchGlobalTag(tag)
 
-        if (source.applyGenreFilter(tag)) {
-            openSource(source, "", BrowseMode.FILTER)
-        } else {
-            openSource(source, tag, browseState.mode)
-        }
-    }
+    fun startMigration() =
+        navigation.startMigration()
 
-    fun searchGlobalTag(tag: String) {
-        seriesState.tagReturn = seriesState.active
-        seriesState.active = null
-        appState.error = null
-        globalSearch.open = true
-        runGlobalSearch(tag)
-    }
+    fun backFromGlobalSearch() =
+        navigation.backFromGlobalSearch()
 
-    fun startMigration() {
-        val active = seriesState.active ?: return
-        val sourceId = browseState.sourceId ?: return
+    fun setSearchHasResultsOnly(value: Boolean) =
+        navigation.setSearchHasResultsOnly(value)
 
-        migrationState.from = MigrateFrom(
-            active.id,
-            sourceId,
-            active.title
-        )
-        seriesState.tagReturn = active
-        seriesState.active = null
-        appState.error = null
-        globalSearch.open = true
-        runGlobalSearch(active.title)
-    }
+    fun removeRecentSearch(query: String) =
+        navigation.removeRecentSearch(query)
 
-    fun backFromGlobalSearch() {
-        globalSearch.cancel()
-        globalSearch.open = false
-        migrationState.from = null
-        browseState.series = null
-
-        val cameFromTag = seriesState.tagReturn
-        if (cameFromTag != null) {
-            seriesState.tagReturn = null
-            seriesState.active = cameFromTag
-        } else {
-            browseState.source = null
-            browseState.sourceId = null
-        }
-    }
-
-    fun setSearchHasResultsOnly(value: Boolean) {
-        globalSearch.hasResultsOnly = value
-    }
-
-    fun removeRecentSearch(query: String) {
-        globalSearch.recents =
-            SourcePrefs.removeRecentSearch(context, query)
-    }
-
-    fun clearRecentSearches() {
-        SourcePrefs.clearRecentSearches(context)
-        globalSearch.recents = emptyList()
-    }
+    fun clearRecentSearches() =
+        navigation.clearRecentSearches()
 
     fun selectMigrationTarget(
         source: Source,
         series: Series
-    ) {
-        migrationState.target = source to series
-    }
+    ) = navigation.selectMigrationTarget(source, series)
 
-    fun dismissMigrationTarget() {
-        migrationState.target = null
-    }
+    fun dismissMigrationTarget() =
+        navigation.dismissMigrationTarget()
 
-    private fun reloadConfigs() {
-        appState.configs = SourceManager.list(context)
-    }
+    fun dismissVideoScan() =
+        media.dismissVideoScan()
+
+    fun openEmbed(url: String) =
+        media.openEmbed(url)
+
+    fun openExternalVideo(url: String) =
+        media.openExternalVideo(url)
 }
