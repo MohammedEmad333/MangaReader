@@ -1,28 +1,19 @@
 package com.mangareader.app
 
-import android.content.Context
 import androidx.compose.runtime.Composable
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 internal fun RootMainTabsRoute(
-    context: Context,
-    scope: CoroutineScope,
-    appState: AppUiState,
-    globalSearch: GlobalSearchState,
-    actions: AppActionController,
-    libraryCategory: String?,
-    onLibraryCategoryChange: (String?) -> Unit,
-    librarySearch: String,
-    onLibrarySearchChange: (String) -> Unit,
-    librarySearchOpen: Boolean,
-    onLibrarySearchOpenChange: (Boolean) -> Unit,
-    libraryScroll: ScrollMemory,
-    sourcesScroll: ScrollMemory
+    root: RootRouteContext
 ) {
+    val context = root.context
+    val scope = root.scope
+    val appState = root.app
+    val globalSearch = root.search
+    val actions = root.actions
     MainTabsRoute(
         currentTab = appState.currentTab,
         onSelectTab = { tab ->
@@ -33,16 +24,16 @@ internal fun RootMainTabsRoute(
         },
         libraryTick = appState.libraryTick,
         error = appState.error,
-        libraryCategory = libraryCategory,
+        libraryCategory = root.ui.libraryCategory,
         onLibraryCategoryChange = { category ->
-            onLibraryCategoryChange(category)
+            root.ui.onLibraryCategoryChange(category)
             LibraryPrefs.setLastCategory(context, category)
         },
-        librarySearch = librarySearch,
-        onLibrarySearchChange = onLibrarySearchChange,
-        librarySearchOpen = librarySearchOpen,
-        onLibrarySearchOpenChange = onLibrarySearchOpenChange,
-        libraryScroll = libraryScroll,
+        librarySearch = root.ui.librarySearch,
+        onLibrarySearchChange = root.ui.onLibrarySearchChange,
+        librarySearchOpen = root.ui.librarySearchOpen,
+        onLibrarySearchOpenChange = root.ui.onLibrarySearchOpenChange,
+        libraryScroll = root.ui.libraryScroll,
         onOpenLibrary = { actions.openFromLibrary(it) },
         onRemoveLibraryMany = { ids ->
             Library.removeAll(context, ids)
@@ -53,7 +44,7 @@ internal fun RootMainTabsRoute(
         onDownloadMany = { actions.bulkDownload(it) },
         configs = appState.configs,
         extensions = appState.extensionSources,
-        sourcesScroll = sourcesScroll,
+        sourcesScroll = root.ui.sourcesScroll,
         onGlobalSearch = {
             globalSearch.open = true
             if (

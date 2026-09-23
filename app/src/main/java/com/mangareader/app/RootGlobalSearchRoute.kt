@@ -1,18 +1,18 @@
 package com.mangareader.app
 
-import android.content.Context
 import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootGlobalSearchRoute(
-    context: Context,
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    globalSearch: GlobalSearchState,
-    migrationState: MigrationNavigationState,
-    actions: AppActionController
+    root: RootRouteContext
 ) {
+    val context = root.context
+    val appState = root.app
+    val browseState = root.browse
+    val seriesState = root.series
+    val globalSearch = root.search
+    val migrationState = root.migration
+    val actions = root.actions
     GlobalSearchRoute(
         query = globalSearch.query,
         results = globalSearch.results,

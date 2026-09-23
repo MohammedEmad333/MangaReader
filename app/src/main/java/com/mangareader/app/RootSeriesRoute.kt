@@ -4,14 +4,14 @@ import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootSeriesRoute(
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    globalSearch: GlobalSearchState,
-    migrationState: MigrationNavigationState,
-    actions: AppActionController,
-    scroll: ScrollMemory
+    root: RootRouteContext
 ) {
+    val appState = root.app
+    val browseState = root.browse
+    val seriesState = root.series
+    val globalSearch = root.search
+    val migrationState = root.migration
+    val actions = root.actions
     val series = seriesState.active ?: return
     val seriesSite = browseState.source?.siteUrl()
     val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
@@ -27,7 +27,7 @@ internal fun RootSeriesRoute(
         loading = appState.loading,
         error = appState.error,
         readTick = appState.readTick,
-        scroll = scroll,
+        scroll = root.ui.seriesScroll,
         localDownloadTick = appState.downloadTick,
         onFindVideos = { actions.findVideos(it) },
         onDownload = { source, chapter -> actions.downloadChapter(source, chapter) },
