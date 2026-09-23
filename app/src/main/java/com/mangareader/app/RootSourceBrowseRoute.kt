@@ -4,12 +4,13 @@ import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootSourceBrowseRoute(
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    actions: AppActionController,
+    root: RootRouteContext,
     scroll: ScrollMemory
 ) {
+    val appState = root.app
+    val browseState = root.browse
+    val seriesState = root.series
+    val actions = root.actions
     val source = browseState.source ?: return
     val site = source.siteUrl()
     val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
