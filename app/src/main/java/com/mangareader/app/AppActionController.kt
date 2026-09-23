@@ -6,14 +6,16 @@ import kotlinx.coroutines.CoroutineScope
 internal class AppActionController(
     context: Context,
     scope: CoroutineScope,
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    readerSession: ReaderSessionState,
-    globalSearch: GlobalSearchState,
-    migrationState: MigrationNavigationState,
-    mediaState: MediaNavigationState
+    state: YomuStateBundle
 ) {
+    private val appState = state.app
+    private val browseState = state.browse
+    private val seriesState = state.series
+    private val readerSession = state.reader
+    private val globalSearch = state.search
+    private val migrationState = state.migration
+    private val mediaState = state.media
+
     private val sourceActions = SourceActionController(
         context = context,
         scope = scope,
