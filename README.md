@@ -10,6 +10,7 @@ Yomu supports local reading, downloadable chapters, library management, source e
 - `source-api/` — compatibility layer used by supported Tachiyomi/Mihon-style source extensions
 - `.github/workflows/build.yml` — CI build, unit tests, APK artifacts, and the rolling `latest` prerelease
 - `docs/ARCHITECTURE.md` — module boundaries, compatibility constraints, and refactoring direction
+- `docs/RELEASE_SIGNING.md` — secret-backed release signing migration
 - `CONTRIBUTING.md` — validation rules and contribution guidance
 - `DESIGN_SERIES_SCREEN.md` — series-screen design notes
 - `PROJECT_HANDOFF.md` and `SESSION_HANDOFF_*.md` — historical implementation/debugging notes
