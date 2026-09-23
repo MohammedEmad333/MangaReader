@@ -81,7 +81,7 @@ import java.util.Locale
 
 /** Free space on the volume the user thinks of as the phone's storage. */
 @Composable
-private fun DeviceStorageBar() {
+internal fun DeviceStorageBar() {
     // StatFs, not File.getFreeSpace(): on internal storage the File API reports
     // the space *this app* may use, which is smaller than the volume's free
     // space by whatever the system reserves, and the number then disagrees with
@@ -119,5 +119,5 @@ private fun DeviceStorageBar() {
 }
 
 /** `yomu_2026-07-28_2105.json` — sorts by age in any file manager. */
-private fun defaultBackupName(): String =
+internal fun defaultBackupName(): String =
     "yomu_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date()) + ".json"
