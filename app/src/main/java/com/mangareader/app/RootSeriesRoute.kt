@@ -4,8 +4,7 @@ import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootSeriesRoute(
-    root: RootRouteContext,
-    scroll: ScrollMemory
+    root: RootRouteContext
 ) {
     val appState = root.app
     val browseState = root.browse
@@ -28,7 +27,7 @@ internal fun RootSeriesRoute(
         loading = appState.loading,
         error = appState.error,
         readTick = appState.readTick,
-        scroll = scroll,
+        scroll = root.ui.seriesScroll,
         localDownloadTick = appState.downloadTick,
         onFindVideos = { actions.findVideos(it) },
         onDownload = { source, chapter -> actions.downloadChapter(source, chapter) },
