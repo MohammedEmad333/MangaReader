@@ -35,7 +35,7 @@ Create:
 
 The workflow decodes `RELEASE_KEYSTORE_BASE64` into `release.keystore` only for a manually requested release build.
 
-## 4. Verify before removing the tracked key
+## 4. Verification completed
 
 Run the **Build APK** workflow manually with the release option enabled.
 
@@ -47,18 +47,11 @@ Confirm that:
 4. the release APK is signed successfully;
 5. the release APK can update an installation signed with the previous release artifact.
 
-Only after that verification should the tracked `release.keystore` be removed from the current repository tree.
+This verification has been completed successfully, and the tracked `release.keystore` has been removed from the current repository tree.
 
-## 5. Remove the tracked key
+## 5. Current repository state
 
-Once the secret-backed build is verified:
-
-```bash
-git rm release.keystore
-git commit -m "Remove tracked release keystore"
-```
-
-The repository already ignores `*.keystore`, so the file will not be accidentally re-added.
+The release keystore is no longer tracked. The repository already ignores `*.keystore`, so it should not be accidentally re-added.
 
 ## History cleanup
 
