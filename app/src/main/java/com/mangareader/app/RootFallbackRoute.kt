@@ -10,16 +10,14 @@ internal fun RootFallbackRoute(
     when {
         appState.downloadsOpen -> {
             DownloadQueueScreen(
-                onBack = { appState.downloadsOpen = false }
+                onBack = root.actions::closeDownloadQueue
             )
         }
 
         appState.settingsOpen -> {
             SettingsScreen(
-                onBack = { appState.settingsOpen = false },
-                onOpenDownloadQueue = {
-                    appState.downloadsOpen = true
-                }
+                onBack = root.actions::closeSettings,
+                onOpenDownloadQueue = root.actions::openDownloadQueue
             )
         }
 
