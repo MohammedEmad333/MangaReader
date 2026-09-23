@@ -41,7 +41,7 @@ internal fun queueSeriesDownloads(
     return added
 }
 
-internal fun cancelSeriesDownloads(
+internal fun cancelSeriesDownloadsAction(
     context: Context,
     seriesId: String
 ): Boolean {
