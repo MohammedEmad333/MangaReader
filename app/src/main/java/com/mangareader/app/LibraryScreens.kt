@@ -184,123 +184,42 @@ internal fun LibraryTab(
             .mapValues { (_, v) -> v.maxOf { it.updatedAt } }
     }
 
-    /** Filter, then order. Applied per group so each tab sorts within itself. */
-    fun arrange(list: List<LibraryEntry>): List<LibraryEntry> {
-        val needle = search.trim()
-        val filtered = list.filter { e ->
-            val isLocal = !e.sourceId.startsWith("tachi:")
-            // A missing index entry reads as "doesn't hold" on all three, which
-            // is why these are `?: false` rather than a null branch — see the
-            // note on LibraryPrefs.filterUnread.
-            val c = counts[e.seriesId]
-            val checks = listOf(
-                fDownloaded to (e.seriesId in downloadedIds),
-                fLocal to isLocal,
-                fRead to (e.seriesId in readIds),
-                fUnread to ((c?.unread ?: 0) > 0),
-                fStarted to (c?.started ?: false),
-                fCompleted to (c?.completed ?: false),
-                // Unknown source reads as "doesn't hold", like the three above:
-                // Include hides it, Exclude keeps it. That direction is chosen —
-                // a source nothing has classified yet should not make a saved
-                // series vanish from a library someone is looking at.
-                fNsfw to (nsfwSources[e.sourceId] ?: false)
-            )
-            checks.all { (state, holds) ->
-                when (state) {
-                    FilterState.OFF -> true
-                    FilterState.INCLUDE -> holds
-                    FilterState.EXCLUDE -> !holds
-                }
-            } && (needle.isBlank() || e.title.contains(needle, ignoreCase = true))
-        }
-        val ordered = when (sort) {
-            LibrarySort.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase() }
-            LibrarySort.DATE_ADDED -> filtered.sortedBy { it.addedAt }
-            LibrarySort.LAST_READ -> filtered.sortedBy { lastReadAt[it.seriesId] ?: Long.MIN_VALUE }
-            // MIN_VALUE, not 0, for an un-counted series: ascending puts it
-            // first and descending last, which is what "we don't know" deserves
-            // in both directions. Zero would claim it has nothing unread, and
-            // after an import that claim would be made about most of the
-            // library.
-            LibrarySort.UNREAD_COUNT ->
-                filtered.sortedBy { counts[it.seriesId]?.unread ?: Int.MIN_VALUE }
-            LibrarySort.TOTAL_CHAPTERS ->
-                filtered.sortedBy { counts[it.seriesId]?.total ?: Int.MIN_VALUE }
-            LibrarySort.LATEST_CHAPTER ->
-                filtered.sortedBy { counts[it.seriesId]?.latestChapterAt ?: Long.MIN_VALUE }
-            // Seeded so the order holds across recompositions and restarts, and
-            // avalanche-mixed so it doesn't inherit the shape of the ids — see
-            // LibraryPrefs.shuffleKey. Still a pure key per entry, so this is
-            // one sort and no list copy per group.
-            LibrarySort.RANDOM ->
-                filtered.sortedBy { LibraryPrefs.shuffleKey(it.seriesId, randomSeed) }
-        }
-        return if (ascending || sort == LibrarySort.RANDOM) ordered else ordered.reversed()
+    val arrangeSpec = remember(
+        search, sort, ascending, randomSeed,
+        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted, fNsfw,
+        downloadedIds, readIds, counts, nsfwSources, lastReadAt,
+    ) {
+        LibraryArrangeSpec(
+            search = search,
+            sort = sort,
+            ascending = ascending,
+            randomSeed = randomSeed,
+            filterDownloaded = fDownloaded,
+            filterLocal = fLocal,
+            filterRead = fRead,
+            filterUnread = fUnread,
+            filterStarted = fStarted,
+            filterCompleted = fCompleted,
+            filterNsfw = fNsfw,
+            downloadedIds = downloadedIds,
+            readIds = readIds,
+            counts = counts,
+            nsfwSources = nsfwSources,
+            lastReadAt = lastReadAt,
+        )
     }
 
-    // The tabs, and what each holds.
-    //
-    // Grouping by source was absent for as long as this file has existed, and the
-    // reason was never the grouping: a LibraryEntry stores the source id it came
-    // from and never the source's name, so the tabs would have read as raw
-    // extension ids. `SourceNames` is that map, written wherever sources are
-    // listed for other reasons, so the tabs can be named without this screen
-    // classloading a single APK.
-    data class Group(val key: String, val label: String, val items: List<LibraryEntry>)
-
-    val groups: List<Group> = remember(
-        entries, categories, tick, search, grouping, sort, ascending,
-        fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted, counts, randomSeed,
-        // Names are recorded from a background coroutine on ON_RESUME, so on a
-        // cold start this block runs before any of them exist. Without this key
-        // the source tabs would render as raw ids and stay that way until an
-        // unrelated setting changed.
-        SourceNames.version
+    val groups: List<LibraryGroupView> = remember(
+        entries, categories, tick, grouping, arrangeSpec,
+        SourceNames.version,
     ) {
-        when (grouping) {
-            LibraryGroup.UNGROUPED -> listOf(Group("all", "All", arrange(entries)))
-            LibraryGroup.SOURCES -> {
-                // One tab per source actually present in the library, rather
-                // than per installed source: a source with nothing saved from it
-                // would be an empty tab, and an entry whose extension has since
-                // been uninstalled still needs somewhere to live. Grouping on
-                // what the entries say satisfies both without asking
-                // SourceManager anything.
-                val names = SourceNames.all(context)
-                entries.groupBy { it.sourceId }
-                    .map { (sourceId, items) ->
-                        Group(
-                            key = sourceId,
-                            label = names[sourceId]?.takeIf { it.isNotBlank() }
-                                ?: SourceNames.unnamed(sourceId),
-                            items = arrange(items)
-                        )
-                    }
-                    // By label, so the tab order is the one the user can see.
-                    // Case-insensitive because extension names are not
-                    // consistently capitalised.
-                    .sortedBy { it.label.lowercase() }
-            }
-            else -> {
-                val assigned by lazy { Categories.assignedSeries(context) }
-                categories.map { cat ->
-                    val base = if (cat.id == Categories.DEFAULT_ID) {
-                        // Default isn't a category things are filed under — it's
-                        // where a series sits when it's filed under nothing,
-                        // which is what Tachiyomi means by it too. Series put
-                        // there by hand count as well, since the category editor
-                        // writes it explicitly rather than saving an empty set.
-                        val explicit = Categories.seriesIn(context, cat.id)
-                        entries.filter { it.seriesId !in assigned || it.seriesId in explicit }
-                    } else {
-                        val ids = Categories.seriesIn(context, cat.id)
-                        entries.filter { it.seriesId in ids }
-                    }
-                    Group(cat.id, cat.name, arrange(base))
-                }
-            }
-        }
+        buildLibraryGroups(
+            context = context,
+            entries = entries,
+            categories = categories,
+            grouping = grouping,
+            spec = arrangeSpec,
+        )
     }
 
     // What a stored scroll position is a position *into*. Everything that
