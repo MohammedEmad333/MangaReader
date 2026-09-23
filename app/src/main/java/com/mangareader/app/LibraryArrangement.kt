@@ -12,7 +12,7 @@ internal data class LibraryArrangeSpec(
     val search: String,
     val sort: LibrarySort,
     val ascending: Boolean,
-    val randomSeed: Long,
+    val randomSeed: Int,
     val filterDownloaded: FilterState,
     val filterLocal: FilterState,
     val filterRead: FilterState,
