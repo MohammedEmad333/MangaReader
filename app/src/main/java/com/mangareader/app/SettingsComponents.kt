@@ -98,7 +98,7 @@ internal fun SettingsColumn(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun SettingsTopBar(title: String, onBack: () -> Unit) {
+internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
