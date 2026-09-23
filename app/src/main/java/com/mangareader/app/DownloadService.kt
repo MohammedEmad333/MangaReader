@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -59,6 +58,9 @@ class DownloadService : Service() {
     private var worker: Job? = null
     private var itemJob: Job? = null
     private val foreground by lazy { DownloadServiceForeground(this) }
+    private val itemRunner by lazy {
+        DownloadItemRunner(this) { foreground.notifyThrottled() }
+    }
 
     /**
      * Set while a pause is cancelling the chapter in flight.
@@ -70,16 +72,6 @@ class DownloadService : Service() {
      */
     @Volatile
     private var pausing = false
-
-    /**
-     * seriesId -> its real chapter list, keyed by chapter id. See [genuineChapter].
-     *
-     * One entry per series per drain, including a failed lookup (stored empty),
-     * so queueing forty chapters of one series costs one extra request rather
-     * than forty. Cleared when the loop ends, because a list fetched during the
-     * last drain may be hours old by the next one.
-     */
-    private val chaptersBySeries = mutableMapOf<String, Map<String, Chapter>>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -211,7 +203,7 @@ class DownloadService : Service() {
                 }
             } finally {
                 foreground.releaseWakeLock()
-                chaptersBySeries.clear()
+                itemRunner.clearSession()
                 stopEverything()
             }
         }
@@ -220,172 +212,32 @@ class DownloadService : Service() {
     /**
      * Downloads one chapter.
      *
-     * Every exit path goes through `finish`, including failure: a chapter whose
-     * source has been uninstalled, or whose pages have gone, must not sit at the
-     * head of the queue blocking everything behind it. Partial pages are left on
-     * disk, so queuing it again picks up where this left off.
+     * Queue ownership stays in the service so pause/skip/cancel semantics remain
+     * tied to the lifecycle. Source resolution and the actual page transfer live
+     * in [DownloadItemRunner].
      */
     private suspend fun runItem(item: DownloadItem) {
         DownloadQueue.setActive(item.chapterId)
-        // total null, not 0: the page list request has not gone out yet, and
-        // "I don't know how many pages" is not "no pages have arrived".
         DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
         foreground.notifyNow()
+
         var failure: String? = null
         var cancelledByPause = false
         try {
-            if (Downloads.isComplete(this, item.chapterId)) {
-                DownloadIndex.record(this, item)
-                return
-            }
-
-            val src = SourceManager.listAllSources(this)
-                .firstOrNull { it.id == item.sourceId }
-                ?: throw IllegalStateException("\"${item.seriesTitle}\" — source is no longer installed")
-
-            // Claims <Source>/<Series>/<Chapter> before the first page is
-            // fetched, because the download needs somewhere to go. It has to
-            // happen here specifically: the queue stores ids, and this line is
-            // the only point at which the source's display name is known. By
-            // the time anything else asks for the folder — the Downloads tab,
-            // a delete, a size — the extension may have been uninstalled.
-            DownloadPaths.register(this, item, src.name)
-
-            // The queue only stores ids, so the extension's own SChapter has to
-            // be rebuilt before the source can fetch anything.
-            val rebuilt = src.rehydrateChapter(
-                Chapter(id = item.chapterId, name = item.chapterName, handle = null)
-            )
-
-            // A rebuilt handle carries url and name and nothing else. Some
-            // extensions need more than that from the object they were handed —
-            // see genuineChapter — so a failure here is retried once against a
-            // chapter the extension produced itself before it is called a
-            // failure.
-            try {
-                fetchPages(src, item, rebuilt)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (rebuiltFailure: Throwable) {
-                if (!blamesTheHandle(rebuiltFailure)) throw rebuiltFailure
-                val genuine = genuineChapter(src, item)
-                if (genuine == null || genuine.handle == null) throw rebuiltFailure
-                Log.w(
-                    TAG,
-                    "Rebuilt handle rejected for ${item.chapterId}; " +
-                        "retrying with the source's own chapter",
-                    rebuiltFailure
-                )
-                fetchPages(src, item, genuine)
-            }
-
-            // The adapter throws ChapterDownloadException when pages are missing,
-            // so reaching here normally means it's done. The check stays as a
-            // backstop for sources using the default loadPagesProgressively,
-            // which marks nothing.
-            if (Downloads.isComplete(this, item.chapterId)) {
-                DownloadIndex.record(this, item)
-            } else {
-                failure = "Finished without marking the chapter complete"
-            }
+            failure = itemRunner.download(item)
         } catch (e: CancellationException) {
-            // Recorded before rethrowing, because the finally cannot tell a
-            // pause from a skip and the two must not do the same thing.
             cancelledByPause = pausing
             throw e
         } catch (e: Throwable) {
-            // Throwable, not Exception. This calls into an extension, so it can
-            // raise a LinkageError rather than an exception — see
-            // sourceFailureMessage, which names the missing symbol instead of
-            // letting the failure reach the default handler.
             failure = sourceFailureMessage(e, e.javaClass.simpleName)
         } finally {
             if (cancelledByPause) {
-                // Paused mid-chapter. The item STAYS at the head of the queue —
-                // finish() would remove it, and with no failure recorded it
-                // would vanish as though it had succeeded. Its partial pages are
-                // already on disk, so resuming re-runs this and picks up where
-                // it stopped.
                 DownloadQueue.setActive(null)
                 DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
             } else {
                 DownloadQueue.finish(this, item, failure)
             }
         }
-    }
-
-    /**
-     * Whether a failure could plausibly be the rebuilt handle's fault, and is
-     * therefore worth one retry against a real one.
-     *
-     * The discriminator is whether a page list was ever obtained.
-     * [ChapterDownloadException] with pages counted means the extension accepted
-     * the chapter, produced its list, and then some of the images failed — a
-     * network problem, and re-running the whole fetch for it is the mistake §5
-     * records against the manhwatoon retries. Anything else failed at or before
-     * `getPageList`, which is where a handle missing the extension's own state
-     * shows up — on Asura that is `getChapterUrl` refusing an empty `memo` with
-     * "Refresh Chapter List", which is exactly a chapter this app rebuilt.
-     */
-    private fun blamesTheHandle(t: Throwable): Boolean =
-        t !is ChapterDownloadException || t.totalPages == 0
-
-    /** One download attempt, reporting progress into the queue as pages land. */
-    private suspend fun fetchPages(src: Source, item: DownloadItem, chapter: Chapter) {
-        src.loadPagesProgressively(chapter, persist = true) { partial ->
-            // The first callback carries the whole list, so partial.size IS
-            // the page count and its arrival is what "the page list came back"
-            // means. Stored rather than divided away.
-            DownloadQueue.setProgress(
-                item.chapterId,
-                ready = partial.count { it != null },
-                total = partial.size
-            )
-            foreground.notifyThrottled()
-        }
-    }
-
-    /**
-     * The chapter as the *extension* built it, rather than as this app rebuilt it.
-     *
-     * [Source.rehydrateChapter] reconstructs an SChapter from the id, which is
-     * url and name and nothing else. That was enough for as long as extensions
-     * only read the url, and it stopped being enough when they started keeping
-     * their own state on the object. The confirmed case is Asura Scans, whose
-     * `getPageList` builds its URL from `chapter.memo["mangaSlug"]` — a value
-     * only its own chapter-list parse produces, so no rebuild can supply it and
-     * `chapter_number` and `date_upload` are lost the same way. The only way to
-     * get one is to ask the source for its chapter list again and take the
-     * matching entry.
-     *
-     * Deliberately a fallback rather than the normal path: it costs a request per
-     * series, and the overwhelming majority of sources never need it. Returns
-     * null when there is nothing better to offer — an item queued before
-     * `seriesId` was stored, a series that no longer resolves, or a source that
-     * has since dropped the chapter — and the caller then reports the original
-     * failure rather than inventing a second one.
-     */
-    private suspend fun genuineChapter(src: Source, item: DownloadItem): Chapter? {
-        if (item.seriesId.isBlank()) return null
-        chaptersBySeries[item.seriesId]?.let { return it[item.chapterId] }
-
-        val fetched = try {
-            val series = src.restoreSeries(item.seriesId, item.seriesTitle)
-            if (series == null) emptyList() else src.listChapters(series)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            // Swallowed on purpose: this runs while an earlier failure is already
-            // in hand, and that one is what the user gets told about. Logged
-            // because a source failing here is worth seeing in logcat.
-            Log.w(TAG, "Could not re-list chapters for ${item.seriesId}", e)
-            emptyList()
-        }
-
-        // Cached even when empty, so a source that fails this lookup is asked
-        // once per drain rather than once per queued chapter.
-        return fetched.associateBy { it.id }
-            .also { chaptersBySeries[item.seriesId] = it }[item.chapterId]
     }
 
     private fun stopEverything() {
