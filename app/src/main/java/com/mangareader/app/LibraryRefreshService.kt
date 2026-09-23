@@ -1,21 +1,13 @@
 package com.mangareader.app
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -74,8 +66,7 @@ class LibraryRefreshService : Service() {
      * asked a different way: what does the index still not know?
      */
     private var scopeUncounted = false
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var lastNotifyAt = 0L
+    private val foreground by lazy { LibraryRefreshForeground(this) }
 
     /** Counts waiting to be flushed. Written from several source coroutines. */
     private val pending = HashMap<String, SeriesCounts>()
@@ -95,13 +86,13 @@ class LibraryRefreshService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        foreground.createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Within a few seconds of startForegroundService() or the system kills
         // the process outright, so this goes before any work.
-        if (!goForeground()) {
+        if (!foreground.goForeground()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -138,7 +129,7 @@ class LibraryRefreshService : Service() {
     }
 
     override fun onDestroy() {
-        releaseWakeLock()
+        foreground.releaseWakeLock()
         scope.cancel()
         super.onDestroy()
     }
@@ -147,7 +138,7 @@ class LibraryRefreshService : Service() {
         if (worker?.isActive == true) return
         completed = false
         worker = scope.launch {
-            acquireWakeLock()
+            foreground.acquireWakeLock()
             try {
                 sweep()
             } catch (e: CancellationException) {
@@ -170,7 +161,7 @@ class LibraryRefreshService : Service() {
                     RefreshCursor.clear(this@LibraryRefreshService)
                 }
                 LibraryRefresh.end(this@LibraryRefreshService)
-                releaseWakeLock()
+                foreground.releaseWakeLock()
                 stopEverything()
             }
         }
@@ -236,7 +227,7 @@ class LibraryRefreshService : Service() {
         val sources = SourceManager.listAllSources(this).associateBy { it.id }
         val bySource = remaining.groupBy { it.sourceId }
 
-        notifyNow()
+        foreground.notifyNow()
 
         // The same chunked-async shape runGlobalSearch uses, rather than a
         // Semaphore — it's already proven in this codebase and needs no API this
@@ -360,7 +351,7 @@ class LibraryRefreshService : Service() {
             }
 
             LibraryRefresh.done++
-            notifyThrottled()
+            foreground.notifyThrottled()
             if (pendingSize() >= FLUSH_EVERY || pendingCoverSize() >= FLUSH_EVERY) flush()
             delay(REQUEST_SPACING_MS)
         }
@@ -413,111 +404,7 @@ class LibraryRefreshService : Service() {
         stopSelf()
     }
 
-    // ---------- wake lock ----------
-
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_TAG).apply {
-            setReferenceCounted(false)
-            acquire(WAKE_LOCK_TIMEOUT_MS)
-        }
-    }
-
-    private fun releaseWakeLock() {
-        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
-        wakeLock = null
-    }
-
-    // ---------- notification ----------
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java) ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Library refresh",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Progress while chapter counts are updated"
-                setShowBadge(false)
-            }
-        )
-    }
-
-    private fun goForeground(): Boolean = runCatching {
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            } else {
-                0
-            }
-        )
-    }.isSuccess
-
-    private fun notifyThrottled() {
-        val now = System.currentTimeMillis()
-        if (now - lastNotifyAt < NOTIFY_INTERVAL_MS) return
-        notifyNow()
-    }
-
-    private fun notifyNow() {
-        lastNotifyAt = System.currentTimeMillis()
-        val manager = getSystemService(NotificationManager::class.java) ?: return
-        runCatching { manager.notify(NOTIFICATION_ID, buildNotification()) }
-    }
-
-    private fun buildNotification(): Notification {
-        val total = LibraryRefresh.total
-        val done = LibraryRefresh.done
-
-        val open = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("Refreshing library")
-            .setContentText(
-                if (total == 0) "Starting" else "$done of $total"
-            )
-            .setSubText(LibraryRefresh.currentTitle.ifBlank { null })
-            .setContentIntent(open)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            // Indeterminate until the count is known, or the bar sits at 100%
-            // for the moment before the first series lands.
-            .setProgress(total.coerceAtLeast(1), done, total == 0)
-            .addAction(
-                0,
-                "Stop",
-                PendingIntent.getService(
-                    this,
-                    1,
-                    Intent(this, LibraryRefreshService::class.java).setAction(ACTION_STOP),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            )
-            .build()
-    }
-
     companion object {
-        private const val CHANNEL_ID = "library_refresh"
-        private const val NOTIFICATION_ID = 1002
-        private const val WAKE_TAG = "Yomu:refresh"
-        private const val WAKE_LOCK_TIMEOUT_MS = 4L * 60 * 60 * 1000
-        private const val NOTIFY_INTERVAL_MS = 500L
 
         /** Sources worked on at once. Deliberately small; see the class note. */
         private const val SOURCE_CONCURRENCY = 3
