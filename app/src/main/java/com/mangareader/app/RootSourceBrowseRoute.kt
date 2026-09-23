@@ -8,7 +8,6 @@ internal fun RootSourceBrowseRoute(
 ) {
     val appState = root.app
     val browseState = root.browse
-    val seriesState = root.series
     val actions = root.actions
     val source = browseState.source ?: return
     val site = source.siteUrl()
@@ -22,8 +21,8 @@ internal fun RootSourceBrowseRoute(
         series = browseState.series,
         loading = appState.loading,
         error = appState.error,
-        filtersOpen = { appState.filtersOpen = true },
-        diagnose = { appState.probeOpen = true },
+        filtersOpen = actions::showFilters,
+        diagnose = actions::showProbe,
         mode = browseState.mode,
         onModeChange = { mode -> actions.openSource(source, "", mode) },
         query = browseState.query,
@@ -33,18 +32,8 @@ internal fun RootSourceBrowseRoute(
         onLoadMore = { actions.loadMoreSeries() },
         onRescan = { actions.openSource(source, browseState.query, browseState.mode) },
         onOpen = { actions.openSeries(it) },
-        onBack = {
-            browseState.series = null
-            appState.error = null
-            val cameFromTag = seriesState.tagReturn
-            if (cameFromTag != null) {
-                seriesState.tagReturn = null
-                seriesState.active = cameFromTag
-            } else {
-                browseState.source = null
-                browseState.sourceId = null
-            }
-        },
+        onBack = actions::backFromSourceBrowse,
+
         libraryTick = appState.libraryTick,
         scroll = root.ui.browseScroll,
         onSolveChallenge = startChallenge
