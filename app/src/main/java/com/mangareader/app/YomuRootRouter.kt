@@ -48,48 +48,48 @@ internal fun YomuRootRouter(
         TransientRouteResult.NONE -> {
             if (seriesState.active != null) {
                 RootSeriesRoute(
-            appState = appState,
-            browseState = browseState,
-            seriesState = seriesState,
-            globalSearch = globalSearch,
-            migrationState = migrationState,
-            actions = actions,
-            scroll = seriesScroll
+                    appState = appState,
+                    browseState = browseState,
+                    seriesState = seriesState,
+                    globalSearch = globalSearch,
+                    migrationState = migrationState,
+                    actions = actions,
+                    scroll = seriesScroll
                 )
             } else if (globalSearch.open) {
                 RootGlobalSearchRoute(
-            context = context,
-            appState = appState,
-            browseState = browseState,
-            seriesState = seriesState,
-            globalSearch = globalSearch,
-            migrationState = migrationState,
-            actions = actions
+                    context = context,
+                    appState = appState,
+                    browseState = browseState,
+                    seriesState = seriesState,
+                    globalSearch = globalSearch,
+                    migrationState = migrationState,
+                    actions = actions
                 )
             } else if (browseState.source != null) {
                 RootSourceBrowseRoute(
-            appState = appState,
-            browseState = browseState,
-            seriesState = seriesState,
-            actions = actions,
-            scroll = browseScroll
+                    appState = appState,
+                    browseState = browseState,
+                    seriesState = seriesState,
+                    actions = actions,
+                    scroll = browseScroll
                 )
             } else {
                 RootFallbackRoute(
-            context = context,
-            scope = scope,
-            appState = appState,
-            globalSearch = globalSearch,
-            actions = actions,
-            libraryCategory = libraryCategory,
-            onLibraryCategoryChange = onLibraryCategoryChange,
-            librarySearch = librarySearch,
-            onLibrarySearchChange = onLibrarySearchChange,
-            librarySearchOpen = librarySearchOpen,
-            onLibrarySearchOpenChange = onLibrarySearchOpenChange,
-            libraryScroll = libraryScroll,
-            sourcesScroll = sourcesScroll
-        )
+                    context = context,
+                    scope = scope,
+                    appState = appState,
+                    globalSearch = globalSearch,
+                    actions = actions,
+                    libraryCategory = libraryCategory,
+                    onLibraryCategoryChange = onLibraryCategoryChange,
+                    librarySearch = librarySearch,
+                    onLibrarySearchChange = onLibrarySearchChange,
+                    librarySearchOpen = librarySearchOpen,
+                    onLibrarySearchOpenChange = onLibrarySearchOpenChange,
+                    libraryScroll = libraryScroll,
+                    sourcesScroll = sourcesScroll
+                )
             }
         }
     }
