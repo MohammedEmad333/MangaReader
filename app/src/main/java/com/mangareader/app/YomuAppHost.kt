@@ -111,4 +111,5 @@ internal fun YomuAppHost() {
             whatsNewOpen = false
             WhatsNew.markSeen(context)
         }
-    )}
+    )
+}
