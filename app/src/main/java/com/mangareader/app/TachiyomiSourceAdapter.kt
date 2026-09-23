@@ -354,6 +354,22 @@ class TachiyomiSourceAdapter(
 
     private fun SManga.safeTitle(): String = runCatching { title }.getOrDefault("")
 
+    private fun String.repointFromLoopback(): String {
+        val url = toHttpUrlOrNull() ?: return this
+        if (!url.host.isLoopback()) return this
+        val base = (delegate as? HttpSource)?.baseUrl?.toHttpUrlOrNull() ?: return this
+        if (base.host.isLoopback()) return this
+        return url.newBuilder()
+            .scheme(base.scheme)
+            .host(base.host)
+            .port(base.port)
+            .build()
+            .toString()
+    }
+
+    private fun String.isLoopback(): Boolean =
+        this == "localhost" || this == "::1" || this == "0.0.0.0" || startsWith("127.")
+
     private fun SChapter.safeUrl(): String = runCatching { url }.getOrDefault("")
 
     private fun SChapter.safeName(): String = runCatching { name }.getOrDefault("")
