@@ -1665,46 +1665,17 @@ fun YomuApp() {
     } else {
         Scaffold(
             bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentTab == 0,
-                        onClick = { currentTab = 0 },
-                        label = { NavLabel("Library") },
-                        // Vector icons, not emoji. An emoji is a fixed-colour
-                        // glyph and stays the same in every theme; a vector here
-                        // is tinted by NavigationBarItem from the scheme, so the
-                        // bar picks up the theme's colour the way SY's does.
-                        icon = { Icon(Icons.Filled.Bookmark, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 1,
-                        onClick = { currentTab = 1 },
-                        label = { NavLabel("Browse") },
-                        icon = { Icon(Icons.Filled.Search, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 2,
-                        onClick = {
-                            currentTab = 2
+                MainBottomNavigation(
+                    currentTab = currentTab,
+                    onSelectTab = { tab ->
+                        currentTab = tab
+                        if (tab == 2) {
                             history = History.forDisplay(context)
-                        },
-                        label = { NavLabel("History") },
-                        icon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 3,
-                        onClick = { currentTab = 3 },
-                        label = { NavLabel("Downloads") },
-                        icon = { Icon(Icons.Filled.Download, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 4,
-                        onClick = { currentTab = 4 },
-                        label = { NavLabel("More") },
-                        icon = { Icon(Icons.Filled.MoreVert, contentDescription = null) }
-                    )
-                }
+                        }
+                    }
+                )
             }
+
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
                 when (currentTab) {
