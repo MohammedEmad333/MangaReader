@@ -1489,7 +1489,7 @@ private val TOP_BAR_HEIGHT = 64.dp
 private val TOP_BAR_FADE_OVER = 120.dp
 
 
-private const val KEY_BROWSE_VIEW = "browse_view"
+internal const val KEY_BROWSE_VIEW = "browse_view"
 
 /**
  * How the browse grid draws a result.
@@ -1512,7 +1512,7 @@ internal enum class BrowseView(val key: String, val label: String) {
 
 /** Cover with the title underneath it. */
 @Composable
-private fun ComfortableCell(
+internal fun ComfortableCell(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
@@ -1558,7 +1558,7 @@ private fun ComfortableCell(
 
 /** Cover with the title over it, under a scrim. */
 @Composable
-private fun CompactCell(
+internal fun CompactCell(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
@@ -1611,7 +1611,7 @@ private fun CompactCell(
 
 /** One row: small cover, full title. */
 @Composable
-private fun ListRow(
+internal fun ListRow(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
