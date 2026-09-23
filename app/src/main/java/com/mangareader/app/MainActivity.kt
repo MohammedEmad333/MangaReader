@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.core.util.Consumer
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -68,9 +67,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 // ---------- root ----------
-
-/** Index of the Downloads tab in the bottom bar. Named because 3 says nothing. */
-private const val DOWNLOADS_TAB = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -257,30 +253,13 @@ fun YomuApp() {
     val activity = context as? ComponentActivity
     DoubleBackToExitHandler(activity)
 
-    // Tapping the download notification lands on the QUEUE rather than on
-    // wherever the app was last left.
-    //
-    // TWO PATHS, because there are two ways the tap arrives. Cold start: the
-    // extra is on the Activity's launch intent and the LaunchedEffect below
-    // reads it once. Already running: the notification uses CLEAR_TOP, which
-    // delivers through onNewIntent, and a value read once at composition would
-    // be the intent the app STARTED with — so the listener is required, not a
-    // nicety.
-    //
-    // The extra is REMOVED once acted on. Left in place, the launch intent keeps
-    // saying "open the queue" and a rotation would drag the user back to it.
-    fun consumeQueueRequest(intent: Intent?) {
-        if (intent?.getBooleanExtra(DownloadService.EXTRA_OPEN_QUEUE, false) != true) return
-        intent.removeExtra(DownloadService.EXTRA_OPEN_QUEUE)
-        currentTab = DOWNLOADS_TAB
-        downloadsOpen = true
-    }
-    LaunchedEffect(Unit) { consumeQueueRequest(activity?.intent) }
-    DisposableEffect(activity) {
-        val listener = Consumer<Intent> { consumeQueueRequest(it) }
-        activity?.addOnNewIntentListener(listener)
-        onDispose { activity?.removeOnNewIntentListener(listener) }
-    }
+    DownloadQueueIntentHandler(
+        activity = activity,
+        onOpenQueue = {
+            currentTab = 3
+            downloadsOpen = true
+        }
+    )
     // Only whether Settings is open, not which page of it. The section is local
     // state inside SettingsScreen, so this routing chain gains one boolean rather
     // than one arm per settings page.
