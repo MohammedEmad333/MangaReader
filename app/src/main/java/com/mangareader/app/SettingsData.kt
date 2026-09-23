@@ -604,47 +604,4 @@ internal fun DataSettings() {
     LaunchedEffect(tick) { lastBackup = Backup.lastBackupAt(context) }
 }
 
-/** Free space on the volume the user thinks of as the phone's storage. */
-@Composable
-private fun DeviceStorageBar() {
-    // StatFs, not File.getFreeSpace(): on internal storage the File API reports
-    // the space *this app* may use, which is smaller than the volume's free
-    // space by whatever the system reserves, and the number then disagrees with
-    // the one Android's own Storage screen shows.
-    val stats = remember {
-        runCatching {
-            val fs = StatFs(Environment.getExternalStorageDirectory().path)
-            fs.blockCountLong * fs.blockSizeLong to fs.availableBlocksLong * fs.blockSizeLong
-        }.getOrNull()
-    }
-    val total = stats?.first ?: 0L
-    val free = stats?.second ?: 0L
-    val fraction = if (total > 0L) ((total - free).toFloat() / total).coerceIn(0f, 1f) else 0f
-
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            Environment.getExternalStorageDirectory().path,
-            style = MaterialTheme.typography.labelLarge
-        )
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            if (total <= 0L) "Couldn't read the volume"
-            else "Available: ${formatBytes(free)} / Total: ${formatBytes(total)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-/** `yomu_2026-07-28_2105.json` — sorts by age in any file manager. */
-private fun defaultBackupName(): String =
-    "yomu_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date()) + ".json"
-
 // ---------- security and privacy ----------
