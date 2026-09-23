@@ -1352,9 +1352,7 @@ fun YomuApp() {
             }
         )
     } else if (globalSearchOpen) {
-        // Sits below SeriesScreen in this chain on purpose: opening a hit shows the
-        // series, and backing out of it lands on the results again.
-        GlobalSearchScreen(
+        GlobalSearchRoute(
             query = globalQuery,
             results = globalResults,
             running = globalRunning,
@@ -1375,8 +1373,6 @@ fun YomuApp() {
             onOpenSource = { openGlobalSource(it) },
             migrating = migrateFrom != null,
             onOpenSeries = { src, s ->
-                // In migrate mode a tapped result is the chosen target, not a
-                // series to open — confirm before moving anything.
                 if (migrateFrom != null) migrateTarget = src to s
                 else openGlobalResult(src, s)
             },
@@ -1388,80 +1384,48 @@ fun YomuApp() {
                 seriesList = null
                 val cameFromTag = tagSearchReturn
                 if (cameFromTag != null) {
-                    // Same detour as the per-source case. The adopted-source
-                    // problem below doesn't apply: nothing was opened from these
-                    // results, so activeSource is still the series' own.
                     tagSearchReturn = null
                     activeSeries = cameFromTag
                 } else {
-                    // Opening a result adopted that result's source. Leaving
-                    // search has to give it back, or the chain lands on a browse
-                    // screen with nothing in it.
                     activeSource = null
                     activeSourceId = null
                 }
+            },
+            migrateFrom = migrateFrom,
+            migrateTarget = migrateTarget,
+            onDismissMigration = { migrateTarget = null },
+            onConfirmMigration = { from, targetSource, targetSeries ->
+                performMigration(from, targetSource, targetSeries)
             }
         )
-        migrateTarget?.let { (targetSource, targetSeries) ->
-            val from = migrateFrom
-            AlertDialog(
-                onDismissRequest = { migrateTarget = null },
-                title = { Text("Migrate series") },
-                text = {
-                    Text(
-                        "Move “${from?.title}” to ${targetSource.name}? " +
-                            "Your categories and read progress move with it, and the " +
-                            "old entry is removed."
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        enabled = from != null,
-                        onClick = { if (from != null) performMigration(from, targetSource, targetSeries) }
-                    ) { Text("Migrate") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { migrateTarget = null }) { Text("Cancel") }
-                }
-            )
-        }
     } else if (activeSource != null) {
-        // Only extension sources backed by an HttpSource have a site to open;
-        // for anything else the button is absent rather than broken.
-        val site = activeSource?.siteUrl()
-        // `fun()` rather than a lambda: a brace directly after `else` opens a
-        // block, so a lambda there has to be wrapped in a second pair and reads
-        // like a typo. An anonymous function is the same value with no ambiguity.
+        val source = activeSource!!
+        val site = source.siteUrl()
         val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
             challengeUrl = site
         }
-        LibraryScreen(
-            title = activeSource!!.name,
+        SourceBrowseRoute(
+            source = source,
+            sourceId = activeSourceId,
             series = seriesList,
             loading = isLoading,
             error = errorMessage,
-            supportsSearch = activeSource!!.supportsSearch,
-            supportsLatest = activeSource!!.supportsLatest,
-            supportsFilters = activeSource!!.supportsFilters,
-            onOpenFilters = { filtersOpen = true },
-            onDiagnose = { probeOpen = true },
+            filtersOpen = { filtersOpen = true },
+            diagnose = { probeOpen = true },
             mode = browseMode,
-            onModeChange = { m -> activeSource?.let { openSource(it, "", m) } },
+            onModeChange = { m -> openSource(source, "", m) },
             query = browseQuery,
             hasNext = browseHasNext,
             loadingMore = loadingMore,
-            onSearch = { q -> activeSource?.let { openSource(it, q, browseMode) } },
+            onSearch = { q -> openSource(source, q, browseMode) },
             onLoadMore = { loadMoreSeries() },
-            onRescan = { activeSource?.let { openSource(it, browseQuery, browseMode) } },
+            onRescan = { openSource(source, browseQuery, browseMode) },
             onOpen = { openSeries(it) },
             onBack = {
                 seriesList = null
                 errorMessage = null
                 val cameFromTag = tagSearchReturn
                 if (cameFromTag != null) {
-                    // Back to the series the tag was on. The source stays: it is
-                    // that series' own source, which the series screen needs for
-                    // chapters and pages.
                     tagSearchReturn = null
                     activeSeries = cameFromTag
                 } else {
@@ -1470,10 +1434,6 @@ fun YomuApp() {
                 }
             },
             libraryTick = libraryTick,
-            // Local folder sources carry their own ids; everything loaded from
-            // an extension is prefixed, which is the same test the library grid
-            // uses for its Local chip.
-            isLocalSource = !(activeSourceId ?: "").startsWith("tachi:"),
             scroll = browseScroll,
             onSolveChallenge = startChallenge
         )
