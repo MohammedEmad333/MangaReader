@@ -260,82 +260,6 @@ private fun ReaderDefaultsSettings() {
     }
 }
 
-// ---------- downloads ----------
-
-@Composable
-private fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
-    val context = LocalContext.current
-    var tick by remember { mutableIntStateOf(0) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    val use = rememberStorageUse(tick)
-
-    val queued = DownloadQueue.items.size
-    val failed = DownloadQueue.failed.size
-
-    SettingsColumn {
-        SectionHeader("Queue")
-        ListItem(
-            headlineContent = { Text("Download queue") },
-            supportingContent = {
-                Text(
-                    when {
-                        failed > 0 && queued > 0 -> "$queued waiting \u00b7 $failed failed"
-                        failed > 0 -> "$failed failed"
-                        queued == 0 -> "Nothing queued"
-                        DownloadQueue.paused -> "$queued waiting \u00b7 paused"
-                        queued == 1 -> "1 chapter downloading"
-                        else -> "$queued chapters \u00b7 downloading"
-                    }
-                )
-            },
-            modifier = Modifier.clickable { onOpenDownloadQueue() }
-        )
-        HorizontalDivider()
-
-        SectionHeader("On device")
-        ListItem(
-            headlineContent = { Text("Downloaded chapters") },
-            supportingContent = { Text(storageLine(use?.downloadCount, use?.downloads, "chapters")) },
-            trailingContent = {
-                if ((use?.downloadCount ?: 0) > 0) {
-                    TextButton(onClick = { confirmDelete = true }) { Text("Delete all") }
-                }
-            }
-        )
-        HorizontalDivider()
-        PrefNote(
-            "Downloads live in the app's own storage, so only this button and " +
-                "uninstalling reclaim them \u2014 the system won't evict them the way " +
-                "it evicts the reading cache."
-        )
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete all downloads?") },
-            text = {
-                Text(
-                    "Every downloaded chapter goes, including anything only readable " +
-                        "offline. This can't be undone."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    Downloads.deleteAll(context)
-                    confirmDelete = false
-                    tick++
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
-            }
-        )
-    }
-}
-
-// ---------- browse ----------
-
 @Composable
 private fun DataSettings() {
     val context = LocalContext.current
@@ -1132,55 +1056,6 @@ private fun AdvancedSettings() {
             }
         )
     }
-}
-
-// ---------- storage measurement ----------
-
-private data class StorageUse(
-    val downloadCount: Int,
-    val downloads: Long,
-    val pageCache: Long,
-    val chapterLists: Long,
-    val images: Long
-)
-
-/**
- * Sizes, measured off the main thread.
- *
- * Every one of these is a recursive walk of a directory that can hold gigabytes,
- * and the More tab has been doing two of them inline in composition. On a small
- * library that's invisible; on a full one it's a stall on the frame that opens
- * the screen. Null means "still measuring", which is why every caller renders a
- * placeholder rather than a zero — a zero here would read as "nothing stored".
- */
-@Composable
-private fun rememberStorageUse(tick: Int): StorageUse? {
-    val context = LocalContext.current
-    var use by remember { mutableStateOf<StorageUse?>(null) }
-    LaunchedEffect(tick, DownloadQueue.tick) {
-        use = withContext(Dispatchers.IO) {
-            StorageUse(
-                downloadCount = runCatching { Downloads.count(context) }.getOrDefault(0),
-                downloads = runCatching { Downloads.sizeBytes(context) }.getOrDefault(0L),
-                pageCache = dirSize(File(context.cacheDir, "pages")),
-                chapterLists = dirSize(File(context.filesDir, "chapterlists")),
-                images = runCatching { context.imageLoader.diskCache?.size ?: 0L }.getOrDefault(0L)
-            )
-        }
-    }
-    return use
-}
-
-private fun dirSize(dir: File): Long = runCatching {
-    if (!dir.exists()) 0L
-    else dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-}.getOrDefault(0L)
-
-private fun storageLine(count: Int?, bytes: Long?, noun: String): String = when {
-    count == null || bytes == null -> "Measuring\u2026"
-    count == 0 -> "Nothing downloaded"
-    count == 1 -> "1 chapter \u00b7 ${formatBytes(bytes)}"
-    else -> "$count $noun \u00b7 ${formatBytes(bytes)}"
 }
 
 // ---------- shared rows ----------
