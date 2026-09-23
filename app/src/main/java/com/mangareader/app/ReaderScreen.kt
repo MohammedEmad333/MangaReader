@@ -4,14 +4,9 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -710,100 +705,44 @@ internal fun ReaderScreen(
             }
         }
 
-        if (settings.showPageNumber && !showControls && pages.isNotEmpty()) {
-            OutlinedText(
-                text = "${currentPage + 1} / ${pages.size}",
-                color = onBackground,
-                outline = outlineBackground,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp)
-            )
-        }
-
-        AnimatedVisibility(
-            visible = showControls,
-            enter = slideInVertically { -it },
-            exit = slideOutVertically { -it },
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            ReaderTopBar(
-                title = seriesTitle,
-                subtitle = chapterName,
-                onClose = onClose
-            )
-        }
-
-        AnimatedVisibility(
-            visible = showControls &&
-                settings.sliderPosition == ReaderSliderPosition.VERTICAL &&
-                pages.size > 1,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 6.dp)
-        ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                shape = MaterialTheme.shapes.large
-            ) {
-                VerticalSlider(
-                    value = seekTarget ?: currentPage.toFloat(),
-                    onValueChange = { seekTarget = it },
-                    onValueChangeFinished = { commitSeek() },
-                    valueRange = 0f..lastPage.toFloat(),
-                    length = verticalSliderLength,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = showControls,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            ReaderBottomBar(
-                page = seekPage + 1,
-                total = pages.size,
-                // The vertical one lives at the screen edge instead; the bar
-                // keeps its buttons either way.
-                showSlider = settings.sliderPosition == ReaderSliderPosition.HORIZONTAL &&
-                    pages.size > 1,
-                sliderValue = seekTarget ?: currentPage.toFloat(),
-                onSliderChange = { seekTarget = it },
-                mirrorSlider = rtl,
-                onSliderCommit = { commitSeek() },
-                hasPrev = hasPrev,
-                hasNext = hasNext,
-                onPrev = onPrev,
-                onNext = onNext,
-                onChapters = { showChapters = true },
-                onSettings = { showSettings = true }
-            )
-        }
+        ReaderControlsOverlay(
+            settings = settings,
+            showControls = showControls,
+            currentPage = currentPage,
+            totalPages = pages.size,
+            seekTarget = seekTarget,
+            onSeekTargetChange = { seekTarget = it },
+            onSeekCommit = { commitSeek() },
+            verticalSliderLength = verticalSliderLength,
+            rtl = rtl,
+            hasPrev = hasPrev,
+            hasNext = hasNext,
+            onPrev = onPrev,
+            onNext = onNext,
+            onOpenChapters = { showChapters = true },
+            onOpenSettings = { showSettings = true },
+            seriesTitle = seriesTitle,
+            chapterName = chapterName,
+            onClose = onClose,
+            pageTextColor = onBackground,
+            pageOutlineColor = outlineBackground,
+        )
     }
 
-    if (showChapters) {
-        ModalBottomSheet(onDismissRequest = { showChapters = false }) {
-            ChapterPickerSheet(
-                chapters = chapters,
-                current = chapterIndex,
-                onSelect = {
-                    showChapters = false
-                    showControls = false
-                    onSelectChapter(it)
-                }
-            )
-        }
-    }
+    ReaderSheets(
+        showChapters = showChapters,
+        onDismissChapters = { showChapters = false },
+        chapters = chapters,
+        chapterIndex = chapterIndex,
+        onSelectChapter = {
+            showChapters = false
+            showControls = false
+            onSelectChapter(it)
+        },
+        showSettings = showSettings,
+        onDismissSettings = { showSettings = false },
+        settings = settings,
+        onSettingsChange = { update(it) },
+    )
 
-    if (showSettings) {
-        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
-            ReaderSettingsSheet(settings = settings, onChange = { update(it) })
-        }
-    }
 }
