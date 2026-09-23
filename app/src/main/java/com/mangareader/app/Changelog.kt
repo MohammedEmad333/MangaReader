@@ -22,6 +22,16 @@ data class ReleaseNote(
 object Changelog {
     val notes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 207,
+            name = "0.207",
+            header = "Downloads survive source changes and keep their covers",
+            body = "Downloaded chapters are reconciled when a source changes its " +
+                "chapter IDs, so existing offline chapters stay attached instead " +
+                "of looking missing. Series covers are now saved alongside " +
+                "downloads too, so downloaded entries can keep their artwork " +
+                "available offline.",
+        ),
+        ReleaseNote(
             code = 206,
             name = "0.206",
             header = "Migrate a series to another source",
