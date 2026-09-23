@@ -1,0 +1,84 @@
+package com.mangareader.app
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+
+@Composable
+internal fun ChapterVideoDialog(
+    scanning: Boolean,
+    scan: VideoScan?,
+    onDismiss: () -> Unit,
+    onOpenEmbed: (String) -> Unit,
+    onOpenVideo: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!scanning) onDismiss() },
+        title = { Text("Videos in this chapter") },
+        text = {
+            when {
+                scanning -> Text("Scanning the chapter's page…")
+                scan == null || (scan.links.isEmpty() && scan.embeds.isEmpty()) -> Column {
+                    Text("No playable video found on this chapter's page.")
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        scan?.note ?: "The scan returned nothing at all.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                scan.links.isEmpty() -> Column {
+                    val plural = if (scan.embeds.size == 1) "player" else "players"
+                    Text("No direct video file, but this page embeds ${scan.embeds.size} $plural.")
+                    Spacer(Modifier.height(12.dp))
+                    scan.embeds.forEachIndexed { index, url ->
+                        TextButton(
+                            onClick = { onOpenEmbed(url) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Open player ${index + 1}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        scan.note ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                else -> Column {
+                    Text("Tap one to open it in a video player.")
+                    Spacer(Modifier.height(12.dp))
+                    scan.links.forEachIndexed { index, url ->
+                        TextButton(
+                            onClick = { onOpenVideo(url) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Video ${index + 1}", maxLines = 1)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !scanning
+            ) { Text("Close") }
+        }
+    )
+}

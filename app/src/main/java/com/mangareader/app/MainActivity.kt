@@ -1242,53 +1242,24 @@ fun YomuApp() {
         // What the player is actually fetching, for an app that can show it.
         val media = mediaUrls
         if (media != null) {
-            AlertDialog(
-                onDismissRequest = { mediaUrls = null },
-                title = { Text("Video link") },
-                text = {
-                    if (media.isEmpty()) {
-                        Text(
-                            "Nothing usable found. The player may be feeding itself " +
-                                "from JavaScript, in which case there is no address " +
-                                "an outside app could open."
-                        )
-                    } else Column {
-                        Text("Opens in whatever video player you have installed.")
-                        Spacer(Modifier.height(12.dp))
-                        media.take(6).forEach { link ->
-                            TextButton(
-                                onClick = {
-                                    // The REFERER GOES WITH IT. These hosts refuse a
-                                    // bare request, which is what "Unknown Error xD"
-                                    // was; MX Player and VLC both read this extra,
-                                    // and a player that ignores it is no worse off
-                                    // than opening the link cold.
-                                    val page = openEmbed?.second.orEmpty()
-                                    val view = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(Uri.parse(link), "video/*")
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        if (page.isNotBlank()) {
-                                            putExtra("headers", arrayOf("Referer", page))
-                                        }
-                                    }
-                                    runCatching { context.startActivity(view) }
-                                        .onFailure {
-                                            errorMessage = "No installed app can play that link"
-                                        }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    link.substringAfterLast('/').take(48).ifBlank { link.take(48) },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+            EmbedMediaDialog(
+                media = media,
+                onDismiss = { mediaUrls = null },
+                onOpenVideo = { link ->
+                    // The REFERER GOES WITH IT. These hosts refuse a bare request;
+                    // players that understand this extra can reuse the page origin.
+                    val page = openEmbed?.second.orEmpty()
+                    val view = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(Uri.parse(link), "video/*")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        if (page.isNotBlank()) {
+                            putExtra("headers", arrayOf("Referer", page))
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { mediaUrls = null }) { Text("Close") }
+                    runCatching { context.startActivity(view) }
+                        .onFailure {
+                            errorMessage = "No installed app can play that link"
+                        }
                 }
             )
         }
@@ -1694,46 +1665,17 @@ fun YomuApp() {
     } else {
         Scaffold(
             bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentTab == 0,
-                        onClick = { currentTab = 0 },
-                        label = { NavLabel("Library") },
-                        // Vector icons, not emoji. An emoji is a fixed-colour
-                        // glyph and stays the same in every theme; a vector here
-                        // is tinted by NavigationBarItem from the scheme, so the
-                        // bar picks up the theme's colour the way SY's does.
-                        icon = { Icon(Icons.Filled.Bookmark, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 1,
-                        onClick = { currentTab = 1 },
-                        label = { NavLabel("Browse") },
-                        icon = { Icon(Icons.Filled.Search, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 2,
-                        onClick = {
-                            currentTab = 2
+                MainBottomNavigation(
+                    currentTab = currentTab,
+                    onSelectTab = { tab ->
+                        currentTab = tab
+                        if (tab == 2) {
                             history = History.forDisplay(context)
-                        },
-                        label = { NavLabel("History") },
-                        icon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 3,
-                        onClick = { currentTab = 3 },
-                        label = { NavLabel("Downloads") },
-                        icon = { Icon(Icons.Filled.Download, contentDescription = null) }
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == 4,
-                        onClick = { currentTab = 4 },
-                        label = { NavLabel("More") },
-                        icon = { Icon(Icons.Filled.MoreVert, contentDescription = null) }
-                    )
-                }
+                        }
+                    }
+                )
             }
+
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
                 when (currentTab) {
@@ -1834,104 +1776,28 @@ fun YomuApp() {
         }
     }
 
-    // Shown while scanning AND after, so "none found" is a stated result rather
-    // than a menu tap that appeared to do nothing.
     val scan = videoScan
     if (videoScanning || scan != null) {
-        AlertDialog(
-            onDismissRequest = { if (!videoScanning) videoScan = null },
-            title = { Text("Videos in this chapter") },
-            text = {
-                when {
-                    videoScanning -> Text("Scanning the chapter's page\u2026")
-                    // The old wording here blamed the source's extension for
-                    // selecting only img tags. True of the PAGE LIST and
-                    // irrelevant to this result: the scan reads the page
-                    // directly and never asks the extension. It explained a
-                    // cause that had not produced what was on screen, which is
-                    // worse than saying nothing. It reports the document now.
-                    scan == null || (scan.links.isEmpty() && scan.embeds.isEmpty()) -> Column {
-                        Text("No playable video found on this chapter's page.")
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            scan?.note ?: "The scan returned nothing at all.",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    // Embeds only, no direct link. Opening these goes to the
-                    // BROWSER rather than a video player: the url is a page
-                    // whose script builds the player, not a media file, and
-                    // handing it to MX Player would fail in a way that looks
-                    // like this feature is broken.
-                    scan.links.isEmpty() -> Column {
-                        val plural = if (scan.embeds.size == 1) "player" else "players"
-                        Text("No direct video file, but this page embeds ${scan.embeds.size} $plural.")
-                        Spacer(Modifier.height(12.dp))
-                        scan.embeds.forEachIndexed { index, url ->
-                            TextButton(
-                                onClick = {
-                                    // NOT the system browser. Chrome sends no
-                                    // Referer for a typed navigation, and this
-                                    // player refuses that with "Unknown Error
-                                    // xD" — which is exactly what happened when
-                                    // 0.176 handed it over. The in-app WebView
-                                    // can state where the request came from.
-                                    val page = activeSeries?.let { series ->
-                                        activeSource?.seriesUrl(series)
-                                    }
-                                    videoScan = null
-                                    openEmbed = url to (page ?: "")
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    "Open player ${index + 1}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            scan.note ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    else -> Column {
-                        Text("Tap one to open it in a video player.")
-                        Spacer(Modifier.height(12.dp))
-                        scan.links.forEachIndexed { index, url ->
-                            TextButton(
-                                onClick = {
-                                    // The REMOTE url, streamed by the player.
-                                    // Nothing is downloaded, so no FileProvider
-                                    // and no guessing at file extensions. The
-                                    // cost is that a host needing this app's
-                                    // cookies or headers will fail in the
-                                    // player, and that is worth knowing early.
-                                    val view = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(Uri.parse(url), "video/*")
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    runCatching { context.startActivity(view) }
-                                        .onFailure {
-                                            errorMessage =
-                                                "No app on this device can play that link"
-                                        }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Video ${index + 1}", maxLines = 1) }
-                        }
-                    }
+        ChapterVideoDialog(
+            scanning = videoScanning,
+            scan = scan,
+            onDismiss = { videoScan = null },
+            onOpenEmbed = { url ->
+                val page = activeSeries?.let { series ->
+                    activeSource?.seriesUrl(series)
                 }
+                videoScan = null
+                openEmbed = url to (page ?: "")
             },
-            confirmButton = {
-                TextButton(
-                    onClick = { videoScan = null },
-                    enabled = !videoScanning
-                ) { Text("Close") }
+            onOpenVideo = { url ->
+                val view = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(Uri.parse(url), "video/*")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { context.startActivity(view) }
+                    .onFailure {
+                        errorMessage = "No app on this device can play that link"
+                    }
             }
         )
     }
