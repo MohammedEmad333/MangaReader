@@ -1,18 +1,11 @@
 package com.mangareader.app
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -65,6 +58,7 @@ class DownloadService : Service() {
     )
     private var worker: Job? = null
     private var itemJob: Job? = null
+    private val foreground by lazy { DownloadServiceForeground(this) }
 
     /**
      * Set while a pause is cancelling the chapter in flight.
@@ -76,8 +70,6 @@ class DownloadService : Service() {
      */
     @Volatile
     private var pausing = false
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var lastNotifyAt = 0L
 
     /**
      * seriesId -> its real chapter list, keyed by chapter id. See [genuineChapter].
@@ -93,7 +85,7 @@ class DownloadService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        foreground.createChannel()
         DownloadQueue.restore(this)
     }
 
@@ -101,7 +93,7 @@ class DownloadService : Service() {
         // Must happen within a few seconds of startForegroundService() or the
         // system kills the process with a ForegroundServiceDidNotStartInTime
         // crash — so it goes first, before any queue work.
-        if (!goForeground()) {
+        if (!foreground.goForeground()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -174,7 +166,7 @@ class DownloadService : Service() {
     }
 
     override fun onDestroy() {
-        releaseWakeLock()
+        foreground.releaseWakeLock()
         scope.cancel()
         super.onDestroy()
     }
@@ -184,7 +176,7 @@ class DownloadService : Service() {
     private fun ensureWorker() {
         if (worker?.isActive == true) return
         worker = scope.launch {
-            acquireWakeLock()
+            foreground.acquireWakeLock()
             var wasPaused = false
             try {
                 while (isActive) {
@@ -200,16 +192,16 @@ class DownloadService : Service() {
                         // worker rebuilt. Idling keeps it ready.
                         if (!wasPaused) {
                             wasPaused = true
-                            releaseWakeLock()
-                            notifyNow()
+                            foreground.releaseWakeLock()
+                            foreground.notifyNow()
                         }
                         delay(PAUSE_POLL_MS)
                         continue
                     }
                     if (wasPaused) {
                         wasPaused = false
-                        acquireWakeLock()
-                        notifyNow()
+                        foreground.acquireWakeLock()
+                        foreground.notifyNow()
                     }
                     val item = DownloadQueue.head() ?: break
                     val job = launch { runItem(item) }
@@ -218,7 +210,7 @@ class DownloadService : Service() {
                     itemJob = null
                 }
             } finally {
-                releaseWakeLock()
+                foreground.releaseWakeLock()
                 chaptersBySeries.clear()
                 stopEverything()
             }
@@ -238,7 +230,7 @@ class DownloadService : Service() {
         // total null, not 0: the page list request has not gone out yet, and
         // "I don't know how many pages" is not "no pages have arrived".
         DownloadQueue.setProgress(item.chapterId, ready = 0, total = null)
-        notifyNow()
+        foreground.notifyNow()
         var failure: String? = null
         var cancelledByPause = false
         try {
@@ -349,7 +341,7 @@ class DownloadService : Service() {
                 ready = partial.count { it != null },
                 total = partial.size
             )
-            notifyThrottled()
+            foreground.notifyThrottled()
         }
     }
 
@@ -401,165 +393,8 @@ class DownloadService : Service() {
         stopSelf()
     }
 
-    // ---------- wake lock ----------
-
-    /**
-     * A foreground service keeps the *process* alive, but not the CPU: with the
-     * screen off the device can still suspend mid-transfer. This is what makes
-     * "queue ten chapters and pocket the phone" actually work.
-     */
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_TAG).apply {
-            setReferenceCounted(false)
-            // Timed rather than indefinite: if this service ever dies without
-            // running its finally block, the lock still expires on its own.
-            acquire(WAKE_LOCK_TIMEOUT_MS)
-        }
-    }
-
-    private fun releaseWakeLock() {
-        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
-        wakeLock = null
-    }
-
-    // ---------- notification ----------
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java) ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Downloads",
-                // LOW: an ongoing progress bar shouldn't buzz or make noise.
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Chapter download progress"
-                setShowBadge(false)
-            }
-        )
-    }
-
-    /** @return false if the system refused the foreground start. */
-    private fun goForeground(): Boolean = runCatching {
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            } else {
-                0
-            }
-        )
-    }.isSuccess
-
-    /** Rate-limited, because progress lands once per page batch. */
-    private fun notifyThrottled() {
-        val now = System.currentTimeMillis()
-        if (now - lastNotifyAt < NOTIFY_INTERVAL_MS) return
-        notifyNow()
-    }
-
-    private fun notifyNow() {
-        lastNotifyAt = System.currentTimeMillis()
-        val manager = getSystemService(NotificationManager::class.java) ?: return
-        runCatching { manager.notify(NOTIFICATION_ID, buildNotification()) }
-    }
-
-    private fun buildNotification(): Notification {
-        val remaining = DownloadQueue.items.size
-        // head(), not items.firstOrNull(): once a chapter can be paused on its
-        // own, the first item may be one the worker is skipping over, and the
-        // notification would name a chapter nothing is downloading.
-        val current = DownloadQueue.head()
-        val progress = current?.let { DownloadQueue.progress[it.chapterId] }
-        val percent = progress?.percent
-        val isPaused = DownloadQueue.paused
-        val allOnHold = DownloadQueue.allItemsPaused()
-
-        // Carries EXTRA_OPEN_QUEUE so tapping the notification lands on the
-        // queue rather than wherever the app happened to be. FLAG_UPDATE_CURRENT
-        // matters here: without it the extra would be baked into the first
-        // PendingIntent ever created and later rebuilds would be ignored.
-        val open = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra(EXTRA_OPEN_QUEUE, true),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(
-                when {
-                    isPaused -> "Downloads paused"
-                    allOnHold -> "All chapters on hold"
-                    current == null -> "Finishing downloads"
-                    else -> current.seriesTitle.ifBlank { "Downloading" }
-                }
-            )
-            .setContentText(current?.chapterName ?: "")
-            .setSubText(if (remaining > 1) "$remaining chapters left" else null)
-            .setContentIntent(open)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            // Indeterminate while there is no ratio to show — no chapter, no
-            // page list yet, or an empty one. Previously this also went
-            // indeterminate at a genuine 0 of N, which looked identical to not
-            // having asked yet.
-            .setProgress(100, percent ?: 0, current == null || percent == null)
-
-        // Three states, not two. Keying this on `isPaused` alone left a dead
-        // loop: with every chapter individually held the title said "All
-        // chapters on hold" and the action said Pause, which set the queue-wide
-        // pause, whose Resume cleared it and returned to all-on-hold. The
-        // button toggled a mechanism that was not the one holding the queue,
-        // so nothing could ever be resumed from here.
-        val resumeAll = !isPaused && allOnHold
-        builder.addAction(
-            0,
-            when {
-                isPaused -> "Resume"
-                resumeAll -> "Resume all"
-                else -> "Pause"
-            },
-            action(
-                when {
-                    isPaused -> ACTION_RESUME
-                    resumeAll -> ACTION_RESUME_ALL
-                    else -> ACTION_PAUSE
-                },
-                1
-            )
-        )
-        builder.addAction(0, "Cancel all", action(ACTION_CANCEL_ALL, 2))
-
-        return builder.build()
-    }
-
-    private fun action(name: String, requestCode: Int): PendingIntent =
-        PendingIntent.getService(
-            this,
-            requestCode,
-            Intent(this, DownloadService::class.java).setAction(name),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
     companion object {
         private const val TAG = "DownloadService"
-        private const val CHANNEL_ID = "downloads"
-        private const val NOTIFICATION_ID = 1001
-        private const val WAKE_TAG = "Yomu:downloads"
-        private const val WAKE_LOCK_TIMEOUT_MS = 4L * 60 * 60 * 1000
-        private const val NOTIFY_INTERVAL_MS = 500L
         private const val PAUSE_POLL_MS = 700L
 
         /** Set on the notification's tap intent; read by MainActivity. */
