@@ -385,219 +385,115 @@ internal fun DataSettings() {
         )
     }
 
-    if (askAccess) {
-        AlertDialog(
-            onDismissRequest = { askAccess = false },
-            title = { Text("Allow access to storage?") },
-            text = {
-                Text(
-                    "To keep downloads in a folder you choose, Yomu needs " +
-                        "permission to manage files. Android grants this on its own " +
-                        "settings screen rather than in a dialog, so this opens that " +
-                        "screen \u2014 come back here afterwards and pick the folder."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    askAccess = false
-                    val intent = StorageLocation.accessIntent(context)
-                    if (intent != null) accessLauncher.launch(intent)
-                    else permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                }) { Text("Open settings") }
-            },
-            dismissButton = {
-                TextButton(onClick = { askAccess = false }) { Text("Cancel") }
+    DataSettingsDialogs(
+        askAccess = askAccess,
+        onDismissAccess = { askAccess = false },
+        onGrantAccess = {
+            askAccess = false
+            val intent = StorageLocation.accessIntent(context)
+            if (intent != null) {
+                accessLauncher.launch(intent)
+            } else {
+                permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
-        )
-    }
-
-    if (importOpen) {
-        TachiyomiImportDialog(onDismiss = { importOpen = false })
-    }
-
-    if (confirmReorganise) {
-        AlertDialog(
-            onDismissRequest = { confirmReorganise = false },
-            title = { Text("Reorganise downloads?") },
-            text = {
-                Text(
-                    "Chapters downloaded before this layout sit in a folder named " +
-                        "after a hash, which is unreadable but works. This files them " +
-                        "under source and series instead.\n\nA chapter can only be " +
-                        "placed if the app still knows what it was \u2014 anything it " +
-                        "can\u2019t identify is left where it is and keeps working."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    confirmReorganise = false
-                    reorganising = true
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) { reorganiseDownloads(context) }
-                        reorganising = false
-                        tick++
-                        message = result.fold(
-                            { report ->
-                                when {
-                                    report.moved == 0 && report.unidentified == 0 ->
-                                        "Everything was already filed"
-                                    report.unidentified == 0 ->
-                                        "Filed ${report.moved} chapters"
-                                    else ->
-                                        "Filed ${report.moved} chapters \u00b7 " +
-                                            "${report.unidentified} couldn\u2019t be " +
-                                            "identified and were left alone"
-                                }
-                            },
-                            { "Reorganise failed: ${it.message ?: it::class.java.simpleName}" }
-                        )
-                    }
-                }) { Text("Reorganise") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmReorganise = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    val move = pendingMove
-    if (move != null) {
-        AlertDialog(
-            onDismissRequest = { pendingMove = null },
-            title = { Text("Move existing downloads?") },
-            text = {
-                Text(
-                    "Downloads and backups already written are still in the old " +
-                        "folder. Moving them keeps them readable; leaving them means " +
-                        "they stay on disk taking up space but stop appearing in " +
-                        "Downloads. On a large library this takes a while, and moving " +
-                        "to an SD card is a copy rather than a rename, so give it time."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    pendingMove = null
-                    moving = true
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            StorageLocation.moveStore(move.first, move.second)
+        },
+        importOpen = importOpen,
+        onDismissImport = { importOpen = false },
+        confirmReorganise = confirmReorganise,
+        onDismissReorganise = { confirmReorganise = false },
+        onConfirmReorganise = {
+            confirmReorganise = false
+            reorganising = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    reorganiseDownloads(context)
+                }
+                reorganising = false
+                tick++
+                message = result.fold(
+                    { report ->
+                        when {
+                            report.moved == 0 && report.unidentified == 0 ->
+                                "Everything was already filed"
+                            report.unidentified == 0 ->
+                                "Filed ${report.moved} chapters"
+                            else ->
+                                "Filed ${report.moved} chapters · " +
+                                    "${report.unidentified} couldn’t be " +
+                                    "identified and were left alone"
                         }
-                        moving = false
-                        tick++
-                        message = result.fold(
-                            { moved ->
-                                if (moved == 0) "Nothing needed moving"
-                                else "Moved $moved folders"
-                            },
-                            { "Move failed: ${it.message ?: it::class.java.simpleName}" }
-                        )
-                    }
-                }) { Text("Move") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingMove = null }) { Text("Leave them") }
-            }
-        )
-    }
-
-    val note = message
-    if (note != null) {
-        AlertDialog(
-            onDismissRequest = { message = null },
-            title = { Text("Backup") },
-            text = { Text(note) },
-            confirmButton = { Button(onClick = { message = null }) { Text("Done") } }
-        )
-    }
-
-    val restoreUri = pendingRestore
-    if (restoreUri != null) {
-        AlertDialog(
-            onDismissRequest = { pendingRestore = null },
-            title = { Text("Restore this backup?") },
-            text = {
-                Text(
-                    "Everything currently in the app is replaced: library, " +
-                        "categories, history, read marks and source settings. This " +
-                        "can't be undone, and it isn't a merge \u2014 anything added " +
-                        "since the backup was made is lost. Downloaded chapters stay " +
-                        "on disk either way."
+                    },
+                    {
+                        "Reorganise failed: " +
+                            (it.message ?: it::class.java.simpleName)
+                    },
                 )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    pendingRestore = null
-                    busy = true
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            Backup.restoreFrom(context, restoreUri)
+            }
+        },
+        pendingMove = pendingMove,
+        onDismissMove = { pendingMove = null },
+        onConfirmMove = { move ->
+            pendingMove = null
+            moving = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    StorageLocation.moveStore(move.first, move.second)
+                }
+                moving = false
+                tick++
+                message = result.fold(
+                    { moved ->
+                        if (moved == 0) {
+                            "Nothing needed moving"
+                        } else {
+                            "Moved $moved folders"
                         }
-                        busy = false
-                        result.fold(
-                            onSuccess = {
-                                // Every piece of YomuApp's state is in `remember`,
-                                // including the source list and the open series, and
-                                // all of it was built from the prefs that just got
-                                // replaced. Restarting the Activity is the only way
-                                // to be sure nothing on screen still refers to the
-                                // library that existed a second ago.
-                                (context as? ComponentActivity)?.recreate()
-                            },
-                            onFailure = {
-                                message = "Restore failed: " +
-                                    (it.message ?: it::class.java.simpleName)
-                            }
-                        )
-                    }
-                }) { Text("Restore") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingRestore = null }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (confirmDownloads) {
-        AlertDialog(
-            onDismissRequest = { confirmDownloads = false },
-            title = { Text("Delete all downloads?") },
-            text = { Text("Every downloaded chapter goes. This can't be undone.") },
-            confirmButton = {
-                Button(onClick = {
-                    Downloads.deleteAll(context)
-                    confirmDownloads = false
-                    tick++
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDownloads = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (confirmChapterLists) {
-        AlertDialog(
-            onDismissRequest = { confirmChapterLists = false },
-            title = { Text("Clear chapter lists?") },
-            text = {
-                Text(
-                    "A downloaded chapter stays on disk, but the series it belongs to " +
-                        "won't open offline again until it's been opened once with a " +
-                        "connection."
+                    },
+                    {
+                        "Move failed: " +
+                            (it.message ?: it::class.java.simpleName)
+                    },
                 )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    ChapterCache.clearAll(context)
-                    confirmChapterLists = false
-                    tick++
-                }) { Text("Clear") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmChapterLists = false }) { Text("Cancel") }
             }
-        )
-    }
+        },
+        message = message,
+        onDismissMessage = { message = null },
+        pendingRestore = pendingRestore,
+        onDismissRestore = { pendingRestore = null },
+        onConfirmRestore = { restoreUri ->
+            pendingRestore = null
+            busy = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    Backup.restoreFrom(context, restoreUri)
+                }
+                busy = false
+                result.fold(
+                    onSuccess = {
+                        (context as? ComponentActivity)?.recreate()
+                    },
+                    onFailure = {
+                        message = "Restore failed: " +
+                            (it.message ?: it::class.java.simpleName)
+                    },
+                )
+            }
+        },
+        confirmDownloads = confirmDownloads,
+        onDismissDownloads = { confirmDownloads = false },
+        onConfirmDownloads = {
+            Downloads.deleteAll(context)
+            confirmDownloads = false
+            tick++
+        },
+        confirmChapterLists = confirmChapterLists,
+        onDismissChapterLists = { confirmChapterLists = false },
+        onConfirmChapterLists = {
+            ChapterCache.clearAll(context)
+            confirmChapterLists = false
+            tick++
+        },
+    )
 
     // Re-read on the way back in, so a backup written by the worker while this
     // screen was closed doesn't leave a stale "Never" on the row.
