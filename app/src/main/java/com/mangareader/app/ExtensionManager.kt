@@ -20,6 +20,8 @@ data class Extension(
     val lang: String = "",
     /** From the index's "nsfw" field; drives the 18+ badge. */
     val isNsfw: Boolean = false,
+    /** True when this is an Aniyomi anime extension. */
+    val isAnime: Boolean = false,
     /** versionName of the APK actually on the device, null when not installed. */
     val installedVersion: String? = null
 ) {

@@ -100,6 +100,8 @@ internal object ExtensionIndexParser {
             isInstalled = installedInfo != null,
             lang = langLabel(obj.optString("lang", "")),
             isNsfw = obj.optInt("nsfw", 0) == 1,
+            isAnime = obj.optString("name").startsWith("Aniyomi:") ||
+                pkg.contains("animeextension", ignoreCase = true),
             installedVersion = installedInfo?.versionName,
         )
     }
@@ -132,6 +134,8 @@ internal object ExtensionIndexParser {
             isInstalled = installedInfo != null,
             lang = langLabel(langs.singleOrNull() ?: "all"),
             isNsfw = obj.optString("contentWarning", SAFE) != SAFE,
+            isAnime = obj.optString("name").startsWith("Aniyomi:") ||
+                pkg.contains("animeextension", ignoreCase = true),
             installedVersion = installedInfo?.versionName,
         )
     }
