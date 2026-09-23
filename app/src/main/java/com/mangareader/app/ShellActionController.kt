@@ -148,6 +148,9 @@ internal class ShellActionController(
     fun openEmbed(url: String) =
         media.openEmbed(url)
 
+    fun openExternalVideo(video: PlayableVideo) =
+        media.openExternalVideo(video)
+
     fun openExternalVideo(url: String) =
-        media.openExternalVideo(url)
+        media.openExternalVideo(PlayableVideo(url))
 }

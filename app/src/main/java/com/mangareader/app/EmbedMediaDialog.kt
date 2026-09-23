@@ -30,7 +30,7 @@ internal fun EmbedMediaDialog(
                 )
             } else {
                 Column {
-                    Text("Opens in whatever video player you have installed.")
+                    Text("Opens in Yomu’s built-in video player.")
                     Spacer(Modifier.height(12.dp))
                     media.take(6).forEach { link ->
                         TextButton(

@@ -26,9 +26,11 @@ internal object ExtensionIndexParser {
                     ?.let(entries::add)
             }
         } else {
-            val arr = JSONObject(trimmed)
+            val root = JSONObject(trimmed)
+            val arr = root
                 .optJSONObject("extensionList")
                 ?.optJSONArray("extensions")
+                ?: root.optJSONArray("extensions")
                 ?: return emptyList()
 
             val names = HashMap<String, String>()
@@ -90,7 +92,8 @@ internal object ExtensionIndexParser {
         return Extension(
             name = obj.getString("name")
                 .removePrefix("Tachiyomi: ")
-                .removePrefix("Mihon: "),
+                .removePrefix("Mihon: ")
+                .removePrefix("Aniyomi: "),
             pkgName = pkg,
             versionName = obj.getString("version"),
             apkUrl = URL(URL(repoUrl), relativePath).toString(),
@@ -121,7 +124,8 @@ internal object ExtensionIndexParser {
         return Extension(
             name = obj.getString("name")
                 .removePrefix("Tachiyomi: ")
-                .removePrefix("Mihon: "),
+                .removePrefix("Mihon: ")
+                .removePrefix("Aniyomi: "),
             pkgName = pkg,
             versionName = obj.getString("versionName"),
             apkUrl = obj.getJSONObject("resources").getString("apkUrl"),

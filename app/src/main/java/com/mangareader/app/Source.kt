@@ -25,8 +25,11 @@ interface Source {
      */
     val iconPkg: String? get() = null
 
-    /** Whether the extension declared tachiyomi.extension.nsfw. */
+    /** Whether the extension declared its NSFW/content-warning flag. */
     val isNsfw: Boolean get() = false
+
+    /** True for Aniyomi-style anime sources whose entries contain episodes/videos. */
+    val isAnime: Boolean get() = false
 
     /** All series this source offers, or its first page for paged sources. */
     suspend fun listSeries(): List<Series>

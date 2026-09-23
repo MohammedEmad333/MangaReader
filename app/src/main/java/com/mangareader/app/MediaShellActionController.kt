@@ -1,8 +1,6 @@
 package com.mangareader.app
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 
 internal class MediaShellActionController(
     private val context: Context,
@@ -23,16 +21,17 @@ internal class MediaShellActionController(
         mediaState.embed = url to page.orEmpty()
     }
 
-    fun openExternalVideo(url: String) {
-        val view = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(url), "video/*")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+    fun openExternalVideo(video: PlayableVideo) {
         runCatching {
-            context.startActivity(view)
+            context.startActivity(
+                VideoPlayerActivity.intent(
+                    context = context,
+                    url = video.url,
+                    headers = video.headers,
+                ),
+            )
         }.onFailure {
-            appState.error =
-                "No app on this device can play that link"
+            appState.error = "Unable to open the built-in video player"
         }
     }
 }
