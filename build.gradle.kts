@@ -13,7 +13,7 @@ plugins {
     // All three Kotlin plugin versions move together — the compose and
     // serialization plugins are versioned in lockstep with the compiler, and
     // the serialization one is declared in source-api/build.gradle.kts.
-    id("org.jetbrains.kotlin.android") version "2.2.21" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.21" apply false
+    id("org.jetbrains.kotlin.android") version "2.4.20" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20" apply false
 }
