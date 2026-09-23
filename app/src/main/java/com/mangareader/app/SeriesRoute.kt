@@ -23,6 +23,7 @@ internal fun SeriesRoute(
     onDownloadStateChanged: () -> Unit,
     onOpenChapter: (Int) -> Unit,
     onRefresh: () -> Unit,
+    onReadStateChanged: () -> Unit,
     onLibraryChanged: () -> Unit,
     onSearchTag: (String) -> Unit,
     onGlobalSearchTag: (String) -> Unit,
@@ -59,7 +60,7 @@ internal fun SeriesRoute(
             list.forEach {
                 ReadState.setRead(context, chapterKeyOf(resolvedSourceId, it), value)
             }
-            onLibraryChanged()
+            onReadStateChanged()
         },
         onSetBookmarked = { list, value ->
             Bookmarks.setBookmarkedBulk(
@@ -67,7 +68,7 @@ internal fun SeriesRoute(
                 list.map { chapterKeyOf(resolvedSourceId, it) },
                 value
             )
-            onLibraryChanged()
+            onReadStateChanged()
         },
         loading = loading,
         error = error,
