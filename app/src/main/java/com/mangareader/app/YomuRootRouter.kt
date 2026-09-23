@@ -31,7 +31,6 @@ internal fun YomuRootRouter(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-
     when (
         RootTransientRoute(
             context = context,
