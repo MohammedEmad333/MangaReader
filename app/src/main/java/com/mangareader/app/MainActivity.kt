@@ -1246,7 +1246,7 @@ fun YomuApp() {
         // whatever was underneath with nothing else touched. No branch below has
         // to know this one exists — which is the only reason it was safe to put
         // anything at the top of this chain.
-        ChallengeWebViewScreen(
+        ChallengeRoute(
             url = challenge,
             onSolved = {
                 challengeUrl = null
