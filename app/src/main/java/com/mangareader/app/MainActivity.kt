@@ -85,71 +85,20 @@ fun YomuApp() {
     val browseState = remember { SourceBrowseState() }
     var filtersOpen by remember { mutableStateOf(false) }
     var probeOpen by remember { mutableStateOf(false) }
-    var activeSeries by remember { mutableStateOf<Series?>(null) }
-    var chapterList by remember { mutableStateOf<List<Chapter>>(emptyList()) }
+    val seriesState = remember { SeriesNavigationState() }
     val readerSession = remember { ReaderSessionState() }
 
     // Hoisted so results survive opening a series and navigating back.
     val globalSearch = remember { GlobalSearchState(context) }
 
-    // Source migration. When [migrateFrom] is set, the global-search screen is
-    // the target picker for moving that library series to another source, and a
-    // tapped result opens the confirm dialog ([migrateTarget]) instead of the
-    // series.
-    var migrateFrom by remember { mutableStateOf<MigrateFrom?>(null) }
-    var migrateTarget by remember { mutableStateOf<Pair<Source, Series>?>(null) }
-
-    // How the current series was reached. Opening from Library or History has to
-    // adopt its source to load chapters and pages, which would otherwise strand
-    // the user on the per-source browse screen (branch 4 of the routing chain)
-    // when they back out — a screen they never asked for and which has no results
-    // behind it. This says where "back" should actually go.
-    var seriesOrigin by remember { mutableStateOf(SeriesOrigin.BROWSE) }
-
-    // The series a tag search was launched from, if any.
-    //
-    // A tag search has to clear `activeSeries` to be visible at all — branch 3
-    // sits above both search branches, so a live series hides them. That makes
-    // the search a one-way trip unless the series is kept somewhere, and
-    // without this it was: back fell through to the bottom nav and landed on
-    // whichever tab was selected, usually Library. A tag is a detour from a
-    // series, so back belongs on that series.
-    //
-    // Cleared by [openSeries], because opening something from the results is
-    // navigating onward rather than detouring, and back from *there* should
-    // return to the results.
-    var tagSearchReturn by remember { mutableStateOf<Series?>(null) }
+    val migrationState = remember { MigrationNavigationState() }
 
     // Live download state lives in DownloadQueue. This local tick covers
     // filesystem mutations caused directly by this screen.
     var downloadTick by remember { mutableIntStateOf(0) }
     var downloadsOpen by remember { mutableStateOf(false) }
 
-    // Whether a chapter fetch has COMPLETED for the series on screen.
-    //
-    // chapterList is empty in three different situations — nothing fetched yet,
-    // a fetch that failed, and a fetch that genuinely returned nothing — and the
-    // series screen was asserting the third whenever it saw the first. It said
-    // "This source returned no chapters" while the request was still in flight.
-    //
-    // The app still cannot tell a genuine zero from an extension whose selector
-    // matched nothing; that information does not exist anywhere, because Jsoup's
-    // select() returns an empty set either way. What it CAN now tell is whether
-    // it has an answer at all, which is the difference between a claim and a
-    // guess.
-    var chaptersFetched by remember { mutableStateOf(false) }
-
-    // Video links found on a chapter's page, for handing to an external player.
-    // null = never asked, empty = asked and found none — the same three-state
-    // shape as chaptersFetched, and for the same reason: "no videos" and "not
-    // looked yet" are different sentences.
-    var videoScan by remember { mutableStateOf<VideoScan?>(null) }
-    // url to open, and the page it is embedded on. The second half is the
-    // Referer, and without it cossora.stream answers "Unknown Error xD".
-    var openEmbed by remember { mutableStateOf<Pair<String, String>?>(null) }
-    // Media urls scraped out of a player, for handing to an external app.
-    var mediaUrls by remember { mutableStateOf<List<String>?>(null) }
-    var videoScanning by remember { mutableStateOf(false) }
+    val mediaState = remember { MediaNavigationState() }
 
     val activity = context as? ComponentActivity
     DoubleBackToExitHandler(activity)
@@ -277,30 +226,27 @@ fun YomuApp() {
                     series
                 )
             }
-            if (enriched != null && activeSeries?.id == series.id) {
-                activeSeries = enriched
+            if (enriched != null && seriesState.active?.id == series.id) {
+                seriesState.active = enriched
             }
         }
     }
 
     fun openSeries(series: Series) {
         val src = browseState.source ?: return
-        seriesOrigin = SeriesOrigin.BROWSE
+        seriesState.begin(series, SeriesOrigin.BROWSE)
         // Opening a result ends the detour: back from this series goes to the
         // listing behind it, not to whatever the tag search started from.
-        tagSearchReturn = null
-        activeSeries = series
-        chapterList = emptyList()
-        chaptersFetched = false
+        seriesState.tagReturn = null
         errorMessage = null
         enrichSeries(src, series)
         scope.launch {
             isLoading = true
             try {
-                chapterList = withContext(Dispatchers.IO) {
+                seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
-                chaptersFetched = true
+                seriesState.fetched = true
             } catch (e: Throwable) {
                 errorMessage = sourceFailureMessage(e, "Could not list chapters")
             }
@@ -311,12 +257,12 @@ fun YomuApp() {
     /**
      * Re-fetches the open series' chapter list.
      *
-     * Deliberately **not** `openSeries(activeSeries!!)`: that resets
-     * `seriesOrigin` to BROWSE and clears `tagSearchReturn`, so refreshing a
+     * Deliberately **not** `openSeries(seriesState.active!!)`: that resets
+     * `seriesState.origin` to BROWSE and clears `seriesState.tagReturn`, so refreshing a
      * series reached from the Library would send Back to an empty browse screen
      * — the adopted-source trap, arrived at from a new direction.
      *
-     * `chapterList` is also left alone until the new one lands, so the list
+     * `seriesState.chapters` is also left alone until the new one lands, so the list
      * stays on screen and readable while the request runs. Clearing it first is
      * what 0.102 had to undo in the reader for the same reason.
      */
@@ -324,7 +270,7 @@ fun YomuApp() {
      * Scans one chapter's page for videos. See Source.scanVideos.
      *
      * The CALLER picks which — the chapter at the top of the list as sorted and
-     * filtered on screen. Choosing it here meant chapterList[0], the raw list's
+     * filtered on screen. Choosing it here meant seriesState.chapters[0], the raw list's
      * first entry, which under a descending sort is the last one drawn.
      *
      * A failure comes back as a VideoScan carrying the reason rather than as a
@@ -334,19 +280,19 @@ fun YomuApp() {
      */
     fun findVideos(chapter: Chapter) {
         val source = browseState.source ?: return
-        videoScan = null
-        videoScanning = true
+        mediaState.scan = null
+        mediaState.scanning = true
         scope.launch {
-            videoScan = withContext(Dispatchers.IO) {
+            mediaState.scan = withContext(Dispatchers.IO) {
                 scanChapterVideos(source, chapter)
             }
-            videoScanning = false
+            mediaState.scanning = false
         }
     }
 
     fun refreshChapters() {
         val src = browseState.source ?: return
-        val series = activeSeries ?: return
+        val series = seriesState.active ?: return
         errorMessage = null
         // A manual refresh is the user asserting "re-check this series", and that
         // includes its download state, not only its chapter list. The per-chapter
@@ -361,10 +307,10 @@ fun YomuApp() {
         scope.launch {
             isLoading = true
             try {
-                chapterList = withContext(Dispatchers.IO) {
+                seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
-                chaptersFetched = true
+                seriesState.fetched = true
             } catch (e: Throwable) {
                 errorMessage = sourceFailureMessage(e, "Could not list chapters")
             }
@@ -382,7 +328,7 @@ fun YomuApp() {
         browseState.query = globalSearch.query
         openSeries(series)
         // After openSeries, which sets it to BROWSE unconditionally.
-        seriesOrigin = SeriesOrigin.GLOBAL_SEARCH
+        seriesState.origin = SeriesOrigin.GLOBAL_SEARCH
     }
 
     /** "See all" on a global search row: leave the results and browse that source. */
@@ -398,7 +344,7 @@ fun YomuApp() {
             context = context,
             scope = scope,
             source = source,
-            chapters = chapterList,
+            chapters = seriesState.chapters,
             index = index,
             onRootLoadingChanged = { isLoading = it },
             onClearError = { errorMessage = null },
@@ -409,7 +355,7 @@ fun YomuApp() {
     fun queueDownloads(source: Source, chapters: List<Chapter>) {
         queueSeriesDownloads(
             context = context,
-            series = activeSeries,
+            series = seriesState.active,
             source = source,
             chapters = chapters
         )
@@ -487,15 +433,15 @@ fun YomuApp() {
                 toSeries = toSeries
             )
 
-            migrateTarget = null
-            migrateFrom = null
+            migrationState.target = null
+            migrationState.from = null
 
             if (migrated) {
                 cancelGlobalSearch()
                 globalSearch.open = false
                 browseState.series = null
-                tagSearchReturn = null
-                activeSeries = null
+                seriesState.tagReturn = null
+                seriesState.active = null
                 browseState.source = null
                 browseState.sourceId = null
                 currentTab = 0
@@ -522,14 +468,14 @@ fun YomuApp() {
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
     fun openFromLibrary(entry: LibraryEntry) {
         errorMessage = null
-        seriesOrigin = SeriesOrigin.LIBRARY
-        activeSeries = Series(
-            id = entry.seriesId,
-            title = entry.title,
-            cover = entry.cover.ifBlank { null }
+        seriesState.begin(
+            Series(
+                id = entry.seriesId,
+                title = entry.title,
+                cover = entry.cover.ifBlank { null }
+            ),
+            SeriesOrigin.LIBRARY
         )
-        chapterList = emptyList()
-        chaptersFetched = false
 
         scope.launch {
             isLoading = true
@@ -547,8 +493,8 @@ fun YomuApp() {
                         entry.seriesId
                     )
                 }
-                if (cached.isNotEmpty() && activeSeries?.id == entry.seriesId) {
-                    chapterList = cached
+                if (cached.isNotEmpty() && seriesState.active?.id == entry.seriesId) {
+                    seriesState.chapters = cached
                 }
 
                 val result = withContext(Dispatchers.IO) {
@@ -558,10 +504,10 @@ fun YomuApp() {
                         entry
                     )
                 }
-                if (activeSeries?.id == entry.seriesId) {
-                    activeSeries = result.first
-                    chapterList = result.second
-                    chaptersFetched = true
+                if (seriesState.active?.id == entry.seriesId) {
+                    seriesState.active = result.first
+                    seriesState.chapters = result.second
+                    seriesState.fetched = true
                     enrichSeries(source, result.first)
                 }
             } catch (error: Throwable) {
@@ -577,14 +523,14 @@ fun YomuApp() {
     /** Opens a downloaded series from cache first, then refreshes it when possible. */
     fun openFromDownloads(entry: DownloadedSeries) {
         errorMessage = null
-        seriesOrigin = SeriesOrigin.DOWNLOADS
-        activeSeries = Series(
-            id = entry.seriesId,
-            title = entry.title,
-            cover = entry.cover.ifBlank { null }
+        seriesState.begin(
+            Series(
+                id = entry.seriesId,
+                title = entry.title,
+                cover = entry.cover.ifBlank { null }
+            ),
+            SeriesOrigin.DOWNLOADS
         )
-        chapterList = emptyList()
-        chaptersFetched = false
 
         scope.launch {
             isLoading = true
@@ -602,8 +548,8 @@ fun YomuApp() {
                         entry.seriesId
                     )
                 }
-                if (cached.isNotEmpty() && activeSeries?.id == entry.seriesId) {
-                    chapterList = cached
+                if (cached.isNotEmpty() && seriesState.active?.id == entry.seriesId) {
+                    seriesState.chapters = cached
                 }
 
                 val resolved = withContext(Dispatchers.IO) {
@@ -620,10 +566,10 @@ fun YomuApp() {
                             "No chapter list cached for this series — open it once online"
                         )
                     }
-                } else if (activeSeries?.id == entry.seriesId) {
-                    activeSeries = resolved.first
-                    chapterList = resolved.second
-                    chaptersFetched = true
+                } else if (seriesState.active?.id == entry.seriesId) {
+                    seriesState.active = resolved.first
+                    seriesState.chapters = resolved.second
+                    seriesState.fetched = true
                     enrichSeries(source, resolved.first)
                 }
             } catch (error: Throwable) {
@@ -645,11 +591,11 @@ fun YomuApp() {
                 val target = withContext(Dispatchers.IO) {
                     loadHistoryResumeTarget(context, entry)
                 }
-                seriesOrigin = SeriesOrigin.HISTORY
+                seriesState.origin = SeriesOrigin.HISTORY
                 browseState.source = target.source
                 browseState.sourceId = target.source.id
-                activeSeries = target.series
-                chapterList = target.chapters
+                seriesState.active = target.series
+                seriesState.chapters = target.chapters
                 enrichSeries(target.source, target.series)
                 openChapter(target.index)
             } catch (error: Throwable) {
@@ -665,21 +611,21 @@ fun YomuApp() {
     // ---- routing ----
 
     val chapterIdx = readerSession.chapterIndex
-    val readerChapter = chapterIdx?.let { chapterList.getOrNull(it) }
+    val readerChapter = chapterIdx?.let { seriesState.chapters.getOrNull(it) }
 
     // Same shape and same justification as the challenge branch below: gated on
     // state that is null in every other flow, and clearing it drops back onto
     // whatever was underneath. Placed BELOW the challenge so a Cloudflare wall
     // still wins — a player is never more urgent than being able to reach the
     // site at all.
-    val embed = openEmbed
+    val embed = mediaState.embed
     if (challengeUrl == null && embed != null) {
         EmbedPlayerRoute(
             embed = embed,
-            media = mediaUrls,
-            onMediaFound = { mediaUrls = it },
-            onDismissMedia = { mediaUrls = null },
-            onBack = { openEmbed = null },
+            media = mediaState.media,
+            onMediaFound = { mediaState.media = it },
+            onDismissMedia = { mediaState.media = null },
+            onBack = { mediaState.embed = null },
             onPlayerError = { errorMessage = it }
         )
         return
@@ -703,14 +649,14 @@ fun YomuApp() {
                 // the series screen too: re-running the browse from there would
                 // solve the challenge and then throw away the series the user
                 // was trying to open.
-                val openSeriesAgain = activeSeries
+                val openSeriesAgain = seriesState.active
                 if (openSeriesAgain != null) {
                     // openSeries sets the origin to BROWSE unconditionally — see
                     // the note on openGlobalResult. This is a retry, not a fresh
                     // navigation, so back has to still go where it did before.
-                    val origin = seriesOrigin
+                    val origin = seriesState.origin
                     openSeries(openSeriesAgain)
-                    seriesOrigin = origin
+                    seriesState.origin = origin
                 } else {
                     browseState.source?.let { openSource(it, browseState.query, browseState.mode) }
                 }
@@ -722,9 +668,9 @@ fun YomuApp() {
             pages = readerSession.pages,
             stillLoading = readerSession.loading,
             sourceId = browseState.sourceId ?: "",
-            series = activeSeries,
+            series = seriesState.active,
             chapter = readerChapter,
-            chapters = chapterList,
+            chapters = seriesState.chapters,
             chapterIndex = chapterIdx,
             onOpenChapter = { openChapter(it) },
             onClose = {
@@ -733,16 +679,16 @@ fun YomuApp() {
                 readTick++
             }
         )
-    } else if (activeSeries != null) {
-        val series = activeSeries!!
+    } else if (seriesState.active != null) {
+        val series = seriesState.active!!
         val seriesSite = browseState.source?.siteUrl()
         val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
             challengeUrl = seriesSite
         }
         SeriesRoute(
             series = series,
-            chapters = chapterList,
-            chaptersFetched = chaptersFetched,
+            chapters = seriesState.chapters,
+            chaptersFetched = seriesState.fetched,
             source = browseState.source,
             sourceId = browseState.sourceId,
             loading = isLoading,
@@ -761,8 +707,8 @@ fun YomuApp() {
             onLibraryChanged = { libraryTick++ },
             onSearchTag = { tag ->
                 browseState.source?.let { src ->
-                    tagSearchReturn = activeSeries
-                    activeSeries = null
+                    seriesState.tagReturn = seriesState.active
+                    seriesState.active = null
                     errorMessage = null
                     if (src.applyGenreFilter(tag)) {
                         openSource(src, "", BrowseMode.FILTER)
@@ -772,19 +718,19 @@ fun YomuApp() {
                 }
             },
             onGlobalSearchTag = { tag ->
-                tagSearchReturn = activeSeries
-                activeSeries = null
+                seriesState.tagReturn = seriesState.active
+                seriesState.active = null
                 errorMessage = null
                 globalSearch.open = true
                 runGlobalSearch(tag)
             },
             onMigrate = {
-                val s = activeSeries
+                val s = seriesState.active
                 val sid = browseState.sourceId
                 if (s != null && sid != null) {
-                    migrateFrom = MigrateFrom(s.id, sid, s.title)
-                    tagSearchReturn = s
-                    activeSeries = null
+                    migrationState.from = MigrateFrom(s.id, sid, s.title)
+                    seriesState.tagReturn = s
+                    seriesState.active = null
                     errorMessage = null
                     globalSearch.open = true
                     runGlobalSearch(s.title)
@@ -792,10 +738,9 @@ fun YomuApp() {
             },
             onSolveChallenge = solveFromSeries,
             onBack = {
-                activeSeries = null
-                chapterList = emptyList()
+                seriesState.clear()
                 errorMessage = null
-                if (seriesOrigin != SeriesOrigin.BROWSE) {
+                if (seriesState.origin != SeriesOrigin.BROWSE) {
                     browseState.source = null
                     browseState.sourceId = null
                     browseState.series = null
@@ -822,29 +767,29 @@ fun YomuApp() {
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
-            migrating = migrateFrom != null,
+            migrating = migrationState.from != null,
             onOpenSeries = { src, s ->
-                if (migrateFrom != null) migrateTarget = src to s
+                if (migrationState.from != null) migrationState.target = src to s
                 else openGlobalResult(src, s)
             },
             libraryTick = libraryTick,
             onBack = {
                 cancelGlobalSearch()
                 globalSearch.open = false
-                migrateFrom = null
+                migrationState.from = null
                 browseState.series = null
-                val cameFromTag = tagSearchReturn
+                val cameFromTag = seriesState.tagReturn
                 if (cameFromTag != null) {
-                    tagSearchReturn = null
-                    activeSeries = cameFromTag
+                    seriesState.tagReturn = null
+                    seriesState.active = cameFromTag
                 } else {
                     browseState.source = null
                     browseState.sourceId = null
                 }
             },
-            migrateFrom = migrateFrom,
-            migrateTarget = migrateTarget,
-            onDismissMigration = { migrateTarget = null },
+            migrateFrom = migrationState.from,
+            migrateTarget = migrationState.target,
+            onDismissMigration = { migrationState.target = null },
             onConfirmMigration = { from, targetSource, targetSeries ->
                 performMigration(from, targetSource, targetSeries)
             }
@@ -875,10 +820,10 @@ fun YomuApp() {
             onBack = {
                 browseState.series = null
                 errorMessage = null
-                val cameFromTag = tagSearchReturn
+                val cameFromTag = seriesState.tagReturn
                 if (cameFromTag != null) {
-                    tagSearchReturn = null
-                    activeSeries = cameFromTag
+                    seriesState.tagReturn = null
+                    seriesState.active = cameFromTag
                 } else {
                     browseState.source = null
                     browseState.sourceId = null
@@ -984,18 +929,18 @@ fun YomuApp() {
         )
     }
 
-    val scan = videoScan
-    if (videoScanning || scan != null) {
+    val scan = mediaState.scan
+    if (mediaState.scanning || scan != null) {
         ChapterVideoDialog(
-            scanning = videoScanning,
+            scanning = mediaState.scanning,
             scan = scan,
-            onDismiss = { videoScan = null },
+            onDismiss = { mediaState.scan = null },
             onOpenEmbed = { url ->
-                val page = activeSeries?.let { series ->
+                val page = seriesState.active?.let { series ->
                     browseState.source?.seriesUrl(series)
                 }
-                videoScan = null
-                openEmbed = url to (page ?: "")
+                mediaState.scan = null
+                mediaState.embed = url to (page ?: "")
             },
             onOpenVideo = { url ->
                 val view = Intent(Intent.ACTION_VIEW).apply {
