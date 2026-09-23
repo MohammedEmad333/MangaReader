@@ -1162,66 +1162,30 @@ fun YomuApp() {
             onBack = { challengeUrl = null }
         )
     } else if (chapterIdx != null && readerChapter != null && pages.isNotEmpty()) {
-        val srcId = activeSourceId ?: ""
-        val series = activeSeries
-        val chKey = chapterKeyOf(srcId, readerChapter)
-        val total = pages.size
-
-        // key() rebuilds the pager state when the chapter changes
-        key(chKey) {
-            ReaderScreen(
-                pages = pages,
-                stillLoading = pagesLoading,
-                initialPage = savedPage(context, chKey).coerceIn(0, total - 1),
-                seriesTitle = series?.title ?: "",
-                chapterName = readerChapter.name,
-                chapters = chapterList,
-                chapterIndex = chapterIdx,
-                hasPrev = chapterIdx > 0,
-                hasNext = chapterIdx < chapterList.size - 1,
-                onPrev = { openChapter(chapterIdx - 1) },
-                onNext = { openChapter(chapterIdx + 1) },
-                onSelectChapter = { openChapter(it) },
-                onProgress = { page ->
-                    savePage(context, chKey, page)
-                    if (page >= total - 1) ReadState.setRead(context, chKey, true)
-                    if (!isIncognito(context)) {
-                        History.touch(
-                            context,
-                            HistoryEntry(
-                                chapterKey = chKey,
-                                title = listOfNotNull(series?.title, readerChapter.name)
-                                    .joinToString(" · "),
-                                sourceId = srcId,
-                                seriesId = series?.id ?: "",
-                                coverPath = when (val c = series?.cover) {
-                                    is java.io.File -> c.absolutePath
-                                    is String -> c
-                                    else -> ""
-                                },
-                                page = page,
-                                total = total,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
-                },
-                onClose = {
-                    // Stop the loader before clearing state. Without this the
-                    // job outlives the screen and keeps publishing into it.
-                    pageJob?.cancel()
-                    pageJob = null
-                    // Retire the token with the job. The cancelled load's
-                    // `finally` is still to come and must not touch either flag.
-                    pageLoadSeq[0]++
-                    pagesLoading = false
-                    activeChapterIdx = null
-                    pages = emptyList()
-                    history = History.forDisplay(context)
-                    readTick++
-                }
-            )
-        }
+        ReaderRoute(
+            pages = pages,
+            stillLoading = pagesLoading,
+            sourceId = activeSourceId ?: "",
+            series = activeSeries,
+            chapter = readerChapter,
+            chapters = chapterList,
+            chapterIndex = chapterIdx,
+            onOpenChapter = { openChapter(it) },
+            onClose = {
+                // Stop the loader before clearing state. Without this the
+                // job outlives the screen and keeps publishing into it.
+                pageJob?.cancel()
+                pageJob = null
+                // Retire the token with the job. The cancelled load's
+                // `finally` is still to come and must not touch either flag.
+                pageLoadSeq[0]++
+                pagesLoading = false
+                activeChapterIdx = null
+                pages = emptyList()
+                history = History.forDisplay(context)
+                readTick++
+            }
+        )
     } else if (activeSeries != null) {
         // `fun()` rather than a lambda for the same reason as the browse branch
         // below: a brace directly after `else` opens a block, so a lambda there
