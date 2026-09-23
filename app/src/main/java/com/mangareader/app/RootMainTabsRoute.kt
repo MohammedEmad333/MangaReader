@@ -7,15 +7,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 internal fun RootMainTabsRoute(
-    root: RootRouteContext,
-    libraryCategory: String?,
-    onLibraryCategoryChange: (String?) -> Unit,
-    librarySearch: String,
-    onLibrarySearchChange: (String) -> Unit,
-    librarySearchOpen: Boolean,
-    onLibrarySearchOpenChange: (Boolean) -> Unit,
-    libraryScroll: ScrollMemory,
-    sourcesScroll: ScrollMemory
+    root: RootRouteContext
 ) {
     val context = root.context
     val scope = root.scope
@@ -32,16 +24,16 @@ internal fun RootMainTabsRoute(
         },
         libraryTick = appState.libraryTick,
         error = appState.error,
-        libraryCategory = libraryCategory,
+        libraryCategory = root.ui.libraryCategory,
         onLibraryCategoryChange = { category ->
-            onLibraryCategoryChange(category)
+            root.ui.onLibraryCategoryChange(category)
             LibraryPrefs.setLastCategory(context, category)
         },
-        librarySearch = librarySearch,
-        onLibrarySearchChange = onLibrarySearchChange,
-        librarySearchOpen = librarySearchOpen,
-        onLibrarySearchOpenChange = onLibrarySearchOpenChange,
-        libraryScroll = libraryScroll,
+        librarySearch = root.ui.librarySearch,
+        onLibrarySearchChange = root.ui.onLibrarySearchChange,
+        librarySearchOpen = root.ui.librarySearchOpen,
+        onLibrarySearchOpenChange = root.ui.onLibrarySearchOpenChange,
+        libraryScroll = root.ui.libraryScroll,
         onOpenLibrary = { actions.openFromLibrary(it) },
         onRemoveLibraryMany = { ids ->
             Library.removeAll(context, ids)
@@ -52,7 +44,7 @@ internal fun RootMainTabsRoute(
         onDownloadMany = { actions.bulkDownload(it) },
         configs = appState.configs,
         extensions = appState.extensionSources,
-        sourcesScroll = sourcesScroll,
+        sourcesScroll = root.ui.sourcesScroll,
         onGlobalSearch = {
             globalSearch.open = true
             if (
