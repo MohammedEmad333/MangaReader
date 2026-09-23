@@ -6,10 +6,7 @@ import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootOverlays(
-    root: RootRouteContext,
-    releaseNotes: List<ReleaseNote>,
-    whatsNewOpen: Boolean,
-    onDismissWhatsNew: () -> Unit
+    root: RootRouteContext
 ) {
     val context = root.context
     val appState = root.app
@@ -54,9 +51,9 @@ internal fun RootOverlays(
             actions.openSource(source, "", BrowseMode.FILTER)
         },
         onDismissFilters = { appState.filtersOpen = false },
-        whatsNewOpen = whatsNewOpen,
-        releaseNotes = releaseNotes,
-        onDismissWhatsNew = onDismissWhatsNew,
+        whatsNewOpen = root.ui.whatsNewOpen,
+        releaseNotes = root.ui.releaseNotes,
+        onDismissWhatsNew = root.ui.onDismissWhatsNew,
         showSourceDialog = appState.showSourceDialog,
         editingConfig = appState.editingConfig,
         onEditingConfigChange = { appState.editingConfig = it },
