@@ -51,6 +51,7 @@ internal class AppActionController(
         browseState = browseState,
         seriesState = seriesState,
         globalSearch = globalSearch,
+        migrationState = migrationState,
         mediaState = mediaState,
         openSource = sourceActions::openSource,
         runGlobalSearch = searchActions::run
@@ -215,5 +216,38 @@ internal class AppActionController(
 
     fun openExternalVideo(url: String) =
         shellActions.openExternalVideo(url)
+
+    fun backFromSourceBrowse() =
+        shellActions.backFromSourceBrowse()
+
+    fun backFromSeries() =
+        shellActions.backFromSeries()
+
+    fun searchSeriesTag(tag: String) =
+        shellActions.searchSeriesTag(tag)
+
+    fun searchGlobalTag(tag: String) =
+        shellActions.searchGlobalTag(tag)
+
+    fun startMigration() =
+        shellActions.startMigration()
+
+    fun backFromGlobalSearch() =
+        shellActions.backFromGlobalSearch()
+
+    fun setSearchHasResultsOnly(value: Boolean) =
+        shellActions.setSearchHasResultsOnly(value)
+
+    fun removeRecentSearch(query: String) =
+        shellActions.removeRecentSearch(query)
+
+    fun clearRecentSearches() =
+        shellActions.clearRecentSearches()
+
+    fun selectMigrationTarget(source: Source, series: Series) =
+        shellActions.selectMigrationTarget(source, series)
+
+    fun dismissMigrationTarget() =
+        shellActions.dismissMigrationTarget()
 
 }
