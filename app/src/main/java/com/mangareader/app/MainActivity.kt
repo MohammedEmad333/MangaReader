@@ -749,7 +749,7 @@ fun YomuApp() {
     }
 
     fun cancelSeriesDownloads(seriesId: String) {
-        if (cancelSeriesDownloads(context, seriesId)) {
+        if (cancelSeriesDownloadsAction(context, seriesId)) {
             downloadTick++
         }
     }
