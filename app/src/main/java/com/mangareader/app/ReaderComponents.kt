@@ -64,68 +64,6 @@ import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Window-level settings: orientation, backlight, system bars. */
-@Composable
-internal fun ReaderWindowEffects(settings: ReaderSettings, showControls: Boolean) {
-    val view = LocalView.current
-    val activity = view.context as? Activity
-
-    DisposableEffect(settings.rotation) {
-        val previous = activity?.requestedOrientation
-        activity?.requestedOrientation = when (settings.rotation) {
-            ReaderRotation.SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            ReaderRotation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            ReaderRotation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
-        // Restored on the way out: a reader that locks the whole app to
-        // landscape is a bug report, not a setting.
-        onDispose {
-            activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
-
-    DisposableEffect(settings.keepScreenOn) {
-        val window = activity?.window
-        if (settings.keepScreenOn) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-    }
-
-    DisposableEffect(settings.customBrightness, settings.brightness) {
-        val window = activity?.window
-        window?.attributes = window?.attributes?.apply {
-            screenBrightness = if (settings.customBrightness) {
-                settings.brightness.coerceIn(0.01f, 1f)
-            } else {
-                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            }
-        }
-        onDispose {
-            window?.attributes = window?.attributes?.apply {
-                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            }
-        }
-    }
-
-    // Tied to the controls as well as the setting: raising the bars while the
-    // status bar stays hidden puts the title under the clock.
-    DisposableEffect(settings.fullscreen, showControls) {
-        val window = activity?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        if (settings.fullscreen && !showControls) {
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-        }
-        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
-    }
-}
-
 @Composable
 internal fun ReaderPage(
     file: File?,
