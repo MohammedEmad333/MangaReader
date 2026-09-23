@@ -9,8 +9,6 @@ internal fun RootSeriesRoute(
     val appState = root.app
     val browseState = root.browse
     val seriesState = root.series
-    val globalSearch = root.search
-    val migrationState = root.migration
     val actions = root.actions
     val series = seriesState.active ?: return
     val seriesSite = browseState.source?.siteUrl()
@@ -38,44 +36,13 @@ internal fun RootSeriesRoute(
         onRefresh = { actions.refreshChapters() },
         onReadStateChanged = { appState.readTick++ },
         onLibraryChanged = { appState.libraryTick++ },
-        onSearchTag = { tag ->
-            browseState.source?.let { source ->
-                seriesState.tagReturn = seriesState.active
-                seriesState.active = null
-                appState.error = null
-                if (source.applyGenreFilter(tag)) {
-                    actions.openSource(source, "", BrowseMode.FILTER)
-                } else {
-                    actions.openSource(source, tag, browseState.mode)
-                }
-            }
-        },
-        onGlobalSearchTag = { tag ->
-            seriesState.tagReturn = seriesState.active
-            seriesState.active = null
-            appState.error = null
-            globalSearch.open = true
-            actions.runGlobalSearch(tag)
-        },
-        onMigrate = {
-            val active = seriesState.active
-            val sourceId = browseState.sourceId
-            if (active != null && sourceId != null) {
-                migrationState.from = MigrateFrom(active.id, sourceId, active.title)
-                seriesState.tagReturn = active
-                seriesState.active = null
-                appState.error = null
-                globalSearch.open = true
-                actions.runGlobalSearch(active.title)
-            }
-        },
+        onSearchTag = actions::searchSeriesTag,
+
+        onGlobalSearchTag = actions::searchGlobalTag,
+
+        onMigrate = actions::startMigration,
+
         onSolveChallenge = solveFromSeries,
-        onBack = {
-            seriesState.clear()
-            appState.error = null
-            if (seriesState.origin != SeriesOrigin.BROWSE) {
-                browseState.clearSource()
-            }
-        }
+        onBack = actions::backFromSeries
     )
 }

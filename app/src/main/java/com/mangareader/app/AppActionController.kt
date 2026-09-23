@@ -44,6 +44,19 @@ internal class AppActionController(
         openSeries = seriesActions::open
     )
 
+    private val shellActions = ShellActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        globalSearch = globalSearch,
+        migrationState = migrationState,
+        mediaState = mediaState,
+        openSource = sourceActions::openSource,
+        runGlobalSearch = searchActions::run
+    )
+
     private val libraryActions = LibraryActionController(
         context = context,
         scope = scope,
@@ -129,4 +142,112 @@ internal class AppActionController(
 
     fun openFromHistory(entry: HistoryEntry) =
         libraryActions.openFromHistory(entry)
+    fun selectTab(tab: Int) =
+        shellActions.selectTab(tab)
+
+    fun removeLibrary(ids: Set<String>) =
+        shellActions.removeLibrary(ids)
+
+    fun showGlobalSearch() =
+        shellActions.openGlobalSearch()
+
+    fun addSource() =
+        shellActions.addSource()
+
+    fun editSource(config: SourceConfig) =
+        shellActions.editSource(config)
+
+    fun deleteSource(config: SourceConfig) =
+        shellActions.deleteSource(config)
+
+    fun refreshExtensions() =
+        shellActions.refreshExtensions()
+
+    fun deleteHistory(entry: HistoryEntry) =
+        shellActions.deleteHistory(entry)
+
+    fun clearHistory() =
+        shellActions.clearHistory()
+
+    fun refreshHistory() =
+        shellActions.refreshHistory()
+
+    fun openDownloadQueue() =
+        shellActions.openDownloadQueue()
+
+    fun closeDownloadQueue() =
+        shellActions.closeDownloadQueue()
+
+    fun openSettings() =
+        shellActions.openSettings()
+
+    fun closeSettings() =
+        shellActions.closeSettings()
+
+    fun showFilters() =
+        shellActions.showFilters()
+
+    fun dismissFilters() =
+        shellActions.dismissFilters()
+
+    fun applyFilters(source: Source) =
+        shellActions.applyFilters(source)
+
+    fun showProbe() =
+        shellActions.showProbe()
+
+    fun dismissProbe() =
+        shellActions.dismissProbe()
+
+    fun setEditingConfig(config: SourceConfig?) =
+        shellActions.setEditingConfig(config)
+
+    fun dismissSourceDialog() =
+        shellActions.dismissSourceDialog()
+
+    fun saveSource(config: SourceConfig) =
+        shellActions.saveSource(config)
+
+    fun dismissVideoScan() =
+        shellActions.dismissVideoScan()
+
+    fun openEmbed(url: String) =
+        shellActions.openEmbed(url)
+
+    fun openExternalVideo(url: String) =
+        shellActions.openExternalVideo(url)
+
+    fun backFromSourceBrowse() =
+        shellActions.backFromSourceBrowse()
+
+    fun backFromSeries() =
+        shellActions.backFromSeries()
+
+    fun searchSeriesTag(tag: String) =
+        shellActions.searchSeriesTag(tag)
+
+    fun searchGlobalTag(tag: String) =
+        shellActions.searchGlobalTag(tag)
+
+    fun startMigration() =
+        shellActions.startMigration()
+
+    fun backFromGlobalSearch() =
+        shellActions.backFromGlobalSearch()
+
+    fun setSearchHasResultsOnly(value: Boolean) =
+        shellActions.setSearchHasResultsOnly(value)
+
+    fun removeRecentSearch(query: String) =
+        shellActions.removeRecentSearch(query)
+
+    fun clearRecentSearches() =
+        shellActions.clearRecentSearches()
+
+    fun selectMigrationTarget(source: Source, series: Series) =
+        shellActions.selectMigrationTarget(source, series)
+
+    fun dismissMigrationTarget() =
+        shellActions.dismissMigrationTarget()
+
 }
