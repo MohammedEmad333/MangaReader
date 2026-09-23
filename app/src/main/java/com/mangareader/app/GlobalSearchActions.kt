@@ -58,3 +58,85 @@ internal suspend fun searchGlobalBatch(
         GlobalResult(source, results[index])
     }
 }
+
+
+internal class GlobalSearchState(
+    context: Context
+) {
+    var open by androidx.compose.runtime.mutableStateOf(false)
+    var query by androidx.compose.runtime.mutableStateOf("")
+    var results by androidx.compose.runtime.mutableStateOf<List<GlobalResult>>(emptyList())
+    var running by androidx.compose.runtime.mutableStateOf(false)
+    var done by androidx.compose.runtime.mutableIntStateOf(0)
+    var total by androidx.compose.runtime.mutableIntStateOf(0)
+    var pinnedOnly by androidx.compose.runtime.mutableStateOf(
+        SourcePrefs.pinnedOnlySearch(context)
+    )
+    var hasResultsOnly by androidx.compose.runtime.mutableStateOf(true)
+    var recents by androidx.compose.runtime.mutableStateOf(
+        SourcePrefs.recentSearches(context)
+    )
+
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun cancel() {
+        job?.cancel()
+        job = null
+        running = false
+    }
+
+    fun setPinnedOnly(
+        context: Context,
+        scope: kotlinx.coroutines.CoroutineScope,
+        configs: List<SourceConfig>,
+        extensions: List<Source>,
+        value: Boolean
+    ) {
+        pinnedOnly = value
+        SourcePrefs.setPinnedOnlySearch(context, value)
+        if (query.isNotBlank()) {
+            search(context, scope, configs, extensions, query)
+        }
+    }
+
+    fun search(
+        context: Context,
+        scope: kotlinx.coroutines.CoroutineScope,
+        configs: List<SourceConfig>,
+        extensions: List<Source>,
+        newQuery: String
+    ) {
+        job?.cancel()
+        query = newQuery
+        results = emptyList()
+        done = 0
+        total = 0
+
+        if (newQuery.isBlank()) {
+            running = false
+            job = null
+            return
+        }
+
+        running = true
+        recents = SourcePrefs.addRecentSearch(context, newQuery)
+        job = scope.launch {
+            try {
+                val targets = globalSearchTargets(
+                    context = context,
+                    configs = configs,
+                    extensions = extensions,
+                    pinnedOnly = pinnedOnly
+                )
+                total = targets.size
+
+                targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
+                    results = results + searchGlobalBatch(newQuery, chunk)
+                    done += chunk.size
+                }
+            } finally {
+                running = false
+            }
+        }
+    }
+}
