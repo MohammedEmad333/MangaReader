@@ -187,8 +187,8 @@ dependencies {
     // 4.12.0, so this module has in practice been running OkHttp 5 for a long
     // time while its build file claimed 4. That is worth knowing before reading
     // any of the network code against the 4.x docs.
-    implementation(platform("com.squareup.okhttp3:okhttp-bom:5.4.0"))
-    implementation("com.squareup.okhttp3:okhttp")
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
     implementation("androidx.documentfile:documentfile:1.0.1")
     // Automatic backups. Self-initialises through androidx.startup, so there is
     // no Configuration.Provider or manifest entry to add - the only reason it's
@@ -198,7 +198,7 @@ dependencies {
     // :source-api has this as `implementation`, so it isn't on this module's
     // compile classpath. Needed here to build the PreferenceScreen that
     // ConfigurableSource.setupPreferenceScreen() populates.
-    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation(libs.androidx.preference)
     implementation(project(":source-api"))
     // 1.9.0, not 1.7.3. Extensions built with a newer serialization plugin emit
     // @Serializable classes whose generated serializers do NOT override
@@ -218,7 +218,7 @@ dependencies {
     // compiler refuses 2.3 metadata outright, which is the same wall OkHttp
     // 5.2+ put in front of Kotlin 2.0.20 earlier tonight. Moving past 1.9.x
     // means moving Kotlin first.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation(libs.serialization.json)
 
     // JVM unit tests (src/test), run by `gradle testDebugUnitTest`. These cover
     // the pure-logic pieces that have no Android dependency — chapter-number
