@@ -47,7 +47,7 @@ internal fun YomuRootRouter(
         TransientRouteResult.CONTENT -> Unit
         TransientRouteResult.NONE -> {
             if (seriesState.active != null) {
-        RootSeriesRoute(
+                RootSeriesRoute(
             appState = appState,
             browseState = browseState,
             seriesState = seriesState,
@@ -55,9 +55,9 @@ internal fun YomuRootRouter(
             migrationState = migrationState,
             actions = actions,
             scroll = seriesScroll
-        )
-    } else if (globalSearch.open) {
-        RootGlobalSearchRoute(
+                )
+            } else if (globalSearch.open) {
+                RootGlobalSearchRoute(
             context = context,
             appState = appState,
             browseState = browseState,
@@ -65,17 +65,17 @@ internal fun YomuRootRouter(
             globalSearch = globalSearch,
             migrationState = migrationState,
             actions = actions
-        )
-    } else if (browseState.source != null) {
-        RootSourceBrowseRoute(
+                )
+            } else if (browseState.source != null) {
+                RootSourceBrowseRoute(
             appState = appState,
             browseState = browseState,
             seriesState = seriesState,
             actions = actions,
             scroll = browseScroll
-        )
-    } else {
-        RootFallbackRoute(
+                )
+            } else {
+                RootFallbackRoute(
             context = context,
             scope = scope,
             appState = appState,
@@ -90,10 +90,9 @@ internal fun YomuRootRouter(
             libraryScroll = libraryScroll,
             sourcesScroll = sourcesScroll
         )
-
-    }
+            }
         }
-
+    }
 
     RootOverlays(
         context = context,
