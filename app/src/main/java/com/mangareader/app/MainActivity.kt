@@ -100,425 +100,28 @@ fun YomuApp() {
         onSourcesChanged = { appState.extensionSources = it }
     )
 
-    fun openSource(
-        source: Source,
-        query: String = "",
-        mode: BrowseMode = BrowseMode.POPULAR
+    val actions = remember(
+        context,
+        scope,
+        appState,
+        browseState,
+        seriesState,
+        readerSession,
+        globalSearch,
+        migrationState,
+        mediaState
     ) {
-        appState.error = null
-        scope.launch {
-            appState.loading = true
-            appState.error = browseState.loadFirstPage(
-                context = context,
-                source = source,
-                query = query,
-                mode = mode
-            )
-            appState.loading = false
-        }
-    }
-
-    fun loadMoreSeries() {
-        scope.launch {
-            browseState.loadNextPage()?.let {
-                appState.error = it
-            }
-        }
-    }
-
-    fun runGlobalSearch(query: String) {
-        globalSearch.search(
+        AppActionController(
             context = context,
             scope = scope,
-            configs = appState.configs,
-            extensions = appState.extensionSources,
-            newQuery = query
+            appState = appState,
+            browseState = browseState,
+            seriesState = seriesState,
+            readerSession = readerSession,
+            globalSearch = globalSearch,
+            migrationState = migrationState,
+            mediaState = mediaState
         )
-    }
-
-    fun cancelGlobalSearch() {
-        globalSearch.cancel()
-    }
-
-    fun setGlobalPinnedOnly(value: Boolean) {
-        globalSearch.setPinnedOnly(
-            context = context,
-            scope = scope,
-            configs = appState.configs,
-            extensions = appState.extensionSources,
-            value = value
-        )
-    }
-
-    fun openSourceConfig(config: SourceConfig) {
-        val source = resolveSourceConfig(context, config)
-        if (source == null) {
-            appState.error = "\"${config.label}\" isn't configured yet"
-            return
-        }
-        openSource(source)
-    }
-
-    fun enrichSeries(source: Source, series: Series) {
-        scope.launch {
-            val enriched = withContext(Dispatchers.IO) {
-                loadAndHealSeriesDetails(
-                    context,
-                    source,
-                    series
-                )
-            }
-            if (enriched != null && seriesState.active?.id == series.id) {
-                seriesState.active = enriched
-            }
-        }
-    }
-
-    fun openSeries(series: Series) {
-        val src = browseState.source ?: return
-        seriesState.begin(series, SeriesOrigin.BROWSE)
-        // Opening a result ends the detour: back from this series goes to the
-        // listing behind it, not to whatever the tag search started from.
-        seriesState.tagReturn = null
-        appState.error = null
-        enrichSeries(src, series)
-        scope.launch {
-            appState.loading = true
-            appState.error = seriesState.reloadChapters(
-                context,
-                src,
-                series
-            )
-            appState.loading = false
-        }
-    }
-
-    /**
-     * Re-fetches the open series' chapter list.
-     *
-     * Deliberately **not** `openSeries(seriesState.active!!)`: that resets
-     * `seriesState.origin` to BROWSE and clears `seriesState.tagReturn`, so refreshing a
-     * series reached from the Library would send Back to an empty browse screen
-     * — the adopted-source trap, arrived at from a new direction.
-     *
-     * `seriesState.chapters` is also left alone until the new one lands, so the list
-     * stays on screen and readable while the request runs. Clearing it first is
-     * what 0.102 had to undo in the reader for the same reason.
-     */
-    /**
-     * Scans one chapter's page for videos. See Source.scanVideos.
-     *
-     * The CALLER picks which — the chapter at the top of the list as sorted and
-     * filtered on screen. Choosing it here meant seriesState.chapters[0], the raw list's
-     * first entry, which under a descending sort is the last one drawn.
-     *
-     * A failure comes back as a VideoScan carrying the reason rather than as a
-     * thrown error, so "the scan failed" and "the page has no videos" reach the
-     * dialog as different sentences. They looked identical in 0.173 and that is
-     * exactly the failure this codebase keeps writing cards about.
-     */
-    fun findVideos(chapter: Chapter) {
-        val source = browseState.source ?: return
-        mediaState.scan = null
-        mediaState.scanning = true
-        scope.launch {
-            mediaState.scan = withContext(Dispatchers.IO) {
-                scanChapterVideos(source, chapter)
-            }
-            mediaState.scanning = false
-        }
-    }
-
-    fun refreshChapters() {
-        val src = browseState.source ?: return
-        val series = seriesState.active ?: return
-        appState.error = null
-        // A manual refresh is the user asserting "re-check this series", and that
-        // includes its download state, not only its chapter list. The per-chapter
-        // download ticks and the cover badge both answer from Downloads.isComplete,
-        // which memoises — so without this a chapter deleted with a file manager
-        // keeps its downloaded marker through a refresh. invalidateCompletion drops
-        // that memo (and the index) the same way the Downloads and Library pulls
-        // do; appState.downloadTick++ makes this screen's isComplete reads recompute.
-        Downloads.invalidateCompletion()
-        appState.downloadTick++
-        enrichSeries(src, series)
-        scope.launch {
-            appState.loading = true
-            appState.error = seriesState.reloadChapters(
-                context,
-                src,
-                series
-            )
-            appState.loading = false
-        }
-    }
-
-    /** Tapping a cover in global search: adopt that source, then open the series. */
-    fun openGlobalResult(source: Source, series: Series) {
-        browseState.source = source
-        browseState.sourceId = source.id
-        browseState.series = null
-        browseState.page = 1
-        browseState.hasNext = false
-        browseState.query = globalSearch.query
-        openSeries(series)
-        // After openSeries, which sets it to BROWSE unconditionally.
-        seriesState.origin = SeriesOrigin.GLOBAL_SEARCH
-    }
-
-    /** "See all" on a global search row: leave the results and browse that source. */
-    fun openGlobalSource(source: Source) {
-        cancelGlobalSearch()
-        globalSearch.open = false
-        openSource(source, globalSearch.query)
-    }
-
-    fun openChapter(index: Int) {
-        val source = browseState.source ?: return
-        readerSession.open(
-            context = context,
-            scope = scope,
-            source = source,
-            chapters = seriesState.chapters,
-            index = index,
-            onRootLoadingChanged = { appState.loading = it },
-            onClearError = { appState.error = null },
-            onError = { appState.error = it }
-        )
-    }
-
-    fun queueDownloads(source: Source, chapters: List<Chapter>) {
-        queueSeriesDownloads(
-            context = context,
-            series = seriesState.active,
-            source = source,
-            chapters = chapters
-        )
-    }
-
-    fun downloadChapter(source: Source, chapter: Chapter) =
-        queueDownloads(source, listOf(chapter))
-
-    fun downloadAll(source: Source, chapters: List<Chapter>) =
-        queueDownloads(source, chapters)
-
-    fun bulkSetRead(ids: Set<String>, value: Boolean) {
-        if (ids.isEmpty()) return
-
-        scope.launch {
-            val result = setLibrarySeriesRead(
-                context = context,
-                ids = ids,
-                value = value
-            )
-            appState.libraryTick++
-
-            val verb = if (value) "read" else "unread"
-            val message = buildString {
-                append("Marked ${result.changed} series $verb")
-                if (result.skipped > 0) {
-                    append(" · ${result.skipped} skipped (no chapter list)")
-                }
-            }
-            android.widget.Toast
-                .makeText(context, message, android.widget.Toast.LENGTH_SHORT)
-                .show()
-        }
-    }
-
-    fun bulkDownload(ids: Set<String>) {
-        if (ids.isEmpty()) return
-
-        scope.launch {
-            val result = queueLibraryDownloads(
-                context = context,
-                ids = ids
-            )
-            appState.downloadTick++
-
-            val message = buildString {
-                append(
-                    if (result.added > 0) {
-                        "Queued ${result.added} " +
-                            if (result.added == 1) "chapter" else "chapters"
-                    } else {
-                        "Nothing to download — already downloaded or queued"
-                    }
-                )
-                if (result.skipped > 0) {
-                    append(" · ${result.skipped} skipped (no chapter list)")
-                }
-            }
-            android.widget.Toast
-                .makeText(context, message, android.widget.Toast.LENGTH_SHORT)
-                .show()
-        }
-    }
-
-    fun performMigration(
-        from: MigrateFrom,
-        toSource: Source,
-        toSeries: Series
-    ) {
-        scope.launch {
-            val migrated = migrateLibrarySeries(
-                context = context,
-                from = from,
-                toSource = toSource,
-                toSeries = toSeries
-            )
-
-            migrationState.target = null
-            migrationState.from = null
-
-            if (migrated) {
-                cancelGlobalSearch()
-                globalSearch.open = false
-                browseState.series = null
-                seriesState.tagReturn = null
-                seriesState.active = null
-                browseState.source = null
-                browseState.sourceId = null
-                appState.currentTab = 0
-                appState.libraryTick++
-                android.widget.Toast
-                    .makeText(
-                        context,
-                        "Migrated to ${toSource.name}",
-                        android.widget.Toast.LENGTH_SHORT
-                    )
-                    .show()
-            } else {
-                appState.error = "Couldn't migrate this series"
-            }
-        }
-    }
-
-    fun cancelSeriesDownloads(seriesId: String) {
-        if (cancelSeriesDownloadsAction(context, seriesId)) {
-            appState.downloadTick++
-        }
-    }
-
-    /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
-    fun openFromLibrary(entry: LibraryEntry) {
-        appState.error = null
-        seriesState.begin(
-            Series(
-                id = entry.seriesId,
-                title = entry.title,
-                cover = entry.cover.ifBlank { null }
-            ),
-            SeriesOrigin.LIBRARY
-        )
-
-        scope.launch {
-            appState.loading = true
-            try {
-                openLibraryEntry(
-                    context = context,
-                    entry = entry,
-                    onSourceResolved = { source ->
-                        browseState.source = source
-                        browseState.sourceId = source.id
-                    },
-                    onCachedChapters = { cached ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.chapters = cached
-                        }
-                    },
-                    onResolved = { source, series, chapters ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.active = series
-                            seriesState.chapters = chapters
-                            seriesState.fetched = true
-                            enrichSeries(source, series)
-                        }
-                    }
-                )
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not open this series"
-                )
-            }
-            appState.loading = false
-        }
-    }
-
-    /** Opens a downloaded series from cache first, then refreshes it when possible. */
-    fun openFromDownloads(entry: DownloadedSeries) {
-        appState.error = null
-        seriesState.begin(
-            Series(
-                id = entry.seriesId,
-                title = entry.title,
-                cover = entry.cover.ifBlank { null }
-            ),
-            SeriesOrigin.DOWNLOADS
-        )
-
-        scope.launch {
-            appState.loading = true
-            try {
-                openDownloadedEntry(
-                    context = context,
-                    entry = entry,
-                    onSourceResolved = { source ->
-                        browseState.source = source
-                        browseState.sourceId = source.id
-                    },
-                    onCachedChapters = { cached ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.chapters = cached
-                        }
-                    },
-                    onResolved = { source, series, chapters ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.active = series
-                            seriesState.chapters = chapters
-                            seriesState.fetched = true
-                            enrichSeries(source, series)
-                        }
-                    }
-                )
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not open this series"
-                )
-            }
-            appState.loading = false
-        }
-    }
-
-    fun openFromHistory(entry: HistoryEntry) {
-        appState.error = null
-
-        scope.launch {
-            appState.loading = true
-            try {
-                openHistoryEntry(
-                    context = context,
-                    entry = entry
-                ) { target ->
-                    seriesState.origin = SeriesOrigin.HISTORY
-                    browseState.source = target.source
-                    browseState.sourceId = target.source.id
-                    seriesState.active = target.series
-                    seriesState.chapters = target.chapters
-                    enrichSeries(target.source, target.series)
-                    openChapter(target.index)
-                }
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not resume"
-                )
-            }
-            appState.loading = false
-        }
     }
 
     // ---- routing ----
@@ -568,10 +171,10 @@ fun YomuApp() {
                     // the note on openGlobalResult. This is a retry, not a fresh
                     // navigation, so back has to still go where it did before.
                     val origin = seriesState.origin
-                    openSeries(openSeriesAgain)
+                    actions.openSeries(openSeriesAgain)
                     seriesState.origin = origin
                 } else {
-                    browseState.source?.let { openSource(it, browseState.query, browseState.mode) }
+                    browseState.source?.let { actions.openSource(it, browseState.query, browseState.mode) }
                 }
             },
             onBack = { appState.challengeUrl = null }
@@ -585,7 +188,7 @@ fun YomuApp() {
             chapter = readerChapter,
             chapters = seriesState.chapters,
             chapterIndex = chapterIdx,
-            onOpenChapter = { openChapter(it) },
+            onOpenChapter = { actions.openChapter(it) },
             onClose = {
                 readerSession.close()
                 appState.history = History.forDisplay(context)
@@ -609,13 +212,13 @@ fun YomuApp() {
             readTick = appState.readTick,
             scroll = seriesScroll,
             localDownloadTick = appState.downloadTick,
-            onFindVideos = { findVideos(it) },
-            onDownload = { src, chapter -> downloadChapter(src, chapter) },
-            onDownloadAll = { src, chapters -> downloadAll(src, chapters) },
-            onCancelDownloads = { cancelSeriesDownloads(it) },
+            onFindVideos = { actions.findVideos(it) },
+            onDownload = { src, chapter -> actions.downloadChapter(src, chapter) },
+            onDownloadAll = { src, chapters -> actions.downloadAll(src, chapters) },
+            onCancelDownloads = { actions.cancelSeriesDownloads(it) },
             onDownloadStateChanged = { appState.downloadTick++ },
-            onOpenChapter = { openChapter(it) },
-            onRefresh = { refreshChapters() },
+            onOpenChapter = { actions.openChapter(it) },
+            onRefresh = { actions.refreshChapters() },
             onReadStateChanged = { appState.readTick++ },
             onLibraryChanged = { appState.libraryTick++ },
             onSearchTag = { tag ->
@@ -624,9 +227,9 @@ fun YomuApp() {
                     seriesState.active = null
                     appState.error = null
                     if (src.applyGenreFilter(tag)) {
-                        openSource(src, "", BrowseMode.FILTER)
+                        actions.openSource(src, "", BrowseMode.FILTER)
                     } else {
-                        openSource(src, tag, browseState.mode)
+                        actions.openSource(src, tag, browseState.mode)
                     }
                 }
             },
@@ -635,7 +238,7 @@ fun YomuApp() {
                 seriesState.active = null
                 appState.error = null
                 globalSearch.open = true
-                runGlobalSearch(tag)
+                actions.runGlobalSearch(tag)
             },
             onMigrate = {
                 val s = seriesState.active
@@ -646,7 +249,7 @@ fun YomuApp() {
                     seriesState.active = null
                     appState.error = null
                     globalSearch.open = true
-                    runGlobalSearch(s.title)
+                    actions.runGlobalSearch(s.title)
                 }
             },
             onSolveChallenge = solveFromSeries,
@@ -668,7 +271,7 @@ fun YomuApp() {
             done = globalSearch.done,
             total = globalSearch.total,
             pinnedOnly = globalSearch.pinnedOnly,
-            onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
+            onTogglePinnedOnly = { actions.setGlobalPinnedOnly(it) },
             hasResultsOnly = globalSearch.hasResultsOnly,
             onToggleHasResultsOnly = { globalSearch.hasResultsOnly = it },
             recents = globalSearch.recents,
@@ -677,17 +280,17 @@ fun YomuApp() {
                 SourcePrefs.clearRecentSearches(context)
                 globalSearch.recents = emptyList()
             },
-            onSearch = { runGlobalSearch(it) },
-            onCancel = { cancelGlobalSearch() },
-            onOpenSource = { openGlobalSource(it) },
+            onSearch = { actions.runGlobalSearch(it) },
+            onCancel = { actions.cancelGlobalSearch() },
+            onOpenSource = { actions.openGlobalSource(it) },
             migrating = migrationState.from != null,
             onOpenSeries = { src, s ->
                 if (migrationState.from != null) migrationState.target = src to s
-                else openGlobalResult(src, s)
+                else actions.openGlobalResult(src, s)
             },
             libraryTick = appState.libraryTick,
             onBack = {
-                cancelGlobalSearch()
+                actions.cancelGlobalSearch()
                 globalSearch.open = false
                 migrationState.from = null
                 browseState.series = null
@@ -704,7 +307,7 @@ fun YomuApp() {
             migrateTarget = migrationState.target,
             onDismissMigration = { migrationState.target = null },
             onConfirmMigration = { from, targetSource, targetSeries ->
-                performMigration(from, targetSource, targetSeries)
+                actions.performMigration(from, targetSource, targetSeries)
             }
         )
     } else if (browseState.source != null) {
@@ -722,14 +325,14 @@ fun YomuApp() {
             filtersOpen = { appState.filtersOpen = true },
             diagnose = { appState.probeOpen = true },
             mode = browseState.mode,
-            onModeChange = { m -> openSource(source, "", m) },
+            onModeChange = { m -> actions.openSource(source, "", m) },
             query = browseState.query,
             hasNext = browseState.hasNext,
             loadingMore = browseState.loadingMore,
-            onSearch = { q -> openSource(source, q, browseState.mode) },
-            onLoadMore = { loadMoreSeries() },
-            onRescan = { openSource(source, browseState.query, browseState.mode) },
-            onOpen = { openSeries(it) },
+            onSearch = { q -> actions.openSource(source, q, browseState.mode) },
+            onLoadMore = { actions.loadMoreSeries() },
+            onRescan = { actions.openSource(source, browseState.query, browseState.mode) },
+            onOpen = { actions.openSeries(it) },
             onBack = {
                 browseState.series = null
                 appState.error = null
@@ -779,14 +382,14 @@ fun YomuApp() {
             librarySearchOpen = librarySearchOpen,
             onLibrarySearchOpenChange = { librarySearchOpen = it },
             libraryScroll = libraryScroll,
-            onOpenLibrary = { openFromLibrary(it) },
+            onOpenLibrary = { actions.openFromLibrary(it) },
             onRemoveLibraryMany = { ids ->
                 Library.removeAll(context, ids)
                 appState.libraryTick++
             },
-            onMarkRead = { ids -> bulkSetRead(ids, true) },
-            onMarkUnread = { ids -> bulkSetRead(ids, false) },
-            onDownloadMany = { ids -> bulkDownload(ids) },
+            onMarkRead = { ids -> actions.bulkSetRead(ids, true) },
+            onMarkUnread = { ids -> actions.bulkSetRead(ids, false) },
+            onDownloadMany = { ids -> actions.bulkDownload(ids) },
             configs = appState.configs,
             extensions = appState.extensionSources,
             sourcesScroll = sourcesScroll,
@@ -796,15 +399,15 @@ fun YomuApp() {
                     globalSearch.results.isEmpty() &&
                     !globalSearch.running
                 ) {
-                    runGlobalSearch(globalSearch.query)
+                    actions.runGlobalSearch(globalSearch.query)
                 }
             },
             onAddSource = {
                 appState.editingConfig = SourceConfig(SourceManager.newId(), "local", "")
                 appState.showSourceDialog = true
             },
-            onOpenConfig = { openSourceConfig(it) },
-            onOpenExtension = { openSource(it) },
+            onOpenConfig = { actions.openSourceConfig(it) },
+            onOpenExtension = { actions.openSource(it) },
             onEditConfig = {
                 appState.editingConfig = it
                 appState.showSourceDialog = true
@@ -825,7 +428,7 @@ fun YomuApp() {
             },
             history = appState.history,
             loading = appState.loading,
-            onOpenHistory = { openFromHistory(it) },
+            onOpenHistory = { actions.openFromHistory(it) },
             onDeleteHistory = {
                 History.remove(context, it.chapterKey)
                 appState.history = History.forDisplay(context)
@@ -836,7 +439,7 @@ fun YomuApp() {
             },
             onRefreshHistory = { appState.history = History.forDisplay(context) },
             downloadTick = appState.downloadTick + DownloadQueue.tick,
-            onOpenDownload = { openFromDownloads(it) },
+            onOpenDownload = { actions.openFromDownloads(it) },
             onOpenDownloadQueue = { appState.downloadsOpen = true },
             onOpenSettings = { appState.settingsOpen = true }
         )
@@ -875,7 +478,7 @@ fun YomuApp() {
         filtersOpen = appState.filtersOpen,
         onApplyFilters = { source ->
             appState.filtersOpen = false
-            openSource(source, "", BrowseMode.FILTER)
+            actions.openSource(source, "", BrowseMode.FILTER)
         },
         onDismissFilters = { appState.filtersOpen = false },
         whatsNewOpen = whatsNewOpen,
