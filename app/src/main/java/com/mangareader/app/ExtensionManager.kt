@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.PackageManager
-import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -47,9 +46,6 @@ internal fun compareVersions(a: String, b: String): Int {
 }
 
 object ExtensionManager {
-    // The action that extension APKs must broadcast in their manifest
-    private const val EXTENSION_ACTION = "com.mangareader.app.EXTENSION"
-
     /**
      * How long a downloaded repo index is reused before being re-fetched.
      * Matches the `maxAge` `Requests.kt` puts on ordinary GETs, so the two
@@ -169,31 +165,7 @@ object ExtensionManager {
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
      */
-    fun loadInstalledSources(context: Context): List<Source> {
-        val pm = context.packageManager
-        val intent = Intent(EXTENSION_ACTION)
-        
-        val resolved = pm.queryIntentActivities(intent, PackageManager.GET_META_DATA)
-        val loadedSources = mutableListOf<Source>()
-        
-        for (info in resolved) {
-            try {
-                val pkg = info.activityInfo.packageName
-                val appInfo = pm.getApplicationInfo(pkg, 0)
-                
-                val className = info.activityInfo.metaData?.getString("source_class")
-                
-                if (className != null) {
-                    val classLoader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
-                    val clazz = Class.forName(className, false, classLoader)
-                    
-                    val source = clazz.getDeclaredConstructor().newInstance() as Source
-                    loadedSources.add(source)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        return loadedSources
-    }
+    fun loadInstalledSources(context: Context): List<Source> =
+        ExtensionSourceLoader.load(context)
+
 }
