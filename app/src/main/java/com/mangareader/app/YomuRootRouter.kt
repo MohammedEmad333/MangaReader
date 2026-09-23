@@ -8,31 +8,16 @@ import androidx.compose.ui.platform.LocalContext
 internal fun YomuRootRouter(
     state: YomuStateBundle,
     actions: AppActionController,
-    libraryCategory: String?,
-    onLibraryCategoryChange: (String?) -> Unit,
-    librarySearch: String,
-    onLibrarySearchChange: (String) -> Unit,
-    librarySearchOpen: Boolean,
-    onLibrarySearchOpenChange: (Boolean) -> Unit,
-    libraryScroll: ScrollMemory,
-    browseScroll: ScrollMemory,
-    seriesScroll: ScrollMemory,
-    sourcesScroll: ScrollMemory,
-    releaseNotes: List<ReleaseNote>,
-    whatsNewOpen: Boolean,
-    onDismissWhatsNew: () -> Unit
+    ui: RootUiBindings
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val appState = state.app
-    val browseState = state.browse
-    val seriesState = state.series
-    val globalSearch = state.search
     val root = RootRouteContext(
         context = context,
         scope = scope,
         state = state,
-        actions = actions
+        actions = actions,
+        ui = ui
     )
 
     when (
@@ -41,39 +26,17 @@ internal fun YomuRootRouter(
         TransientRouteResult.EMBED -> return
         TransientRouteResult.CONTENT -> Unit
         TransientRouteResult.NONE -> {
-            if (seriesState.active != null) {
-                RootSeriesRoute(
-                    root = root,
-                    scroll = seriesScroll
-                )
-            } else if (globalSearch.open) {
+            if (root.series.active != null) {
+                RootSeriesRoute(root)
+            } else if (root.search.open) {
                 RootGlobalSearchRoute(root)
-            } else if (browseState.source != null) {
-                RootSourceBrowseRoute(
-                    root = root,
-                    scroll = browseScroll
-                )
+            } else if (root.browse.source != null) {
+                RootSourceBrowseRoute(root)
             } else {
-                RootFallbackRoute(
-                    root = root,
-                    libraryCategory = libraryCategory,
-                    onLibraryCategoryChange = onLibraryCategoryChange,
-                    librarySearch = librarySearch,
-                    onLibrarySearchChange = onLibrarySearchChange,
-                    librarySearchOpen = librarySearchOpen,
-                    onLibrarySearchOpenChange = onLibrarySearchOpenChange,
-                    libraryScroll = libraryScroll,
-                    sourcesScroll = sourcesScroll
-                )
+                RootFallbackRoute(root)
             }
         }
     }
 
-    RootOverlays(
-        root = root,
-        releaseNotes = releaseNotes,
-        whatsNewOpen = whatsNewOpen,
-        onDismissWhatsNew = onDismissWhatsNew
-    )
-
+    RootOverlays(root)
 }
