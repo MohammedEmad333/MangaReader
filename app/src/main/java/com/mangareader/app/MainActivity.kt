@@ -72,14 +72,6 @@ import java.io.File
 /** Index of the Downloads tab in the bottom bar. Named because 3 says nothing. */
 private const val DOWNLOADS_TAB = 3
 
-/**
- * How long the first back press stays "armed".
- *
- * Two seconds is the Android convention. Shorter and a deliberate double press
- * misses; longer and a back pressed minutes apart closes the app unexpectedly.
- */
-private const val EXIT_CONFIRM_MS = 2000L
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YomuApp() {
@@ -262,31 +254,8 @@ fun YomuApp() {
     var mediaUrls by remember { mutableStateOf<List<String>?>(null) }
     var videoScanning by remember { mutableStateOf(false) }
 
-    // Back once more to leave, if back would otherwise close the app.
-    //
-    // Deliberately NOT a dialog. A dialog on the way out is a second thing to
-    // dismiss and it fires on the gesture people use most; a toast plus a second
-    // press costs nothing to ignore and cannot be tapped by accident.
-    //
-    // Placed at the ROOT and enabled only when nothing else is showing, so it
-    // cannot swallow a back that some inner screen wanted. Every other
-    // BackHandler in the app takes precedence by being nested deeper — that is
-    // Compose's rule, not something this has to check.
-    // Declared here rather than beside the notification block below, because the
-    // back handler uses it first and Kotlin reads a function body in order.
     val activity = context as? ComponentActivity
-    var backArmedAt by remember { mutableLongStateOf(0L) }
-    BackHandler {
-        val now = System.currentTimeMillis()
-        if (now - backArmedAt < EXIT_CONFIRM_MS) {
-            activity?.finish()
-        } else {
-            backArmedAt = now
-            android.widget.Toast
-                .makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT)
-                .show()
-        }
-    }
+    DoubleBackToExitHandler(activity)
 
     // Tapping the download notification lands on the QUEUE rather than on
     // wherever the app was last left.
@@ -1246,7 +1215,7 @@ fun YomuApp() {
         // whatever was underneath with nothing else touched. No branch below has
         // to know this one exists — which is the only reason it was safe to put
         // anything at the top of this chain.
-        ChallengeWebViewScreen(
+        ChallengeRoute(
             url = challenge,
             onSolved = {
                 challengeUrl = null
