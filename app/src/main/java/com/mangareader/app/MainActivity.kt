@@ -416,36 +416,27 @@ fun YomuApp() {
         scope.launch {
             appState.loading = true
             try {
-                val source = withContext(Dispatchers.IO) {
-                    findInstalledSource(context, entry.sourceId)
-                }
-                browseState.source = source
-                browseState.sourceId = source.id
-
-                val cached = withContext(Dispatchers.IO) {
-                    loadCachedChapters(
-                        context,
-                        source,
-                        entry.seriesId
-                    )
-                }
-                if (cached.isNotEmpty() && seriesState.active?.id == entry.seriesId) {
-                    seriesState.chapters = cached
-                }
-
-                val result = withContext(Dispatchers.IO) {
-                    resolveLibrarySeries(
-                        context,
-                        source,
-                        entry
-                    )
-                }
-                if (seriesState.active?.id == entry.seriesId) {
-                    seriesState.active = result.first
-                    seriesState.chapters = result.second
-                    seriesState.fetched = true
-                    enrichSeries(source, result.first)
-                }
+                openLibraryEntry(
+                    context = context,
+                    entry = entry,
+                    onSourceResolved = { source ->
+                        browseState.source = source
+                        browseState.sourceId = source.id
+                    },
+                    onCachedChapters = { cached ->
+                        if (seriesState.active?.id == entry.seriesId) {
+                            seriesState.chapters = cached
+                        }
+                    },
+                    onResolved = { source, series, chapters ->
+                        if (seriesState.active?.id == entry.seriesId) {
+                            seriesState.active = series
+                            seriesState.chapters = chapters
+                            seriesState.fetched = true
+                            enrichSeries(source, series)
+                        }
+                    }
+                )
             } catch (error: Throwable) {
                 appState.error = sourceFailureMessage(
                     error,
@@ -471,43 +462,27 @@ fun YomuApp() {
         scope.launch {
             appState.loading = true
             try {
-                val source = withContext(Dispatchers.IO) {
-                    findInstalledSource(context, entry.sourceId)
-                }
-                browseState.source = source
-                browseState.sourceId = source.id
-
-                val cached = withContext(Dispatchers.IO) {
-                    loadCachedChapters(
-                        context,
-                        source,
-                        entry.seriesId
-                    )
-                }
-                if (cached.isNotEmpty() && seriesState.active?.id == entry.seriesId) {
-                    seriesState.chapters = cached
-                }
-
-                val resolved = withContext(Dispatchers.IO) {
-                    resolveDownloadedSeries(
-                        context,
-                        source,
-                        entry
-                    )
-                }
-
-                if (resolved == null) {
-                    if (cached.isEmpty()) {
-                        throw IllegalStateException(
-                            "No chapter list cached for this series — open it once online"
-                        )
+                openDownloadedEntry(
+                    context = context,
+                    entry = entry,
+                    onSourceResolved = { source ->
+                        browseState.source = source
+                        browseState.sourceId = source.id
+                    },
+                    onCachedChapters = { cached ->
+                        if (seriesState.active?.id == entry.seriesId) {
+                            seriesState.chapters = cached
+                        }
+                    },
+                    onResolved = { source, series, chapters ->
+                        if (seriesState.active?.id == entry.seriesId) {
+                            seriesState.active = series
+                            seriesState.chapters = chapters
+                            seriesState.fetched = true
+                            enrichSeries(source, series)
+                        }
                     }
-                } else if (seriesState.active?.id == entry.seriesId) {
-                    seriesState.active = resolved.first
-                    seriesState.chapters = resolved.second
-                    seriesState.fetched = true
-                    enrichSeries(source, resolved.first)
-                }
+                )
             } catch (error: Throwable) {
                 appState.error = sourceFailureMessage(
                     error,
@@ -524,16 +499,18 @@ fun YomuApp() {
         scope.launch {
             appState.loading = true
             try {
-                val target = withContext(Dispatchers.IO) {
-                    loadHistoryResumeTarget(context, entry)
+                openHistoryEntry(
+                    context = context,
+                    entry = entry
+                ) { target ->
+                    seriesState.origin = SeriesOrigin.HISTORY
+                    browseState.source = target.source
+                    browseState.sourceId = target.source.id
+                    seriesState.active = target.series
+                    seriesState.chapters = target.chapters
+                    enrichSeries(target.source, target.series)
+                    openChapter(target.index)
                 }
-                seriesState.origin = SeriesOrigin.HISTORY
-                browseState.source = target.source
-                browseState.sourceId = target.source.id
-                seriesState.active = target.series
-                seriesState.chapters = target.chapters
-                enrichSeries(target.source, target.series)
-                openChapter(target.index)
             } catch (error: Throwable) {
                 appState.error = sourceFailureMessage(
                     error,
