@@ -2,25 +2,19 @@ package com.mangareader.app
 
 import android.content.Context
 
-internal data class StoredSeriesLoad(
-    val source: Source,
-    val cachedChapters: List<Chapter>,
-    val series: Series,
-    val chapters: List<Chapter>
-)
-
-internal data class DownloadedSeriesLoad(
-    val source: Source,
-    val cachedChapters: List<Chapter>,
-    val resolved: Pair<Series, List<Chapter>>?
-)
-
 internal suspend fun findInstalledSource(
     context: Context,
     sourceId: String
 ): Source = SourceManager.listAllSources(context)
     .firstOrNull { it.id == sourceId }
     ?: throw IllegalStateException("That source is no longer installed")
+
+internal fun loadCachedChapters(
+    context: Context,
+    source: Source,
+    seriesId: String
+): List<Chapter> = ChapterCache.load(context, seriesId)
+    .map { source.rehydrateChapter(it) }
 
 private suspend fun loadChaptersWithFallback(
     context: Context,
@@ -30,9 +24,11 @@ private suspend fun loadChaptersWithFallback(
     runCatching { source.listChapters(series) }
         .onSuccess { ChapterCache.save(context, series.id, it) }
         .getOrElse { error ->
-            val cached = ChapterCache.load(context, series.id)
-                .map { source.rehydrateChapter(it) }
-
+            val cached = loadCachedChapters(
+                context,
+                source,
+                series.id
+            )
             if (cached.isNotEmpty()) {
                 cached
             } else {
@@ -42,14 +38,11 @@ private suspend fun loadChaptersWithFallback(
             }
         }
 
-internal suspend fun loadStoredLibrarySeries(
+internal suspend fun resolveLibrarySeries(
     context: Context,
+    source: Source,
     entry: LibraryEntry
-): StoredSeriesLoad {
-    val source = findInstalledSource(context, entry.sourceId)
-    val cached = ChapterCache.load(context, entry.seriesId)
-        .map { source.rehydrateChapter(it) }
-
+): Pair<Series, List<Chapter>> {
     val fetched = runCatching {
         source.restoreSeries(entry.seriesId, entry.title)
     }.getOrElse {
@@ -64,56 +57,32 @@ internal suspend fun loadStoredLibrarySeries(
         title = fetched.title.ifBlank { entry.title },
         cover = fetched.cover ?: entry.cover.ifBlank { null }
     )
-    val chapters = loadChaptersWithFallback(
+
+    return series to loadChaptersWithFallback(
         context,
         source,
         series
     )
-
-    return StoredSeriesLoad(
-        source = source,
-        cachedChapters = cached,
-        series = series,
-        chapters = chapters
-    )
 }
 
-internal suspend fun loadDownloadedSeries(
+internal suspend fun resolveDownloadedSeries(
     context: Context,
+    source: Source,
     entry: DownloadedSeries
-): DownloadedSeriesLoad {
-    val source = findInstalledSource(context, entry.sourceId)
-    val cached = ChapterCache.load(context, entry.seriesId)
-        .map { source.rehydrateChapter(it) }
-
+): Pair<Series, List<Chapter>>? {
     val fetched = runCatching {
         source.restoreSeries(entry.seriesId, entry.title)
-    }.getOrNull()
+    }.getOrNull() ?: return null
 
-    val resolved = if (fetched == null) {
-        null
-    } else {
-        val series = fetched.copy(
-            title = fetched.title.ifBlank { entry.title },
-            cover = fetched.cover ?: entry.cover.ifBlank { null }
-        )
-        series to loadChaptersWithFallback(
-            context,
-            source,
-            series
-        )
-    }
+    val series = fetched.copy(
+        title = fetched.title.ifBlank { entry.title },
+        cover = fetched.cover ?: entry.cover.ifBlank { null }
+    )
 
-    if (resolved == null && cached.isEmpty()) {
-        throw IllegalStateException(
-            "No chapter list cached for this series — open it once online"
-        )
-    }
-
-    return DownloadedSeriesLoad(
-        source = source,
-        cachedChapters = cached,
-        resolved = resolved
+    return series to loadChaptersWithFallback(
+        context,
+        source,
+        series
     )
 }
 
