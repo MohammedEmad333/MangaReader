@@ -249,13 +249,10 @@ fun YomuApp() {
 
     fun openSeries(series: Series) {
         val src = browseState.source ?: return
-        seriesState.origin = SeriesOrigin.BROWSE
+        seriesState.begin(series, SeriesOrigin.BROWSE)
         // Opening a result ends the detour: back from this series goes to the
         // listing behind it, not to whatever the tag search started from.
         seriesState.tagReturn = null
-        seriesState.active = series
-        seriesState.chapters = emptyList()
-        seriesState.fetched = false
         errorMessage = null
         enrichSeries(src, series)
         scope.launch {
@@ -486,14 +483,14 @@ fun YomuApp() {
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
     fun openFromLibrary(entry: LibraryEntry) {
         errorMessage = null
-        seriesState.origin = SeriesOrigin.LIBRARY
-        seriesState.active = Series(
-            id = entry.seriesId,
-            title = entry.title,
-            cover = entry.cover.ifBlank { null }
+        seriesState.begin(
+            Series(
+                id = entry.seriesId,
+                title = entry.title,
+                cover = entry.cover.ifBlank { null }
+            ),
+            SeriesOrigin.LIBRARY
         )
-        seriesState.chapters = emptyList()
-        seriesState.fetched = false
 
         scope.launch {
             isLoading = true
@@ -541,14 +538,14 @@ fun YomuApp() {
     /** Opens a downloaded series from cache first, then refreshes it when possible. */
     fun openFromDownloads(entry: DownloadedSeries) {
         errorMessage = null
-        seriesState.origin = SeriesOrigin.DOWNLOADS
-        seriesState.active = Series(
-            id = entry.seriesId,
-            title = entry.title,
-            cover = entry.cover.ifBlank { null }
+        seriesState.begin(
+            Series(
+                id = entry.seriesId,
+                title = entry.title,
+                cover = entry.cover.ifBlank { null }
+            ),
+            SeriesOrigin.DOWNLOADS
         )
-        seriesState.chapters = emptyList()
-        seriesState.fetched = false
 
         scope.launch {
             isLoading = true
@@ -756,8 +753,7 @@ fun YomuApp() {
             },
             onSolveChallenge = solveFromSeries,
             onBack = {
-                seriesState.active = null
-                seriesState.chapters = emptyList()
+                seriesState.clear()
                 errorMessage = null
                 if (seriesState.origin != SeriesOrigin.BROWSE) {
                     browseState.source = null
