@@ -168,6 +168,3 @@ private fun SettingsIndex(onOpen: (SettingsSection) -> Unit) {
     }
 }
 
-// ---------- appearance ----------
-
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
