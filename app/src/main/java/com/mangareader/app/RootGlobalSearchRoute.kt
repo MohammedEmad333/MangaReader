@@ -6,10 +6,7 @@ import androidx.compose.runtime.Composable
 internal fun RootGlobalSearchRoute(
     root: RootRouteContext
 ) {
-    val context = root.context
     val appState = root.app
-    val browseState = root.browse
-    val seriesState = root.series
     val globalSearch = root.search
     val migrationState = root.migration
     val actions = root.actions
@@ -22,45 +19,27 @@ internal fun RootGlobalSearchRoute(
         pinnedOnly = globalSearch.pinnedOnly,
         onTogglePinnedOnly = { actions.setGlobalPinnedOnly(it) },
         hasResultsOnly = globalSearch.hasResultsOnly,
-        onToggleHasResultsOnly = { globalSearch.hasResultsOnly = it },
+        onToggleHasResultsOnly = actions::setSearchHasResultsOnly,
         recents = globalSearch.recents,
-        onRemoveRecent = {
-            globalSearch.recents = SourcePrefs.removeRecentSearch(context, it)
-        },
-        onClearRecents = {
-            SourcePrefs.clearRecentSearches(context)
-            globalSearch.recents = emptyList()
-        },
+        onRemoveRecent = actions::removeRecentSearch,
+        onClearRecents = actions::clearRecentSearches,
         onSearch = { actions.runGlobalSearch(it) },
         onCancel = { actions.cancelGlobalSearch() },
         onOpenSource = { actions.openGlobalSource(it) },
         migrating = migrationState.from != null,
         onOpenSeries = { source, series ->
             if (migrationState.from != null) {
-                migrationState.target = source to series
+                actions.selectMigrationTarget(source, series)
             } else {
                 actions.openGlobalResult(source, series)
             }
         },
         libraryTick = appState.libraryTick,
-        onBack = {
-            actions.cancelGlobalSearch()
-            globalSearch.open = false
-            migrationState.from = null
-            browseState.series = null
+        onBack = actions::backFromGlobalSearch,
 
-            val cameFromTag = seriesState.tagReturn
-            if (cameFromTag != null) {
-                seriesState.tagReturn = null
-                seriesState.active = cameFromTag
-            } else {
-                browseState.source = null
-                browseState.sourceId = null
-            }
-        },
         migrateFrom = migrationState.from,
         migrateTarget = migrationState.target,
-        onDismissMigration = { migrationState.target = null },
+        onDismissMigration = actions::dismissMigrationTarget,
         onConfirmMigration = { from, targetSource, targetSeries ->
             actions.performMigration(from, targetSource, targetSeries)
         }
