@@ -91,7 +91,7 @@ fun YomuApp() {
     DownloadQueueIntentHandler(
         activity = activity,
         onOpenQueue = {
-            currentTab = 3
+            appState.currentTab = 3
             appState.downloadsOpen = true
         }
     )
@@ -105,23 +105,23 @@ fun YomuApp() {
         query: String = "",
         mode: BrowseMode = BrowseMode.POPULAR
     ) {
-        error = null
+        appState.error = null
         scope.launch {
-            loading = true
-            error = browseState.loadFirstPage(
+            appState.loading = true
+            appState.error = browseState.loadFirstPage(
                 context = context,
                 source = source,
                 query = query,
                 mode = mode
             )
-            loading = false
+            appState.loading = false
         }
     }
 
     fun loadMoreSeries() {
         scope.launch {
             browseState.loadNextPage()?.let {
-                error = it
+                appState.error = it
             }
         }
     }
@@ -153,7 +153,7 @@ fun YomuApp() {
     fun openSourceConfig(config: SourceConfig) {
         val source = resolveSourceConfig(context, config)
         if (source == null) {
-            error = "\"${config.label}\" isn't configured yet"
+            appState.error = "\"${config.label}\" isn't configured yet"
             return
         }
         openSource(source)
@@ -180,19 +180,19 @@ fun YomuApp() {
         // Opening a result ends the detour: back from this series goes to the
         // listing behind it, not to whatever the tag search started from.
         seriesState.tagReturn = null
-        error = null
+        appState.error = null
         enrichSeries(src, series)
         scope.launch {
-            loading = true
+            appState.loading = true
             try {
                 seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
                 seriesState.fetched = true
             } catch (e: Throwable) {
-                error = sourceFailureMessage(e, "Could not list chapters")
+                appState.error = sourceFailureMessage(e, "Could not list chapters")
             }
-            loading = false
+            appState.loading = false
         }
     }
 
@@ -235,7 +235,7 @@ fun YomuApp() {
     fun refreshChapters() {
         val src = browseState.source ?: return
         val series = seriesState.active ?: return
-        error = null
+        appState.error = null
         // A manual refresh is the user asserting "re-check this series", and that
         // includes its download state, not only its chapter list. The per-chapter
         // download ticks and the cover badge both answer from Downloads.isComplete,
@@ -247,16 +247,16 @@ fun YomuApp() {
         appState.downloadTick++
         enrichSeries(src, series)
         scope.launch {
-            loading = true
+            appState.loading = true
             try {
                 seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
                 seriesState.fetched = true
             } catch (e: Throwable) {
-                error = sourceFailureMessage(e, "Could not list chapters")
+                appState.error = sourceFailureMessage(e, "Could not list chapters")
             }
-            loading = false
+            appState.loading = false
         }
     }
 
@@ -386,7 +386,7 @@ fun YomuApp() {
                 seriesState.active = null
                 browseState.source = null
                 browseState.sourceId = null
-                currentTab = 0
+                appState.currentTab = 0
                 appState.libraryTick++
                 android.widget.Toast
                     .makeText(
@@ -396,7 +396,7 @@ fun YomuApp() {
                     )
                     .show()
             } else {
-                error = "Couldn't migrate this series"
+                appState.error = "Couldn't migrate this series"
             }
         }
     }
@@ -409,7 +409,7 @@ fun YomuApp() {
 
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
     fun openFromLibrary(entry: LibraryEntry) {
-        error = null
+        appState.error = null
         seriesState.begin(
             Series(
                 id = entry.seriesId,
@@ -420,7 +420,7 @@ fun YomuApp() {
         )
 
         scope.launch {
-            loading = true
+            appState.loading = true
             try {
                 val source = withContext(Dispatchers.IO) {
                     findInstalledSource(context, entry.sourceId)
@@ -453,18 +453,18 @@ fun YomuApp() {
                     enrichSeries(source, result.first)
                 }
             } catch (error: Throwable) {
-                error = sourceFailureMessage(
+                appState.error = sourceFailureMessage(
                     error,
                     "Could not open this series"
                 )
             }
-            loading = false
+            appState.loading = false
         }
     }
 
     /** Opens a downloaded series from cache first, then refreshes it when possible. */
     fun openFromDownloads(entry: DownloadedSeries) {
-        error = null
+        appState.error = null
         seriesState.begin(
             Series(
                 id = entry.seriesId,
@@ -475,7 +475,7 @@ fun YomuApp() {
         )
 
         scope.launch {
-            loading = true
+            appState.loading = true
             try {
                 val source = withContext(Dispatchers.IO) {
                     findInstalledSource(context, entry.sourceId)
@@ -515,20 +515,20 @@ fun YomuApp() {
                     enrichSeries(source, resolved.first)
                 }
             } catch (error: Throwable) {
-                error = sourceFailureMessage(
+                appState.error = sourceFailureMessage(
                     error,
                     "Could not open this series"
                 )
             }
-            loading = false
+            appState.loading = false
         }
     }
 
     fun openFromHistory(entry: HistoryEntry) {
-        error = null
+        appState.error = null
 
         scope.launch {
-            loading = true
+            appState.loading = true
             try {
                 val target = withContext(Dispatchers.IO) {
                     loadHistoryResumeTarget(context, entry)
@@ -541,12 +541,12 @@ fun YomuApp() {
                 enrichSeries(target.source, target.series)
                 openChapter(target.index)
             } catch (error: Throwable) {
-                error = sourceFailureMessage(
+                appState.error = sourceFailureMessage(
                     error,
                     "Could not resume"
                 )
             }
-            loading = false
+            appState.loading = false
         }
     }
 
@@ -617,7 +617,7 @@ fun YomuApp() {
             onOpenChapter = { openChapter(it) },
             onClose = {
                 readerSession.close()
-                history = History.forDisplay(context)
+                appState.history = History.forDisplay(context)
                 appState.readTick++
             }
         )
@@ -635,7 +635,7 @@ fun YomuApp() {
             sourceId = browseState.sourceId,
             loading = appState.loading,
             error = appState.error,
-            appState.readTick = appState.readTick,
+            readTick = appState.readTick,
             scroll = seriesScroll,
             localDownloadTick = appState.downloadTick,
             onFindVideos = { findVideos(it) },
@@ -651,7 +651,7 @@ fun YomuApp() {
                 browseState.source?.let { src ->
                     seriesState.tagReturn = seriesState.active
                     seriesState.active = null
-                    error = null
+                    appState.error = null
                     if (src.applyGenreFilter(tag)) {
                         openSource(src, "", BrowseMode.FILTER)
                     } else {
@@ -662,7 +662,7 @@ fun YomuApp() {
             onGlobalSearchTag = { tag ->
                 seriesState.tagReturn = seriesState.active
                 seriesState.active = null
-                error = null
+                appState.error = null
                 globalSearch.open = true
                 runGlobalSearch(tag)
             },
@@ -673,7 +673,7 @@ fun YomuApp() {
                     migrationState.from = MigrateFrom(s.id, sid, s.title)
                     seriesState.tagReturn = s
                     seriesState.active = null
-                    error = null
+                    appState.error = null
                     globalSearch.open = true
                     runGlobalSearch(s.title)
                 }
@@ -681,7 +681,7 @@ fun YomuApp() {
             onSolveChallenge = solveFromSeries,
             onBack = {
                 seriesState.clear()
-                error = null
+                appState.error = null
                 if (seriesState.origin != SeriesOrigin.BROWSE) {
                     browseState.source = null
                     browseState.sourceId = null
@@ -761,7 +761,7 @@ fun YomuApp() {
             onOpen = { openSeries(it) },
             onBack = {
                 browseState.series = null
-                error = null
+                appState.error = null
                 val cameFromTag = seriesState.tagReturn
                 if (cameFromTag != null) {
                     seriesState.tagReturn = null
@@ -791,9 +791,9 @@ fun YomuApp() {
         MainTabsRoute(
             currentTab = appState.currentTab,
             onSelectTab = { tab ->
-                currentTab = tab
+                appState.currentTab = tab
                 if (tab == 2) {
-                    history = History.forDisplay(context)
+                    appState.history = History.forDisplay(context)
                 }
             },
             libraryTick = appState.libraryTick,
@@ -829,22 +829,22 @@ fun YomuApp() {
                 }
             },
             onAddSource = {
-                editingConfig = SourceConfig(SourceManager.newId(), "local", "")
-                showSourceDialog = true
+                appState.editingConfig = SourceConfig(SourceManager.newId(), "local", "")
+                appState.showSourceDialog = true
             },
             onOpenConfig = { openSourceConfig(it) },
             onOpenExtension = { openSource(it) },
             onEditConfig = {
-                editingConfig = it
-                showSourceDialog = true
+                appState.editingConfig = it
+                appState.showSourceDialog = true
             },
             onDeleteConfig = {
                 SourceManager.remove(context, it.id)
-                configs = SourceManager.list(context)
+                appState.configs = SourceManager.list(context)
             },
             onExtensionsChanged = {
                 scope.launch {
-                    extensions = withContext(Dispatchers.IO) {
+                    appState.extensionSources = withContext(Dispatchers.IO) {
                         runCatching {
                             SourceManager.listAllSources(context)
                                 .filter { it.id.startsWith("tachi:") }
@@ -857,11 +857,11 @@ fun YomuApp() {
             onOpenHistory = { openFromHistory(it) },
             onDeleteHistory = {
                 History.remove(context, it.chapterKey)
-                history = History.forDisplay(context)
+                appState.history = History.forDisplay(context)
             },
             onClearHistory = {
                 History.list(context).forEach { History.remove(context, it.chapterKey) }
-                history = History.forDisplay(context)
+                appState.history = History.forDisplay(context)
             },
             onRefreshHistory = { appState.history = History.forDisplay(context) },
             downloadTick = appState.downloadTick + DownloadQueue.tick,
@@ -891,7 +891,7 @@ fun YomuApp() {
                 }
                 runCatching { context.startActivity(view) }
                     .onFailure {
-                        error = "No app on this device can play that link"
+                        appState.error = "No app on this device can play that link"
                     }
             }
         )
@@ -903,7 +903,7 @@ fun YomuApp() {
         onDismissProbe = { appState.probeOpen = false },
         filtersOpen = appState.filtersOpen,
         onApplyFilters = { source ->
-            filtersOpen = false
+            appState.filtersOpen = false
             openSource(source, "", BrowseMode.FILTER)
         },
         onDismissFilters = { appState.filtersOpen = false },
@@ -917,14 +917,14 @@ fun YomuApp() {
         editingConfig = appState.editingConfig,
         onEditingConfigChange = { appState.editingConfig = it },
         onDismissSourceDialog = {
-            showSourceDialog = false
-            editingConfig = null
+            appState.showSourceDialog = false
+            appState.editingConfig = null
         },
         onSaveSource = { saved ->
             SourceManager.upsert(context, saved)
-            configs = SourceManager.list(context)
-            showSourceDialog = false
-            editingConfig = null
+            appState.configs = SourceManager.list(context)
+            appState.showSourceDialog = false
+            appState.editingConfig = null
         }
     )
 
