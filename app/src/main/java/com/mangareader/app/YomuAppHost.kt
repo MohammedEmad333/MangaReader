@@ -18,7 +18,8 @@ internal fun YomuAppHost() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val appState = remember { AppUiState(context) }
+    val state = remember { YomuStateBundle(context) }
+    val appState = state.app
 
     // Which library category is showing. Hoisted out of LibraryTab because the
     // routing chain below replaces that whole branch when a series opens, which
@@ -68,18 +69,6 @@ internal fun YomuAppHost() {
         if (releaseNotes.isEmpty()) WhatsNew.markSeen(context)
     }
 
-    // navigation state
-    val browseState = remember { SourceBrowseState() }
-    val seriesState = remember { SeriesNavigationState() }
-    val readerSession = remember { ReaderSessionState() }
-
-    // Hoisted so results survive opening a series and navigating back.
-    val globalSearch = remember { GlobalSearchState(context) }
-
-    val migrationState = remember { MigrationNavigationState() }
-
-    val mediaState = remember { MediaNavigationState() }
-
     val activity = context as? ComponentActivity
     DoubleBackToExitHandler(activity)
 
@@ -95,38 +84,16 @@ internal fun YomuAppHost() {
         onSourcesChanged = { appState.extensionSources = it }
     )
 
-    val actions = remember(
-        context,
-        scope,
-        appState,
-        browseState,
-        seriesState,
-        readerSession,
-        globalSearch,
-        migrationState,
-        mediaState
-    ) {
+    val actions = remember(context, scope, state) {
         AppActionController(
             context = context,
             scope = scope,
-            appState = appState,
-            browseState = browseState,
-            seriesState = seriesState,
-            readerSession = readerSession,
-            globalSearch = globalSearch,
-            migrationState = migrationState,
-            mediaState = mediaState
+            state = state
         )
     }
 
     YomuRootRouter(
-        appState = appState,
-        browseState = browseState,
-        seriesState = seriesState,
-        readerSession = readerSession,
-        globalSearch = globalSearch,
-        migrationState = migrationState,
-        mediaState = mediaState,
+        state = state,
         actions = actions,
         libraryCategory = libraryCategory,
         onLibraryCategoryChange = { libraryCategory = it },
