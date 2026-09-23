@@ -14,8 +14,6 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -123,21 +121,8 @@ fun YomuApp() {
      */
     val pageLoadSeq = remember { intArrayOf(0) }
 
-    // global search state — hoisted here (not inside the screen) so results survive
-    // navigating into a series and coming back
-    var globalSearchOpen by remember { mutableStateOf(false) }
-    var globalQuery by remember { mutableStateOf("") }
-    var globalResults by remember { mutableStateOf<List<GlobalResult>>(emptyList()) }
-    var globalRunning by remember { mutableStateOf(false) }
-    var globalDone by remember { mutableIntStateOf(0) }
-    var globalTotal by remember { mutableIntStateOf(0) }
-    var globalPinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
-    // Display filter, not a scope: empty sources are kept in globalResults so
-    // this can show or hide them without re-running the search.
-    var globalHasResultsOnly by remember { mutableStateOf(true) }
-    // Past queries, newest first — hoisted so the empty-state chips update the
-    // instant a search runs, without the screen re-reading prefs.
-    var globalRecents by remember { mutableStateOf(SourcePrefs.recentSearches(context)) }
+    // Hoisted so results survive opening a series and navigating back.
+    val globalSearch = remember { GlobalSearchState(context) }
 
     // Source migration. When [migrateFrom] is set, the global-search screen is
     // the target picker for moving that library series to another source, and a
@@ -218,7 +203,6 @@ fun YomuApp() {
     // state inside SettingsScreen, so this routing chain gains one boolean rather
     // than one arm per settings page.
     var settingsOpen by remember { mutableStateOf(false) }
-    var globalJob by remember { mutableStateOf<Job?>(null) }
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -295,99 +279,37 @@ fun YomuApp() {
         }
     }
 
-    /**
-     * Queries searchable sources for [query], a batch of
-     * GLOBAL_SEARCH_CONCURRENCY at a time, publishing each batch as it lands so
-     * results appear progressively instead of after the slowest source.
-     *
-     * With [globalPinnedOnly] set, the fan-out is limited to pinned sources —
-     * the difference between querying 95 sites and querying the handful actually
-     * used. It falls back to everything when no pinned source can search, so the
-     * toggle can never produce a silently empty result.
-     */
     fun runGlobalSearch(query: String) {
-        globalJob?.cancel()
-        globalQuery = query
-        globalResults = emptyList()
-        globalDone = 0
-        globalTotal = 0
-        if (query.isBlank()) {
-            globalRunning = false
-            globalJob = null
-            return
-        }
-        globalRunning = true
-        globalRecents = SourcePrefs.addRecentSearch(context, query)
-        globalJob = scope.launch {
-            try {
-                val targets = withContext(Dispatchers.IO) {
-                    val locals = configs.mapNotNull {
-                        runCatching { SourceManager.build(context, it) }.getOrNull()
-                    }
-                    val hidden = SourcePrefs.hiddenSources(context)
-                    val langs = SourcePrefs.enabledLangs(context)
-                    val showNsfw = SourcePrefs.showNsfw(context)
-                    val searchable = (locals + extensionSources)
-                        .filter { it.supportsSearch }
-                        .filter {
-                            SourcePrefs.isVisible(
-                                it.id, it.lang.ifBlank { "Other" }, it.isNsfw,
-                                hidden, langs, showNsfw
-                            )
-                        }
-                    if (globalPinnedOnly) {
-                        val pinned = SourcePrefs.pinned(context)
-                        val subset = searchable.filter { it.id in pinned }
-                        if (subset.isNotEmpty()) subset else searchable
-                    } else {
-                        searchable
-                    }
-                }
-                globalTotal = targets.size
-                targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
-                    val batch = withContext(Dispatchers.IO) {
-                        chunk.map { src ->
-                            async {
-                                runCatching {
-                                    src.searchSeries(query, 1).series
-                                        .take(GLOBAL_SEARCH_PER_SOURCE)
-                                }.getOrDefault(emptyList())
-                            }
-                        }.awaitAll()
-                    }
-                    // Empty ones are kept, not dropped: the "Has results" chip is
-                    // what decides whether they're shown.
-                    globalResults = globalResults + chunk.mapIndexed { i, src ->
-                        GlobalResult(src, batch[i])
-                    }
-                    globalDone += chunk.size
-                }
-            } finally {
-                globalRunning = false
-            }
-        }
+        globalSearch.search(
+            context = context,
+            scope = scope,
+            configs = configs,
+            extensions = extensionSources,
+            newQuery = query
+        )
     }
 
     fun cancelGlobalSearch() {
-        globalJob?.cancel()
-        globalJob = null
-        globalRunning = false
+        globalSearch.cancel()
     }
 
-    /** Flips the pinned-only filter and re-runs the current query under it. */
     fun setGlobalPinnedOnly(value: Boolean) {
-        globalPinnedOnly = value
-        SourcePrefs.setPinnedOnlySearch(context, value)
-        if (globalQuery.isNotBlank()) runGlobalSearch(globalQuery)
+        globalSearch.setPinnedOnly(
+            context = context,
+            scope = scope,
+            configs = configs,
+            extensions = extensionSources,
+            value = value
+        )
     }
 
     fun openSourceConfig(config: SourceConfig) {
-        val built = SourceManager.build(context, config)
-        if (built == null) {
+        val source = resolveSourceConfig(context, config)
+        if (source == null) {
             errorMessage = "\"${config.label}\" isn't configured yet"
             return
         }
-        openSource(built)
+        openSource(source)
     }
 
     fun enrichSeries(source: Source, series: Series) {
@@ -455,14 +377,12 @@ fun YomuApp() {
      * exactly the failure this codebase keeps writing cards about.
      */
     fun findVideos(chapter: Chapter) {
-        val src = activeSource ?: return
+        val source = activeSource ?: return
         videoScan = null
         videoScanning = true
         scope.launch {
-            videoScan = try {
-                withContext(Dispatchers.IO) { src.scanVideos(chapter) }
-            } catch (e: Throwable) {
-                VideoScan(emptyList(), note = sourceFailureMessage(e, "The scan failed"))
+            videoScan = withContext(Dispatchers.IO) {
+                scanChapterVideos(source, chapter)
             }
             videoScanning = false
         }
@@ -503,7 +423,7 @@ fun YomuApp() {
         seriesList = null
         browsePage = 1
         browseHasNext = false
-        browseQuery = globalQuery
+        browseQuery = globalSearch.query
         openSeries(series)
         // After openSeries, which sets it to BROWSE unconditionally.
         seriesOrigin = SeriesOrigin.GLOBAL_SEARCH
@@ -512,8 +432,8 @@ fun YomuApp() {
     /** "See all" on a global search row: leave the results and browse that source. */
     fun openGlobalSource(source: Source) {
         cancelGlobalSearch()
-        globalSearchOpen = false
-        openSource(source, globalQuery)
+        globalSearch.open = false
+        openSource(source, globalSearch.query)
     }
 
     /**
@@ -557,16 +477,13 @@ fun YomuApp() {
             pagesLoading = true
             isLoading = true
             try {
-                src.loadPagesProgressively(chapter, persist = false, startAt = resumeAt) { partial ->
-                    // Hop to main: the adapter publishes from its IO context.
+                streamChapterPages(
+                    source = src,
+                    chapter = chapter,
+                    resumeAt = resumeAt
+                ) { partial ->
                     withContext(Dispatchers.Main) {
                         pages = partial
-                        // Only the *first* publish opens the reader. This used to
-                        // re-assert activeChapterIdx whenever it didn't match,
-                        // which reads as "make sure the reader is showing" and
-                        // behaves as "put it back if the user closed it" — so
-                        // backing out of a chapter mid-download reopened it, over
-                        // and over, and only felt fixed once loading had finished.
                         if (!opened && partial.isNotEmpty()) {
                             opened = true
                             activeChapterIdx = index
@@ -687,7 +604,7 @@ fun YomuApp() {
 
             if (migrated) {
                 cancelGlobalSearch()
-                globalSearchOpen = false
+                globalSearch.open = false
                 seriesList = null
                 tagSearchReturn = null
                 activeSeries = null
@@ -979,7 +896,7 @@ fun YomuApp() {
                 tagSearchReturn = activeSeries
                 activeSeries = null
                 errorMessage = null
-                globalSearchOpen = true
+                globalSearch.open = true
                 runGlobalSearch(tag)
             },
             onMigrate = {
@@ -990,7 +907,7 @@ fun YomuApp() {
                     tagSearchReturn = s
                     activeSeries = null
                     errorMessage = null
-                    globalSearchOpen = true
+                    globalSearch.open = true
                     runGlobalSearch(s.title)
                 }
             },
@@ -1006,22 +923,22 @@ fun YomuApp() {
                 }
             }
         )
-    } else if (globalSearchOpen) {
+    } else if (globalSearch.open) {
         GlobalSearchRoute(
-            query = globalQuery,
-            results = globalResults,
-            running = globalRunning,
-            done = globalDone,
-            total = globalTotal,
-            pinnedOnly = globalPinnedOnly,
+            query = globalSearch.query,
+            results = globalSearch.results,
+            running = globalSearch.running,
+            done = globalSearch.done,
+            total = globalSearch.total,
+            pinnedOnly = globalSearch.pinnedOnly,
             onTogglePinnedOnly = { setGlobalPinnedOnly(it) },
-            hasResultsOnly = globalHasResultsOnly,
-            onToggleHasResultsOnly = { globalHasResultsOnly = it },
-            recents = globalRecents,
-            onRemoveRecent = { globalRecents = SourcePrefs.removeRecentSearch(context, it) },
+            hasResultsOnly = globalSearch.hasResultsOnly,
+            onToggleHasResultsOnly = { globalSearch.hasResultsOnly = it },
+            recents = globalSearch.recents,
+            onRemoveRecent = { globalSearch.recents = SourcePrefs.removeRecentSearch(context, it) },
             onClearRecents = {
                 SourcePrefs.clearRecentSearches(context)
-                globalRecents = emptyList()
+                globalSearch.recents = emptyList()
             },
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
@@ -1034,7 +951,7 @@ fun YomuApp() {
             libraryTick = libraryTick,
             onBack = {
                 cancelGlobalSearch()
-                globalSearchOpen = false
+                globalSearch.open = false
                 migrateFrom = null
                 seriesList = null
                 val cameFromTag = tagSearchReturn
@@ -1137,12 +1054,12 @@ fun YomuApp() {
             extensions = extensionSources,
             sourcesScroll = sourcesScroll,
             onGlobalSearch = {
-                globalSearchOpen = true
-                if (globalQuery.isNotBlank() &&
-                    globalResults.isEmpty() &&
-                    !globalRunning
+                globalSearch.open = true
+                if (globalSearch.query.isNotBlank() &&
+                    globalSearch.results.isEmpty() &&
+                    !globalSearch.running
                 ) {
-                    runGlobalSearch(globalQuery)
+                    runGlobalSearch(globalSearch.query)
                 }
             },
             onAddSource = {
