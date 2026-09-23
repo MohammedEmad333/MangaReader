@@ -35,3 +35,50 @@ internal class SourceBrowseState {
         series = null
     }
 }
+
+
+internal suspend fun SourceBrowseState.loadFirstPage(
+    context: android.content.Context,
+    source: Source,
+    query: String,
+    mode: BrowseMode
+): String? {
+    resetListing(source, query, mode)
+    SourcePrefs.setLastUsed(context, source.id)
+
+    return try {
+        val result = loadSourcePage(source, query, mode, 1)
+        series = result.series
+        hasNext = result.hasNext
+        null
+    } catch (error: Throwable) {
+        series = emptyList()
+        sourceFailureMessage(error, "Could not scan this source")
+    }
+}
+
+internal suspend fun SourceBrowseState.loadNextPage(): String? {
+    val activeSource = source ?: return null
+    if (loadingMore || !hasNext) return null
+
+    loadingMore = true
+    val next = page + 1
+
+    return try {
+        val result = loadSourcePage(
+            activeSource,
+            query,
+            mode,
+            next
+        )
+        series = (series ?: emptyList()) + result.series
+        page = next
+        hasNext = result.hasNext
+        null
+    } catch (error: Throwable) {
+        hasNext = false
+        sourceFailureMessage(error, "Could not load more")
+    } finally {
+        loadingMore = false
+    }
+}

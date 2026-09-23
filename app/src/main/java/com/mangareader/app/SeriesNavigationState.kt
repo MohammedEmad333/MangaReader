@@ -26,3 +26,20 @@ internal class SeriesNavigationState {
         chapters = emptyList()
     }
 }
+
+
+internal suspend fun SeriesNavigationState.reloadChapters(
+    context: android.content.Context,
+    source: Source,
+    series: Series
+): String? {
+    return try {
+        chapters = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            loadSeriesChapters(context, source, series)
+        }
+        fetched = true
+        null
+    } catch (error: Throwable) {
+        sourceFailureMessage(error, "Could not list chapters")
+    }
+}
