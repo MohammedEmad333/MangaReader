@@ -189,7 +189,7 @@ dependencies {
     // any of the network code against the 4.x docs.
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     // Automatic backups. Self-initialises through androidx.startup, so there is
     // no Configuration.Provider or manifest entry to add - the only reason it's
     // here rather than a check on app start is that a schedule which only fires
