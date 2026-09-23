@@ -3,17 +3,13 @@ package com.mangareader.app
 import android.content.Context
 import android.util.Log
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
-import eu.kanade.tachiyomi.source.model.SChapterImpl
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.model.SMangaImpl
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 import java.io.IOException
 
@@ -53,6 +49,7 @@ class TachiyomiSourceAdapter(
     private val videoScanner by lazy { TachiyomiVideoScanner(delegate) }
     private val pageLoader by lazy { TachiyomiPageLoader(delegate, context) }
     private val filterController by lazy { TachiyomiFilterController(delegate) }
+    private val modelMapper by lazy { TachiyomiModelMapper(delegate) }
 
     // Read once at construction. It's a property on extension code, and this
     // file assumes nothing about what extension code does — see the safe*()
@@ -124,11 +121,11 @@ class TachiyomiSourceAdapter(
     override suspend fun listSeries(): List<Series> = browseSeries(1).series
 
     override suspend fun browseSeries(page: Int): SeriesPage = onSourceThread {
-        delegate.getPopularManga(page).toSeriesPage()
+        delegate.getPopularManga(page).let(modelMapper::toSeriesPage)
     }
 
     override suspend fun latestSeries(page: Int): SeriesPage = onSourceThread {
-        delegate.getLatestUpdates(page).toSeriesPage()
+        delegate.getLatestUpdates(page).let(modelMapper::toSeriesPage)
     }
 
     override suspend fun searchSeries(query: String, page: Int): SeriesPage =
@@ -136,19 +133,12 @@ class TachiyomiSourceAdapter(
             // The live list, not a fresh FilterList(): a typed query and the
             // filter sheet compose rather than replace each other, which is what
             // Tachiyomi's own UI does.
-            delegate.getSearchManga(page, query, filterList).toSeriesPage()
+            delegate.getSearchManga(page, query, filterList).let(modelMapper::toSeriesPage)
         }
 
 
     override suspend fun scanVideos(chapter: Chapter): VideoScan = onSourceThread {
         videoScanner.scan(chapter)
-    }
-
-    /** Pulls the source-relative url back out of an id built by [toSeries]. */
-    private fun urlFromId(id: String): String? {
-        val prefix = "${delegate.id}:"
-        if (!id.startsWith(prefix)) return null
-        return id.removePrefix(prefix).takeIf { it.isNotBlank() }
     }
 
     /**
@@ -165,14 +155,8 @@ class TachiyomiSourceAdapter(
      */
     override suspend fun restoreSeries(id: String, title: String): Series? =
         onSourceThread {
-            val url = urlFromId(id) ?: return@onSourceThread null
-            SMangaImpl().apply {
-                this.url = url
-                this.title = title
-                // Tells any extension that checks it that details are already in
-                // hand and it needn't fetch them.
-                this.initialized = true
-            }.toSeries()
+            val url = modelMapper.urlFromId(id) ?: return@onSourceThread null
+            modelMapper.restoredSeries(url, title)
         }
 
     /**
@@ -181,21 +165,18 @@ class TachiyomiSourceAdapter(
      * The id format is "<sourceId>:<url>", and url is all HttpSource needs.
      */
     override suspend fun getSeries(id: String): Series? = onSourceThread {
-        val url = urlFromId(id) ?: return@onSourceThread null
+        val url = modelMapper.urlFromId(id) ?: return@onSourceThread null
 
         // Both fields are lateinit on SMangaImpl, so the stub has to initialise
         // them up front: if getMangaDetails below fails, this object is what gets
         // returned, and reading an unset lateinit throws rather than yielding null.
-        val stub: SManga = SMangaImpl().apply {
-            this.url = url
-            this.title = ""
-        }
+        val stub: SManga = modelMapper.stubManga(url)
         val full = runCatching { delegate.getMangaDetails(stub) }
             .onFailure { Log.w(TAG, "getMangaDetails failed for $url", it) }
             .getOrDefault(stub)
         // getMangaDetails often leaves url blank on the returned copy.
-        if (full.safeUrl().isBlank()) full.url = url
-        full.toSeries()
+        modelMapper.ensureUrl(full, url)
+        modelMapper.toSeries(full)
     }
 
     /**
@@ -208,8 +189,8 @@ class TachiyomiSourceAdapter(
         val full = runCatching { delegate.getMangaDetails(manga) }
             .onFailure { Log.w(TAG, "getMangaDetails failed for ${series.id}", it) }
             .getOrNull() ?: return@onSourceThread series
-        if (full.safeUrl().isBlank()) full.url = manga.safeUrl()
-        val enriched = full.toSeries()
+        modelMapper.ensureUrl(full, modelMapper.safeUrl(manga))
+        val enriched = modelMapper.toSeries(full)
         // Keep whatever we already had if the details response omits it.
         series.copy(
             title = enriched.title.ifBlank { series.title },
@@ -241,21 +222,14 @@ class TachiyomiSourceAdapter(
             ?.takeIf { it.isNotBlank() }
     }
 
-    override fun rehydrateChapter(chapter: Chapter): Chapter {
-        if (chapter.handle is SChapter) return chapter
-        val url = urlFromId(chapter.id) ?: return chapter
-        return chapter.copy(
-            handle = SChapterImpl().apply {
-                this.url = url
-                this.name = chapter.name
-            }
-        )
-    }
+    override fun rehydrateChapter(chapter: Chapter): Chapter =
+        modelMapper.rehydrateChapter(chapter)
 
     override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
         val manga = series.handle as? SManga ?: return@onSourceThread emptyList()
         // Extensions return newest-first; this interface wants reading order.
-        delegate.getChapterList(manga).asReversed().map { it.toChapter(safeTitleOf(manga)) }
+        delegate.getChapterList(manga).asReversed()
+            .map { modelMapper.toChapter(it, modelMapper.safeTitle(manga)) }
     }
 
     override suspend fun loadPagesProgressively(
@@ -269,75 +243,6 @@ class TachiyomiSourceAdapter(
 
     override suspend fun loadPages(chapter: Chapter): List<File> = onSourceThread {
         pageLoader.loadPages(chapter)
-    }
-
-    private fun MangasPage.toSeriesPage() =
-        SeriesPage(series = mangas.map { it.toSeries() }, hasNext = hasNextPage)
-
-    /**
-     * `url`, `title`, and SChapter's `name` are all lateinit. An extension that
-     * doesn't set one — or a details fetch that failed — makes reading it throw
-     * UninitializedPropertyAccessException, which surfaced as
-     * "lateinit property title has not been initialized" on opening a library
-     * entry. Every read of those three goes through these.
-     */
-    private fun SManga.safeUrl(): String = runCatching { url }.getOrDefault("")
-
-    private fun SManga.safeTitle(): String = runCatching { title }.getOrDefault("")
-
-    private fun String.repointFromLoopback(): String {
-        val url = toHttpUrlOrNull() ?: return this
-        if (!url.host.isLoopback()) return this
-        val base = (delegate as? HttpSource)?.baseUrl?.toHttpUrlOrNull() ?: return this
-        if (base.host.isLoopback()) return this
-        return url.newBuilder()
-            .scheme(base.scheme)
-            .host(base.host)
-            .port(base.port)
-            .build()
-            .toString()
-    }
-
-    private fun String.isLoopback(): Boolean =
-        this == "localhost" || this == "::1" || this == "0.0.0.0" || startsWith("127.")
-
-    private fun SChapter.safeUrl(): String = runCatching { url }.getOrDefault("")
-
-    private fun SChapter.safeName(): String = runCatching { name }.getOrDefault("")
-
-    private fun SManga.toSeries() = Series(
-        id = "${delegate.id}:${safeUrl()}",
-        title = safeTitle(),
-        cover = thumbnail_url?.repointFromLoopback(),
-        handle = this,
-        // Kept apart. Joining them with ", " lost which was which, and the
-        // series screen then had to guess at a split to search for one of them.
-        author = author?.takeIf { it.isNotBlank() },
-        artist = artist?.takeIf { it.isNotBlank() },
-        description = description?.takeIf { it.isNotBlank() },
-        genres = getGenres().orEmpty(),
-        status = statusLabel(status),
-    )
-
-    /** The manga's title if it has one — these are `lateinit` (§5). */
-    private fun safeTitleOf(manga: SManga): String = runCatching { manga.title }.getOrDefault("")
-
-    private fun SChapter.toChapter(seriesTitle: String = ""): Chapter {
-        val chapterUrl = safeUrl()
-        return Chapter(
-            id = "${delegate.id}:$chapterUrl",
-            name = safeName().ifBlank { chapterUrl.trimEnd('/').substringAfterLast('/') },
-            handle = this,
-            dateUploaded = date_upload,
-            scanlator = scanlator?.takeIf { it.isNotBlank() },
-            // Nearly every extension leaves `chapter_number` at the API's
-            // default of -1f, because upstream Tachiyomi parses the number out
-            // of the name app-side and extensions were written against that.
-            // 0.107 took the field at face value and shipped a sort with
-            // nothing to sort on. `parse` honours a real value when there is
-            // one and falls back to the name when there isn't.
-            number = ChapterRecognition.parse(seriesTitle, safeName(), chapter_number),
-        )
     }
 
     private companion object {
