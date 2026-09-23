@@ -262,12 +262,7 @@ fun YomuApp() {
             isLoading = true
             try {
                 val page = withContext(Dispatchers.IO) {
-                    when {
-                        query.isNotBlank() -> source.searchSeries(query, 1)
-                        mode == BrowseMode.LATEST -> source.latestSeries(1)
-                        mode == BrowseMode.FILTER -> source.filteredSeries(1)
-                        else -> source.browseSeries(1)
-                    }
+                    loadSourcePage(source, query, mode, 1)
                 }
                 seriesList = page.series
                 browseHasNext = page.hasNext
@@ -288,12 +283,7 @@ fun YomuApp() {
             val next = browsePage + 1
             try {
                 val page = withContext(Dispatchers.IO) {
-                    when {
-                        browseQuery.isNotBlank() -> source.searchSeries(browseQuery, next)
-                        browseMode == BrowseMode.LATEST -> source.latestSeries(next)
-                        browseMode == BrowseMode.FILTER -> source.filteredSeries(next)
-                        else -> source.browseSeries(next)
-                    }
+                    loadSourcePage(source, browseQuery, browseMode, next)
                 }
                 seriesList = (seriesList ?: emptyList()) + page.series
                 browsePage = next
@@ -401,27 +391,17 @@ fun YomuApp() {
         openSource(built)
     }
 
-    /**
-     * Fills in author/description/genres/status in the background.
-     *
-     * Deliberately fire-and-forget: on most sources this is a second network
-     * request, and it must never delay or block the chapter list. A failure just
-     * means the series screen shows less. The id check stops a slow response
-     * overwriting a series the user has since navigated away from.
-     */
-    fun enrichSeries(src: Source, series: Series) {
+    fun enrichSeries(source: Source, series: Series) {
         scope.launch {
-            val enriched = runCatching {
-                withContext(Dispatchers.IO) { src.loadDetails(series) }
-            }.getOrNull()
+            val enriched = withContext(Dispatchers.IO) {
+                loadAndHealSeriesDetails(
+                    context,
+                    source,
+                    series
+                )
+            }
             if (enriched != null && activeSeries?.id == series.id) {
                 activeSeries = enriched
-                // An imported entry can arrive without a cover, because the
-                // backup's was unusable here. This is the first moment the real
-                // one is known. No-op once a cover is stored.
-                withContext(Dispatchers.IO) {
-                    Library.healCover(context, series.id, enriched.cover)
-                }
             }
         }
     }
@@ -441,7 +421,7 @@ fun YomuApp() {
             isLoading = true
             try {
                 chapterList = withContext(Dispatchers.IO) {
-                    src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
+                    loadSeriesChapters(context, src, series)
                 }
                 chaptersFetched = true
             } catch (e: Throwable) {
@@ -507,7 +487,7 @@ fun YomuApp() {
             isLoading = true
             try {
                 chapterList = withContext(Dispatchers.IO) {
-                    src.listChapters(series).also { ChapterCache.save(context, series.id, it) }
+                    loadSeriesChapters(context, src, series)
                 }
                 chaptersFetched = true
             } catch (e: Throwable) {
