@@ -295,71 +295,34 @@ fun YomuApp() {
         }
     }
 
-    /**
-     * Queries searchable sources for [query], a batch of
-     * GLOBAL_SEARCH_CONCURRENCY at a time, publishing each batch as it lands so
-     * results appear progressively instead of after the slowest source.
-     *
-     * With [globalPinnedOnly] set, the fan-out is limited to pinned sources —
-     * the difference between querying 95 sites and querying the handful actually
-     * used. It falls back to everything when no pinned source can search, so the
-     * toggle can never produce a silently empty result.
-     */
     fun runGlobalSearch(query: String) {
         globalJob?.cancel()
         globalQuery = query
         globalResults = emptyList()
         globalDone = 0
         globalTotal = 0
+
         if (query.isBlank()) {
             globalRunning = false
             globalJob = null
             return
         }
+
         globalRunning = true
         globalRecents = SourcePrefs.addRecentSearch(context, query)
         globalJob = scope.launch {
             try {
-                val targets = withContext(Dispatchers.IO) {
-                    val locals = configs.mapNotNull {
-                        runCatching { SourceManager.build(context, it) }.getOrNull()
-                    }
-                    val hidden = SourcePrefs.hiddenSources(context)
-                    val langs = SourcePrefs.enabledLangs(context)
-                    val showNsfw = SourcePrefs.showNsfw(context)
-                    val searchable = (locals + extensionSources)
-                        .filter { it.supportsSearch }
-                        .filter {
-                            SourcePrefs.isVisible(
-                                it.id, it.lang.ifBlank { "Other" }, it.isNsfw,
-                                hidden, langs, showNsfw
-                            )
-                        }
-                    if (globalPinnedOnly) {
-                        val pinned = SourcePrefs.pinned(context)
-                        val subset = searchable.filter { it.id in pinned }
-                        if (subset.isNotEmpty()) subset else searchable
-                    } else {
-                        searchable
-                    }
-                }
+                val targets = globalSearchTargets(
+                    context = context,
+                    configs = configs,
+                    extensions = extensionSources,
+                    pinnedOnly = globalPinnedOnly
+                )
                 globalTotal = targets.size
+
                 targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
-                    val batch = withContext(Dispatchers.IO) {
-                        chunk.map { src ->
-                            async {
-                                runCatching {
-                                    src.searchSeries(query, 1).series
-                                        .take(GLOBAL_SEARCH_PER_SOURCE)
-                                }.getOrDefault(emptyList())
-                            }
-                        }.awaitAll()
-                    }
-                    // Empty ones are kept, not dropped: the "Has results" chip is
-                    // what decides whether they're shown.
-                    globalResults = globalResults + chunk.mapIndexed { i, src ->
-                        GlobalResult(src, batch[i])
-                    }
+                    val batch = searchGlobalBatch(query, chunk)
+                    globalResults = globalResults + batch
                     globalDone += chunk.size
                 }
             } finally {
@@ -557,16 +520,13 @@ fun YomuApp() {
             pagesLoading = true
             isLoading = true
             try {
-                src.loadPagesProgressively(chapter, persist = false, startAt = resumeAt) { partial ->
-                    // Hop to main: the adapter publishes from its IO context.
+                streamChapterPages(
+                    source = src,
+                    chapter = chapter,
+                    resumeAt = resumeAt
+                ) { partial ->
                     withContext(Dispatchers.Main) {
                         pages = partial
-                        // Only the *first* publish opens the reader. This used to
-                        // re-assert activeChapterIdx whenever it didn't match,
-                        // which reads as "make sure the reader is showing" and
-                        // behaves as "put it back if the user closed it" — so
-                        // backing out of a chapter mid-download reopened it, over
-                        // and over, and only felt fixed once loading had finished.
                         if (!opened && partial.isNotEmpty()) {
                             opened = true
                             activeChapterIdx = index
