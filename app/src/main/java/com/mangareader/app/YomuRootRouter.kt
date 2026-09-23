@@ -3,9 +3,6 @@ package com.mangareader.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 internal fun YomuRootRouter(
@@ -49,7 +46,7 @@ internal fun YomuRootRouter(
         TransientRouteResult.EMBED -> return
         TransientRouteResult.CONTENT -> Unit
         TransientRouteResult.NONE -> {
-if (seriesState.active != null) {
+            if (seriesState.active != null) {
         RootSeriesRoute(
             appState = appState,
             browseState = browseState,
@@ -77,20 +74,8 @@ if (seriesState.active != null) {
             actions = actions,
             scroll = browseScroll
         )
-    } else if (appState.downloadsOpen) {
-        // Above settings on purpose, and it's the ordering that does the work.
-        // The queue is reachable from More *and* from Settings > Downloads, and
-        // leaving `appState.settingsOpen` set while this renders means backing out of the
-        // queue falls through to whichever of the two it was opened from — no
-        // "where did I come from" flag, just two booleans read in order.
-        DownloadQueueScreen(onBack = { appState.downloadsOpen = false })
-    } else if (appState.settingsOpen) {
-        SettingsScreen(
-            onBack = { appState.settingsOpen = false },
-            onOpenDownloadQueue = { appState.downloadsOpen = true }
-        )
     } else {
-        RootMainTabsRoute(
+        RootFallbackRoute(
             context = context,
             scope = scope,
             appState = appState,
@@ -105,6 +90,7 @@ if (seriesState.active != null) {
             libraryScroll = libraryScroll,
             sourcesScroll = sourcesScroll
         )
+
     }
         }
 
