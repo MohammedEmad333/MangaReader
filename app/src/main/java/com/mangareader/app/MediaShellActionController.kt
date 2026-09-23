@@ -21,12 +21,13 @@ internal class MediaShellActionController(
         mediaState.embed = url to page.orEmpty()
     }
 
-    fun openExternalVideo(url: String) {
+    fun openExternalVideo(video: PlayableVideo) {
         runCatching {
             context.startActivity(
                 VideoPlayerActivity.intent(
                     context = context,
-                    url = url,
+                    url = video.url,
+                    headers = video.headers,
                 ),
             )
         }.onFailure {

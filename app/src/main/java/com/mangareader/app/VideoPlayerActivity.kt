@@ -44,6 +44,12 @@ class VideoPlayerActivity : ComponentActivity() {
 
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
+        val headers = intent.getStringArrayExtra(EXTRA_HEADERS)
+            ?.toList()
+            ?.chunked(2)
+            ?.mapNotNull { pair -> pair.takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+            ?.toMap()
+            .orEmpty()
 
         if (url.isBlank()) {
             finish()
@@ -55,6 +61,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 VideoPlayerScreen(
                     url = url,
                     referer = referer,
+                    headers = headers,
                 )
             }
         }
@@ -63,11 +70,18 @@ class VideoPlayerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_URL = "video_url"
         private const val EXTRA_REFERER = "video_referer"
+        private const val EXTRA_HEADERS = "video_headers"
 
-        fun intent(context: Context, url: String, referer: String = ""): Intent =
+        fun intent(
+            context: Context,
+            url: String,
+            referer: String = "",
+            headers: Map<String, String> = emptyMap(),
+        ): Intent =
             Intent(context, VideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_REFERER, referer)
+                putExtra(EXTRA_HEADERS, headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
             }
     }
 }
@@ -76,18 +90,19 @@ class VideoPlayerActivity : ComponentActivity() {
 private fun VideoPlayerScreen(
     url: String,
     referer: String,
+    headers: Map<String, String>,
 ) {
     var buffering by remember { mutableStateOf(true) }
     val context = LocalContext.current
 
-    val player = remember(url, referer, context) {
-        val headers = buildMap {
-            if (referer.isNotBlank()) put("Referer", referer)
+    val player = remember(url, referer, headers, context) {
+        val requestHeaders = headers.toMutableMap().apply {
+            if (referer.isNotBlank() && "Referer" !in this) put("Referer", referer)
         }
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(headers)
+            .setDefaultRequestProperties(requestHeaders)
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))

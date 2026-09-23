@@ -146,6 +146,13 @@ class AniyomiSourceAdapter(
             } else {
                 "Found ${videos.size} stream${if (videos.size == 1) "" else "s"} from the anime extension."
             },
+            videos = videos.map { video ->
+                PlayableVideo(
+                    url = video.videoUrl,
+                    title = video.videoTitle,
+                    headers = video.headers?.toMap().orEmpty(),
+                )
+            },
         )
     }
 

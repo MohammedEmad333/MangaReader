@@ -20,7 +20,7 @@ internal fun ChapterVideoDialog(
     scan: VideoScan?,
     onDismiss: () -> Unit,
     onOpenEmbed: (String) -> Unit,
-    onOpenVideo: (String) -> Unit
+    onOpenVideo: (PlayableVideo) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { if (!scanning) onDismiss() },
@@ -28,7 +28,7 @@ internal fun ChapterVideoDialog(
         text = {
             when {
                 scanning -> Text("Scanning the chapter's page…")
-                scan == null || (scan.links.isEmpty() && scan.embeds.isEmpty()) -> Column {
+                scan == null || (scan.videos.isEmpty() && scan.embeds.isEmpty()) -> Column {
                     Text("No playable video found on this chapter's page.")
                     Spacer(Modifier.height(12.dp))
                     Text(
@@ -37,7 +37,7 @@ internal fun ChapterVideoDialog(
                         fontFamily = FontFamily.Monospace
                     )
                 }
-                scan.links.isEmpty() -> Column {
+                scan.videos.isEmpty() -> Column {
                     val plural = if (scan.embeds.size == 1) "player" else "players"
                     Text("No direct video file, but this page embeds ${scan.embeds.size} $plural.")
                     Spacer(Modifier.height(12.dp))
@@ -63,12 +63,16 @@ internal fun ChapterVideoDialog(
                 else -> Column {
                     Text("Tap one to open it in a video player.")
                     Spacer(Modifier.height(12.dp))
-                    scan.links.forEachIndexed { index, url ->
+                    scan.videos.forEachIndexed { index, video ->
                         TextButton(
-                            onClick = { onOpenVideo(url) },
+                            onClick = { onOpenVideo(video) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Video ${index + 1}", maxLines = 1)
+                            Text(
+                                video.title.ifBlank { "Video ${index + 1}" },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }
