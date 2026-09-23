@@ -489,7 +489,7 @@ internal fun PrefSwitchRow(
 }
 
 @Composable
-private fun PrefSliderRow(
+internal fun PrefSliderRow(
     label: String,
     value: Float,
     valueLabel: String,
