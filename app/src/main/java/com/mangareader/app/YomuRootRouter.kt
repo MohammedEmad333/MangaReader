@@ -27,60 +27,35 @@ internal fun YomuRootRouter(
     val appState = state.app
     val browseState = state.browse
     val seriesState = state.series
-    val readerSession = state.reader
     val globalSearch = state.search
-    val migrationState = state.migration
-    val mediaState = state.media
+    val root = RootRouteContext(
+        context = context,
+        scope = scope,
+        state = state,
+        actions = actions
+    )
 
     when (
-        RootTransientRoute(
-            context = context,
-            appState = appState,
-            browseState = browseState,
-            seriesState = seriesState,
-            readerSession = readerSession,
-            mediaState = mediaState,
-            actions = actions
-        )
+        RootTransientRoute(root)
     ) {
         TransientRouteResult.EMBED -> return
         TransientRouteResult.CONTENT -> Unit
         TransientRouteResult.NONE -> {
             if (seriesState.active != null) {
                 RootSeriesRoute(
-                    appState = appState,
-                    browseState = browseState,
-                    seriesState = seriesState,
-                    globalSearch = globalSearch,
-                    migrationState = migrationState,
-                    actions = actions,
+                    root = root,
                     scroll = seriesScroll
                 )
             } else if (globalSearch.open) {
-                RootGlobalSearchRoute(
-                    context = context,
-                    appState = appState,
-                    browseState = browseState,
-                    seriesState = seriesState,
-                    globalSearch = globalSearch,
-                    migrationState = migrationState,
-                    actions = actions
-                )
+                RootGlobalSearchRoute(root)
             } else if (browseState.source != null) {
                 RootSourceBrowseRoute(
-                    appState = appState,
-                    browseState = browseState,
-                    seriesState = seriesState,
-                    actions = actions,
+                    root = root,
                     scroll = browseScroll
                 )
             } else {
                 RootFallbackRoute(
-                    context = context,
-                    scope = scope,
-                    appState = appState,
-                    globalSearch = globalSearch,
-                    actions = actions,
+                    root = root,
                     libraryCategory = libraryCategory,
                     onLibraryCategoryChange = onLibraryCategoryChange,
                     librarySearch = librarySearch,
@@ -95,12 +70,7 @@ internal fun YomuRootRouter(
     }
 
     RootOverlays(
-        context = context,
-        appState = appState,
-        browseState = browseState,
-        seriesState = seriesState,
-        mediaState = mediaState,
-        actions = actions,
+        root = root,
         releaseNotes = releaseNotes,
         whatsNewOpen = whatsNewOpen,
         onDismissWhatsNew = onDismissWhatsNew
