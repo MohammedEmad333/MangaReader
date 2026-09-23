@@ -214,6 +214,9 @@ internal class AppActionController(
     fun openEmbed(url: String) =
         shellActions.openEmbed(url)
 
+    fun openExternalVideo(video: PlayableVideo) =
+        shellActions.openExternalVideo(video)
+
     fun openExternalVideo(url: String) =
         shellActions.openExternalVideo(url)
 
