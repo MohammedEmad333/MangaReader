@@ -23,8 +23,7 @@ fun YomuApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var currentTab by remember { mutableIntStateOf(0) }
-
+    val appState = remember { AppUiState(context) }
 
     // Which library category is showing. Hoisted out of LibraryTab because the
     // routing chain below replaces that whole branch when a series opens, which
@@ -74,17 +73,8 @@ fun YomuApp() {
         if (releaseNotes.isEmpty()) WhatsNew.markSeen(context)
     }
 
-    var configs by remember { mutableStateOf(SourceManager.list(context)) }
-    var extensionSources by remember { mutableStateOf<List<Source>>(emptyList()) }
-    var history by remember { mutableStateOf(History.forDisplay(context)) }
-
-    var showSourceDialog by remember { mutableStateOf(false) }
-    var editingConfig by remember { mutableStateOf<SourceConfig?>(null) }
-
     // navigation state
     val browseState = remember { SourceBrowseState() }
-    var filtersOpen by remember { mutableStateOf(false) }
-    var probeOpen by remember { mutableStateOf(false) }
     val seriesState = remember { SeriesNavigationState() }
     val readerSession = remember { ReaderSessionState() }
 
@@ -92,11 +82,6 @@ fun YomuApp() {
     val globalSearch = remember { GlobalSearchState(context) }
 
     val migrationState = remember { MigrationNavigationState() }
-
-    // Live download state lives in DownloadQueue. This local tick covers
-    // filesystem mutations caused directly by this screen.
-    var downloadTick by remember { mutableIntStateOf(0) }
-    var downloadsOpen by remember { mutableStateOf(false) }
 
     val mediaState = remember { MediaNavigationState() }
 
@@ -107,31 +92,12 @@ fun YomuApp() {
         activity = activity,
         onOpenQueue = {
             currentTab = 3
-            downloadsOpen = true
+            appState.downloadsOpen = true
         }
     )
-    // Only whether Settings is open, not which page of it. The section is local
-    // state inside SettingsScreen, so this routing chain gains one boolean rather
-    // than one arm per settings page.
-    var settingsOpen by remember { mutableStateOf(false) }
-
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    // Non-null while the user is answering a Cloudflare challenge by hand. No UA
-    // travels with it: the WebView presents its own and records what passed, so
-    // the caller has nothing to decide.
-    var challengeUrl by remember { mutableStateOf<String?>(null) }
-
-    // bumped whenever a read flag / resume position changes, to re-read prefs in lists
-    var readTick by remember { mutableIntStateOf(0) }
-
-    // bumped whenever the library changes, to re-read it in LibraryTab
-    var libraryTick by remember { mutableIntStateOf(0) }
-
     ExtensionResumeObserver(
         activity = activity,
-        onSourcesChanged = { extensionSources = it }
+        onSourcesChanged = { appState.extensionSources = it }
     )
 
     fun openSource(
@@ -139,23 +105,23 @@ fun YomuApp() {
         query: String = "",
         mode: BrowseMode = BrowseMode.POPULAR
     ) {
-        errorMessage = null
+        error = null
         scope.launch {
-            isLoading = true
-            errorMessage = browseState.loadFirstPage(
+            loading = true
+            error = browseState.loadFirstPage(
                 context = context,
                 source = source,
                 query = query,
                 mode = mode
             )
-            isLoading = false
+            loading = false
         }
     }
 
     fun loadMoreSeries() {
         scope.launch {
             browseState.loadNextPage()?.let {
-                errorMessage = it
+                error = it
             }
         }
     }
@@ -164,8 +130,8 @@ fun YomuApp() {
         globalSearch.search(
             context = context,
             scope = scope,
-            configs = configs,
-            extensions = extensionSources,
+            configs = appState.configs,
+            extensions = appState.extensionSources,
             newQuery = query
         )
     }
@@ -178,8 +144,8 @@ fun YomuApp() {
         globalSearch.setPinnedOnly(
             context = context,
             scope = scope,
-            configs = configs,
-            extensions = extensionSources,
+            configs = appState.configs,
+            extensions = appState.extensionSources,
             value = value
         )
     }
@@ -187,7 +153,7 @@ fun YomuApp() {
     fun openSourceConfig(config: SourceConfig) {
         val source = resolveSourceConfig(context, config)
         if (source == null) {
-            errorMessage = "\"${config.label}\" isn't configured yet"
+            error = "\"${config.label}\" isn't configured yet"
             return
         }
         openSource(source)
@@ -214,19 +180,19 @@ fun YomuApp() {
         // Opening a result ends the detour: back from this series goes to the
         // listing behind it, not to whatever the tag search started from.
         seriesState.tagReturn = null
-        errorMessage = null
+        error = null
         enrichSeries(src, series)
         scope.launch {
-            isLoading = true
+            loading = true
             try {
                 seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
                 seriesState.fetched = true
             } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not list chapters")
+                error = sourceFailureMessage(e, "Could not list chapters")
             }
-            isLoading = false
+            loading = false
         }
     }
 
@@ -269,28 +235,28 @@ fun YomuApp() {
     fun refreshChapters() {
         val src = browseState.source ?: return
         val series = seriesState.active ?: return
-        errorMessage = null
+        error = null
         // A manual refresh is the user asserting "re-check this series", and that
         // includes its download state, not only its chapter list. The per-chapter
         // download ticks and the cover badge both answer from Downloads.isComplete,
         // which memoises — so without this a chapter deleted with a file manager
         // keeps its downloaded marker through a refresh. invalidateCompletion drops
         // that memo (and the index) the same way the Downloads and Library pulls
-        // do; downloadTick++ makes this screen's isComplete reads recompute.
+        // do; appState.downloadTick++ makes this screen's isComplete reads recompute.
         Downloads.invalidateCompletion()
-        downloadTick++
+        appState.downloadTick++
         enrichSeries(src, series)
         scope.launch {
-            isLoading = true
+            loading = true
             try {
                 seriesState.chapters = withContext(Dispatchers.IO) {
                     loadSeriesChapters(context, src, series)
                 }
                 seriesState.fetched = true
             } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not list chapters")
+                error = sourceFailureMessage(e, "Could not list chapters")
             }
-            isLoading = false
+            loading = false
         }
     }
 
@@ -322,9 +288,9 @@ fun YomuApp() {
             source = source,
             chapters = seriesState.chapters,
             index = index,
-            onRootLoadingChanged = { isLoading = it },
-            onClearError = { errorMessage = null },
-            onError = { errorMessage = it }
+            onRootLoadingChanged = { appState.loading = it },
+            onClearError = { appState.error = null },
+            onError = { appState.error = it }
         )
     }
 
@@ -352,7 +318,7 @@ fun YomuApp() {
                 ids = ids,
                 value = value
             )
-            libraryTick++
+            appState.libraryTick++
 
             val verb = if (value) "read" else "unread"
             val message = buildString {
@@ -375,7 +341,7 @@ fun YomuApp() {
                 context = context,
                 ids = ids
             )
-            downloadTick++
+            appState.downloadTick++
 
             val message = buildString {
                 append(
@@ -421,7 +387,7 @@ fun YomuApp() {
                 browseState.source = null
                 browseState.sourceId = null
                 currentTab = 0
-                libraryTick++
+                appState.libraryTick++
                 android.widget.Toast
                     .makeText(
                         context,
@@ -430,20 +396,20 @@ fun YomuApp() {
                     )
                     .show()
             } else {
-                errorMessage = "Couldn't migrate this series"
+                error = "Couldn't migrate this series"
             }
         }
     }
 
     fun cancelSeriesDownloads(seriesId: String) {
         if (cancelSeriesDownloadsAction(context, seriesId)) {
-            downloadTick++
+            appState.downloadTick++
         }
     }
 
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
     fun openFromLibrary(entry: LibraryEntry) {
-        errorMessage = null
+        error = null
         seriesState.begin(
             Series(
                 id = entry.seriesId,
@@ -454,7 +420,7 @@ fun YomuApp() {
         )
 
         scope.launch {
-            isLoading = true
+            loading = true
             try {
                 val source = withContext(Dispatchers.IO) {
                     findInstalledSource(context, entry.sourceId)
@@ -487,18 +453,18 @@ fun YomuApp() {
                     enrichSeries(source, result.first)
                 }
             } catch (error: Throwable) {
-                errorMessage = sourceFailureMessage(
+                error = sourceFailureMessage(
                     error,
                     "Could not open this series"
                 )
             }
-            isLoading = false
+            loading = false
         }
     }
 
     /** Opens a downloaded series from cache first, then refreshes it when possible. */
     fun openFromDownloads(entry: DownloadedSeries) {
-        errorMessage = null
+        error = null
         seriesState.begin(
             Series(
                 id = entry.seriesId,
@@ -509,7 +475,7 @@ fun YomuApp() {
         )
 
         scope.launch {
-            isLoading = true
+            loading = true
             try {
                 val source = withContext(Dispatchers.IO) {
                     findInstalledSource(context, entry.sourceId)
@@ -549,20 +515,20 @@ fun YomuApp() {
                     enrichSeries(source, resolved.first)
                 }
             } catch (error: Throwable) {
-                errorMessage = sourceFailureMessage(
+                error = sourceFailureMessage(
                     error,
                     "Could not open this series"
                 )
             }
-            isLoading = false
+            loading = false
         }
     }
 
     fun openFromHistory(entry: HistoryEntry) {
-        errorMessage = null
+        error = null
 
         scope.launch {
-            isLoading = true
+            loading = true
             try {
                 val target = withContext(Dispatchers.IO) {
                     loadHistoryResumeTarget(context, entry)
@@ -575,12 +541,12 @@ fun YomuApp() {
                 enrichSeries(target.source, target.series)
                 openChapter(target.index)
             } catch (error: Throwable) {
-                errorMessage = sourceFailureMessage(
+                error = sourceFailureMessage(
                     error,
                     "Could not resume"
                 )
             }
-            isLoading = false
+            loading = false
         }
     }
 
@@ -595,19 +561,19 @@ fun YomuApp() {
     // still wins — a player is never more urgent than being able to reach the
     // site at all.
     val embed = mediaState.embed
-    if (challengeUrl == null && embed != null) {
+    if (appState.challengeUrl == null && embed != null) {
         EmbedPlayerRoute(
             embed = embed,
             media = mediaState.media,
             onMediaFound = { mediaState.media = it },
             onDismissMedia = { mediaState.media = null },
             onBack = { mediaState.embed = null },
-            onPlayerError = { errorMessage = it }
+            onPlayerError = { appState.error = it }
         )
         return
     }
 
-    val challenge = challengeUrl
+    val challenge = appState.challengeUrl
     if (challenge != null) {
         // Sits above every other branch, and safely so: it's gated on state that
         // is null in every other flow, and clearing that state drops back onto
@@ -617,7 +583,7 @@ fun YomuApp() {
         ChallengeRoute(
             url = challenge,
             onSolved = {
-                challengeUrl = null
+                appState.challengeUrl = null
                 // Re-run whatever was on screen. The clearance cookie is in the
                 // store OkHttp already reads, so this is an ordinary retry.
                 //
@@ -637,7 +603,7 @@ fun YomuApp() {
                     browseState.source?.let { openSource(it, browseState.query, browseState.mode) }
                 }
             },
-            onBack = { challengeUrl = null }
+            onBack = { appState.challengeUrl = null }
         )
     } else if (chapterIdx != null && readerChapter != null && readerSession.pages.isNotEmpty()) {
         ReaderRoute(
@@ -652,14 +618,14 @@ fun YomuApp() {
             onClose = {
                 readerSession.close()
                 history = History.forDisplay(context)
-                readTick++
+                appState.readTick++
             }
         )
     } else if (seriesState.active != null) {
         val series = seriesState.active!!
         val seriesSite = browseState.source?.siteUrl()
         val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
-            challengeUrl = seriesSite
+            appState.challengeUrl = seriesSite
         }
         SeriesRoute(
             series = series,
@@ -667,25 +633,25 @@ fun YomuApp() {
             chaptersFetched = seriesState.fetched,
             source = browseState.source,
             sourceId = browseState.sourceId,
-            loading = isLoading,
-            error = errorMessage,
-            readTick = readTick,
+            loading = appState.loading,
+            error = appState.error,
+            appState.readTick = appState.readTick,
             scroll = seriesScroll,
-            localDownloadTick = downloadTick,
+            localDownloadTick = appState.downloadTick,
             onFindVideos = { findVideos(it) },
             onDownload = { src, chapter -> downloadChapter(src, chapter) },
             onDownloadAll = { src, chapters -> downloadAll(src, chapters) },
             onCancelDownloads = { cancelSeriesDownloads(it) },
-            onDownloadStateChanged = { downloadTick++ },
+            onDownloadStateChanged = { appState.downloadTick++ },
             onOpenChapter = { openChapter(it) },
             onRefresh = { refreshChapters() },
-            onReadStateChanged = { readTick++ },
-            onLibraryChanged = { libraryTick++ },
+            onReadStateChanged = { appState.readTick++ },
+            onLibraryChanged = { appState.libraryTick++ },
             onSearchTag = { tag ->
                 browseState.source?.let { src ->
                     seriesState.tagReturn = seriesState.active
                     seriesState.active = null
-                    errorMessage = null
+                    error = null
                     if (src.applyGenreFilter(tag)) {
                         openSource(src, "", BrowseMode.FILTER)
                     } else {
@@ -696,7 +662,7 @@ fun YomuApp() {
             onGlobalSearchTag = { tag ->
                 seriesState.tagReturn = seriesState.active
                 seriesState.active = null
-                errorMessage = null
+                error = null
                 globalSearch.open = true
                 runGlobalSearch(tag)
             },
@@ -707,7 +673,7 @@ fun YomuApp() {
                     migrationState.from = MigrateFrom(s.id, sid, s.title)
                     seriesState.tagReturn = s
                     seriesState.active = null
-                    errorMessage = null
+                    error = null
                     globalSearch.open = true
                     runGlobalSearch(s.title)
                 }
@@ -715,7 +681,7 @@ fun YomuApp() {
             onSolveChallenge = solveFromSeries,
             onBack = {
                 seriesState.clear()
-                errorMessage = null
+                error = null
                 if (seriesState.origin != SeriesOrigin.BROWSE) {
                     browseState.source = null
                     browseState.sourceId = null
@@ -748,7 +714,7 @@ fun YomuApp() {
                 if (migrationState.from != null) migrationState.target = src to s
                 else openGlobalResult(src, s)
             },
-            libraryTick = libraryTick,
+            libraryTick = appState.libraryTick,
             onBack = {
                 cancelGlobalSearch()
                 globalSearch.open = false
@@ -774,16 +740,16 @@ fun YomuApp() {
         val source = browseState.source!!
         val site = source.siteUrl()
         val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
-            challengeUrl = site
+            appState.challengeUrl = site
         }
         SourceBrowseRoute(
             source = source,
             sourceId = browseState.sourceId,
             series = browseState.series,
-            loading = isLoading,
-            error = errorMessage,
-            filtersOpen = { filtersOpen = true },
-            diagnose = { probeOpen = true },
+            loading = appState.loading,
+            error = appState.error,
+            filtersOpen = { appState.filtersOpen = true },
+            diagnose = { appState.probeOpen = true },
             mode = browseState.mode,
             onModeChange = { m -> openSource(source, "", m) },
             query = browseState.query,
@@ -795,7 +761,7 @@ fun YomuApp() {
             onOpen = { openSeries(it) },
             onBack = {
                 browseState.series = null
-                errorMessage = null
+                error = null
                 val cameFromTag = seriesState.tagReturn
                 if (cameFromTag != null) {
                     seriesState.tagReturn = null
@@ -805,33 +771,33 @@ fun YomuApp() {
                     browseState.sourceId = null
                 }
             },
-            libraryTick = libraryTick,
+            libraryTick = appState.libraryTick,
             scroll = browseScroll,
             onSolveChallenge = startChallenge
         )
-    } else if (downloadsOpen) {
+    } else if (appState.downloadsOpen) {
         // Above settings on purpose, and it's the ordering that does the work.
         // The queue is reachable from More *and* from Settings > Downloads, and
-        // leaving `settingsOpen` set while this renders means backing out of the
+        // leaving `appState.settingsOpen` set while this renders means backing out of the
         // queue falls through to whichever of the two it was opened from — no
         // "where did I come from" flag, just two booleans read in order.
-        DownloadQueueScreen(onBack = { downloadsOpen = false })
-    } else if (settingsOpen) {
+        DownloadQueueScreen(onBack = { appState.downloadsOpen = false })
+    } else if (appState.settingsOpen) {
         SettingsScreen(
-            onBack = { settingsOpen = false },
-            onOpenDownloadQueue = { downloadsOpen = true }
+            onBack = { appState.settingsOpen = false },
+            onOpenDownloadQueue = { appState.downloadsOpen = true }
         )
     } else {
         MainTabsRoute(
-            currentTab = currentTab,
+            currentTab = appState.currentTab,
             onSelectTab = { tab ->
                 currentTab = tab
                 if (tab == 2) {
                     history = History.forDisplay(context)
                 }
             },
-            libraryTick = libraryTick,
-            error = errorMessage,
+            libraryTick = appState.libraryTick,
+            error = appState.error,
             libraryCategory = libraryCategory,
             onLibraryCategoryChange = {
                 libraryCategory = it
@@ -845,13 +811,13 @@ fun YomuApp() {
             onOpenLibrary = { openFromLibrary(it) },
             onRemoveLibraryMany = { ids ->
                 Library.removeAll(context, ids)
-                libraryTick++
+                appState.libraryTick++
             },
             onMarkRead = { ids -> bulkSetRead(ids, true) },
             onMarkUnread = { ids -> bulkSetRead(ids, false) },
             onDownloadMany = { ids -> bulkDownload(ids) },
-            configs = configs,
-            extensions = extensionSources,
+            configs = appState.configs,
+            extensions = appState.extensionSources,
             sourcesScroll = sourcesScroll,
             onGlobalSearch = {
                 globalSearch.open = true
@@ -878,7 +844,7 @@ fun YomuApp() {
             },
             onExtensionsChanged = {
                 scope.launch {
-                    extensionSources = withContext(Dispatchers.IO) {
+                    extensions = withContext(Dispatchers.IO) {
                         runCatching {
                             SourceManager.listAllSources(context)
                                 .filter { it.id.startsWith("tachi:") }
@@ -886,8 +852,8 @@ fun YomuApp() {
                     }
                 }
             },
-            history = history,
-            loading = isLoading,
+            history = appState.history,
+            loading = appState.loading,
             onOpenHistory = { openFromHistory(it) },
             onDeleteHistory = {
                 History.remove(context, it.chapterKey)
@@ -897,11 +863,11 @@ fun YomuApp() {
                 History.list(context).forEach { History.remove(context, it.chapterKey) }
                 history = History.forDisplay(context)
             },
-            onRefreshHistory = { history = History.forDisplay(context) },
-            downloadTick = downloadTick + DownloadQueue.tick,
+            onRefreshHistory = { appState.history = History.forDisplay(context) },
+            downloadTick = appState.downloadTick + DownloadQueue.tick,
             onOpenDownload = { openFromDownloads(it) },
-            onOpenDownloadQueue = { downloadsOpen = true },
-            onOpenSettings = { settingsOpen = true }
+            onOpenDownloadQueue = { appState.downloadsOpen = true },
+            onOpenSettings = { appState.settingsOpen = true }
         )
     }
 
@@ -925,7 +891,7 @@ fun YomuApp() {
                 }
                 runCatching { context.startActivity(view) }
                     .onFailure {
-                        errorMessage = "No app on this device can play that link"
+                        error = "No app on this device can play that link"
                     }
             }
         )
@@ -933,23 +899,23 @@ fun YomuApp() {
 
     MainOverlayDialogs(
         activeSource = browseState.source,
-        probeOpen = probeOpen,
-        onDismissProbe = { probeOpen = false },
-        filtersOpen = filtersOpen,
+        probeOpen = appState.probeOpen,
+        onDismissProbe = { appState.probeOpen = false },
+        filtersOpen = appState.filtersOpen,
         onApplyFilters = { source ->
             filtersOpen = false
             openSource(source, "", BrowseMode.FILTER)
         },
-        onDismissFilters = { filtersOpen = false },
+        onDismissFilters = { appState.filtersOpen = false },
         whatsNewOpen = whatsNewOpen,
         releaseNotes = releaseNotes,
         onDismissWhatsNew = {
             whatsNewOpen = false
             WhatsNew.markSeen(context)
         },
-        showSourceDialog = showSourceDialog,
-        editingConfig = editingConfig,
-        onEditingConfigChange = { editingConfig = it },
+        showSourceDialog = appState.showSourceDialog,
+        editingConfig = appState.editingConfig,
+        onEditingConfigChange = { appState.editingConfig = it },
         onDismissSourceDialog = {
             showSourceDialog = false
             editingConfig = null
