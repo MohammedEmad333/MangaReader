@@ -84,6 +84,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     implementation(libs.androidx.preference)
-    implementation("com.squareup.logcat:logcat:0.1")
+    implementation("com.squareup.logcat:logcat:0.4")
     // quickjs dropped along with JavaScriptEngine.kt
 }
