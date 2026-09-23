@@ -1,22 +1,22 @@
 package com.mangareader.app
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootOverlays(
-    context: Context,
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    mediaState: MediaNavigationState,
-    actions: AppActionController,
+    root: RootRouteContext,
     releaseNotes: List<ReleaseNote>,
     whatsNewOpen: Boolean,
     onDismissWhatsNew: () -> Unit
 ) {
+    val context = root.context
+    val appState = root.app
+    val browseState = root.browse
+    val seriesState = root.series
+    val mediaState = root.media
+    val actions = root.actions
     val scan = mediaState.scan
     if (mediaState.scanning || scan != null) {
         ChapterVideoDialog(
