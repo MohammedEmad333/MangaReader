@@ -5,7 +5,7 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     // Lockstep with the Kotlin version in the root build file. See the note there.
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.21"
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -59,17 +59,17 @@ dependencies {
     // **This version is duplicated in app/build.gradle.kts. Change both.** The
     // app module pins the same BOM so its own okhttp usage can't silently
     // resolve to something older than what extensions are compiled against.
-    api(platform("com.squareup.okhttp3:okhttp-bom:5.4.0"))
-    api("com.squareup.okhttp3:okhttp")
-    api("com.squareup.okhttp3:logging-interceptor")
-    api("com.squareup.okhttp3:okhttp-brotli")
+    api(platform(libs.okhttp.bom))
+    api(libs.okhttp)
+    api(libs.okhttp.logging)
+    api(libs.okhttp.brotli)
     // okhttp3.zstd.Zstd. Extensions build their own client as
     // CompressionInterceptor(Zstd, Gzip), so Zstd has to be resolvable even
     // though nothing in this app asks for zstd itself. Same story as
     // CompressionInterceptor one release earlier: the missing class is not one
     // we use, it is one an extension names.
-    api("com.squareup.okhttp3:okhttp-zstd")
-    api("com.squareup.okhttp3:okhttp-dnsoverhttps")
+    api(libs.okhttp.zstd)
+    api(libs.okhttp.doh)
     implementation("com.squareup.okio:okio:3.7.0")
 
     // 1.9.0 in lockstep with :app — see the long note there. Short version:
@@ -77,13 +77,13 @@ dependencies {
     // GeneratedSerializer.typeParametersSerializers(), which is abstract before
     // 1.8, and 1.10+ is built on Kotlin 2.3 whose metadata this project's 2.2.21
     // compiler cannot read. **Both modules and both artifacts move together.**
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation(libs.serialization.json)
     // OkHttpExtensions.kt calls decodeFromBufferedSource, which lives here.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
+    implementation(libs.serialization.json.okio)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation(libs.androidx.preference)
     implementation("com.squareup.logcat:logcat:0.1")
     // quickjs dropped along with JavaScriptEngine.kt
 }
