@@ -31,16 +31,18 @@ The project intentionally carries several non-obvious compatibility requirements
 
 For these reasons, dependency upgrades and R8 changes must be validated on a real device with representative extensions rather than accepted solely because compilation succeeds.
 
-## Refactoring direction
+## Current structure and maintenance direction
 
-Several files are intentionally scheduled for incremental decomposition rather than one large rewrite:
+The 2026 refactor removed the former large shared/activity containers and split orchestration into focused routes, controllers, overlays, reader components, and feature-specific UI files.
 
-- `MainActivity.kt` — separate navigation/state orchestration from feature actions.
-- `SourceBrowseScreens.kt` — split browse, search, filters, and series details.
-- `SettingsScreens.kt` — split settings sections into feature-level files.
-- `ReaderScreen.kt` — isolate reader controls/state transformations from rendering.
-- `LibraryScreens.kt` — isolate selection, filtering, and grid/list presentation.
-- `WhatsNew.kt` — move historical changelog data away from UI logic.
+Current maintenance priorities:
+
+- Keep `MainActivity.kt` and route hosts thin; feature behavior belongs in dedicated controllers/routes.
+- Keep reader window effects, controls, page components, and overlays separate rather than rebuilding a monolithic reader file.
+- Keep download persistence/index/storage responsibilities separated; avoid moving them back into one service or UI file.
+- `Changelog.kt` is the query API only; release-note data lives in `ReleaseNotesData.kt`.
+- Files around roughly 300–400 lines are not automatically refactor targets. Split them only when they contain separable responsibilities or become hard to test/review.
+- Historical implementation notes and superseded designs live under `docs/archive/` and should not be treated as current architecture documentation.
 
 Refactors should remain behavior-preserving and land behind passing tests/builds.
 
