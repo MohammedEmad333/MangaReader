@@ -13,10 +13,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -28,24 +26,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -59,11 +49,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -76,11 +63,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import dalvik.system.PathClassLoader
-import me.saket.swipe.SwipeAction
-import me.saket.swipe.SwipeableActionsBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -359,260 +343,44 @@ internal fun SeriesScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             item {
-                Box {
-                    // Cover as a faded backdrop, then a gradient down to the
-                    // background so the text at the bottom stays readable.
-                    if (series.cover != null) {
-                        AsyncImage(
-                            model = series.cover,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .matchParentSize()
-                                .alpha(0.20f)
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Transparent, MaterialTheme.colorScheme.background)
-                                )
-                            )
-                    )
-
-                    Column {
-                        // Where the back button used to sit. It is in the top bar
-                        // now, which is drawn over this Box rather than above it,
-                        // so the space still has to be reserved or the cover row
-                        // slides under the bar.
-                        Spacer(Modifier.height(TOP_BAR_HEIGHT))
-
-                        Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            CoverImage(
-                                cover = series.cover,
-                                title = series.title,
-                                modifier = Modifier
-                                    .width(108.dp)
-                                    .aspectRatio(0.7f)
-                                    // Only when there's something to enlarge —
-                                    // CoverImage draws initials on a blank when
-                                    // the source gave no cover, and opening a
-                                    // viewer onto that is a black screen and a
-                                    // back press.
-                                    .then(
-                                        if (series.cover != null)
-                                            Modifier.clickable { coverOpen = true }
-                                        else Modifier
-                                    )
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                // Tapping the title searches every source for it,
-                                // which is how you find the same series on a
-                                // source that is still updating it. Reuses
-                                // `onGlobalSearchTag` rather than growing a
-                                // parameter: it already clears `activeSeries`,
-                                // already routes to the results, and already has
-                                // `tagSearchReturn` restoring this screen on the
-                                // way back — the whole trap 0.60 shipped and 0.61
-                                // fixed. A second callback doing the same thing
-                                // would be a second chance to get that wrong.
-                                Text(
-                                    series.title,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .clickable { onGlobalSearchTag(series.title) }
-                                )
-                                // Author and artist on their own lines, each
-                                // searchable on its own. 0.96 had to guess at a
-                                // split because the adapter joined them; it
-                                // doesn't any more, so the value shown is the
-                                // value searched.
-                                //
-                                // The artist line is dropped when it repeats the
-                                // author, which is what most sources report — a
-                                // second identical name reads as a rendering bug
-                                // rather than as information.
-                                val credits = listOfNotNull(
-                                    series.author?.takeIf { it.isNotBlank() }
-                                        ?.let { "Story" to it },
-                                    series.artist?.takeIf {
-                                        it.isNotBlank() && !it.equals(series.author, true)
-                                    }?.let { "Art" to it }
-                                )
-                                credits.forEach { (role, name) ->
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        // Unlabelled when there is only one
-                                        // name: "Story" on a series with no
-                                        // separate artist is a claim the source
-                                        // never made.
-                                        if (credits.size > 1) "$role \u00b7 $name" else name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.clickable { onGlobalSearchTag(name) }
-                                    )
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    listOfNotNull(series.status, sourceName.ifBlank { null })
-                                        .joinToString(" \u2022 "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            SeriesAction(
-                                icon = if (inLibrary) Icons.Default.Favorite
-                                else Icons.Default.FavoriteBorder,
-                                label = if (inLibrary) "In library" else "Add to library",
-                                tint = if (inLibrary) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                onClick = {
-                                    if (inLibrary) {
-                                        Library.remove(context, series.id)
-                                        inLibrary = false
-                                        onLibraryChanged()
-                                    } else {
-                                        showAddToLibrary = true
-                                    }
-                                }
-                            )
-                            if (inLibrary) {
-                                SeriesAction(
-                                    icon = Icons.Default.Edit,
-                                    label = "Categories",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    onClick = { showCategories = true }
-                                )
-                            }
-                            if (canDownload && chapters.isNotEmpty()) {
-                                SeriesAction(
-                                    icon = if (downloadingAll) Icons.Default.Clear
-                                    else Icons.Default.Download,
-                                    label = if (downloadingAll) "Stop" else "Download all",
-                                    tint = if (downloadingAll) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    onClick = {
-                                        if (downloadingAll) onCancelDownloads() else onDownloadAll()
-                                    }
-                                )
-                                if (downloadedCount > 0) {
-                                    SeriesAction(
-                                        icon = Icons.Default.Delete,
-                                        label = "Delete ($downloadedCount)",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        onClick = { onDeleteDownloads() }
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-            }
-
-            if (!series.description.isNullOrBlank()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { descriptionExpanded = !descriptionExpanded }
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            series.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = if (descriptionExpanded) Int.MAX_VALUE else 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Icon(
-                            if (descriptionExpanded) Icons.Default.KeyboardArrowUp
-                            else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (descriptionExpanded) "Collapse" else "Expand",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
-                    }
-                }
-            } else if (series.genres.isNotEmpty()) {
-                item {
-                    // The chevron used to live only inside the description
-                    // block, so a series with tags and NO description had no way
-                    // to expand them — a control that could not reach a state,
-                    // which is the same shape as 0.154's pause loop. Rendered
-                    // here instead, above the tags it governs.
-                    Icon(
-                        if (descriptionExpanded) Icons.Default.KeyboardArrowUp
-                        else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (descriptionExpanded) {
-                            "Collapse tags"
+                SeriesHero(
+                    series = series,
+                    sourceName = sourceName,
+                    inLibrary = inLibrary,
+                    canDownload = canDownload,
+                    hasChapters = chapters.isNotEmpty(),
+                    downloadingAll = downloadingAll,
+                    downloadedCount = downloadedCount,
+                    onOpenCover = { coverOpen = true },
+                    onGlobalSearch = onGlobalSearchTag,
+                    onLibraryAction = {
+                        if (inLibrary) {
+                            Library.remove(context, series.id)
+                            inLibrary = false
+                            onLibraryChanged()
                         } else {
-                            "Expand tags"
-                        },
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { descriptionExpanded = !descriptionExpanded }
-                            .padding(vertical = 8.dp)
-                    )
-                }
+                            showAddToLibrary = true
+                        }
+                    },
+                    onCategories = { showCategories = true },
+                    onToggleAllDownloads = {
+                        if (downloadingAll) onCancelDownloads() else onDownloadAll()
+                    },
+                    onDeleteDownloads = onDeleteDownloads,
+                )
             }
 
-            if (series.genres.isNotEmpty()) {
-                item {
-                    // COLLAPSED: a scrolling row, so a long tag list does not
-                    // push the chapter list off the screen. EXPANDED: a wrapping
-                    // one, showing every tag at once — which is the whole point
-                    // of the chevron, and was the report: tags past the right
-                    // edge were reachable only by a horizontal drag nothing
-                    // advertised.
-                    //
-                    // FlowRow is still experimental on this Compose version, which
-                    // is why the collapsed row does not use it. Opted into rather
-                    // than worked around, because chip widths vary and chunking
-                    // into fixed rows leaves ragged gaps.
-                    val tagModifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                    if (descriptionExpanded) {
-                        FlowRow(
-                            modifier = tagModifier,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            GenreChips(
-                                genres = series.genres,
-                                sourceName = sourceName,
-                                onSearchTag = onSearchTag,
-                                onGlobalSearchTag = onGlobalSearchTag
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = tagModifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            GenreChips(
-                                genres = series.genres,
-                                sourceName = sourceName,
-                                onSearchTag = onSearchTag,
-                                onGlobalSearchTag = onGlobalSearchTag
-                            )
-                        }
-                    }
-                }
+            item {
+                SeriesDescriptionAndGenres(
+                    series = series,
+                    expanded = descriptionExpanded,
+                    onToggleExpanded = {
+                        descriptionExpanded = !descriptionExpanded
+                    },
+                    sourceName = sourceName,
+                    onSearchTag = onSearchTag,
+                    onGlobalSearchTag = onGlobalSearchTag,
+                )
             }
 
             item {
@@ -663,235 +431,31 @@ internal fun SeriesScreen(
             }
 
             itemsIndexed(visible) { _, ch ->
-                val key = chapterKeyOf(sourceId, ch)
-                val read = remember(key, readTick) { ReadState.isRead(context, key) }
-                val resume = remember(key, readTick) { savedPage(context, key) }
-                val bookmarked = remember(key, readTick) { Bookmarks.isBookmarked(context, key) }
-                // `me.saket.swipe`, not Material3's SwipeToDismissBox — which
-                // this shipped on twice and which was unreliable both times.
-                //
-                // The reason is structural rather than a threshold to tune.
-                // SwipeToDismissBox exists to *remove* a row, so using it as an
-                // action means refusing its own state change on every swipe and
-                // hoping it settles back cleanly. This library is built for the
-                // other thing: the row springs back by design, the action fires
-                // once at the threshold, and the icon tracks the finger.
-                //
-                // Mihon and TachiyomiSY both use it for exactly this row, which
-                // is where the smoothness being compared against comes from.
-                val toggleRead = SwipeAction(
-                    onSwipe = { if (!selecting) onSetRead(listOf(ch), !read) },
-                    icon = {
-                        Icon(
-                            // Reads as the outcome: a tick to finish an unread
-                            // chapter, a cross to undo a finished one.
-                            if (read) Icons.Default.Clear else Icons.Default.Check,
-                            contentDescription = if (read) "Mark unread" else "Mark read",
-                            modifier = Modifier.padding(16.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                SeriesChapterRow(
+                    chapter = ch,
+                    sourceId = sourceId,
+                    readTick = readTick,
+                    downloadTick = downloadTick,
+                    progress = downloadProgress[ch.id],
+                    canDownload = canDownload,
+                    selecting = selecting,
+                    selected = ch.id in selectedIds,
+                    chapterDisplay = chapterDisplay,
+                    onSetRead = { read ->
+                        onSetRead(listOf(ch), read)
                     },
-                    background = MaterialTheme.colorScheme.secondaryContainer,
-                    // Tells the library this swipe undoes something, which is
-                    // what drives its ripple running the other way.
-                    isUndo = read
+                    onSetBookmarked = { bookmarked ->
+                        onSetBookmarked(listOf(ch), bookmarked)
+                    },
+                    onOpen = { onOpen(ch.id) },
+                    onToggleSelected = {
+                        selectedIds = selectedIds.toggle(ch.id)
+                    },
+                    onDeleteChapter = {
+                        confirmDeleteChapter = ch
+                    },
+                    onDownload = { onDownload(ch) },
                 )
-                // Right-to-left is its own action now. Both directions used to
-                // mark read, so anyone in the habit of swiping left for that
-                // will bookmark instead — worth a line in the release note, and
-                // the reason the two carry different container colours rather
-                // than only different glyphs.
-                //
-                // Mihon makes both directions configurable and defaults them to
-                // exactly this pair. Not copying the setting: a preference for
-                // which of two actions sits on which side is a settings row and
-                // a store for a choice nobody has asked to make yet.
-                val toggleBookmark = SwipeAction(
-                    onSwipe = { if (!selecting) onSetBookmarked(listOf(ch), !bookmarked) },
-                    icon = {
-                        Icon(
-                            // Outcome again, matching the read swipe: a filled
-                            // bookmark when the swipe will add one, an outline
-                            // when it will take it away.
-                            if (bookmarked) Icons.Default.BookmarkBorder
-                            else Icons.Default.Bookmark,
-                            contentDescription =
-                                if (bookmarked) "Remove bookmark" else "Bookmark",
-                            modifier = Modifier.padding(16.dp),
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    },
-                    background = MaterialTheme.colorScheme.tertiaryContainer,
-                    isUndo = bookmarked
-                )
-                SwipeableActionsBox(
-                    startActions = listOf(toggleRead),
-                    endActions = listOf(toggleBookmark),
-                    // Deliberately generous. The default 40dp is what made the
-                    // Material3 version fire on sideways drift while scrolling
-                    // a long chapter list.
-                    swipeThreshold = 96.dp,
-                    modifier = Modifier.clipToBounds()
-                ) {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            chapterLabel(ch, chapterDisplay),
-                            color = if (read) {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = READ_DIM)
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                    },
-                    supportingContent = {
-                        // Only walk the folder for a chapter that's actually on
-                        // disk. sizeOf memoises per chapter id and the walk is
-                        // cheap, but isComplete gates it so a 171-row series
-                        // isn't statting 171 absent folders on every recompose.
-                        // Keyed on downloadTick so deleting or finishing a
-                        // download updates the line — the same tick the trailing
-                        // control reads.
-                        val sizeLabel = remember(ch.id, downloadTick) {
-                            if (Downloads.isComplete(context, ch.id)) {
-                                formatBytes(Downloads.sizeOf(context, ch.id))
-                            } else null
-                        }
-                        val bits = listOfNotNull(
-                            formatChapterDate(ch.dateUploaded),
-                            ch.scanlator,
-                            // Size sits with the other chapter facts rather than
-                            // by the download control: it describes the chapter,
-                            // like its date, and the trailing area is already the
-                            // delete target. Present only when downloaded, so an
-                            // undownloaded row doesn't carry an empty slot.
-                            sizeLabel,
-                            // No "Read" label: the whole row dims instead. A
-                            // word costs a line of subtitle on every finished
-                            // chapter to say what the colour already says, and on
-                            // a 171-chapter series that's most of the screen.
-                            // The saved page goes with it — a chapter that's
-                            // been read doesn't need a bookmark.
-                            if (!read && resume > 0) "Page ${resume + 1}" else null
-                        )
-                        if (bits.isNotEmpty()) {
-                            Text(
-                                bits.joinToString(" \u2022 "),
-                                color = when {
-                                    read -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        .copy(alpha = READ_DIM)
-                                    resume > 0 -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                    },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Trailing, not leading. A leading icon on only the
-                            // bookmarked rows would leave every other title
-                            // starting a step further left, and a list whose
-                            // text doesn't line up reads as broken rendering
-                            // rather than as a marker.
-                            //
-                            // A marker, not a button: the row already opens the
-                            // chapter and the download control is beside it, and
-                            // a third tap target on a 171-row list is why the
-                            // read control was taken off these rows. Toggling
-                            // lives in the long-press bar.
-                            if (bookmarked) {
-                                Icon(
-                                    Icons.Default.Bookmark,
-                                    contentDescription = "Bookmarked",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
-                            }
-                            if (canDownload) {
-                                // A percent, not "12 of 36", purely on width:
-                                // this is a trailing badge on a chapter row, not
-                                // the download queue. The queue is the screen
-                                // that has to be precise about which state it is
-                                // in; here the ellipsis versus a number is
-                                // enough, and null percent covers both "no page
-                                // list yet" and "it was empty".
-                                val percent = downloadProgress[ch.id]?.percent
-                                val downloaded = remember(ch.id, downloadTick) {
-                                    Downloads.isComplete(context, ch.id)
-                                }
-                                // Queued and downloading are different states now
-                                // that a queue exists, and read straight off it:
-                                // a chapter can sit waiting behind twenty others.
-                                val active = DownloadQueue.activeId == ch.id
-                                val queued = DownloadQueue.isQueued(ch.id)
-                                when {
-                                    active -> Text(
-                                        if (percent != null && percent > 0) "$percent%"
-                                        else "\u2026",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    queued -> Text(
-                                        "Queued",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    // The bin says what the tap does. State is
-                                    // still legible — an arrow means not on
-                                    // disk, a bin means it is — but the glyph
-                                    // now names the action rather than leaving
-                                    // it to be discovered. Primary rather than
-                                    // error: on a 171-chapter list every saved
-                                    // row would otherwise be a red mark, and the
-                                    // confirmation below is the real guard.
-                                    downloaded -> IconButton(
-                                        onClick = { confirmDeleteChapter = ch }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Downloaded \u2014 delete",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    else -> IconButton(onClick = { onDownload(ch) }) {
-                                        Icon(
-                                            Icons.Default.Download,
-                                            contentDescription = "Download",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.width(4.dp))
-                            }
-                            // No read control on the row. The dimming already
-                            // says whether a chapter is read, and a second mark
-                            // beside it was the same fact twice — on a long list
-                            // that's a column of icons carrying no information.
-                            // Changing it is a long-press away, where the batch
-                            // actions live.
-                        }
-                    },
-                    // Tinted rather than checkboxed: adding a checkbox column
-                    // shifts every row sideways the moment selection starts,
-                    // which makes the list jump under the finger that just
-                    // long-pressed it.
-                    colors = if (ch.id in selectedIds) {
-                        ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    } else {
-                        ListItemDefaults.colors()
-                    },
-                    modifier = Modifier.combinedClickable(
-                        onClick = {
-                            if (selecting) selectedIds = selectedIds.toggle(ch.id)
-                            else onOpen(ch.id)
-                        },
-                        onLongClick = { selectedIds = selectedIds.toggle(ch.id) }
-                    )
-                )
-                }
-                HorizontalDivider()
             }
 
             // Clearance so the last row isn't trapped under the button.
