@@ -271,6 +271,3 @@ internal fun HistoryScreen(
     }
 }
 
-// ---------- more ----------
-
-@OptIn(ExperimentalMaterial3Api::class)
