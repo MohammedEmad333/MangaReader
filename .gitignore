@@ -4,3 +4,15 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+
+# Signing material must never be committed.
+*.keystore
+*.jks
+*.p12
+keystore.properties
+
+# Local Android/Gradle output.
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
