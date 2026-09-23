@@ -1228,41 +1228,14 @@ fun YomuApp() {
     // site at all.
     val embed = openEmbed
     if (challengeUrl == null && embed != null) {
-        EmbedWebViewScreen(
-            url = embed.first,
-            referer = embed.second,
+        EmbedPlayerRoute(
+            embed = embed,
+            media = mediaUrls,
             onMediaFound = { mediaUrls = it },
-            onBack = { openEmbed = null }
+            onDismissMedia = { mediaUrls = null },
+            onBack = { openEmbed = null },
+            onPlayerError = { errorMessage = it }
         )
-        // INSIDE this branch, because the `return` below ends the composition
-        // and everything after it — including every dialog at the bottom of
-        // this function — never runs. That is why tapping the link button did
-        // nothing in 0.187: the state was set correctly and there was no
-        // composable left alive to show it.
-        // What the player is actually fetching, for an app that can show it.
-        val media = mediaUrls
-        if (media != null) {
-            EmbedMediaDialog(
-                media = media,
-                onDismiss = { mediaUrls = null },
-                onOpenVideo = { link ->
-                    // The REFERER GOES WITH IT. These hosts refuse a bare request;
-                    // players that understand this extra can reuse the page origin.
-                    val page = openEmbed?.second.orEmpty()
-                    val view = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(Uri.parse(link), "video/*")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        if (page.isNotBlank()) {
-                            putExtra("headers", arrayOf("Referer", page))
-                        }
-                    }
-                    runCatching { context.startActivity(view) }
-                        .onFailure {
-                            errorMessage = "No installed app can play that link"
-                        }
-                }
-            )
-        }
         return
     }
 
