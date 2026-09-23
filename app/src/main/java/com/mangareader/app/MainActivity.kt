@@ -91,12 +91,7 @@ fun YomuApp() {
     // Hoisted so results survive opening a series and navigating back.
     val globalSearch = remember { GlobalSearchState(context) }
 
-    // Source migration. When [migrateFrom] is set, the global-search screen is
-    // the target picker for moving that library series to another source, and a
-    // tapped result opens the confirm dialog ([migrateTarget]) instead of the
-    // series.
-    var migrateFrom by remember { mutableStateOf<MigrateFrom?>(null) }
-    var migrateTarget by remember { mutableStateOf<Pair<Source, Series>?>(null) }
+    val migrationState = remember { MigrationNavigationState() }
 
     // Live download state lives in DownloadQueue. This local tick covers
     // filesystem mutations caused directly by this screen.
@@ -438,8 +433,8 @@ fun YomuApp() {
                 toSeries = toSeries
             )
 
-            migrateTarget = null
-            migrateFrom = null
+            migrationState.target = null
+            migrationState.from = null
 
             if (migrated) {
                 cancelGlobalSearch()
@@ -733,7 +728,7 @@ fun YomuApp() {
                 val s = seriesState.active
                 val sid = browseState.sourceId
                 if (s != null && sid != null) {
-                    migrateFrom = MigrateFrom(s.id, sid, s.title)
+                    migrationState.from = MigrateFrom(s.id, sid, s.title)
                     seriesState.tagReturn = s
                     seriesState.active = null
                     errorMessage = null
@@ -772,16 +767,16 @@ fun YomuApp() {
             onSearch = { runGlobalSearch(it) },
             onCancel = { cancelGlobalSearch() },
             onOpenSource = { openGlobalSource(it) },
-            migrating = migrateFrom != null,
+            migrating = migrationState.from != null,
             onOpenSeries = { src, s ->
-                if (migrateFrom != null) migrateTarget = src to s
+                if (migrationState.from != null) migrationState.target = src to s
                 else openGlobalResult(src, s)
             },
             libraryTick = libraryTick,
             onBack = {
                 cancelGlobalSearch()
                 globalSearch.open = false
-                migrateFrom = null
+                migrationState.from = null
                 browseState.series = null
                 val cameFromTag = seriesState.tagReturn
                 if (cameFromTag != null) {
@@ -792,9 +787,9 @@ fun YomuApp() {
                     browseState.sourceId = null
                 }
             },
-            migrateFrom = migrateFrom,
-            migrateTarget = migrateTarget,
-            onDismissMigration = { migrateTarget = null },
+            migrateFrom = migrationState.from,
+            migrateTarget = migrationState.target,
+            onDismissMigration = { migrationState.target = null },
             onConfirmMigration = { from, targetSource, targetSeries ->
                 performMigration(from, targetSource, targetSeries)
             }
