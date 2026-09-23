@@ -1103,109 +1103,35 @@ internal fun SeriesScreen(
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
-        // Hidden while selecting: it sits exactly where the action bar goes, and
-        // "Resume" is not what anyone reaches for mid-selection.
-        if (chapters.isNotEmpty() && !selecting) {
-            ExtendedFloatingActionButton(
-                // resumeIndex is an index into the *full* list, because Resume
-                // is a fact about the series rather than about the current
-                // filter — a target the filter is hiding still opens.
-                onClick = {
-                    val target = chapters.getOrNull(if (resumeIndex >= 0) resumeIndex else 0)
-                    if (target != null) onOpen(target.id)
-                },
-                icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
-                text = { Text(if (anyProgress) "Resume" else "Start") },
-                // An ExtendedFloatingActionButton defaults to
-                // `primaryContainer`, and AppPrefs moves only `primary` when the
-                // accent changes — deliberately, so nothing else in the scheme
-                // has to be re-checked per accent. The result was a Start button
-                // that stayed baseline lavender whatever accent was picked.
-                //
-                // Fixed here rather than by deriving primaryContainer from the
-                // accent: that would change every other primaryContainer user
-                // at once and break exactly the property AppPrefs is protecting.
-                containerColor = MaterialTheme.colorScheme.primary,
-                // onPrimary again, and correct this time: 0.172 moved the
-                // luminance rule into AppPrefs, where it fixes every filled
-                // Button in the app rather than this one. 0.159 did it here
-                // because deriving a scheme colour looked like the thing 0.158
-                // had warned against — it was not, and four more reports of
-                // lavender text were the cost of that caution.
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-            )
-        }
-    }
-
-    // Confirmed rather than immediate. The row itself opens the chapter, so a
-    // control inside it that deletes on the first tap is one slipped thumb away
-    // from a re-download — and unlike "Delete all", this button sits next to the
-    // thing people are aiming at.
-    val pendingDelete = confirmDeleteChapter
-    if (pendingDelete != null) {
-        AlertDialog(
-            onDismissRequest = { confirmDeleteChapter = null },
-            title = { Text("Delete this download?") },
-            text = {
-                Text(
-                    "\u201c${pendingDelete.name}\u201d is removed from storage. The " +
-                        "chapter stays in the list and can be saved again, and your " +
-                        "read mark and place in it are untouched."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onDeleteChapter(pendingDelete)
-                    confirmDeleteChapter = null
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteChapter = null }) { Text("Cancel") }
-            }
+        SeriesResumeFab(
+            visible = chapters.isNotEmpty() && !selecting,
+            chapters = chapters,
+            resumeIndex = resumeIndex,
+            anyProgress = anyProgress,
+            onOpen = onOpen,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
         )
     }
 
-    if (confirmDeleteSelection) {
-        // Counted, not just "the selected ones". Selecting forty and deleting is
-        // one tap further than selecting one, so the number is the thing worth
-        // reading back — and it's the count of chapters actually on disk, since
-        // the rest of a selection is a no-op and shouldn't inflate it.
-        val onDisk = selectedChapters.count { ch ->
-            remember(ch.id, downloadTick) { Downloads.isComplete(context, ch.id) }
-        }
-        AlertDialog(
-            onDismissRequest = { confirmDeleteSelection = false },
-            title = { Text(if (onDisk == 1) "Delete 1 download?" else "Delete $onDisk downloads?") },
-            text = {
-                Text(
-                    if (onDisk == 0) {
-                        "None of the selected chapters are downloaded, so there's " +
-                            "nothing to remove."
-                    } else {
-                        "Removed from storage. The chapters stay in the list and can " +
-                            "be saved again, and your read marks and places in them " +
-                            "are untouched."
-                    }
-                )
-            },
-            confirmButton = {
-                Button(
-                    enabled = onDisk > 0,
-                    onClick = {
-                        selectedChapters.forEach { onDeleteChapter(it) }
-                        selectedIds = emptySet()
-                        confirmDeleteSelection = false
-                    }
-                ) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteSelection = false }) { Text("Cancel") }
-            }
-        )
-    }
+    SeriesDeleteDialogs(
+        chapter = confirmDeleteChapter,
+        onDismissChapter = { confirmDeleteChapter = null },
+        onDeleteChapter = {
+            onDeleteChapter(it)
+            confirmDeleteChapter = null
+        },
+        selectionOpen = confirmDeleteSelection,
+        selectedChapters = selectedChapters,
+        downloadTick = downloadTick,
+        onDismissSelection = { confirmDeleteSelection = false },
+        onDeleteSelection = {
+            selectedChapters.forEach(onDeleteChapter)
+            selectedIds = emptySet()
+            confirmDeleteSelection = false
+        },
+    )
 
     if (showCategories) {
         CategoryAssignDialog(seriesId = series.id, onDismiss = { showCategories = false })
