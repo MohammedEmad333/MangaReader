@@ -47,7 +47,7 @@ The release APK is optional and is built only from a manual workflow dispatch.
 
 Signing files are intentionally ignored by Git. Do not add `*.keystore`, `*.jks`, `*.p12`, or `keystore.properties` to the repository.
 
-The normal Android debug signing configuration is used for debug builds. Manual release builds support reconstructing `release.keystore` from the `RELEASE_KEYSTORE_BASE64` GitHub Actions secret and use `RELEASE_KEYSTORE_PASSWORD` for the key password. A legacy tracked `release.keystore` still exists and should be removed only after the secret-backed release path is verified.
+The normal Android debug signing configuration is used for debug builds. Manual release builds reconstruct the signing keystore at runtime from GitHub Actions secrets. The release keystore is no longer tracked in the repository.
 
 ## Tests
 
