@@ -184,14 +184,11 @@ fun YomuApp() {
         enrichSeries(src, series)
         scope.launch {
             appState.loading = true
-            try {
-                seriesState.chapters = withContext(Dispatchers.IO) {
-                    loadSeriesChapters(context, src, series)
-                }
-                seriesState.fetched = true
-            } catch (e: Throwable) {
-                appState.error = sourceFailureMessage(e, "Could not list chapters")
-            }
+            appState.error = seriesState.reloadChapters(
+                context,
+                src,
+                series
+            )
             appState.loading = false
         }
     }
@@ -248,14 +245,11 @@ fun YomuApp() {
         enrichSeries(src, series)
         scope.launch {
             appState.loading = true
-            try {
-                seriesState.chapters = withContext(Dispatchers.IO) {
-                    loadSeriesChapters(context, src, series)
-                }
-                seriesState.fetched = true
-            } catch (e: Throwable) {
-                appState.error = sourceFailureMessage(e, "Could not list chapters")
-            }
+            appState.error = seriesState.reloadChapters(
+                context,
+                src,
+                series
+            )
             appState.loading = false
         }
     }
