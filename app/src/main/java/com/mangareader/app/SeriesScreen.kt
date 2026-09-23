@@ -247,8 +247,6 @@ internal fun SeriesScreen(
     }
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
-    var showDownloadMenu by remember { mutableStateOf(false) }
-    var showOptionsMenu by remember { mutableStateOf(false) }
     // Bumped when the sheet writes a pref, so the derived list below recomputes.
     // The prefs are the store; this is only the signal that they moved.
     var optionsTick by remember { mutableIntStateOf(0) }
@@ -956,151 +954,24 @@ internal fun SeriesScreen(
             )
         }
 
-        // Last in the Box, so it draws over the list rather than under it. Not
-        // Scaffold's `topBar` slot: that insets its content below the bar, and
-        // the whole point here is that the cover art runs *behind* a transparent
-        // bar. Scaffold would also have meant moving the FAB and the selection
-        // bar, both of which align against this Box.
-        TopAppBar(
-            title = {
-                Text(
-                    series.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(barAlpha)
-                )
-            },
-            navigationIcon = { BackButton(onBack) },
-            actions = {
-                if (canDownload && chapters.isNotEmpty()) {
-                    Box {
-                        IconButton(onClick = { showDownloadMenu = true }) {
-                            Icon(
-                                Icons.Default.Download,
-                                contentDescription = "Download chapters"
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showDownloadMenu,
-                            onDismissRequest = { showDownloadMenu = false }
-                        ) {
-                            DownloadChoice.entries.forEach { choice ->
-                                DropdownMenuItem(
-                                    text = { Text(choice.label) },
-                                    onClick = {
-                                        showDownloadMenu = false
-                                        // Over `visible`, so the menu follows
-                                        // the sort and filter on screen — the
-                                        // same list Select all works on, for
-                                        // the same reason.
-                                        downloadTargets(context, visible, sourceId, choice)
-                                            .forEach(onDownload)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-                IconButton(onClick = { showChapterOptions = true }) {
-                    Icon(
-                        Icons.Default.FilterList,
-                        contentDescription = "Filter, sort and display chapters",
-                        // Tinted while a filter is on, the way SY tints its own.
-                        // Without it a filtered list is indistinguishable from a
-                        // series that simply has fewer chapters than you thought.
-                        tint = if (filtersActive) MaterialTheme.colorScheme.primary
-                        else LocalContentColor.current
-                    )
-                }
-                Box {
-                    IconButton(onClick = { showOptionsMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                    }
-                    DropdownMenu(
-                        expanded = showOptionsMenu,
-                        onDismissRequest = { showOptionsMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Refresh") },
-                            onClick = {
-                                showOptionsMenu = false
-                                onRefresh()
-                            }
-                        )
-                        // Scans ONE chapter — the one at the top of the list as
-                        // currently sorted and filtered, which is the one being
-                        // looked at. Scanning all of a 200-chapter series would
-                        // be 200 requests to answer a question nobody asked.
-                        //
-                        // Keyed off `visible`, not `chapters`: with a filter on,
-                        // the raw list's first entry may not be on screen at
-                        // all, and scanning something invisible is how a feature
-                        // reports about a page nobody asked about.
-                        val scanTarget = visible.firstOrNull()
-                        if (scanTarget != null) {
-                            DropdownMenuItem(
-                                text = { Text("Find videos") },
-                                onClick = {
-                                    showOptionsMenu = false
-                                    onFindVideos(scanTarget)
-                                }
-                            )
-                        }
-                        // Only in the library: categories are a library concept
-                        // and the dialog writes an assignment for a series that
-                        // isn't saved, which nothing would ever read.
-                        if (inLibrary) {
-                            DropdownMenuItem(
-                                text = { Text("Edit categories") },
-                                onClick = {
-                                    showOptionsMenu = false
-                                    showCategories = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Migrate to another source") },
-                                onClick = {
-                                    showOptionsMenu = false
-                                    onMigrate()
-                                }
-                            )
-                        }
-                        // Absent rather than disabled when there is no url: a
-                        // greyed row invites a tap and explains nothing. Local
-                        // folders and any source whose handle didn't survive
-                        // simply have nothing to share.
-                        if (!seriesUrl.isNullOrBlank()) {
-                            DropdownMenuItem(
-                                text = { Text("Share") },
-                                onClick = {
-                                    showOptionsMenu = false
-                                    val send = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, series.title)
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "${series.title}\n$seriesUrl"
-                                        )
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(send, "Share series")
-                                    )
-                                }
-                            )
-                        }
-                    }
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                // Alpha on the container, not on the whole bar: fading the bar
-                // itself would take the back arrow with it, and the arrow has to
-                // stay hit-testable and visible against the art from the first
-                // frame.
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = barAlpha),
-                scrolledContainerColor =
-                    MaterialTheme.colorScheme.surface.copy(alpha = barAlpha)
-            ),
-            modifier = Modifier.align(Alignment.TopCenter)
+                SeriesTopBar(
+            title = series.title,
+            canDownload = canDownload,
+            chapters = chapters,
+            visibleChapters = visible,
+            sourceId = sourceId,
+            onDownload = onDownload,
+            filtersActive = filtersActive,
+            onOpenChapterOptions = { showChapterOptions = true },
+            onRefresh = onRefresh,
+            onFindVideos = onFindVideos,
+            inLibrary = inLibrary,
+            onEditCategories = { showCategories = true },
+            onMigrate = onMigrate,
+            seriesUrl = seriesUrl,
+            onBack = onBack,
+            barAlpha = barAlpha,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
 
         SeriesResumeFab(
