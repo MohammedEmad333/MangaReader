@@ -1834,104 +1834,28 @@ fun YomuApp() {
         }
     }
 
-    // Shown while scanning AND after, so "none found" is a stated result rather
-    // than a menu tap that appeared to do nothing.
     val scan = videoScan
     if (videoScanning || scan != null) {
-        AlertDialog(
-            onDismissRequest = { if (!videoScanning) videoScan = null },
-            title = { Text("Videos in this chapter") },
-            text = {
-                when {
-                    videoScanning -> Text("Scanning the chapter's page\u2026")
-                    // The old wording here blamed the source's extension for
-                    // selecting only img tags. True of the PAGE LIST and
-                    // irrelevant to this result: the scan reads the page
-                    // directly and never asks the extension. It explained a
-                    // cause that had not produced what was on screen, which is
-                    // worse than saying nothing. It reports the document now.
-                    scan == null || (scan.links.isEmpty() && scan.embeds.isEmpty()) -> Column {
-                        Text("No playable video found on this chapter's page.")
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            scan?.note ?: "The scan returned nothing at all.",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    // Embeds only, no direct link. Opening these goes to the
-                    // BROWSER rather than a video player: the url is a page
-                    // whose script builds the player, not a media file, and
-                    // handing it to MX Player would fail in a way that looks
-                    // like this feature is broken.
-                    scan.links.isEmpty() -> Column {
-                        val plural = if (scan.embeds.size == 1) "player" else "players"
-                        Text("No direct video file, but this page embeds ${scan.embeds.size} $plural.")
-                        Spacer(Modifier.height(12.dp))
-                        scan.embeds.forEachIndexed { index, url ->
-                            TextButton(
-                                onClick = {
-                                    // NOT the system browser. Chrome sends no
-                                    // Referer for a typed navigation, and this
-                                    // player refuses that with "Unknown Error
-                                    // xD" — which is exactly what happened when
-                                    // 0.176 handed it over. The in-app WebView
-                                    // can state where the request came from.
-                                    val page = activeSeries?.let { series ->
-                                        activeSource?.seriesUrl(series)
-                                    }
-                                    videoScan = null
-                                    openEmbed = url to (page ?: "")
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    "Open player ${index + 1}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            scan.note ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    else -> Column {
-                        Text("Tap one to open it in a video player.")
-                        Spacer(Modifier.height(12.dp))
-                        scan.links.forEachIndexed { index, url ->
-                            TextButton(
-                                onClick = {
-                                    // The REMOTE url, streamed by the player.
-                                    // Nothing is downloaded, so no FileProvider
-                                    // and no guessing at file extensions. The
-                                    // cost is that a host needing this app's
-                                    // cookies or headers will fail in the
-                                    // player, and that is worth knowing early.
-                                    val view = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(Uri.parse(url), "video/*")
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    runCatching { context.startActivity(view) }
-                                        .onFailure {
-                                            errorMessage =
-                                                "No app on this device can play that link"
-                                        }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Video ${index + 1}", maxLines = 1) }
-                        }
-                    }
+        ChapterVideoDialog(
+            scanning = videoScanning,
+            scan = scan,
+            onDismiss = { videoScan = null },
+            onOpenEmbed = { url ->
+                val page = activeSeries?.let { series ->
+                    activeSource?.seriesUrl(series)
                 }
+                videoScan = null
+                openEmbed = url to (page ?: "")
             },
-            confirmButton = {
-                TextButton(
-                    onClick = { videoScan = null },
-                    enabled = !videoScanning
-                ) { Text("Close") }
+            onOpenVideo = { url ->
+                val view = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(Uri.parse(url), "video/*")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { context.startActivity(view) }
+                    .onFailure {
+                        errorMessage = "No app on this device can play that link"
+                    }
             }
         )
     }
