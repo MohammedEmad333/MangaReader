@@ -1,6 +1,5 @@
 package com.mangareader.app
 
-import android.content.Context
 import androidx.compose.runtime.Composable
 
 internal enum class TransientRouteResult {
@@ -11,14 +10,15 @@ internal enum class TransientRouteResult {
 
 @Composable
 internal fun RootTransientRoute(
-    context: Context,
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    readerSession: ReaderSessionState,
-    mediaState: MediaNavigationState,
-    actions: AppActionController
+    root: RootRouteContext
 ): TransientRouteResult {
+    val context = root.context
+    val appState = root.app
+    val browseState = root.browse
+    val seriesState = root.series
+    val readerSession = root.reader
+    val mediaState = root.media
+    val actions = root.actions
     val embed = mediaState.embed
     if (appState.challengeUrl == null && embed != null) {
         EmbedPlayerRoute(
