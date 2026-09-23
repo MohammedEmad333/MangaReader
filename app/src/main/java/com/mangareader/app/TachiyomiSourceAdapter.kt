@@ -3,8 +3,6 @@ package com.mangareader.app
 import android.content.Context
 import android.util.Log
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.model.Filter
-import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SChapterImpl
@@ -54,6 +52,7 @@ class TachiyomiSourceAdapter(
 
     private val videoScanner by lazy { TachiyomiVideoScanner(delegate) }
     private val pageLoader by lazy { TachiyomiPageLoader(delegate, context) }
+    private val filterController by lazy { TachiyomiFilterController(delegate) }
 
     // Read once at construction. It's a property on extension code, and this
     // file assumes nothing about what extension code does — see the safe*()
@@ -61,86 +60,18 @@ class TachiyomiSourceAdapter(
     override val supportsLatest: Boolean =
         runCatching { delegate.supportsLatest }.getOrDefault(false)
 
-    override val supportsFilters: Boolean get() = filterList.isNotEmpty()
+    override val supportsFilters: Boolean
+        get() = filterController.filterList.isNotEmpty()
 
-    // ---- filters ----
-    //
-    // Held as ONE live instance, and that is the whole subtlety. Tachiyomi's
-    // `Filter` keeps its value in a mutable `state` property, so the list the
-    // dialog edits has to be the same list the search reads. Calling
-    // getFilterList() again returns a fresh set of defaults and would silently
-    // throw away everything the user picked, which looks like filters that
-    // simply don't work.
-    //
-    // Built lazily because it's a call into extension code and there are 95
-    // sources; nothing should pay for it until someone opens the filter sheet.
+    val filterList
+        get() = filterController.filterList
 
-    @Volatile
-    private var cachedFilters: FilterList? = null
-
-    val filterList: FilterList
-        get() = cachedFilters ?: synchronized(this) {
-            cachedFilters ?: runCatching { delegate.getFilterList() }
-                .getOrDefault(FilterList())
-                .also { cachedFilters = it }
-        }
-
-    /** Drops the instance; the next read rebuilds it at the source's defaults. */
     fun resetFilters() {
-        cachedFilters = null
+        filterController.reset()
     }
 
-    /**
-     * Set the genre/tag filter matching [genre] so a tapped tag searches by
-     * genre instead of by title text. Mirrors Tachiyomi/Mihon's genre click.
-     *
-     * A source exposes its genres in one of two shapes, and this handles both:
-     * a [Filter.Group] of per-genre [Filter.TriState]/[Filter.CheckBox] children
-     * (the common case), or a single [Filter.Select] whose values are genre
-     * names. The match is by name, case-insensitively, because a chip's label is
-     * exactly the genre name the source parsed.
-     *
-     * Resets to defaults first — via the shared live [filterList], since the
-     * search reads that same instance — so the browse that follows carries this
-     * tag and nothing a manual filter set left behind. On no match it leaves the
-     * defaults in place and returns false, and the caller runs a title search.
-     */
-    override fun applyGenreFilter(genre: String): Boolean {
-        resetFilters()
-        for (filter in filterList) {
-            when (filter) {
-                is Filter.Group<*> -> {
-                    val child = (filter.state as? List<*>)
-                        ?.filterIsInstance<Filter<*>>()
-                        ?.firstOrNull { it.name.equals(genre, ignoreCase = true) }
-                    when (child) {
-                        is Filter.TriState -> {
-                            child.state = Filter.TriState.STATE_INCLUDE
-                            return true
-                        }
-                        is Filter.CheckBox -> {
-                            child.state = true
-                            return true
-                        }
-                        else -> Unit
-                    }
-                }
-                is Filter.Select<*> -> {
-                    val index = filter.values
-                        .indexOfFirst { it?.toString().equals(genre, ignoreCase = true) }
-                    if (index >= 0) {
-                        filter.state = index
-                        return true
-                    }
-                }
-                else -> Unit
-            }
-        }
-        // No matching filter — leave the defaults untouched for the fallback
-        // title search, which is what the caller does when this is false.
-        resetFilters()
-        return false
-    }
+    override fun applyGenreFilter(genre: String): Boolean =
+        filterController.applyGenre(genre)
 
     override val supportsDownload: Boolean = true
 
