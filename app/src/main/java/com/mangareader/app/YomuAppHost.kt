@@ -92,9 +92,7 @@ internal fun YomuAppHost() {
         )
     }
 
-    YomuRootRouter(
-        state = state,
-        actions = actions,
+    val ui = RootUiBindings(
         libraryCategory = libraryCategory,
         onLibraryCategoryChange = { libraryCategory = it },
         librarySearch = librarySearch,
@@ -112,4 +110,9 @@ internal fun YomuAppHost() {
             WhatsNew.markSeen(context)
         }
     )
-}
+
+    YomuRootRouter(
+        state = state,
+        actions = actions,
+        ui = ui
+    )}
