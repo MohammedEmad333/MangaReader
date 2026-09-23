@@ -6,13 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 
 @Composable
 internal fun YomuRootRouter(
-    appState: AppUiState,
-    browseState: SourceBrowseState,
-    seriesState: SeriesNavigationState,
-    readerSession: ReaderSessionState,
-    globalSearch: GlobalSearchState,
-    migrationState: MigrationNavigationState,
-    mediaState: MediaNavigationState,
+    state: YomuStateBundle,
     actions: AppActionController,
     libraryCategory: String?,
     onLibraryCategoryChange: (String?) -> Unit,
@@ -30,6 +24,13 @@ internal fun YomuRootRouter(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val appState = state.app
+    val browseState = state.browse
+    val seriesState = state.series
+    val readerSession = state.reader
+    val globalSearch = state.search
+    val migrationState = state.migration
+    val mediaState = state.media
 
     when (
         RootTransientRoute(
