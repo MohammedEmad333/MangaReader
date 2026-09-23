@@ -32,12 +32,9 @@ android {
     }
 
     signingConfigs {
-        getByName("debug") {
-            storeFile = rootProject.file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
+        // Use the Android Gradle Plugin's standard generated debug keystore.
+        // Keeping a project-level debug keystore in Git provides no benefit and
+        // makes signing material part of the repository history.
         create("release") {
             storeFile = rootProject.file("release.keystore")
             storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
