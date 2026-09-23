@@ -90,7 +90,8 @@ internal object ExtensionIndexParser {
         return Extension(
             name = obj.getString("name")
                 .removePrefix("Tachiyomi: ")
-                .removePrefix("Mihon: "),
+                .removePrefix("Mihon: ")
+                .removePrefix("Aniyomi: "),
             pkgName = pkg,
             versionName = obj.getString("version"),
             apkUrl = URL(URL(repoUrl), relativePath).toString(),
@@ -121,7 +122,8 @@ internal object ExtensionIndexParser {
         return Extension(
             name = obj.getString("name")
                 .removePrefix("Tachiyomi: ")
-                .removePrefix("Mihon: "),
+                .removePrefix("Mihon: ")
+                .removePrefix("Aniyomi: "),
             pkgName = pkg,
             versionName = obj.getString("versionName"),
             apkUrl = obj.getJSONObject("resources").getString("apkUrl"),
