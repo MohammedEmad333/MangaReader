@@ -402,25 +402,6 @@ fun YomuApp() {
     }
 
     /**
-     * Chapters for a stored series, falling back to the offline cache.
-     *
-     * A successful fetch refreshes the cache. A failed one is only an error if
-     * there's nothing cached — otherwise the last known list is better than a
-     * dead end, and any chapter already downloaded is fully readable from it.
-     */
-    suspend fun chaptersWithFallback(src: Source, series: Series): List<Chapter> =
-        runCatching { src.listChapters(series) }
-            .onSuccess { ChapterCache.save(context, series.id, it) }
-            .getOrElse { err ->
-                val cached = ChapterCache.load(context, series.id)
-                    .map { src.rehydrateChapter(it) }
-                if (cached.isNotEmpty()) cached
-                else throw IllegalStateException(
-                    "Couldn't load the chapter list \u2014 ${err.message}"
-                )
-            }
-
-    /**
      * Fills in author/description/genres/status in the background.
      *
      * Deliberately fire-and-forget: on most sources this is a second network
@@ -758,15 +739,6 @@ fun YomuApp() {
     fun openFromLibrary(entry: LibraryEntry) {
         errorMessage = null
         seriesOrigin = SeriesOrigin.LIBRARY
-        // The screen opens on what the library already holds, before any network
-        // work happens. Opening from browse has a Series in hand and makes one
-        // request; opening from here made two — details, then chapters — with
-        // nothing on screen until both had come back.
-        //
-        // This stub carries no handle, so it's for display only: listChapters
-        // returns nothing without one, and everything that needs it waits for
-        // the real Series fetched below. activeSource is read through `?.` on
-        // the series screen, so the moment before it's resolved is safe too.
         activeSeries = Series(
             id = entry.seriesId,
             title = entry.title,
@@ -774,67 +746,51 @@ fun YomuApp() {
         )
         chapterList = emptyList()
         chaptersFetched = false
+
         scope.launch {
             isLoading = true
             try {
-                val src = withContext(Dispatchers.IO) {
-                    SourceManager.listAllSources(context).firstOrNull { it.id == entry.sourceId }
-                } ?: throw IllegalStateException("That source is no longer installed")
-                activeSource = src
-                activeSourceId = src.id
+                val source = withContext(Dispatchers.IO) {
+                    findInstalledSource(context, entry.sourceId)
+                }
+                activeSource = source
+                activeSourceId = source.id
 
-                // Whatever was cached goes up while the requests are in flight.
                 val cached = withContext(Dispatchers.IO) {
-                    ChapterCache.load(context, entry.seriesId).map { src.rehydrateChapter(it) }
+                    loadCachedChapters(
+                        context,
+                        source,
+                        entry.seriesId
+                    )
                 }
                 if (cached.isNotEmpty() && activeSeries?.id == entry.seriesId) {
                     chapterList = cached
                 }
 
                 val result = withContext(Dispatchers.IO) {
-                    // Each stage names itself in the error: "details" and
-                    // "chapters" are separate requests in most extensions, and
-                    // knowing which one failed is the whole diagnosis.
-                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
-                        .getOrElse {
-                            throw IllegalStateException(
-                                "Couldn't load series details \u2014 ${it.message}"
-                            )
-                        }
-                        ?: throw IllegalStateException("That series is no longer available from its source")
-                    val series = fetched.copy(
-                        title = fetched.title.ifBlank { entry.title },
-                        cover = fetched.cover ?: entry.cover.ifBlank { null }
+                    resolveLibrarySeries(
+                        context,
+                        source,
+                        entry
                     )
-                    series to chaptersWithFallback(src, series)
                 }
-                // Not if the user has moved on to another series meanwhile.
                 if (activeSeries?.id == entry.seriesId) {
                     activeSeries = result.first
                     chapterList = result.second
                     chaptersFetched = true
-                    enrichSeries(src, result.first)
+                    enrichSeries(source, result.first)
                 }
-            } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not open this series")
+            } catch (error: Throwable) {
+                errorMessage = sourceFailureMessage(
+                    error,
+                    "Could not open this series"
+                )
             }
             isLoading = false
         }
     }
 
-    /**
-     * Opens a series from the Downloads tab, offline first.
-     *
-     * Deliberately not routed through [openFromLibrary]: the whole promise of
-     * this screen is that it works in airplane mode. The cached chapter list is
-     * what's shown, and the details fetch is allowed to fail into a
-     * title-and-cover-only series — enough for `SeriesScreen` to render and for
-     * every downloaded chapter to open, since the page store is checked before
-     * the handle is.
-     *
-     * The cache goes up before any request is made rather than after one fails,
-     * which is the difference between "works offline" and "opens instantly".
-     */
+    /** Opens a downloaded series from cache first, then refreshes it when possible. */
     fun openFromDownloads(entry: DownloadedSeries) {
         errorMessage = null
         seriesOrigin = SeriesOrigin.DOWNLOADS
@@ -845,53 +801,52 @@ fun YomuApp() {
         )
         chapterList = emptyList()
         chaptersFetched = false
+
         scope.launch {
             isLoading = true
             try {
-                val src = withContext(Dispatchers.IO) {
-                    SourceManager.listAllSources(context).firstOrNull { it.id == entry.sourceId }
-                } ?: throw IllegalStateException("That source is no longer installed")
-                activeSource = src
-                activeSourceId = src.id
+                val source = withContext(Dispatchers.IO) {
+                    findInstalledSource(context, entry.sourceId)
+                }
+                activeSource = source
+                activeSourceId = source.id
 
                 val cached = withContext(Dispatchers.IO) {
-                    ChapterCache.load(context, entry.seriesId).map { src.rehydrateChapter(it) }
+                    loadCachedChapters(
+                        context,
+                        source,
+                        entry.seriesId
+                    )
                 }
                 if (cached.isNotEmpty() && activeSeries?.id == entry.seriesId) {
                     chapterList = cached
                 }
 
-                val result = withContext(Dispatchers.IO) {
-                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
-                        .getOrNull()
-                    // Only ask the source for chapters if the details fetch
-                    // worked — a handle-less series can't list them, and would
-                    // come back empty rather than leaving the cache in place.
-                    if (fetched == null) null
-                    else {
-                        val series = fetched.copy(
-                            title = fetched.title.ifBlank { entry.title },
-                            cover = fetched.cover ?: entry.cover.ifBlank { null }
-                        )
-                        series to chaptersWithFallback(src, series)
-                    }
+                val resolved = withContext(Dispatchers.IO) {
+                    resolveDownloadedSeries(
+                        context,
+                        source,
+                        entry
+                    )
                 }
 
-                if (result == null) {
-                    // Offline, or the source is gone. The cache is all there is.
+                if (resolved == null) {
                     if (cached.isEmpty()) {
                         throw IllegalStateException(
-                            "No chapter list cached for this series \u2014 open it once online"
+                            "No chapter list cached for this series — open it once online"
                         )
                     }
                 } else if (activeSeries?.id == entry.seriesId) {
-                    activeSeries = result.first
-                    chapterList = result.second
+                    activeSeries = resolved.first
+                    chapterList = resolved.second
                     chaptersFetched = true
-                    enrichSeries(src, result.first)
+                    enrichSeries(source, resolved.first)
                 }
-            } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not open this series")
+            } catch (error: Throwable) {
+                errorMessage = sourceFailureMessage(
+                    error,
+                    "Could not open this series"
+                )
             }
             isLoading = false
         }
@@ -899,30 +854,12 @@ fun YomuApp() {
 
     fun openFromHistory(entry: HistoryEntry) {
         errorMessage = null
+
         scope.launch {
             isLoading = true
             try {
                 val target = withContext(Dispatchers.IO) {
-                    val src = SourceManager.listAllSources(context)
-                        .firstOrNull { it.id == entry.sourceId }
-                        ?: throw IllegalStateException("That source no longer exists")
-                    val fetched = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
-                        .getOrElse {
-                            throw IllegalStateException(
-                                "Couldn't load series details \u2014 ${it.message}"
-                            )
-                        }
-                        ?: throw IllegalStateException("That series is no longer in the library")
-                    val series = fetched.copy(
-                        title = fetched.title.ifBlank { entry.title },
-                        cover = fetched.cover ?: entry.coverPath.ifBlank { null }
-                    )
-                    val chapters = chaptersWithFallback(src, series)
-                    val idx = chapters.indexOfFirst {
-                        chapterKeyOf(entry.sourceId, it) == entry.chapterKey
-                    }
-                    if (idx < 0) throw IllegalStateException("That chapter is gone")
-                    ResumeTarget(src, series, chapters, idx)
+                    loadHistoryResumeTarget(context, entry)
                 }
                 seriesOrigin = SeriesOrigin.HISTORY
                 activeSource = target.source
@@ -930,11 +867,12 @@ fun YomuApp() {
                 activeSeries = target.series
                 chapterList = target.chapters
                 enrichSeries(target.source, target.series)
-                // Hands off to openChapter so resuming streams its pages the same
-                // way opening one does, instead of blocking on the whole chapter.
                 openChapter(target.index)
-            } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not resume")
+            } catch (error: Throwable) {
+                errorMessage = sourceFailureMessage(
+                    error,
+                    "Could not resume"
+                )
             }
             isLoading = false
         }
