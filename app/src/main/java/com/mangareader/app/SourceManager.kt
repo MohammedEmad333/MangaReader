@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 
 /**
  * One saved connection to a backend. Multiple can exist at once
@@ -98,12 +99,20 @@ object SourceManager {
         val cached = cachedAdapters
         if (cached != null && cachedFrom === results) return cached
 
-        val adapters = results
-            .flatMap { result ->
+        val adapters = results.flatMap { result ->
+            buildList<Source> {
                 result.sources
                     .filterIsInstance<CatalogueSource>()
-                    .map { TachiyomiSourceAdapter(it, appCtx, result.pkgName, result.isNsfw) }
+                    .mapTo(this) {
+                        TachiyomiSourceAdapter(it, appCtx, result.pkgName, result.isNsfw)
+                    }
+                result.sources
+                    .filterIsInstance<AnimeCatalogueSource>()
+                    .mapTo(this) {
+                        AniyomiSourceAdapter(it, result.pkgName, result.isNsfw)
+                    }
             }
+        }
 
         cachedAdapters = adapters
         cachedFrom = results
