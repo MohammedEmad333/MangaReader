@@ -867,7 +867,7 @@ fun YomuApp() {
             onModeChange = { m -> openSource(source, "", m) },
             query = browseState.query,
             hasNext = browseState.hasNext,
-            browseState.loadingMore = browseState.loadingMore,
+            loadingMore = browseState.loadingMore,
             onSearch = { q -> openSource(source, q, browseState.mode) },
             onLoadMore = { loadMoreSeries() },
             onRescan = { openSource(source, browseState.query, browseState.mode) },
@@ -1011,7 +1011,7 @@ fun YomuApp() {
     }
 
     MainOverlayDialogs(
-        browseState.source = browseState.source,
+        activeSource = browseState.source,
         probeOpen = probeOpen,
         onDismissProbe = { probeOpen = false },
         filtersOpen = filtersOpen,
