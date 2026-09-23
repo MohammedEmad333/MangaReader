@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -31,7 +32,7 @@ import androidx.media3.ui.PlayerView
 /**
  * Full-screen in-app video player for direct streams discovered by Yomu.
  *
- * Media3 handles ordinary progressive files plus adaptive HLS/DASH streams.
+ * Media3 handles ordinary progressive files plus adaptive HLS streams.
  * Referer is forwarded because many source/CDN links reject a request detached
  * from the page that produced it.
  */
@@ -77,8 +78,9 @@ private fun VideoPlayerScreen(
     referer: String,
 ) {
     var buffering by remember { mutableStateOf(true) }
+    val context = LocalContext.current
 
-    val player = remember(url, referer) {
+    val player = remember(url, referer, context) {
         val headers = buildMap {
             if (referer.isNotBlank()) put("Referer", referer)
         }
@@ -87,9 +89,7 @@ private fun VideoPlayerScreen(
             .setAllowCrossProtocolRedirects(true)
             .setDefaultRequestProperties(headers)
 
-        ExoPlayer.Builder(
-            androidx.compose.ui.platform.LocalContext.current,
-        )
+        ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
             .apply {
