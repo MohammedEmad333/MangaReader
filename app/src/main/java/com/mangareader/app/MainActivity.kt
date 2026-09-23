@@ -52,8 +52,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -280,26 +278,10 @@ fun YomuApp() {
     // bumped whenever the library changes, to re-read it in LibraryTab
     var libraryTick by remember { mutableIntStateOf(0) }
 
-    // Re-scan installed extensions every time the app comes back to the foreground,
-    // so returning from the system installer picks up the new package. Fires on
-    // first launch too, which is why this replaces the old one-shot LaunchedEffect.
-    val hostActivity = context as? ComponentActivity
-    DisposableEffect(hostActivity) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch {
-                    extensionSources = withContext(Dispatchers.IO) {
-                        runCatching {
-                            SourceManager.listAllSources(context)
-                                .filter { it.id.startsWith("tachi:") }
-                        }.getOrDefault(emptyList())
-                    }
-                }
-            }
-        }
-        hostActivity?.lifecycle?.addObserver(observer)
-        onDispose { hostActivity?.lifecycle?.removeObserver(observer) }
-    }
+    ExtensionResumeObserver(
+        activity = activity,
+        onSourcesChanged = { extensionSources = it }
+    )
 
     /** Loads page 1 of a source, either the catalogue or a search. */
     // `mode` defaults to POPULAR rather than to the current value on purpose:
