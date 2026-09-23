@@ -27,8 +27,13 @@ object ExtensionLoader {
 
     // Tachiyomi's real discovery contract — NOT an intent filter.
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
+    private const val ANIME_EXTENSION_FEATURE = "tachiyomi.animeextension"
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
     private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
+    private const val ANIME_METADATA_SOURCE_CLASS = "tachiyomi.animeextension.class"
+    private const val ANIME_METADATA_NSFW = "tachiyomi.animeextension.nsfw"
+    private const val ANIYOMIX_EXTENSION_LIB = "aniyomix.extensionLib"
+    private const val ANIYOMIX_CONTENT_WARNING = "aniyomix.contentWarning"
 
     // Which extensions-lib versions your host implements. Widen only once
     // you've actually implemented the API surface those versions require.
@@ -122,12 +127,19 @@ object ExtensionLoader {
         return candidates.map { loadOne(appCtx, pm, it) }
     }
 
-    /** Every installed package declaring the tachiyomi.extension feature. */
+    /** Every installed manga or anime extension package. */
     @Suppress("DEPRECATION")
     private fun candidatePackages(pm: PackageManager): List<PackageInfo> {
         return pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
-            .filter { pkg -> pkg.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE } }
+            .filter { pkg ->
+                pkg.reqFeatures.orEmpty().any {
+                    it.name == EXTENSION_FEATURE || it.name == ANIME_EXTENSION_FEATURE
+                }
+            }
     }
+
+    private fun PackageInfo.isAnimeExtension(): Boolean =
+        reqFeatures.orEmpty().any { it.name == ANIME_EXTENSION_FEATURE }
 
     /**
      * Cheap identity for the installed extension set. Sorted, because
@@ -142,44 +154,80 @@ object ExtensionLoader {
     private fun loadOne(context: Context, pm: PackageManager, pkg: PackageInfo): LoadResult {
         val pkgName = pkg.packageName
         val label = pkg.applicationInfo?.let { pm.getApplicationLabel(it).toString() } ?: pkgName
+        val anime = pkg.isAnimeExtension()
 
         return try {
-            // Lib version is derived from the versionName, e.g. "1.4.23" -> 1.4.
-            // There is no `extension.lib.version` metadata key; that's why your
-            // probe printed null for it.
-            val versionName = pkg.versionName.orEmpty()
-            val libVersion = versionName.substringBeforeLast('.').toDoubleOrNull()
-                ?: return LoadResult(pkgName, label, emptyList(),
-                    IllegalStateException("Unparseable versionName: $versionName"))
-
-            if (libVersion < LIB_VERSION_MIN || libVersion > LIB_VERSION_MAX) {
-                return LoadResult(pkgName, label, emptyList(),
-                    IllegalStateException("Lib version $libVersion outside supported range"))
-            }
-
             val appInfo: ApplicationInfo =
                 pm.getApplicationInfo(pkgName, PackageManager.GET_META_DATA)
             val metaData = appInfo.metaData
-                ?: return LoadResult(pkgName, label, emptyList(),
-                    IllegalStateException("No application meta-data"))
+                ?: return LoadResult(
+                    pkgName,
+                    label,
+                    emptyList(),
+                    IllegalStateException("No application meta-data"),
+                )
 
-            val isNsfw = metaData.getInt(METADATA_NSFW, 0) == 1
+            val versionName = pkg.versionName.orEmpty()
+            val libVersion = if (anime) {
+                metaData.getInt(ANIYOMIX_EXTENSION_LIB, 0)
+                    .takeIf { it != 0 }
+                    ?.toDouble()
+                    ?: versionName.substringBeforeLast('.').toDoubleOrNull()
+            } else {
+                versionName.substringBeforeLast('.').toDoubleOrNull()
+            } ?: return LoadResult(
+                pkgName,
+                label,
+                emptyList(),
+                IllegalStateException("Unparseable versionName: $versionName"),
+            )
 
-            // Parent MUST be your app's classloader so the extension can see
-            // the eu.kanade.tachiyomi.source classes you supply.
+            val supported = if (anime) {
+                libVersion in setOf(14.0, 16.0, 17.0)
+            } else {
+                libVersion in LIB_VERSION_MIN..LIB_VERSION_MAX
+            }
+            if (!supported) {
+                return LoadResult(
+                    pkgName,
+                    label,
+                    emptyList(),
+                    IllegalStateException(
+                        if (anime) {
+                            "Anime extension lib $libVersion is unsupported (expected 14, 16 or 17)"
+                        } else {
+                            "Lib version $libVersion outside supported range"
+                        },
+                    ),
+                )
+            }
+
+            val isNsfw = if (anime) {
+                metaData.getInt(ANIYOMIX_CONTENT_WARNING, 0) > 0 ||
+                    metaData.getInt(ANIME_METADATA_NSFW, 0) == 1
+            } else {
+                metaData.getInt(METADATA_NSFW, 0) == 1
+            }
+
             val loader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
+            val metadataKey =
+                if (anime) ANIME_METADATA_SOURCE_CLASS else METADATA_SOURCE_CLASS
+            val declared = metaData.getString(metadataKey).orEmpty()
 
-            // Only ONE key matters. A single extension APK may name several
-            // classes here, separated by ';'. Each may turn out to be either a
-            // Source or a SourceFactory — you find out by instantiating it.
-            val declared = metaData.getString(METADATA_SOURCE_CLASS).orEmpty()
+            if (declared.isBlank()) {
+                return LoadResult(
+                    pkgName,
+                    label,
+                    emptyList(),
+                    IllegalStateException("Missing $metadataKey"),
+                    isNsfw,
+                )
+            }
 
             val sources = buildList<Any> {
                 declared.splitClassNames(pkgName).forEach { fqcn ->
                     val obj = loader.loadClass(fqcn).getDeclaredConstructor().newInstance()
                     if (obj.isSourceFactory()) {
-                        // Once source-api is on your classpath, replace this whole
-                        // branch with: addAll((obj as SourceFactory).createSources())
                         val created = obj.javaClass
                             .getMethod("createSources")
                             .invoke(obj) as List<*>
@@ -190,10 +238,12 @@ object ExtensionLoader {
                 }
             }
 
-            Log.d(TAG, "$pkgName -> ${sources.size} sources (nsfw=$isNsfw)")
+            Log.d(
+                TAG,
+                "$pkgName -> ${sources.size} ${if (anime) "anime" else "manga"} sources (nsfw=$isNsfw)",
+            )
             LoadResult(pkgName, label, sources, isNsfw = isNsfw)
         } catch (t: Throwable) {
-            // Catch Throwable, not Exception: NoClassDefFoundError is an Error.
             Log.e(TAG, "Failed to load $pkgName", t)
             LoadResult(pkgName, label, emptyList(), t)
         }
@@ -228,7 +278,11 @@ object ExtensionLoader {
     private fun Any.isSourceFactory(): Boolean {
         var c: Class<*>? = javaClass
         while (c != null) {
-            if (c.interfaces.any { it.name == "eu.kanade.tachiyomi.source.SourceFactory" }) {
+            if (c.interfaces.any {
+                    it.name == "eu.kanade.tachiyomi.source.SourceFactory" ||
+                        it.name == "eu.kanade.tachiyomi.animesource.AnimeSourceFactory"
+                }
+            ) {
                 return true
             }
             c = c.superclass
