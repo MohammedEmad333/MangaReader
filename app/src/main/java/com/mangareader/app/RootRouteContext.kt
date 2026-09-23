@@ -7,7 +7,8 @@ internal class RootRouteContext(
     val context: Context,
     val scope: CoroutineScope,
     val state: YomuStateBundle,
-    val actions: AppActionController
+    val actions: AppActionController,
+    val ui: RootUiBindings
 ) {
     val app get() = state.app
     val browse get() = state.browse
