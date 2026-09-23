@@ -42,3 +42,21 @@ internal suspend fun loadAndHealSeriesDetails(
 
     return enriched
 }
+
+
+internal fun resolveSourceConfig(
+    context: Context,
+    config: SourceConfig
+): Source? = SourceManager.build(context, config)
+
+internal suspend fun scanChapterVideos(
+    source: Source,
+    chapter: Chapter
+): VideoScan = runCatching {
+    source.scanVideos(chapter)
+}.getOrElse { error ->
+    VideoScan(
+        emptyList(),
+        note = sourceFailureMessage(error, "The scan failed")
+    )
+}
