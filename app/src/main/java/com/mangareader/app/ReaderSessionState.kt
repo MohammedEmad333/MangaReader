@@ -30,10 +30,11 @@ internal class ReaderSessionState {
         chapters: List<Chapter>,
         index: Int,
         onRootLoadingChanged: (Boolean) -> Unit,
+        onClearError: () -> Unit,
         onError: (String) -> Unit
     ) {
         val chapter = chapters.getOrNull(index) ?: return
-        onError("")
+        onClearError()
         loadJob?.cancel()
 
         val resumeAt = savedPage(
