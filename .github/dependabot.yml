@@ -5,11 +5,36 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+
+    # These dependencies form a compatibility set with the current Android
+    # toolchain and external source APKs. Keep Dependabot from proposing
+    # upgrades that are known to require a newer AGP/Gradle/Kotlin baseline.
+    ignore:
+      - dependency-name: "com.android.application"
+        versions: [">=9.0.0"]
+      - dependency-name: "org.jetbrains.kotlin.android"
+        versions: [">=2.3.0"]
+      - dependency-name: "org.jetbrains.kotlin.plugin.compose"
+        versions: [">=2.3.0"]
+      - dependency-name: "org.jetbrains.kotlin.plugin.serialization"
+        versions: [">=2.3.0"]
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-serialization-json"
+        versions: [">=1.10.0"]
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-serialization-json-okio"
+        versions: [">=1.10.0"]
+      - dependency-name: "com.squareup.okhttp3:okhttp-bom"
+        versions: [">5.4.0"]
+      - dependency-name: "androidx.compose:compose-bom"
+        versions: [">2024.09.03"]
+      - dependency-name: "me.saket.telephoto:zoomable-image-coil"
+        versions: [">0.14.0"]
+
     groups:
-      kotlin-and-android:
+      kotlin-plugins:
         patterns:
-          - "org.jetbrains.kotlin*"
-          - "com.android.tools.build*"
+          - "org.jetbrains.kotlin.android"
+          - "org.jetbrains.kotlin.plugin.compose"
+          - "org.jetbrains.kotlin.plugin.serialization"
       okhttp:
         patterns:
           - "com.squareup.okhttp3*"
