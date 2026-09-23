@@ -16,7 +16,7 @@ internal fun RootMainTabsRoute(
         libraryCategory = root.ui.libraryCategory,
         onLibraryCategoryChange = { category ->
             root.ui.onLibraryCategoryChange(category)
-            LibraryPrefs.setLastCategory(context, category)
+            LibraryPrefs.setLastCategory(root.context, category)
         },
         librarySearch = root.ui.librarySearch,
         onLibrarySearchChange = root.ui.onLibrarySearchChange,
