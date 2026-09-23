@@ -46,3 +46,4 @@ internal fun YomuAppHost() {
         actions = actions,
         ui = ui
     )
+}
