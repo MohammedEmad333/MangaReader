@@ -1,19 +1,13 @@
 package com.mangareader.app
 
-import android.content.Context
 import androidx.compose.runtime.Composable
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 internal fun RootMainTabsRoute(
-    context: Context,
-    scope: CoroutineScope,
-    appState: AppUiState,
-    globalSearch: GlobalSearchState,
-    actions: AppActionController,
+    root: RootRouteContext,
     libraryCategory: String?,
     onLibraryCategoryChange: (String?) -> Unit,
     librarySearch: String,
@@ -23,6 +17,11 @@ internal fun RootMainTabsRoute(
     libraryScroll: ScrollMemory,
     sourcesScroll: ScrollMemory
 ) {
+    val context = root.context
+    val scope = root.scope
+    val appState = root.app
+    val globalSearch = root.search
+    val actions = root.actions
     MainTabsRoute(
         currentTab = appState.currentTab,
         onSelectTab = { tab ->
