@@ -80,8 +80,14 @@ data class Chapter(
  * failure that names nothing costs more than the request that would have named
  * it.
  */
+data class PlayableVideo(
+    val url: String,
+    val title: String = "",
+    val headers: Map<String, String> = emptyMap(),
+)
+
 data class VideoScan(
-    /** Direct, playable urls — a <video> the page served itself. */
+    /** Direct, playable urls — retained for compatibility with HTML scanners. */
     val links: List<String>,
     /**
      * Iframe urls, which are where an embedded player usually lives.
@@ -97,5 +103,7 @@ data class VideoScan(
      */
     val embeds: List<String> = emptyList(),
     /** What the document held, when nothing playable was found. */
-    val note: String? = null
+    val note: String? = null,
+    /** Rich stream metadata from anime extensions (quality + request headers). */
+    val videos: List<PlayableVideo> = links.map { PlayableVideo(it) },
 )

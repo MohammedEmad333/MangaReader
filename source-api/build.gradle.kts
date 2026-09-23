@@ -49,6 +49,7 @@ dependencies {
     api("com.github.mihonapp:injekt:91edab2317")
     api("io.reactivex:rxjava:1.3.8")
     api("org.jsoup:jsoup:1.17.2")
+    api("org.nanohttpd:nanohttpd:2.3.1")
 
     // 5.4.0, not 5.0.0-alpha.12. Extensions built for current Mihon construct
     // okhttp3.CompressionInterceptor, which landed in OkHttp 5.2.0 (2025-10-07)

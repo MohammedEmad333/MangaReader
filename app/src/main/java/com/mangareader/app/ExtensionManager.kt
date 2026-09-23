@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import org.json.JSONObject
 
 data class Extension(
     val name: String,
@@ -107,13 +108,13 @@ object ExtensionManager {
                 val jsonStr = if (fresh) {
                     cached!!.json
                 } else {
-                    val conn = URL(repoUrl).openConnection() as HttpURLConnection
-                    val downloaded = conn.inputStream.bufferedReader().use { it.readText() }
+                    val downloaded = downloadText(repoUrl)
                     cache[repoUrl] = CachedIndex(downloaded, now)
                     downloaded
                 }
 
-                available += ExtensionIndexParser.parse(context, jsonStr, repoUrl, pm)
+                val (resolvedUrl, resolvedJson) = resolveExtensionIndex(repoUrl, jsonStr)
+                available += ExtensionIndexParser.parse(context, resolvedJson, resolvedUrl, pm)
             } catch (e: Exception) {
                 // A repo that fails now keeps whatever it last served, so one
                 // unreachable repo doesn't empty the screen of the others.
@@ -126,6 +127,54 @@ object ExtensionManager {
 
         indexCache = cache
         available
+    }
+
+    /**
+     * Aniyomi stores may point at a second-generation store or keep the actual
+     * extension list in extensionListUrl. Legacy repo.json descriptors point
+     * back to index.min.json. Resolve those indirections before handing the JSON
+     * to the common parser.
+     */
+    private fun resolveExtensionIndex(url: String, json: String, depth: Int = 0): Pair<String, String> {
+        if (depth >= 4 || json.trimStart().startsWith("[")) return url to json
+
+        val root = runCatching { JSONObject(json) }.getOrNull() ?: return url to json
+
+        root.optString("index_v2")
+            .takeIf { it.isNotBlank() }
+            ?.let { next ->
+                val resolved = URL(URL(url), next).toString()
+                return resolveExtensionIndex(resolved, downloadText(resolved), depth + 1)
+            }
+
+        root.optString("extensionListUrl")
+            .takeIf { it.isNotBlank() }
+            ?.let { listUrl ->
+                val resolved = URL(URL(url), listUrl).toString()
+                return resolved to downloadText(resolved)
+            }
+
+        if (root.has("extensionList") || root.has("extensions")) {
+            return url to json
+        }
+
+        if (root.has("meta") && url.substringBefore('?').endsWith("/repo.json")) {
+            val legacy = url.substringBefore('?').removeSuffix("/repo.json") + "/index.min.json"
+            return legacy to downloadText(legacy)
+        }
+
+        return url to json
+    }
+
+    private fun downloadText(url: String): String {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        return try {
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
+            conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /**

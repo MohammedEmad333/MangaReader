@@ -76,7 +76,13 @@ internal fun SeriesRoute(
         scroll = scroll,
         onOpen = { chapterId ->
             val index = chapters.indexOfFirst { it.id == chapterId }
-            if (index >= 0) onOpenChapter(index)
+            if (index >= 0) {
+                if (source?.isAnime == true) {
+                    onFindVideos(chapters[index])
+                } else {
+                    onOpenChapter(index)
+                }
+            }
         },
         onRefresh = onRefresh,
         seriesUrl = remember(series.handle, sourceId) {
