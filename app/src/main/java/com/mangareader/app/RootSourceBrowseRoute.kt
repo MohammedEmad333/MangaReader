@@ -4,8 +4,7 @@ import androidx.compose.runtime.Composable
 
 @Composable
 internal fun RootSourceBrowseRoute(
-    root: RootRouteContext,
-    scroll: ScrollMemory
+    root: RootRouteContext
 ) {
     val appState = root.app
     val browseState = root.browse
@@ -47,7 +46,7 @@ internal fun RootSourceBrowseRoute(
             }
         },
         libraryTick = appState.libraryTick,
-        scroll = scroll,
+        scroll = root.ui.browseScroll,
         onSolveChallenge = startChallenge
     )
 }
