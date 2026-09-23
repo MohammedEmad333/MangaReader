@@ -26,9 +26,11 @@ internal object ExtensionIndexParser {
                     ?.let(entries::add)
             }
         } else {
-            val arr = JSONObject(trimmed)
+            val root = JSONObject(trimmed)
+            val arr = root
                 .optJSONObject("extensionList")
                 ?.optJSONArray("extensions")
+                ?: root.optJSONArray("extensions")
                 ?: return emptyList()
 
             val names = HashMap<String, String>()
