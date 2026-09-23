@@ -103,17 +103,7 @@ fun YomuApp() {
     var downloadTick by remember { mutableIntStateOf(0) }
     var downloadsOpen by remember { mutableStateOf(false) }
 
-    // Video links found on a chapter's page, for handing to an external player.
-    // null = never asked, empty = asked and found none — the same three-state
-    // shape as seriesState.fetched, and for the same reason: "no videos" and "not
-    // looked yet" are different sentences.
-    var videoScan by remember { mutableStateOf<VideoScan?>(null) }
-    // url to open, and the page it is embedded on. The second half is the
-    // Referer, and without it cossora.stream answers "Unknown Error xD".
-    var openEmbed by remember { mutableStateOf<Pair<String, String>?>(null) }
-    // Media urls scraped out of a player, for handing to an external app.
-    var mediaUrls by remember { mutableStateOf<List<String>?>(null) }
-    var videoScanning by remember { mutableStateOf(false) }
+    val mediaState = remember { MediaNavigationState() }
 
     val activity = context as? ComponentActivity
     DoubleBackToExitHandler(activity)
@@ -295,13 +285,13 @@ fun YomuApp() {
      */
     fun findVideos(chapter: Chapter) {
         val source = browseState.source ?: return
-        videoScan = null
-        videoScanning = true
+        mediaState.scan = null
+        mediaState.scanning = true
         scope.launch {
-            videoScan = withContext(Dispatchers.IO) {
+            mediaState.scan = withContext(Dispatchers.IO) {
                 scanChapterVideos(source, chapter)
             }
-            videoScanning = false
+            mediaState.scanning = false
         }
     }
 
@@ -633,14 +623,14 @@ fun YomuApp() {
     // whatever was underneath. Placed BELOW the challenge so a Cloudflare wall
     // still wins — a player is never more urgent than being able to reach the
     // site at all.
-    val embed = openEmbed
+    val embed = mediaState.embed
     if (challengeUrl == null && embed != null) {
         EmbedPlayerRoute(
             embed = embed,
-            media = mediaUrls,
-            onMediaFound = { mediaUrls = it },
-            onDismissMedia = { mediaUrls = null },
-            onBack = { openEmbed = null },
+            media = mediaState.media,
+            onMediaFound = { mediaState.media = it },
+            onDismissMedia = { mediaState.media = null },
+            onBack = { mediaState.embed = null },
             onPlayerError = { errorMessage = it }
         )
         return
@@ -944,18 +934,18 @@ fun YomuApp() {
         )
     }
 
-    val scan = videoScan
-    if (videoScanning || scan != null) {
+    val scan = mediaState.scan
+    if (mediaState.scanning || scan != null) {
         ChapterVideoDialog(
-            scanning = videoScanning,
+            scanning = mediaState.scanning,
             scan = scan,
-            onDismiss = { videoScan = null },
+            onDismiss = { mediaState.scan = null },
             onOpenEmbed = { url ->
                 val page = seriesState.active?.let { series ->
                     browseState.source?.seriesUrl(series)
                 }
-                videoScan = null
-                openEmbed = url to (page ?: "")
+                mediaState.scan = null
+                mediaState.embed = url to (page ?: "")
             },
             onOpenVideo = { url ->
                 val view = Intent(Intent.ACTION_VIEW).apply {
