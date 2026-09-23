@@ -1559,51 +1559,35 @@ fun YomuApp() {
         )
     }
 
-    val probeSourceRef = activeSource
-    if (probeOpen && probeSourceRef != null) {
-        NetworkProbeDialog(source = probeSourceRef, onDismiss = { probeOpen = false })
-    }
+    MainOverlayDialogs(
+        activeSource = activeSource,
+        probeOpen = probeOpen,
+        onDismissProbe = { probeOpen = false },
+        filtersOpen = filtersOpen,
+        onApplyFilters = { source ->
+            filtersOpen = false
+            openSource(source, "", BrowseMode.FILTER)
+        },
+        onDismissFilters = { filtersOpen = false },
+        whatsNewOpen = whatsNewOpen,
+        releaseNotes = releaseNotes,
+        onDismissWhatsNew = {
+            whatsNewOpen = false
+            WhatsNew.markSeen(context)
+        },
+        showSourceDialog = showSourceDialog,
+        editingConfig = editingConfig,
+        onEditingConfigChange = { editingConfig = it },
+        onDismissSourceDialog = {
+            showSourceDialog = false
+            editingConfig = null
+        },
+        onSaveSource = { saved ->
+            SourceManager.upsert(context, saved)
+            configs = SourceManager.list(context)
+            showSourceDialog = false
+            editingConfig = null
+        }
+    )
 
-    val filterSource = activeSource
-    if (filtersOpen && filterSource != null) {
-        SourceFilterDialog(
-            source = filterSource,
-            onApply = {
-                filtersOpen = false
-                // Re-runs the listing as a filtered search from page 1. The
-                // filters themselves live on the adapter, so nothing about them
-                // has to be carried through here.
-                openSource(filterSource, "", BrowseMode.FILTER)
-            },
-            onDismiss = { filtersOpen = false }
-        )
-    }
-
-    if (whatsNewOpen) {
-        WhatsNewDialog(
-            notes = releaseNotes,
-            onDismiss = {
-                whatsNewOpen = false
-                WhatsNew.markSeen(context)
-            }
-        )
-    }
-
-    val editing = editingConfig
-    if (showSourceDialog && editing != null) {
-        SourceDialog(
-            value = editing,
-            onChange = { editingConfig = it },
-            onDismiss = {
-                showSourceDialog = false
-                editingConfig = null
-            },
-            onSave = { saved ->
-                SourceManager.upsert(context, saved)
-                configs = SourceManager.list(context)
-                showSourceDialog = false
-                editingConfig = null
-            }
-        )
-    }
 }
