@@ -107,158 +107,32 @@ internal fun YomuRootRouter(
             }
         )
     } else if (seriesState.active != null) {
-        val series = seriesState.active!!
-        val seriesSite = browseState.source?.siteUrl()
-        val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
-            appState.challengeUrl = seriesSite
-        }
-        SeriesRoute(
-            series = series,
-            chapters = seriesState.chapters,
-            chaptersFetched = seriesState.fetched,
-            source = browseState.source,
-            sourceId = browseState.sourceId,
-            loading = appState.loading,
-            error = appState.error,
-            readTick = appState.readTick,
-            scroll = seriesScroll,
-            localDownloadTick = appState.downloadTick,
-            onFindVideos = { actions.findVideos(it) },
-            onDownload = { src, chapter -> actions.downloadChapter(src, chapter) },
-            onDownloadAll = { src, chapters -> actions.downloadAll(src, chapters) },
-            onCancelDownloads = { actions.cancelSeriesDownloads(it) },
-            onDownloadStateChanged = { appState.downloadTick++ },
-            onOpenChapter = { actions.openChapter(it) },
-            onRefresh = { actions.refreshChapters() },
-            onReadStateChanged = { appState.readTick++ },
-            onLibraryChanged = { appState.libraryTick++ },
-            onSearchTag = { tag ->
-                browseState.source?.let { src ->
-                    seriesState.tagReturn = seriesState.active
-                    seriesState.active = null
-                    appState.error = null
-                    if (src.applyGenreFilter(tag)) {
-                        actions.openSource(src, "", BrowseMode.FILTER)
-                    } else {
-                        actions.openSource(src, tag, browseState.mode)
-                    }
-                }
-            },
-            onGlobalSearchTag = { tag ->
-                seriesState.tagReturn = seriesState.active
-                seriesState.active = null
-                appState.error = null
-                globalSearch.open = true
-                actions.runGlobalSearch(tag)
-            },
-            onMigrate = {
-                val s = seriesState.active
-                val sid = browseState.sourceId
-                if (s != null && sid != null) {
-                    migrationState.from = MigrateFrom(s.id, sid, s.title)
-                    seriesState.tagReturn = s
-                    seriesState.active = null
-                    appState.error = null
-                    globalSearch.open = true
-                    actions.runGlobalSearch(s.title)
-                }
-            },
-            onSolveChallenge = solveFromSeries,
-            onBack = {
-                seriesState.clear()
-                appState.error = null
-                if (seriesState.origin != SeriesOrigin.BROWSE) {
-                    browseState.source = null
-                    browseState.sourceId = null
-                    browseState.series = null
-                }
-            }
+        RootSeriesRoute(
+            appState = appState,
+            browseState = browseState,
+            seriesState = seriesState,
+            globalSearch = globalSearch,
+            migrationState = migrationState,
+            actions = actions,
+            scroll = seriesScroll
         )
     } else if (globalSearch.open) {
-        GlobalSearchRoute(
-            query = globalSearch.query,
-            results = globalSearch.results,
-            running = globalSearch.running,
-            done = globalSearch.done,
-            total = globalSearch.total,
-            pinnedOnly = globalSearch.pinnedOnly,
-            onTogglePinnedOnly = { actions.setGlobalPinnedOnly(it) },
-            hasResultsOnly = globalSearch.hasResultsOnly,
-            onToggleHasResultsOnly = { globalSearch.hasResultsOnly = it },
-            recents = globalSearch.recents,
-            onRemoveRecent = { globalSearch.recents = SourcePrefs.removeRecentSearch(context, it) },
-            onClearRecents = {
-                SourcePrefs.clearRecentSearches(context)
-                globalSearch.recents = emptyList()
-            },
-            onSearch = { actions.runGlobalSearch(it) },
-            onCancel = { actions.cancelGlobalSearch() },
-            onOpenSource = { actions.openGlobalSource(it) },
-            migrating = migrationState.from != null,
-            onOpenSeries = { src, s ->
-                if (migrationState.from != null) migrationState.target = src to s
-                else actions.openGlobalResult(src, s)
-            },
-            libraryTick = appState.libraryTick,
-            onBack = {
-                actions.cancelGlobalSearch()
-                globalSearch.open = false
-                migrationState.from = null
-                browseState.series = null
-                val cameFromTag = seriesState.tagReturn
-                if (cameFromTag != null) {
-                    seriesState.tagReturn = null
-                    seriesState.active = cameFromTag
-                } else {
-                    browseState.source = null
-                    browseState.sourceId = null
-                }
-            },
-            migrateFrom = migrationState.from,
-            migrateTarget = migrationState.target,
-            onDismissMigration = { migrationState.target = null },
-            onConfirmMigration = { from, targetSource, targetSeries ->
-                actions.performMigration(from, targetSource, targetSeries)
-            }
+        RootGlobalSearchRoute(
+            context = context,
+            appState = appState,
+            browseState = browseState,
+            seriesState = seriesState,
+            globalSearch = globalSearch,
+            migrationState = migrationState,
+            actions = actions
         )
     } else if (browseState.source != null) {
-        val source = browseState.source!!
-        val site = source.siteUrl()
-        val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
-            appState.challengeUrl = site
-        }
-        SourceBrowseRoute(
-            source = source,
-            sourceId = browseState.sourceId,
-            series = browseState.series,
-            loading = appState.loading,
-            error = appState.error,
-            filtersOpen = { appState.filtersOpen = true },
-            diagnose = { appState.probeOpen = true },
-            mode = browseState.mode,
-            onModeChange = { m -> actions.openSource(source, "", m) },
-            query = browseState.query,
-            hasNext = browseState.hasNext,
-            loadingMore = browseState.loadingMore,
-            onSearch = { q -> actions.openSource(source, q, browseState.mode) },
-            onLoadMore = { actions.loadMoreSeries() },
-            onRescan = { actions.openSource(source, browseState.query, browseState.mode) },
-            onOpen = { actions.openSeries(it) },
-            onBack = {
-                browseState.series = null
-                appState.error = null
-                val cameFromTag = seriesState.tagReturn
-                if (cameFromTag != null) {
-                    seriesState.tagReturn = null
-                    seriesState.active = cameFromTag
-                } else {
-                    browseState.source = null
-                    browseState.sourceId = null
-                }
-            },
-            libraryTick = appState.libraryTick,
-            scroll = browseScroll,
-            onSolveChallenge = startChallenge
+        RootSourceBrowseRoute(
+            appState = appState,
+            browseState = browseState,
+            seriesState = seriesState,
+            actions = actions,
+            scroll = browseScroll
         )
     } else if (appState.downloadsOpen) {
         // Above settings on purpose, and it's the ordering that does the work.
@@ -273,86 +147,20 @@ internal fun YomuRootRouter(
             onOpenDownloadQueue = { appState.downloadsOpen = true }
         )
     } else {
-        MainTabsRoute(
-            currentTab = appState.currentTab,
-            onSelectTab = { tab ->
-                appState.currentTab = tab
-                if (tab == 2) {
-                    appState.history = History.forDisplay(context)
-                }
-            },
-            libraryTick = appState.libraryTick,
-            error = appState.error,
+        RootMainTabsRoute(
+            context = context,
+            scope = scope,
+            appState = appState,
+            globalSearch = globalSearch,
+            actions = actions,
             libraryCategory = libraryCategory,
-            onLibraryCategoryChange = { category ->
-                onLibraryCategoryChange(category)
-                LibraryPrefs.setLastCategory(context, category)
-            },
+            onLibraryCategoryChange = onLibraryCategoryChange,
             librarySearch = librarySearch,
             onLibrarySearchChange = onLibrarySearchChange,
             librarySearchOpen = librarySearchOpen,
             onLibrarySearchOpenChange = onLibrarySearchOpenChange,
             libraryScroll = libraryScroll,
-            onOpenLibrary = { actions.openFromLibrary(it) },
-            onRemoveLibraryMany = { ids ->
-                Library.removeAll(context, ids)
-                appState.libraryTick++
-            },
-            onMarkRead = { ids -> actions.bulkSetRead(ids, true) },
-            onMarkUnread = { ids -> actions.bulkSetRead(ids, false) },
-            onDownloadMany = { ids -> actions.bulkDownload(ids) },
-            configs = appState.configs,
-            extensions = appState.extensionSources,
-            sourcesScroll = sourcesScroll,
-            onGlobalSearch = {
-                globalSearch.open = true
-                if (globalSearch.query.isNotBlank() &&
-                    globalSearch.results.isEmpty() &&
-                    !globalSearch.running
-                ) {
-                    actions.runGlobalSearch(globalSearch.query)
-                }
-            },
-            onAddSource = {
-                appState.editingConfig = SourceConfig(SourceManager.newId(), "local", "")
-                appState.showSourceDialog = true
-            },
-            onOpenConfig = { actions.openSourceConfig(it) },
-            onOpenExtension = { actions.openSource(it) },
-            onEditConfig = {
-                appState.editingConfig = it
-                appState.showSourceDialog = true
-            },
-            onDeleteConfig = {
-                SourceManager.remove(context, it.id)
-                appState.configs = SourceManager.list(context)
-            },
-            onExtensionsChanged = {
-                scope.launch {
-                    appState.extensionSources = withContext(Dispatchers.IO) {
-                        runCatching {
-                            SourceManager.listAllSources(context)
-                                .filter { it.id.startsWith("tachi:") }
-                        }.getOrDefault(emptyList())
-                    }
-                }
-            },
-            history = appState.history,
-            loading = appState.loading,
-            onOpenHistory = { actions.openFromHistory(it) },
-            onDeleteHistory = {
-                History.remove(context, it.chapterKey)
-                appState.history = History.forDisplay(context)
-            },
-            onClearHistory = {
-                History.list(context).forEach { History.remove(context, it.chapterKey) }
-                appState.history = History.forDisplay(context)
-            },
-            onRefreshHistory = { appState.history = History.forDisplay(context) },
-            downloadTick = appState.downloadTick + DownloadQueue.tick,
-            onOpenDownload = { actions.openFromDownloads(it) },
-            onOpenDownloadQueue = { appState.downloadsOpen = true },
-            onOpenSettings = { appState.settingsOpen = true }
+            sourcesScroll = sourcesScroll
         )
     }
 
