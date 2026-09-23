@@ -304,12 +304,12 @@ fun YomuApp() {
     }
 
     fun openSourceConfig(config: SourceConfig) {
-        val built = SourceManager.build(context, config)
-        if (built == null) {
+        val source = resolveSourceConfig(context, config)
+        if (source == null) {
             errorMessage = "\"${config.label}\" isn't configured yet"
             return
         }
-        openSource(built)
+        openSource(source)
     }
 
     fun enrichSeries(source: Source, series: Series) {
@@ -377,14 +377,12 @@ fun YomuApp() {
      * exactly the failure this codebase keeps writing cards about.
      */
     fun findVideos(chapter: Chapter) {
-        val src = activeSource ?: return
+        val source = activeSource ?: return
         videoScan = null
         videoScanning = true
         scope.launch {
-            videoScan = try {
-                withContext(Dispatchers.IO) { src.scanVideos(chapter) }
-            } catch (e: Throwable) {
-                VideoScan(emptyList(), note = sourceFailureMessage(e, "The scan failed"))
+            videoScan = withContext(Dispatchers.IO) {
+                scanChapterVideos(source, chapter)
             }
             videoScanning = false
         }
