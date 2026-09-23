@@ -1,307 +1,130 @@
 package com.mangareader.app
 
 import android.content.Context
-import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 internal class AppActionController(
-    private val context: Context,
-    private val scope: CoroutineScope,
-    private val appState: AppUiState,
-    private val browseState: SourceBrowseState,
-    private val seriesState: SeriesNavigationState,
-    private val readerSession: ReaderSessionState,
-    private val globalSearch: GlobalSearchState,
-    private val migrationState: MigrationNavigationState,
-    private val mediaState: MediaNavigationState
+    context: Context,
+    scope: CoroutineScope,
+    appState: AppUiState,
+    browseState: SourceBrowseState,
+    seriesState: SeriesNavigationState,
+    readerSession: ReaderSessionState,
+    globalSearch: GlobalSearchState,
+    migrationState: MigrationNavigationState,
+    mediaState: MediaNavigationState
 ) {
-    fun openSource(source: Source, query: String = "", mode: BrowseMode = BrowseMode.POPULAR) {
-        appState.error = null
-        scope.launch {
-            appState.loading = true
-            appState.error = browseState.loadFirstPage(context, source, query, mode)
-            appState.loading = false
-        }
-    }
+    private val sourceActions = SourceActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        browseState = browseState
+    )
 
-    fun loadMoreSeries() {
-        scope.launch { browseState.loadNextPage()?.let { appState.error = it } }
-    }
+    private val seriesActions = SeriesActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        readerSession = readerSession,
+        mediaState = mediaState
+    )
 
-    fun runGlobalSearch(query: String) {
-        globalSearch.search(context, scope, appState.configs, appState.extensionSources, query)
-    }
+    private val searchActions = SearchActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        globalSearch = globalSearch,
+        sourceActions = sourceActions,
+        openSeries = seriesActions::open
+    )
 
-    fun cancelGlobalSearch() = globalSearch.cancel()
+    private val libraryActions = LibraryActionController(
+        context = context,
+        scope = scope,
+        appState = appState,
+        browseState = browseState,
+        seriesState = seriesState,
+        globalSearch = globalSearch,
+        migrationState = migrationState,
+        enrichSeries = seriesActions::enrich,
+        openChapter = seriesActions::openChapter
+    )
 
-    fun setGlobalPinnedOnly(value: Boolean) {
-        globalSearch.setPinnedOnly(
-            context, scope, appState.configs, appState.extensionSources, value
-        )
-    }
+    fun openSource(
+        source: Source,
+        query: String = "",
+        mode: BrowseMode = BrowseMode.POPULAR
+    ) = sourceActions.openSource(source, query, mode)
 
-    fun openSourceConfig(config: SourceConfig) {
-        val source = resolveSourceConfig(context, config)
-        if (source == null) {
-            appState.error = "\"${config.label}\" isn't configured yet"
-            return
-        }
-        openSource(source)
-    }
+    fun loadMoreSeries() = sourceActions.loadMoreSeries()
 
-    fun enrichSeries(source: Source, series: Series) {
-        scope.launch {
-            val enriched = withContext(Dispatchers.IO) {
-                loadAndHealSeriesDetails(context, source, series)
-            }
-            if (enriched != null && seriesState.active?.id == series.id) {
-                seriesState.active = enriched
-            }
-        }
-    }
+    fun openSourceConfig(config: SourceConfig) =
+        sourceActions.openSourceConfig(config)
 
-    fun openSeries(series: Series) {
-        val source = browseState.source ?: return
-        seriesState.begin(series, SeriesOrigin.BROWSE)
-        seriesState.tagReturn = null
-        appState.error = null
-        enrichSeries(source, series)
-        scope.launch {
-            appState.loading = true
-            appState.error = seriesState.reloadChapters(context, source, series)
-            appState.loading = false
-        }
-    }
+    fun runGlobalSearch(query: String) =
+        searchActions.run(query)
 
-    fun findVideos(chapter: Chapter) {
-        val source = browseState.source ?: return
-        mediaState.scan = null
-        mediaState.scanning = true
-        scope.launch {
-            mediaState.scan = withContext(Dispatchers.IO) {
-                scanChapterVideos(source, chapter)
-            }
-            mediaState.scanning = false
-        }
-    }
+    fun cancelGlobalSearch() =
+        searchActions.cancel()
 
-    fun refreshChapters() {
-        val source = browseState.source ?: return
-        val series = seriesState.active ?: return
-        appState.error = null
-        Downloads.invalidateCompletion()
-        appState.downloadTick++
-        enrichSeries(source, series)
-        scope.launch {
-            appState.loading = true
-            appState.error = seriesState.reloadChapters(context, source, series)
-            appState.loading = false
-        }
-    }
+    fun setGlobalPinnedOnly(value: Boolean) =
+        searchActions.setPinnedOnly(value)
 
-    fun openGlobalResult(source: Source, series: Series) {
-        browseState.source = source
-        browseState.sourceId = source.id
-        browseState.series = null
-        browseState.page = 1
-        browseState.hasNext = false
-        browseState.query = globalSearch.query
-        openSeries(series)
-        seriesState.origin = SeriesOrigin.GLOBAL_SEARCH
-    }
+    fun openGlobalResult(source: Source, series: Series) =
+        searchActions.openResult(source, series)
 
-    fun openGlobalSource(source: Source) {
-        cancelGlobalSearch()
-        globalSearch.open = false
-        openSource(source, globalSearch.query)
-    }
+    fun openGlobalSource(source: Source) =
+        searchActions.openSource(source)
 
-    fun openChapter(index: Int) {
-        val source = browseState.source ?: return
-        readerSession.open(
-            context = context,
-            scope = scope,
-            source = source,
-            chapters = seriesState.chapters,
-            index = index,
-            onRootLoadingChanged = { appState.loading = it },
-            onClearError = { appState.error = null },
-            onError = { appState.error = it }
-        )
-    }
+    fun enrichSeries(source: Source, series: Series) =
+        seriesActions.enrich(source, series)
 
-    fun queueDownloads(source: Source, chapters: List<Chapter>) {
-        queueSeriesDownloads(context, seriesState.active, source, chapters)
-    }
+    fun openSeries(series: Series) =
+        seriesActions.open(series)
+
+    fun findVideos(chapter: Chapter) =
+        seriesActions.findVideos(chapter)
+
+    fun refreshChapters() =
+        seriesActions.refreshChapters()
+
+    fun openChapter(index: Int) =
+        seriesActions.openChapter(index)
+
+    fun queueDownloads(source: Source, chapters: List<Chapter>) =
+        seriesActions.queueDownloads(source, chapters)
 
     fun downloadChapter(source: Source, chapter: Chapter) =
-        queueDownloads(source, listOf(chapter))
+        seriesActions.downloadChapter(source, chapter)
 
     fun downloadAll(source: Source, chapters: List<Chapter>) =
-        queueDownloads(source, chapters)
+        seriesActions.downloadAll(source, chapters)
 
-    fun bulkSetRead(ids: Set<String>, value: Boolean) {
-        if (ids.isEmpty()) return
-        scope.launch {
-            val result = setLibrarySeriesRead(context, ids, value)
-            appState.libraryTick++
-            val verb = if (value) "read" else "unread"
-            val message = buildString {
-                append("Marked ${result.changed} series $verb")
-                if (result.skipped > 0) {
-                    append(" · ${result.skipped} skipped (no chapter list)")
-                }
-            }
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        }
-    }
+    fun cancelSeriesDownloads(seriesId: String) =
+        seriesActions.cancelDownloads(seriesId)
 
-    fun bulkDownload(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        scope.launch {
-            val result = queueLibraryDownloads(context, ids)
-            appState.downloadTick++
-            val message = buildString {
-                append(
-                    if (result.added > 0) {
-                        "Queued ${result.added} " +
-                            if (result.added == 1) "chapter" else "chapters"
-                    } else {
-                        "Nothing to download — already downloaded or queued"
-                    }
-                )
-                if (result.skipped > 0) {
-                    append(" · ${result.skipped} skipped (no chapter list)")
-                }
-            }
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        }
-    }
+    fun bulkSetRead(ids: Set<String>, value: Boolean) =
+        libraryActions.bulkSetRead(ids, value)
 
-    fun performMigration(from: MigrateFrom, toSource: Source, toSeries: Series) {
-        scope.launch {
-            val migrated = migrateLibrarySeries(context, from, toSource, toSeries)
-            migrationState.clear()
-            if (migrated) {
-                cancelGlobalSearch()
-                globalSearch.open = false
-                browseState.series = null
-                seriesState.tagReturn = null
-                seriesState.active = null
-                browseState.source = null
-                browseState.sourceId = null
-                appState.currentTab = 0
-                appState.libraryTick++
-                Toast.makeText(
-                    context,
-                    "Migrated to ${toSource.name}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                appState.error = "Couldn't migrate this series"
-            }
-        }
-    }
+    fun bulkDownload(ids: Set<String>) =
+        libraryActions.bulkDownload(ids)
 
-    fun cancelSeriesDownloads(seriesId: String) {
-        if (cancelSeriesDownloadsAction(context, seriesId)) appState.downloadTick++
-    }
+    fun performMigration(
+        from: MigrateFrom,
+        toSource: Source,
+        toSeries: Series
+    ) = libraryActions.migrate(from, toSource, toSeries)
 
-    fun openFromLibrary(entry: LibraryEntry) {
-        appState.error = null
-        seriesState.begin(
-            Series(entry.seriesId, entry.title, entry.cover.ifBlank { null }),
-            SeriesOrigin.LIBRARY
-        )
-        scope.launch {
-            appState.loading = true
-            try {
-                openLibraryEntry(
-                    context = context,
-                    entry = entry,
-                    onSourceResolved = { source ->
-                        browseState.source = source
-                        browseState.sourceId = source.id
-                    },
-                    onCachedChapters = { cached ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.chapters = cached
-                        }
-                    },
-                    onResolved = { source, series, chapters ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.active = series
-                            seriesState.chapters = chapters
-                            seriesState.fetched = true
-                            enrichSeries(source, series)
-                        }
-                    }
-                )
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(error, "Could not open this series")
-            }
-            appState.loading = false
-        }
-    }
+    fun openFromLibrary(entry: LibraryEntry) =
+        libraryActions.openFromLibrary(entry)
 
-    fun openFromDownloads(entry: DownloadedSeries) {
-        appState.error = null
-        seriesState.begin(
-            Series(entry.seriesId, entry.title, entry.cover.ifBlank { null }),
-            SeriesOrigin.DOWNLOADS
-        )
-        scope.launch {
-            appState.loading = true
-            try {
-                openDownloadedEntry(
-                    context = context,
-                    entry = entry,
-                    onSourceResolved = { source ->
-                        browseState.source = source
-                        browseState.sourceId = source.id
-                    },
-                    onCachedChapters = { cached ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.chapters = cached
-                        }
-                    },
-                    onResolved = { source, series, chapters ->
-                        if (seriesState.active?.id == entry.seriesId) {
-                            seriesState.active = series
-                            seriesState.chapters = chapters
-                            seriesState.fetched = true
-                            enrichSeries(source, series)
-                        }
-                    }
-                )
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(error, "Could not open this series")
-            }
-            appState.loading = false
-        }
-    }
+    fun openFromDownloads(entry: DownloadedSeries) =
+        libraryActions.openFromDownloads(entry)
 
-    fun openFromHistory(entry: HistoryEntry) {
-        appState.error = null
-        scope.launch {
-            appState.loading = true
-            try {
-                openHistoryEntry(context, entry) { target ->
-                    seriesState.origin = SeriesOrigin.HISTORY
-                    browseState.source = target.source
-                    browseState.sourceId = target.source.id
-                    seriesState.active = target.series
-                    seriesState.chapters = target.chapters
-                    enrichSeries(target.source, target.series)
-                    openChapter(target.index)
-                }
-            } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(error, "Could not resume")
-            }
-            appState.loading = false
-        }
-    }
+    fun openFromHistory(entry: HistoryEntry) =
+        libraryActions.openFromHistory(entry)
 }
