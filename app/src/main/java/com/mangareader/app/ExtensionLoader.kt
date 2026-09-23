@@ -200,54 +200,25 @@ object ExtensionLoader {
     }
 
     /**
-     * Human-readable report of what loadAll() found and why each package failed.
-     * Wire this to the existing diagnostic button in ExtensionsScreen.
-     *
-     * Deliberately uncached: the whole point is to see what happens on a real
-     * load attempt right now. It does not disturb the cache either — a
-     * diagnostic run shouldn't swap out the instances Browse is using.
+     * Human-readable report of a fresh extension load attempt.
      */
     fun diagnose(context: Context): String {
-        val out = StringBuilder()
         val appCtx = context.applicationContext
         val pm = appCtx.packageManager
-
         val candidates = runCatching { candidatePackages(pm) }.getOrElse {
             return "getInstalledPackages threw: $it"
         }
-
-        out.appendLine("Packages declaring $EXTENSION_FEATURE: ${candidates.size}")
-        out.appendLine("Supported lib versions: $LIB_VERSION_MIN - $LIB_VERSION_MAX")
-        out.appendLine("Cache: " + (cachedResults?.let { "${it.sumOf { r -> r.sources.size }} sources held" } ?: "empty"))
-        out.appendLine()
-
         val results = candidates.map { loadOne(appCtx, pm, it) }
-        val ok = results.count { it.error == null }
-        out.appendLine("Loaded OK: $ok / ${results.size}")
-        out.appendLine("Total sources: ${results.sumOf { it.sources.size }}")
-        out.appendLine()
 
-        for (r in results.take(5)) {
-            out.appendLine("• ${r.pkgName}")
-            out.appendLine("  label: ${r.label}")
-
-            val md = runCatching {
-                pm.getApplicationInfo(r.pkgName, PackageManager.GET_META_DATA).metaData
-            }.getOrNull()
-            out.appendLine("  class:   ${md?.getString(METADATA_SOURCE_CLASS) ?: "-"}")
-            out.appendLine("  (factory status is only knowable after instantiation)")
-            out.appendLine("  version: ${runCatching { pm.getPackageInfo(r.pkgName, 0).versionName }.getOrNull()}")
-
-            if (r.error == null) {
-                out.appendLine("  ✓ ${r.sources.size} source(s)")
-            } else {
-                out.appendLine("  ✗ ${r.error.rootCauseChain()}")
-            }
-            out.appendLine()
-        }
-
-        if (results.size > 5) out.appendLine("(${results.size - 5} more not shown)")
-        return out.toString()
+        return ExtensionDiagnostics.build(
+            pm = pm,
+            candidates = candidates,
+            results = results,
+            supportedMin = LIB_VERSION_MIN,
+            supportedMax = LIB_VERSION_MAX,
+            metadataSourceClass = METADATA_SOURCE_CLASS,
+            cacheSourceCount = cachedResults?.sumOf { result -> result.sources.size },
+        )
     }
 
     /**
@@ -263,19 +234,6 @@ object ExtensionLoader {
             c = c.superclass
         }
         return false
-    }
-
-    /** Flattens the cause chain — the last entry is the thing actually missing. */
-    private fun Throwable.rootCauseChain(): String {
-        val parts = mutableListOf<String>()
-        var t: Throwable? = this
-        var depth = 0
-        while (t != null && depth < 6) {
-            parts += "${t.javaClass.simpleName}: ${t.message?.take(120)}"
-            t = t.cause
-            depth++
-        }
-        return parts.joinToString("\n     caused by ")
     }
 
     /** Metadata values are comma-separated; a leading '.' means "relative to package". */
