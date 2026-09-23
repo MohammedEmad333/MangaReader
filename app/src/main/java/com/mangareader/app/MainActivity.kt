@@ -641,240 +641,91 @@ fun YomuApp() {
         }
     }
 
-    /**
-     * Hands chapters to the download service.
-     *
-     * Nothing is fetched here any more. This used to run in `scope`, the
-     * composable's coroutine scope, which meant a download died with the Activity
-     * — swiping the app away mid-chapter stopped it. Now the work is queued and
-     * [DownloadService] drains it from a process-scoped worker behind a
-     * foreground notification, so it survives leaving the app entirely.
-     *
-     * Called from a visible screen on a user tap, which is what makes the
-     * foreground-service start legal on Android 12+.
-     */
-    fun queueDownloads(src: Source, chapters: List<Chapter>) {
-        val series = activeSeries
-        val seriesTitle = series?.title ?: ""
-        // Carried so DownloadIndex can file the finished chapter under its
-        // series without a second lookup — the download path itself needs
-        // neither of these.
-        val seriesId = series?.id ?: ""
-        val cover = when (val c = series?.cover) {
-            is File -> c.absolutePath
-            is String -> c
-            else -> ""
-        }
-        val added = DownloadQueue.enqueue(
-            context,
-            chapters.map { chapter ->
-                DownloadItem(
-                    sourceId = src.id,
-                    chapterId = chapter.id,
-                    chapterName = chapter.name,
-                    seriesTitle = seriesTitle,
-                    seriesId = seriesId,
-                    cover = cover
-                )
-            }
+    fun queueDownloads(source: Source, chapters: List<Chapter>) {
+        queueSeriesDownloads(
+            context = context,
+            series = activeSeries,
+            source = source,
+            chapters = chapters
         )
-        // enqueue skips what's already downloaded or already queued; if it
-        // skipped everything there's no reason to poke the service.
-        if (added > 0) {
-            if (DownloadQueue.paused) DownloadQueue.setPaused(context, false)
-            DownloadService.start(context)
-        }
     }
 
-    fun downloadChapter(src: Source, chapter: Chapter) = queueDownloads(src, listOf(chapter))
+    fun downloadChapter(source: Source, chapter: Chapter) =
+        queueDownloads(source, listOf(chapter))
 
-    /** Queues every not-yet-downloaded chapter, oldest first. */
-    fun downloadAll(src: Source, chapters: List<Chapter>) = queueDownloads(src, chapters)
+    fun downloadAll(source: Source, chapters: List<Chapter>) =
+        queueDownloads(source, chapters)
 
-    // ---------- library bulk actions ----------
-
-    /**
-     * A selection's chapters, cache first and the source only as a fallback.
-     *
-     * The cached list is what most library entries already have — every series
-     * that has been opened or that a refresh has swept — so the common path
-     * makes no request at all. A series with nothing cached is resolved through
-     * its source exactly as [openFromLibrary] does (`restoreSeries` then
-     * `listChapters`), and an empty return means "couldn't load it", which the
-     * callers count and report rather than silently doing nothing.
-     *
-     * Always on [Dispatchers.IO]: called from a loop over the selection, each
-     * iteration a pref read and possibly two requests.
-     */
-    suspend fun chaptersForBulk(entry: LibraryEntry, src: Source?): List<Chapter> =
-        withContext(Dispatchers.IO) {
-            val cached = ChapterCache.load(context, entry.seriesId)
-                .map { src?.rehydrateChapter(it) ?: it }
-            if (cached.isNotEmpty()) return@withContext cached
-            if (src == null) return@withContext emptyList()
-            val series = runCatching { src.restoreSeries(entry.seriesId, entry.title) }
-                .getOrNull() ?: return@withContext emptyList()
-            runCatching { src.listChapters(series) }
-                .onSuccess { if (it.isNotEmpty()) ChapterCache.save(context, entry.seriesId, it) }
-                .getOrDefault(emptyList())
-        }
-
-    /**
-     * Marks every chapter of each selected series read (or unread) at once.
-     *
-     * The read flags and the [SeriesIndex] counts are the same two halves a
-     * single series keeps in step: the flags come first through [ReadState], then
-     * [SeriesIndex.record] recomputes the stored read count from them so the
-     * unread badge and the Unread/Started/Completed filters move with the change.
-     * `record` per series is one index write each, which is fine for a selection
-     * and is not the whole-library loop its KDoc warns off.
-     */
     fun bulkSetRead(ids: Set<String>, value: Boolean) {
         if (ids.isEmpty()) return
+
         scope.launch {
-            val (changed, skipped) = withContext(Dispatchers.IO) {
-                val sources = SourceManager.listAllSources(context).associateBy { it.id }
-                val entries = Library.list(context).filter { it.seriesId in ids }
-                var changed = 0
-                var skipped = 0
-                for (entry in entries) {
-                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
-                    if (chapters.isEmpty()) { skipped++; continue }
-                    chapters.forEach {
-                        ReadState.setRead(context, chapterKeyOf(entry.sourceId, it), value)
-                    }
-                    SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
-                    changed++
-                }
-                changed to skipped
-            }
+            val result = setLibrarySeriesRead(
+                context = context,
+                ids = ids,
+                value = value
+            )
             libraryTick++
+
             val verb = if (value) "read" else "unread"
-            val msg = buildString {
-                append("Marked $changed series $verb")
-                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+            val message = buildString {
+                append("Marked ${result.changed} series $verb")
+                if (result.skipped > 0) {
+                    append(" · ${result.skipped} skipped (no chapter list)")
+                }
             }
-            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast
+                .makeText(context, message, android.widget.Toast.LENGTH_SHORT)
+                .show()
         }
     }
 
-    /**
-     * Queues every chapter of each selected series for download.
-     *
-     * Builds the [DownloadItem]s straight from the [LibraryEntry] rather than
-     * routing through [queueDownloads], which reads title and cover off
-     * `activeSeries` — there is no active series here. `enqueue` drops anything
-     * already downloaded or already queued, so re-running this is safe and the
-     * count reported is only what it actually added.
-     */
     fun bulkDownload(ids: Set<String>) {
         if (ids.isEmpty()) return
+
         scope.launch {
-            val (items, skipped) = withContext(Dispatchers.IO) {
-                val sources = SourceManager.listAllSources(context).associateBy { it.id }
-                val entries = Library.list(context).filter { it.seriesId in ids }
-                val items = ArrayList<DownloadItem>()
-                var skipped = 0
-                for (entry in entries) {
-                    val chapters = chaptersForBulk(entry, sources[entry.sourceId])
-                    if (chapters.isEmpty()) { skipped++; continue }
-                    chapters.forEach { ch ->
-                        items.add(
-                            DownloadItem(
-                                sourceId = entry.sourceId,
-                                chapterId = ch.id,
-                                chapterName = ch.name,
-                                seriesTitle = entry.title,
-                                seriesId = entry.seriesId,
-                                cover = entry.cover
-                            )
-                        )
-                    }
-                }
-                items to skipped
-            }
-            val added = DownloadQueue.enqueue(context, items)
-            if (added > 0) {
-                if (DownloadQueue.paused) DownloadQueue.setPaused(context, false)
-                DownloadService.start(context)
-            }
+            val result = queueLibraryDownloads(
+                context = context,
+                ids = ids
+            )
             downloadTick++
-            val msg = buildString {
+
+            val message = buildString {
                 append(
-                    if (added > 0) "Queued $added ${if (added == 1) "chapter" else "chapters"}"
-                    else "Nothing to download — already downloaded or queued"
+                    if (result.added > 0) {
+                        "Queued ${result.added} " +
+                            if (result.added == 1) "chapter" else "chapters"
+                    } else {
+                        "Nothing to download — already downloaded or queued"
+                    }
                 )
-                if (skipped > 0) append(" · $skipped skipped (no chapter list)")
+                if (result.skipped > 0) {
+                    append(" · ${result.skipped} skipped (no chapter list)")
+                }
             }
-            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast
+                .makeText(context, message, android.widget.Toast.LENGTH_SHORT)
+                .show()
         }
     }
 
-    /**
-     * Moves a saved series from one source to another.
-     *
-     * The point of migration is a source that has gone dead or lost the series:
-     * the entry is re-created under [toSource]/[toSeries], its categories are
-     * carried over, and read progress is transferred **by chapter number** —
-     * the only key both sides share, since chapter ids are per-source. A target
-     * chapter counts as read when a numbered source chapter with the same number
-     * was read; anything unnumbered is left alone rather than guessed at. The old
-     * entry, its categories, and its index row are then removed.
-     *
-     * Best-effort by design: if the target's chapter list can't be fetched the
-     * entry still moves (so a dead source isn't a trap), it just carries no
-     * transferred progress.
-     */
-    fun performMigration(from: MigrateFrom, toSource: Source, toSeries: Series) {
+    fun performMigration(
+        from: MigrateFrom,
+        toSource: Source,
+        toSeries: Series
+    ) {
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val readNumbers = ChapterCache.load(context, from.seriesId)
-                        .filter {
-                            it.number > Chapter.NO_NUMBER &&
-                                ReadState.isRead(context, chapterKeyOf(from.sourceId, it))
-                        }
-                        .map { it.number }
-                        .toSet()
+            val migrated = migrateLibrarySeries(
+                context = context,
+                from = from,
+                toSource = toSource,
+                toSeries = toSeries
+            )
 
-                    val toChapters = runCatching { toSource.listChapters(toSeries) }
-                        .getOrDefault(emptyList())
-                    if (toChapters.isNotEmpty()) {
-                        ChapterCache.save(context, toSeries.id, toChapters)
-                        val readKeys = toChapters
-                            .filter { it.number > Chapter.NO_NUMBER && it.number in readNumbers }
-                            .map { chapterKeyOf(toSource.id, it) }
-                        ReadState.setReadBulk(context, readKeys)
-                        SeriesIndex.record(context, toSource.id, toSeries.id, toChapters)
-                    }
-
-                    val cats = Categories.categoriesFor(context, from.seriesId)
-                    val cover = (toSeries.cover as? String)
-                        ?: (toSeries.cover as? File)?.absolutePath
-                        ?: ""
-                    Library.add(
-                        context,
-                        LibraryEntry(
-                            seriesId = toSeries.id,
-                            sourceId = toSource.id,
-                            title = toSeries.title,
-                            cover = cover,
-                            addedAt = System.currentTimeMillis()
-                        )
-                    )
-                    Categories.setCategoriesFor(context, toSeries.id, cats)
-
-                    // Only after the new entry is in place: a crash between the
-                    // two would otherwise lose the series from the library
-                    // entirely rather than leaving the old copy to retry from.
-                    Library.remove(context, from.seriesId)
-                    Categories.setCategoriesFor(context, from.seriesId, emptySet())
-                    SeriesIndex.forget(context, setOf(from.seriesId))
-                }.isSuccess
-            }
             migrateTarget = null
             migrateFrom = null
-            if (ok) {
+
+            if (migrated) {
                 cancelGlobalSearch()
                 globalSearchOpen = false
                 seriesList = null
@@ -885,7 +736,11 @@ fun YomuApp() {
                 currentTab = 0
                 libraryTick++
                 android.widget.Toast
-                    .makeText(context, "Migrated to ${toSource.name}", android.widget.Toast.LENGTH_SHORT)
+                    .makeText(
+                        context,
+                        "Migrated to ${toSource.name}",
+                        android.widget.Toast.LENGTH_SHORT
+                    )
                     .show()
             } else {
                 errorMessage = "Couldn't migrate this series"
@@ -893,28 +748,10 @@ fun YomuApp() {
         }
     }
 
-    /**
-     * Stops the downloads for one series, leaving the rest of the queue alone.
-     *
-     * This is what the series screen's Stop calls. It used to clear the whole
-     * queue — so stopping one series silently discarded every other series
-     * queued behind it. Cancelling everything is still reachable, from the
-     * download queue screen's "Cancel all", which is where it belongs.
-     *
-     * The chapter being fetched right now is held by the service rather than by
-     * the queue, so delisting it is not enough; it gets an explicit skip, and
-     * only when it was one of ours. `ACTION_SKIP` re-checks the id against
-     * `activeId` on the service side, so a chapter that finished in the gap
-     * between these two lines is not cancelled by mistake.
-     */
     fun cancelSeriesDownloads(seriesId: String) {
-        val active = DownloadQueue.activeId
-        val removed = DownloadQueue.removeSeries(context, seriesId)
-        if (removed.isEmpty()) return
-        if (active != null && active in removed) {
-            DownloadService.start(context, DownloadService.ACTION_SKIP, active)
+        if (cancelSeriesDownloads(context, seriesId)) {
+            downloadTick++
         }
-        downloadTick++
     }
 
     /** Reopen a saved series: resolve its source, then re-fetch its chapter list. */
