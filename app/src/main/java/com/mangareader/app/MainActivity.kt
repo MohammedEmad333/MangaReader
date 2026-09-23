@@ -134,53 +134,29 @@ fun YomuApp() {
         onSourcesChanged = { extensionSources = it }
     )
 
-    /** Loads page 1 of a source, either the catalogue or a search. */
-    // `mode` defaults to POPULAR rather than to the current value on purpose:
-    // opening a different source should start at its catalogue, and a stale
-    // LATEST carried over from the last source would land on a listing the new
-    // one may not even have. Callers that are *re-running* the same screen —
-    // rescan, clearing a search, retrying after a solved challenge — pass the
-    // current mode explicitly.
-    fun openSource(source: Source, query: String = "", mode: BrowseMode = BrowseMode.POPULAR) {
-        browseState.resetListing(source, query, mode)
-        // Feeds the "Last used" section at the top of the Sources list.
-        SourcePrefs.setLastUsed(context, source.id)
+    fun openSource(
+        source: Source,
+        query: String = "",
+        mode: BrowseMode = BrowseMode.POPULAR
+    ) {
         errorMessage = null
         scope.launch {
             isLoading = true
-            try {
-                val page = withContext(Dispatchers.IO) {
-                    loadSourcePage(source, query, mode, 1)
-                }
-                browseState.series = page.series
-                browseState.hasNext = page.hasNext
-            } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not scan this source")
-                browseState.series = emptyList()
-            }
+            errorMessage = browseState.loadFirstPage(
+                context = context,
+                source = source,
+                query = query,
+                mode = mode
+            )
             isLoading = false
         }
     }
 
-    /** Appends the next page to the current browse/search results. */
     fun loadMoreSeries() {
-        val source = browseState.source ?: return
-        if (browseState.loadingMore || !browseState.hasNext) return
         scope.launch {
-            browseState.loadingMore = true
-            val next = browseState.page + 1
-            try {
-                val page = withContext(Dispatchers.IO) {
-                    loadSourcePage(source, browseState.query, browseState.mode, next)
-                }
-                browseState.series = (browseState.series ?: emptyList()) + page.series
-                browseState.page = next
-                browseState.hasNext = page.hasNext
-            } catch (e: Throwable) {
-                errorMessage = sourceFailureMessage(e, "Could not load more")
-                browseState.hasNext = false
+            browseState.loadNextPage()?.let {
+                errorMessage = it
             }
-            browseState.loadingMore = false
         }
     }
 
