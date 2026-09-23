@@ -1,7 +1,5 @@
 package com.mangareader.app
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
@@ -28,17 +26,17 @@ internal fun EmbedPlayerRoute(
             media = media,
             onDismiss = onDismissMedia,
             onOpenVideo = { link ->
-                val view = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(Uri.parse(link), "video/*")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    if (embed.second.isNotBlank()) {
-                        putExtra("headers", arrayOf("Referer", embed.second))
-                    }
+                runCatching {
+                    context.startActivity(
+                        VideoPlayerActivity.intent(
+                            context = context,
+                            url = link,
+                            referer = embed.second,
+                        ),
+                    )
+                }.onFailure {
+                    onPlayerError("Unable to open the built-in video player")
                 }
-                runCatching { context.startActivity(view) }
-                    .onFailure {
-                        onPlayerError("No installed app can play that link")
-                    }
             }
         )
     }
