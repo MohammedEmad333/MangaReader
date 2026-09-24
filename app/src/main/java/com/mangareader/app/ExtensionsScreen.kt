@@ -208,7 +208,10 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                     .padding(horizontal = 16.dp, vertical = 4.dp)
             )
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
