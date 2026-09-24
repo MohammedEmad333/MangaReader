@@ -151,6 +151,7 @@ class AniyomiSourceAdapter(
                     url = video.videoUrl,
                     title = video.videoTitle,
                     headers = video.headers?.toMap().orEmpty(),
+                    resumeKey = chapter.id,
                 )
             },
         )

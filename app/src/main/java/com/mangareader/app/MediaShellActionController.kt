@@ -28,6 +28,7 @@ internal class MediaShellActionController(
                     context = context,
                     url = video.url,
                     headers = video.headers,
+                    resumeKey = video.resumeKey,
                 ),
             )
         }.onFailure {

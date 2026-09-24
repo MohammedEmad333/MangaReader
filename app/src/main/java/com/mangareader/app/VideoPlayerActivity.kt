@@ -44,6 +44,7 @@ class VideoPlayerActivity : ComponentActivity() {
 
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
+        val resumeKey = intent.getStringExtra(EXTRA_RESUME_KEY).orEmpty()
         val headers = intent.getStringArrayExtra(EXTRA_HEADERS)
             ?.toList()
             ?.chunked(2)
@@ -62,6 +63,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     url = url,
                     referer = referer,
                     headers = headers,
+                    resumeKey = resumeKey,
                 )
             }
         }
@@ -71,17 +73,20 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_URL = "video_url"
         private const val EXTRA_REFERER = "video_referer"
         private const val EXTRA_HEADERS = "video_headers"
+        private const val EXTRA_RESUME_KEY = "video_resume_key"
 
         fun intent(
             context: Context,
             url: String,
             referer: String = "",
             headers: Map<String, String> = emptyMap(),
+            resumeKey: String = "",
         ): Intent =
             Intent(context, VideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_REFERER, referer)
                 putExtra(EXTRA_HEADERS, headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
+                putExtra(EXTRA_RESUME_KEY, resumeKey)
             }
     }
 }
@@ -91,11 +96,17 @@ private fun VideoPlayerScreen(
     url: String,
     referer: String,
     headers: Map<String, String>,
+    resumeKey: String,
 ) {
     var buffering by remember { mutableStateOf(true) }
     val context = LocalContext.current
 
-    val player = remember(url, referer, headers, context) {
+    val progressKey = remember(url, resumeKey) { resumeKey.ifBlank { "url:$url" } }
+    val resumePosition = remember(progressKey, context) {
+        VideoPlaybackProgress.position(context, progressKey)
+    }
+
+    val player = remember(url, referer, headers, progressKey, resumePosition, context) {
         val requestHeaders = headers.toMutableMap().apply {
             if (referer.isNotBlank() && "Referer" !in this) put("Referer", referer)
         }
@@ -109,6 +120,7 @@ private fun VideoPlayerScreen(
             .build()
             .apply {
                 setMediaItem(MediaItem.fromUri(url))
+                if (resumePosition > 0L) seekTo(resumePosition)
                 playWhenReady = true
                 prepare()
             }
@@ -119,11 +131,21 @@ private fun VideoPlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING ||
                     playbackState == Player.STATE_IDLE
+                if (playbackState == Player.STATE_ENDED) {
+                    VideoPlaybackProgress.clear(context, progressKey)
+                }
             }
         }
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            val duration = player.duration
+            val position = player.currentPosition
+            if (duration > 0L && position > 5_000L && position < duration - 10_000L) {
+                VideoPlaybackProgress.save(context, progressKey, position)
+            } else if (duration > 0L && position >= duration - 10_000L) {
+                VideoPlaybackProgress.clear(context, progressKey)
+            }
             player.release()
         }
     }
