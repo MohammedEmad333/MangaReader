@@ -226,8 +226,8 @@ internal fun HistoryScreen(
                                                 }
                                                 position > 0L -> {
                                                     if (isNotEmpty()) append(" • ")
-                                                    append(formatVideoTime(position))
-                                                    if (duration > 0L) append(" / ${formatVideoTime(duration)}")
+                                                    append(formatMediaTime(position))
+                                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
                                                 }
                                                 else -> {
                                                     if (isNotEmpty()) append(" • ")
@@ -327,19 +327,5 @@ internal fun HistoryScreen(
                 TextButton(onClick = { confirmClearAll = false }) { Text("Cancel") }
             }
         )
-    }
-}
-
-
-
-private fun formatVideoTime(ms: Long): String {
-    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
-    val hours = totalSeconds / 3600L
-    val minutes = (totalSeconds % 3600L) / 60L
-    val seconds = totalSeconds % 60L
-    return if (hours > 0L) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
-    } else {
-        "%d:%02d".format(minutes, seconds)
     }
 }
