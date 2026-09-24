@@ -18,18 +18,22 @@ import androidx.compose.ui.unit.dp
 internal fun ChapterVideoDialog(
     scanning: Boolean,
     scan: VideoScan?,
+    isAnime: Boolean,
     onDismiss: () -> Unit,
     onOpenEmbed: (String) -> Unit,
     onOpenVideo: (PlayableVideo) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { if (!scanning) onDismiss() },
-        title = { Text("Videos in this chapter") },
+        title = { Text(if (isAnime) "Streams for this episode" else "Videos in this chapter") },
         text = {
             when {
-                scanning -> Text("Scanning the chapter's page…")
+                scanning -> Text(if (isAnime) "Loading episode streams…" else "Scanning the chapter's page…")
                 scan == null || (scan.videos.isEmpty() && scan.embeds.isEmpty()) -> Column {
-                    Text("No playable video found on this chapter's page.")
+                    Text(
+                        if (isAnime) "No playable stream was returned for this episode."
+                        else "No playable video found on this chapter's page."
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text(
                         scan?.note ?: "The scan returned nothing at all.",
@@ -61,7 +65,7 @@ internal fun ChapterVideoDialog(
                     )
                 }
                 else -> Column {
-                    Text("Tap one to open it in a video player.")
+                    Text(if (isAnime) "Choose a stream to start watching." else "Tap one to open it in a video player.")
                     Spacer(Modifier.height(12.dp))
                     scan.videos.forEachIndexed { index, video ->
                         TextButton(
