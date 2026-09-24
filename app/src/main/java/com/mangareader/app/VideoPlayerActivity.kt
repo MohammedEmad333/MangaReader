@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -45,6 +47,13 @@ class VideoPlayerActivity : ComponentActivity() {
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
         val resumeKey = intent.getStringExtra(EXTRA_RESUME_KEY).orEmpty()
+        val subtitles = intent.getStringArrayExtra(EXTRA_SUBTITLES)
+            ?.toList()
+            ?.chunked(2)
+            ?.mapNotNull { pair ->
+                pair.takeIf { it.size == 2 }?.let { VideoSubtitle(it[0], it[1]) }
+            }
+            .orEmpty()
         val headers = intent.getStringArrayExtra(EXTRA_HEADERS)
             ?.toList()
             ?.chunked(2)
@@ -64,6 +73,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     referer = referer,
                     headers = headers,
                     resumeKey = resumeKey,
+                    subtitles = subtitles,
                 )
             }
         }
@@ -74,6 +84,7 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_REFERER = "video_referer"
         private const val EXTRA_HEADERS = "video_headers"
         private const val EXTRA_RESUME_KEY = "video_resume_key"
+        private const val EXTRA_SUBTITLES = "video_subtitles"
 
         fun intent(
             context: Context,
@@ -81,12 +92,17 @@ class VideoPlayerActivity : ComponentActivity() {
             referer: String = "",
             headers: Map<String, String> = emptyMap(),
             resumeKey: String = "",
+            subtitles: List<VideoSubtitle> = emptyList(),
         ): Intent =
             Intent(context, VideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_REFERER, referer)
                 putExtra(EXTRA_HEADERS, headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
                 putExtra(EXTRA_RESUME_KEY, resumeKey)
+                putExtra(
+                    EXTRA_SUBTITLES,
+                    subtitles.flatMap { listOf(it.url, it.language) }.toTypedArray(),
+                )
             }
     }
 }
@@ -97,6 +113,7 @@ private fun VideoPlayerScreen(
     referer: String,
     headers: Map<String, String>,
     resumeKey: String,
+    subtitles: List<VideoSubtitle>,
 ) {
     var buffering by remember { mutableStateOf(true) }
     val context = LocalContext.current
@@ -106,7 +123,7 @@ private fun VideoPlayerScreen(
         VideoPlaybackProgress.position(context, progressKey)
     }
 
-    val player = remember(url, referer, headers, progressKey, resumePosition, context) {
+    val player = remember(url, referer, headers, progressKey, resumePosition, subtitles, context) {
         val requestHeaders = headers.toMutableMap().apply {
             if (referer.isNotBlank() && "Referer" !in this) put("Referer", referer)
         }
@@ -119,7 +136,21 @@ private fun VideoPlayerScreen(
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
             .apply {
-                setMediaItem(MediaItem.fromUri(url))
+                val subtitleConfigurations = subtitles.mapNotNull { subtitle ->
+                    subtitleMimeType(subtitle.url)?.let { mime ->
+                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
+                            .setMimeType(mime)
+                            .apply {
+                                if (subtitle.language.isNotBlank()) setLanguage(subtitle.language)
+                            }
+                            .build()
+                    }
+                }
+                val mediaItem = MediaItem.Builder()
+                    .setUri(url)
+                    .setSubtitleConfigurations(subtitleConfigurations)
+                    .build()
+                setMediaItem(mediaItem)
                 if (resumePosition > 0L) seekTo(resumePosition)
                 playWhenReady = true
                 prepare()
@@ -174,5 +205,17 @@ private fun VideoPlayerScreen(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
+    }
+}
+
+
+private fun subtitleMimeType(url: String): String? {
+    val path = url.substringBefore('?').lowercase()
+    return when {
+        path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+        path.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
+        path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+        path.endsWith(".ttml") || path.endsWith(".xml") -> MimeTypes.APPLICATION_TTML
+        else -> null
     }
 }

@@ -152,6 +152,9 @@ class AniyomiSourceAdapter(
                     title = video.videoTitle,
                     headers = video.headers?.toMap().orEmpty(),
                     resumeKey = chapter.id,
+                    subtitles = video.subtitleTracks.map { track ->
+                        VideoSubtitle(track.url, track.lang)
+                    },
                 )
             },
         )
