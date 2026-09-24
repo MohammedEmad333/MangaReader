@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.delay
 
 /**
  * Full-screen in-app video player for direct streams discovered by Yomu.
@@ -260,21 +262,26 @@ private fun VideoPlayerScreen(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onPlaybackActiveChanged(isPlaying)
+                if (!isPlaying && player.playbackState != Player.STATE_ENDED) {
+                    persistPlaybackProgress(context, progressKey, player)
+                }
             }
         }
         player.addListener(listener)
         onDispose {
             onPlaybackActiveChanged(false)
             player.removeListener(listener)
-            val duration = player.duration
-            val position = player.currentPosition
-            if (duration > 0L && position > 5_000L && position < duration - 10_000L) {
-                VideoPlaybackProgress.save(context, progressKey, position, duration)
-            } else if (duration > 0L && position >= duration - 10_000L) {
-                VideoPlaybackProgress.markCompleted(context, progressKey, duration)
-                ReadState.setRead(context, progressKey, true)
-            }
+            persistPlaybackProgress(context, progressKey, player)
             player.release()
+        }
+    }
+
+    LaunchedEffect(player, progressKey) {
+        while (true) {
+            delay(10_000L)
+            if (player.playbackState != Player.STATE_ENDED) {
+                persistPlaybackProgress(context, progressKey, player)
+            }
         }
     }
 
@@ -327,6 +334,24 @@ private fun VideoPlayerScreen(
     }
 }
 
+
+private fun persistPlaybackProgress(
+    context: Context,
+    progressKey: String,
+    player: Player,
+) {
+    val duration = player.duration
+    val position = player.currentPosition
+    when {
+        duration > 0L && position >= duration - 10_000L -> {
+            VideoPlaybackProgress.markCompleted(context, progressKey, duration)
+            ReadState.setRead(context, progressKey, true)
+        }
+        duration > 0L && position > 5_000L -> {
+            VideoPlaybackProgress.save(context, progressKey, position, duration)
+        }
+    }
+}
 
 private fun subtitleMimeType(url: String): String? {
     val path = url.substringBefore('?').lowercase()
