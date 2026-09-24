@@ -260,7 +260,9 @@ private fun VideoPlayerScreen(
                         progressKey,
                         player.duration.coerceAtLeast(0L),
                     )
-                    ReadState.setRead(context, progressKey, true)
+                    if (resumeKey.isNotBlank()) {
+                        ReadState.setRead(context, resumeKey, true)
+                    }
                 }
             }
 
@@ -273,7 +275,7 @@ private fun VideoPlayerScreen(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onPlaybackActiveChanged(isPlaying)
                 if (!isPlaying && player.playbackState != Player.STATE_ENDED) {
-                    persistPlaybackProgress(context, progressKey, player)
+                    persistPlaybackProgress(context, progressKey, resumeKey, player)
                 }
             }
         }
@@ -281,7 +283,7 @@ private fun VideoPlayerScreen(
         onDispose {
             onPlaybackActiveChanged(false)
             player.removeListener(listener)
-            persistPlaybackProgress(context, progressKey, player)
+            persistPlaybackProgress(context, progressKey, resumeKey, player)
             player.release()
         }
     }
@@ -290,7 +292,7 @@ private fun VideoPlayerScreen(
         while (true) {
             delay(10_000L)
             if (player.playbackState != Player.STATE_ENDED) {
-                persistPlaybackProgress(context, progressKey, player)
+                persistPlaybackProgress(context, progressKey, resumeKey, player)
             }
         }
     }
@@ -348,6 +350,7 @@ private fun VideoPlayerScreen(
 private fun persistPlaybackProgress(
     context: Context,
     progressKey: String,
+    resumeKey: String,
     player: Player,
 ) {
     val duration = player.duration
@@ -355,7 +358,9 @@ private fun persistPlaybackProgress(
     when {
         duration > 0L && position >= duration - 10_000L -> {
             VideoPlaybackProgress.markCompleted(context, progressKey, duration)
-            ReadState.setRead(context, progressKey, true)
+            if (resumeKey.isNotBlank()) {
+                ReadState.setRead(context, resumeKey, true)
+            }
         }
         duration > 0L && position > 5_000L -> {
             VideoPlaybackProgress.save(context, progressKey, position, duration)
