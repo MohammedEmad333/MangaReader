@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -215,6 +217,14 @@ private fun VideoPlayerScreen(
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
             .apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
+                setHandleAudioBecomingNoisy(true)
                 val subtitleConfigurations = subtitles.mapNotNull { subtitle ->
                     subtitleMimeType(subtitle.url)?.let { mime ->
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
