@@ -62,11 +62,19 @@ internal suspend fun setLibrarySeriesRead(
         }
 
         chapters.forEach {
-            ReadState.setRead(
-                context,
-                chapterKeyOf(entry.sourceId, it),
-                value
-            )
+            val key = chapterKeyOf(entry.sourceId, it)
+            ReadState.setRead(context, key, value)
+            if (sources[entry.sourceId]?.isAnime == true) {
+                if (value) {
+                    VideoPlaybackProgress.markCompleted(
+                        context,
+                        key,
+                        VideoPlaybackProgress.duration(context, key),
+                    )
+                } else {
+                    VideoPlaybackProgress.markIncomplete(context, key)
+                }
+            }
         }
         SeriesIndex.record(
             context,
