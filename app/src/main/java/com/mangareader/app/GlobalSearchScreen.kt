@@ -81,6 +81,8 @@ internal fun GlobalSearchScreen(
     onTogglePinnedOnly: (Boolean) -> Unit,
     hasResultsOnly: Boolean,
     onToggleHasResultsOnly: (Boolean) -> Unit,
+    mediaFilter: String,
+    onMediaFilterChange: (String) -> Unit,
     /** Past queries, newest first, for the one-tap-to-rerun chips. */
     recents: List<String>,
     onRemoveRecent: (String) -> Unit,
@@ -179,6 +181,23 @@ internal fun GlobalSearchScreen(
                 onClick = { onToggleHasResultsOnly(!hasResultsOnly) },
                 label = { Text("Has results") }
             )
+            if (!migrating) {
+                FilterChip(
+                    selected = mediaFilter == "All",
+                    onClick = { onMediaFilterChange("All") },
+                    label = { Text("Both") },
+                )
+                FilterChip(
+                    selected = mediaFilter == "Manga",
+                    onClick = { onMediaFilterChange("Manga") },
+                    label = { Text("Manga") },
+                )
+                FilterChip(
+                    selected = mediaFilter == "Anime",
+                    onClick = { onMediaFilterChange("Anime") },
+                    label = { Text("Anime") },
+                )
+            }
         }
 
         if (running) {

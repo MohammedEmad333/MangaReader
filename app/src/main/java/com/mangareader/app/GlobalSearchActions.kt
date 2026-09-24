@@ -9,6 +9,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal fun globalSearchMediaIsAnime(filter: String): Boolean? = when (filter) {
+    "Anime" -> true
+    "Manga" -> false
+    else -> null
+}
+
 internal suspend fun globalSearchTargets(
     context: Context,
     configs: List<SourceConfig>,
@@ -78,6 +84,7 @@ internal class GlobalSearchState(
         SourcePrefs.pinnedOnlySearch(context)
     )
     var hasResultsOnly by androidx.compose.runtime.mutableStateOf(true)
+    var mediaFilter by androidx.compose.runtime.mutableStateOf("All")
     var recents by androidx.compose.runtime.mutableStateOf(
         SourcePrefs.recentSearches(context)
     )
@@ -91,6 +98,19 @@ internal class GlobalSearchState(
         job?.cancel()
         job = null
         running = false
+    }
+
+    fun setMediaFilter(
+        context: Context,
+        scope: kotlinx.coroutines.CoroutineScope,
+        configs: List<SourceConfig>,
+        extensions: List<Source>,
+        value: String
+    ) {
+        mediaFilter = value
+        if (query.isNotBlank()) {
+            search(context, scope, configs, extensions, query)
+        }
     }
 
     fun setPinnedOnly(
@@ -130,12 +150,14 @@ internal class GlobalSearchState(
         recents = SourcePrefs.addRecentSearch(context, newQuery)
         job = scope.launch {
             try {
+                val effectiveMediaIsAnime =
+                    mediaIsAnime ?: globalSearchMediaIsAnime(mediaFilter)
                 val targets = globalSearchTargets(
                     context = context,
                     configs = configs,
                     extensions = extensions,
                     pinnedOnly = pinnedOnly,
-                    mediaIsAnime = mediaIsAnime,
+                    mediaIsAnime = effectiveMediaIsAnime,
                 )
                 total = targets.size
 
