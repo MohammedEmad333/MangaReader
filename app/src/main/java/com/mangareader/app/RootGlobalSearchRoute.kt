@@ -20,6 +20,8 @@ internal fun RootGlobalSearchRoute(
         onTogglePinnedOnly = { actions.setGlobalPinnedOnly(it) },
         hasResultsOnly = globalSearch.hasResultsOnly,
         onToggleHasResultsOnly = actions::setSearchHasResultsOnly,
+        mediaFilter = globalSearch.mediaFilter,
+        onMediaFilterChange = actions::setGlobalMediaFilter,
         recents = globalSearch.recents,
         onRemoveRecent = actions::removeRecentSearch,
         onClearRecents = actions::clearRecentSearches,
