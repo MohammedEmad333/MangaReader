@@ -27,7 +27,9 @@ object VideoPlaybackProgress {
             .remove(key)
             .putLong("pos:$key", positionMs)
             .putLong("dur:$key", durationMs.coerceAtLeast(0L))
-            .putBoolean("done:$key", false)
+            // Do not clear an existing completed flag here. Rewatching a
+            // completed episode and leaving halfway through should keep it
+            // watched while still remembering the rewatch position.
             .apply()
     }
 
