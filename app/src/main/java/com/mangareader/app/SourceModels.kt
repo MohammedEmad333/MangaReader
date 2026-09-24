@@ -80,12 +80,18 @@ data class Chapter(
  * failure that names nothing costs more than the request that would have named
  * it.
  */
+data class VideoSubtitle(
+    val url: String,
+    val language: String = "",
+)
+
 data class PlayableVideo(
     val url: String,
     val title: String = "",
     val headers: Map<String, String> = emptyMap(),
     /** Stable episode identity; falls back to the stream URL for non-anime scans. */
     val resumeKey: String = "",
+    val subtitles: List<VideoSubtitle> = emptyList(),
 )
 
 data class VideoScan(
