@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -101,7 +102,19 @@ internal fun LibraryTab(
     var localTick by remember { mutableIntStateOf(0) }
     val tick = libraryTick + localTick
 
-    val entries = remember(tick) { Library.list(context) }
+    val allEntries = remember(tick) { Library.list(context) }
+    var mediaFilter by rememberSaveable { mutableStateOf("All") }
+    val entries = remember(allEntries, mediaFilter) {
+        allEntries.filter { entry ->
+            val anime = entry.sourceId.startsWith("aniyomi:") ||
+                entry.seriesId.startsWith("anime:")
+            when (mediaFilter) {
+                "Anime" -> anime
+                "Manga" -> !anime
+                else -> true
+            }
+        }
+    }
     val categories = remember(tick) { Categories.list(context) }
 
     val sort = remember(tick) { LibraryPrefs.sort(context) }
@@ -244,11 +257,11 @@ internal fun LibraryTab(
     // then re-anchor to the same series, which under a small change is the
     // behaviour you want anyway.
     val ordering = remember(
-        sort, ascending, randomSeed, grouping, search,
+        sort, ascending, randomSeed, grouping, search, mediaFilter,
         fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted
     ) {
         listOf(
-            sort, ascending, randomSeed, grouping, search.trim(),
+            sort, ascending, randomSeed, grouping, search.trim(), mediaFilter,
             fDownloaded, fLocal, fRead, fUnread, fStarted, fCompleted
         )
     }
@@ -399,6 +412,24 @@ internal fun LibraryTab(
 
         ErrorBanner(error)
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("All", "Manga", "Anime").forEach { label ->
+                FilterChip(
+                    selected = mediaFilter == label,
+                    onClick = {
+                        mediaFilter = label
+                        selected = emptySet()
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+
         if (groups.size > 1 && showTabs) {
             ScrollableTabRow(
                 selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.size - 1),
@@ -464,7 +495,7 @@ internal fun LibraryTab(
             ) { page ->
                 LibraryGrid(
                     shown = groups[page].items,
-                    allEmpty = entries.isEmpty(),
+                    allEmpty = allEntries.isEmpty(),
                     // Per group, not per page index: the tabs can be reordered
                     // or renamed under a position, and a category's own scroll
                     // should follow the category.
