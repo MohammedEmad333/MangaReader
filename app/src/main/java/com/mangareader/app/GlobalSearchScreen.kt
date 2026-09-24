@@ -298,6 +298,14 @@ internal fun GlobalSearchScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
+                        if (result.source.isAnime) {
+                            Text(
+                                "Anime",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                            )
+                        }
                         if (result.series.isNotEmpty() && !migrating) {
                             TextButton(onClick = { onOpenSource(result.source) }) {
                                 Text("See all")
