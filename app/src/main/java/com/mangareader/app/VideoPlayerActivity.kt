@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -44,6 +47,7 @@ import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.delay
 
 /**
  * Full-screen in-app video player for direct streams discovered by Yomu.
@@ -213,6 +217,14 @@ private fun VideoPlayerScreen(
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
             .apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
+                setHandleAudioBecomingNoisy(true)
                 val subtitleConfigurations = subtitles.mapNotNull { subtitle ->
                     subtitleMimeType(subtitle.url)?.let { mime ->
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
@@ -248,7 +260,9 @@ private fun VideoPlayerScreen(
                         progressKey,
                         player.duration.coerceAtLeast(0L),
                     )
-                    ReadState.setRead(context, progressKey, true)
+                    if (resumeKey.isNotBlank()) {
+                        ReadState.setRead(context, resumeKey, true)
+                    }
                 }
             }
 
@@ -260,21 +274,26 @@ private fun VideoPlayerScreen(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onPlaybackActiveChanged(isPlaying)
+                if (!isPlaying && player.playbackState != Player.STATE_ENDED) {
+                    persistPlaybackProgress(context, progressKey, resumeKey, player)
+                }
             }
         }
         player.addListener(listener)
         onDispose {
             onPlaybackActiveChanged(false)
             player.removeListener(listener)
-            val duration = player.duration
-            val position = player.currentPosition
-            if (duration > 0L && position > 5_000L && position < duration - 10_000L) {
-                VideoPlaybackProgress.save(context, progressKey, position, duration)
-            } else if (duration > 0L && position >= duration - 10_000L) {
-                VideoPlaybackProgress.markCompleted(context, progressKey, duration)
-                ReadState.setRead(context, progressKey, true)
-            }
+            persistPlaybackProgress(context, progressKey, resumeKey, player)
             player.release()
+        }
+    }
+
+    LaunchedEffect(player, progressKey) {
+        while (true) {
+            delay(10_000L)
+            if (player.playbackState != Player.STATE_ENDED) {
+                persistPlaybackProgress(context, progressKey, resumeKey, player)
+            }
         }
     }
 
@@ -327,6 +346,27 @@ private fun VideoPlayerScreen(
     }
 }
 
+
+private fun persistPlaybackProgress(
+    context: Context,
+    progressKey: String,
+    resumeKey: String,
+    player: Player,
+) {
+    val duration = player.duration
+    val position = player.currentPosition
+    when {
+        shouldMarkPlaybackCompleted(position, duration) -> {
+            VideoPlaybackProgress.markCompleted(context, progressKey, duration)
+            if (resumeKey.isNotBlank()) {
+                ReadState.setRead(context, resumeKey, true)
+            }
+        }
+        duration > 0L && position > 5_000L -> {
+            VideoPlaybackProgress.save(context, progressKey, position, duration)
+        }
+    }
+}
 
 private fun subtitleMimeType(url: String): String? {
     val path = url.substringBefore('?').lowercase()
