@@ -27,7 +27,7 @@ internal class LibraryBulkActionController(
                 if (result.skipped > 0) {
                     append(
                         " · ${result.skipped} skipped " +
-                            "(no chapter list)"
+                            "(not downloadable)"
                     )
                 }
             }
