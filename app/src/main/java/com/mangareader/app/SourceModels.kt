@@ -84,6 +84,8 @@ data class PlayableVideo(
     val url: String,
     val title: String = "",
     val headers: Map<String, String> = emptyMap(),
+    /** Stable episode identity; falls back to the stream URL for non-anime scans. */
+    val resumeKey: String = "",
 )
 
 data class VideoScan(
