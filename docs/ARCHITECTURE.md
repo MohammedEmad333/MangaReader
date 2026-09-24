@@ -4,17 +4,18 @@
 
 ### app
 
-The Android application. It owns navigation, Compose UI, reader state, library state, downloads, backups, storage selection, extension discovery, source browsing, and background services.
+The Android application. It owns navigation, Compose UI, manga reader state, anime playback state, library state, downloads, backups, storage selection, extension discovery, source browsing, and background services.
 
 ### source-api
 
-Compatibility surface used by Tachiyomi/Mihon-style extension APKs. Treat this module as an ABI/API compatibility boundary: dependency and shrinker changes here can break extensions even when the app itself compiles.
+Compatibility surface used by Tachiyomi/Mihon-style manga extension APKs and Aniyomi anime extension APKs. Treat this module as an ABI/API compatibility boundary: dependency and shrinker changes here can break extensions even when the app itself compiles.
 
 ## Main functional areas
 
 - **Library** — saved series, categories, counts, filtering, refresh, and migration.
 - **Sources** — extension discovery/loading, source preferences, browse/search/filter flows, and network diagnostics.
-- **Reader** — page loading, zoom/swipe behavior, resume position, read state, and reader preferences.
+- **Reader** — manga page loading, zoom/swipe behavior, resume position, read state, and reader preferences.
+- **Anime playback** — Aniyomi episode/video resolution, stream selection, Media3 playback, subtitles, playback progress/completion, watch history, audio focus, retry handling, and picture-in-picture.
 - **Downloads** — queueing, foreground service execution, readable storage paths, local covers, and reconciliation.
 - **Persistence** — SharedPreferences-backed stores, JSON indexes, filesystem caches, and backup/restore.
 - **Background work** — foreground services for long-running network work and WorkManager for scheduled backups.
@@ -28,6 +29,7 @@ The project intentionally carries several non-obvious compatibility requirements
 3. Native libraries can reference Java/Kotlin classes through JNI, which also defeats ordinary shrinker reachability analysis.
 4. Kotlin and kotlinx.serialization metadata versions must remain compatible with the extensions being loaded.
 5. OkHttp versions must support APIs expected by current extensions.
+6. Manga and anime extensions share the host process but have distinct source APIs and media semantics; code that classifies extension/local sources must handle both `tachi:` and `aniyomi:` ids.
 
 For these reasons, dependency upgrades and R8 changes must be validated on a real device with representative extensions rather than accepted solely because compilation succeeds.
 
@@ -57,6 +59,8 @@ Prefer JVM tests for deterministic pure logic and data transformations. Instrume
 - WebView/Cloudflare flows
 - R8/shrinker compatibility
 - native compression paths
+- Aniyomi episode/video resolution and hoster fallbacks
+- Media3 playback, subtitles, resume/completion persistence, audio focus, and picture-in-picture
 
 ## CI
 
