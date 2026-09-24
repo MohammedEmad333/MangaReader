@@ -41,6 +41,13 @@ object VideoPlaybackProgress {
             .apply()
     }
 
+    fun markIncomplete(context: Context, key: String) {
+        if (key.isBlank()) return
+        prefs(context).edit()
+            .remove("done:$key")
+            .apply()
+    }
+
     fun clear(context: Context, key: String) {
         if (key.isBlank()) return
         prefs(context).edit()
