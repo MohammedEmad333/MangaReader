@@ -81,8 +81,8 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
-    var filter by remember { mutableStateOf("") }
-    var installedOnly by remember { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf("") }
+    var installedOnly by rememberSaveable { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
 
     // Installing and uninstalling both finish in the system's UI, in another
@@ -136,7 +136,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     }
 
     // Client-side filter over the already-fetched index: no refetch, no network.
-    val shownExtensions = remember(available, filter, installedOnly) {
+    val shownExtensions = remember(available, filter, installedOnly, mediaFilter) {
         val q = filter.trim()
         // The same switch as the Sources list. An 18+ extension left listed here
         // while its sources are hidden would be a one-tap route back to exactly
