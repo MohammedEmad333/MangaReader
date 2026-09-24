@@ -188,8 +188,7 @@ internal fun LibraryGrid(
                     EntryBadges(
                         downloaded = entry.seriesId in downloadedIds,
                         local = badgeLocal &&
-                            !entry.sourceId.startsWith("tachi:") &&
-                            !entry.sourceId.startsWith("aniyomi:"),
+                            entry.sourceId.isLocalSourceId(),
                         unread = unreadCounts[entry.seriesId]
                     )
                 }
@@ -262,8 +261,7 @@ internal fun LibraryGrid(
                         EntryBadges(
                             downloaded = entry.seriesId in downloadedIds,
                             local = badgeLocal &&
-                            !entry.sourceId.startsWith("tachi:") &&
-                            !entry.sourceId.startsWith("aniyomi:"),
+                            entry.sourceId.isLocalSourceId(),
                             unread = unreadCounts[entry.seriesId]
                         )
                     }
