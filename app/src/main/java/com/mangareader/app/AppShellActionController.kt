@@ -48,7 +48,7 @@ internal class AppShellActionController(
             appState.extensionSources = withContext(Dispatchers.IO) {
                 runCatching {
                     SourceManager.listAllSources(context)
-                        .filter { it.id.startsWith("tachi:") }
+                        .filter { it.id.isExtensionSourceId() }
                 }.getOrDefault(emptyList())
             }
         }

@@ -81,9 +81,13 @@ object SourceNames {
      * on a tab.
      */
     fun unnamed(sourceId: String): String {
-        val digits = sourceId.removePrefix("tachi:")
-        return if (digits.length <= 6) "Unknown ($digits)"
-        else "Unknown (\u2026${digits.takeLast(6)})"
+        val suffix = when {
+            sourceId.isMangaExtensionSourceId() -> sourceId.removePrefix("tachi:")
+            sourceId.isAnimeExtensionSourceId() -> sourceId.removePrefix("aniyomi:")
+            else -> sourceId
+        }
+        return if (suffix.length <= 6) "Unknown ($suffix)"
+        else "Unknown (\u2026${suffix.takeLast(6)})"
     }
 
     /**
