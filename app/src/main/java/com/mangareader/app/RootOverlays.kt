@@ -15,6 +15,7 @@ internal fun RootOverlays(
         ChapterVideoDialog(
             scanning = mediaState.scanning,
             scan = scan,
+            isAnime = browseState.source?.isAnime == true,
             onDismiss = actions::dismissVideoScan,
             onOpenEmbed = actions::openEmbed,
             onOpenVideo = actions::openExternalVideo
