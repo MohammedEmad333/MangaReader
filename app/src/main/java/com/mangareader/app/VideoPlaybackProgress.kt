@@ -2,7 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 
-/** Lightweight persisted resume point for in-app video playback. */
+/** Lightweight persisted resume/completion state for in-app video playback. */
 object VideoPlaybackProgress {
     private const val PREFS = "video_playback_progress"
 
@@ -18,12 +18,26 @@ object VideoPlaybackProgress {
     fun duration(context: Context, key: String): Long =
         if (key.isBlank()) 0L else prefs(context).getLong("dur:$key", 0L)
 
+    fun isCompleted(context: Context, key: String): Boolean =
+        key.isNotBlank() && prefs(context).getBoolean("done:$key", false)
+
     fun save(context: Context, key: String, positionMs: Long, durationMs: Long) {
         if (key.isBlank() || positionMs <= 0L) return
         prefs(context).edit()
             .remove(key)
             .putLong("pos:$key", positionMs)
             .putLong("dur:$key", durationMs.coerceAtLeast(0L))
+            .putBoolean("done:$key", false)
+            .apply()
+    }
+
+    fun markCompleted(context: Context, key: String, durationMs: Long = 0L) {
+        if (key.isBlank()) return
+        prefs(context).edit()
+            .remove(key)
+            .remove("pos:$key")
+            .putLong("dur:$key", durationMs.coerceAtLeast(0L))
+            .putBoolean("done:$key", true)
             .apply()
     }
 
@@ -33,6 +47,7 @@ object VideoPlaybackProgress {
             .remove(key)
             .remove("pos:$key")
             .remove("dur:$key")
+            .remove("done:$key")
             .apply()
     }
 }

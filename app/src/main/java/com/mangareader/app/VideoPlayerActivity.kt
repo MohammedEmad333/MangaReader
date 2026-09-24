@@ -163,7 +163,12 @@ private fun VideoPlayerScreen(
                 buffering = playbackState == Player.STATE_BUFFERING ||
                     playbackState == Player.STATE_IDLE
                 if (playbackState == Player.STATE_ENDED) {
-                    VideoPlaybackProgress.clear(context, progressKey)
+                    VideoPlaybackProgress.markCompleted(
+                        context,
+                        progressKey,
+                        player.duration.coerceAtLeast(0L),
+                    )
+                    ReadState.setRead(context, progressKey, true)
                 }
             }
         }
@@ -175,7 +180,8 @@ private fun VideoPlayerScreen(
             if (duration > 0L && position > 5_000L && position < duration - 10_000L) {
                 VideoPlaybackProgress.save(context, progressKey, position, duration)
             } else if (duration > 0L && position >= duration - 10_000L) {
-                VideoPlaybackProgress.clear(context, progressKey)
+                VideoPlaybackProgress.markCompleted(context, progressKey, duration)
+                ReadState.setRead(context, progressKey, true)
             }
             player.release()
         }

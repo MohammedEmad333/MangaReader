@@ -162,6 +162,17 @@ internal fun SeriesScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val isAnimeSource = sourceId.startsWith("aniyomi:")
+    var playbackStateTick by remember(series.id) { mutableIntStateOf(0) }
+    DisposableEffect(context, series.id) {
+        val lifecycle = (context as? ComponentActivity)?.lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) playbackStateTick++
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+    val effectiveReadTick = readTick + playbackStateTick
     // The clipboard moved into GenreChips with the chips themselves.
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
@@ -206,13 +217,18 @@ internal fun SeriesScreen(
      * One pass, and the read flags are kept rather than re-queried — this runs
      * over every chapter of the series and both lookups are a prefs read each.
      */
-    val resumeIndex = remember(chapters, readTick, sourceId) {
+    val resumeIndex = remember(chapters, effectiveReadTick, sourceId) {
         val read = BooleanArray(chapters.size)
         var lastTouched = -1
         chapters.forEachIndexed { index, chapter ->
             val key = chapterKeyOf(sourceId, chapter)
             read[index] = ReadState.isRead(context, key)
-            if (read[index] || savedPage(context, key) > 0) lastTouched = index
+            val hasPartialProgress = if (isAnimeSource) {
+                VideoPlaybackProgress.position(context, key) > 0L
+            } else {
+                savedPage(context, key) > 0
+            }
+            if (read[index] || hasPartialProgress) lastTouched = index
         }
         when {
             // Started and not finished: this is the chapter, and the reader's
@@ -242,7 +258,7 @@ internal fun SeriesScreen(
      * Keyed on both ticks because the filters read read-state and disk, so
      * finishing a chapter or a download changes which rows belong here.
      */
-    val visible = remember(chapters, readTick, downloadTick, optionsTick, sourceId) {
+    val visible = remember(chapters, effectiveReadTick, downloadTick, optionsTick, sourceId) {
         visibleChapters(context, chapters, sourceId)
     }
     val chapterDisplay = remember(optionsTick) { ChapterPrefs.display(context) }
@@ -262,7 +278,7 @@ internal fun SeriesScreen(
     // Gated on library membership: this store only feeds the library screen, and
     // recording every series merely *browsed* would grow a JSON that gets
     // rewritten in full, for entries nothing will ever read.
-    LaunchedEffect(chapters, readTick, inLibrary, sourceId) {
+    LaunchedEffect(chapters, effectiveReadTick, inLibrary, sourceId) {
         if (!inLibrary || chapters.isEmpty()) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             SeriesIndex.record(context, sourceId, series.id, chapters)
@@ -274,10 +290,14 @@ internal fun SeriesScreen(
     // series has to be gone by then rather than one frame later.
     scroll.sync(series.id)
 
-    val anyProgress = remember(chapters, readTick, sourceId) {
+    val anyProgress = remember(chapters, effectiveReadTick, sourceId) {
         chapters.any {
             val k = chapterKeyOf(sourceId, it)
-            ReadState.isRead(context, k) || savedPage(context, k) > 0
+            ReadState.isRead(context, k) || if (isAnimeSource) {
+                VideoPlaybackProgress.position(context, k) > 0L
+            } else {
+                savedPage(context, k) > 0
+            }
         }
     }
 
@@ -434,7 +454,8 @@ internal fun SeriesScreen(
                 SeriesChapterRow(
                     chapter = ch,
                     sourceId = sourceId,
-                    readTick = readTick,
+                    readTick = effectiveReadTick,
+                    isAnime = isAnimeSource,
                     downloadTick = downloadTick,
                     progress = downloadProgress[ch.id],
                     canDownload = canDownload,
