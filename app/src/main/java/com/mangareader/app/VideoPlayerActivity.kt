@@ -45,6 +45,7 @@ import androidx.media3.ui.PlayerView
 class VideoPlayerActivity : ComponentActivity() {
 
     private var inPictureInPicture by mutableStateOf(false)
+    private var playbackActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +82,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     resumeKey = resumeKey,
                     subtitles = subtitles,
                     inPictureInPicture = inPictureInPicture,
+                    onPlaybackActiveChanged = ::updatePictureInPictureState,
                 )
             }
         }
@@ -88,12 +90,33 @@ class VideoPlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational(16, 9))
-                .build()
-            enterPictureInPictureMode(params)
+        if (
+            Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
+            playbackActive &&
+            !isInPictureInPictureMode
+        ) {
+            enterPictureInPictureMode(buildPictureInPictureParams(autoEnter = false))
         }
+    }
+
+    private fun updatePictureInPictureState(active: Boolean) {
+        playbackActive = active
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            setPictureInPictureParams(
+                buildPictureInPictureParams(
+                    autoEnter = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && active,
+                ),
+            )
+        }
+    }
+
+    private fun buildPictureInPictureParams(autoEnter: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoEnter)
+        }
+        return builder.build()
     }
 
     override fun onPictureInPictureModeChanged(
@@ -140,6 +163,7 @@ private fun VideoPlayerScreen(
     resumeKey: String,
     subtitles: List<VideoSubtitle>,
     inPictureInPicture: Boolean,
+    onPlaybackActiveChanged: (Boolean) -> Unit,
 ) {
     var buffering by remember { mutableStateOf(true) }
     val context = LocalContext.current
@@ -197,9 +221,14 @@ private fun VideoPlayerScreen(
                     ReadState.setRead(context, progressKey, true)
                 }
             }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                onPlaybackActiveChanged(isPlaying)
+            }
         }
         player.addListener(listener)
         onDispose {
+            onPlaybackActiveChanged(false)
             player.removeListener(listener)
             val duration = player.duration
             val position = player.currentPosition
