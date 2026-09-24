@@ -37,7 +37,7 @@ internal fun arrangeLibraryEntries(
         val counts = spec.counts[entry.seriesId]
         val checks = listOf(
             spec.filterDownloaded to (entry.seriesId in spec.downloadedIds),
-            spec.filterLocal to !entry.sourceId.startsWith("tachi:"),
+            spec.filterLocal to (!entry.sourceId.startsWith("tachi:") && !entry.sourceId.startsWith("aniyomi:")),
             spec.filterRead to (entry.seriesId in spec.readIds),
             spec.filterUnread to ((counts?.unread ?: 0) > 0),
             spec.filterStarted to (counts?.started ?: false),
