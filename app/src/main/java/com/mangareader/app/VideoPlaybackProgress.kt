@@ -2,6 +2,14 @@ package com.mangareader.app
 
 import android.content.Context
 
+internal fun shouldMarkPlaybackCompleted(positionMs: Long, durationMs: Long): Boolean {
+    if (durationMs <= 0L || positionMs <= 0L) return false
+    val position = positionMs.coerceAtMost(durationMs)
+    val watchedEnough = position >= (durationMs * 9L) / 10L
+    val nearEnd = durationMs - position <= 10_000L
+    return watchedEnough && nearEnd
+}
+
 /** Lightweight persisted resume/completion state for in-app video playback. */
 object VideoPlaybackProgress {
     private const val PREFS = "video_playback_progress"
