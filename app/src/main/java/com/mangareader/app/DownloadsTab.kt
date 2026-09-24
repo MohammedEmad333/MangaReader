@@ -235,7 +235,7 @@ internal fun DownloadsTab(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                val isAnime = entry.sourceId.startsWith("aniyomi:")
+                                val isAnime = entry.sourceId.isAnimeExtensionSourceId()
                                 val unit = when {
                                     isAnime && entry.chapters.size == 1 -> "episode"
                                     isAnime -> "episodes"
