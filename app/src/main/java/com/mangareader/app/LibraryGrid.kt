@@ -139,6 +139,8 @@ internal fun LibraryGrid(
         ) {
             items(shown, key = { it.seriesId }) { entry ->
                 val isSelected = entry.seriesId in selected
+                val isAnime = entry.sourceId.isAnimeExtensionSourceId() ||
+                    entry.seriesId.startsWith("anime:")
                 val dim = entry.seriesId in readIds && !isSelected
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -185,6 +187,10 @@ internal fun LibraryGrid(
                             .weight(1f)
                             .alpha(if (dim) 0.4f else 1f)
                     )
+                    if (isAnime) {
+                        LibraryAnimeBadge()
+                        Spacer(Modifier.width(6.dp))
+                    }
                     EntryBadges(
                         downloaded = entry.seriesId in downloadedIds,
                         local = badgeLocal &&
@@ -224,6 +230,8 @@ internal fun LibraryGrid(
     ) {
         items(shown, key = { it.seriesId }) { entry ->
             val isSelected = entry.seriesId in selected
+            val isAnime = entry.sourceId.isAnimeExtensionSourceId() ||
+                entry.seriesId.startsWith("anime:")
             // Read entries are dimmed everywhere, not only inside the Read tab:
             // the same series showing bright in Manhwa and dim in Read would be
             // a state that depends on where you're standing.
@@ -287,6 +295,14 @@ internal fun LibraryGrid(
                         }
                     }
 
+                    if (isAnime && !isSelected) {
+                        LibraryAnimeBadge(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp),
+                        )
+                    }
+
                     if (isSelected) {
                         Box(
                             modifier = Modifier
@@ -333,4 +349,21 @@ internal fun LibraryGrid(
     }
     } // else (grid)
     } // PullToRefreshBox
+}
+
+
+@Composable
+private fun LibraryAnimeBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Text(
+            "Anime",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
 }
