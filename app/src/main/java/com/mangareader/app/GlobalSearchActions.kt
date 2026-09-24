@@ -13,7 +13,8 @@ internal suspend fun globalSearchTargets(
     context: Context,
     configs: List<SourceConfig>,
     extensions: List<Source>,
-    pinnedOnly: Boolean
+    pinnedOnly: Boolean,
+    mediaIsAnime: Boolean? = null,
 ): List<Source> = withContext(Dispatchers.IO) {
     val locals = configs.mapNotNull {
         runCatching { SourceManager.build(context, it) }.getOrNull()
@@ -24,6 +25,7 @@ internal suspend fun globalSearchTargets(
 
     val searchable = (locals + extensions)
         .filter { it.supportsSearch }
+        .filter { mediaIsAnime == null || it.isAnime == mediaIsAnime }
         .filter {
             SourcePrefs.isVisible(
                 it.id,
@@ -79,6 +81,9 @@ internal class GlobalSearchState(
     var recents by androidx.compose.runtime.mutableStateOf(
         SourcePrefs.recentSearches(context)
     )
+    // Null = all media. During migration this is pinned to the source media type
+    // so a manga cannot be migrated into an anime source (or vice versa).
+    var mediaIsAnime by androidx.compose.runtime.mutableStateOf<Boolean?>(null)
 
     private var job: kotlinx.coroutines.Job? = null
 
@@ -129,7 +134,8 @@ internal class GlobalSearchState(
                     context = context,
                     configs = configs,
                     extensions = extensions,
-                    pinnedOnly = pinnedOnly
+                    pinnedOnly = pinnedOnly,
+                    mediaIsAnime = mediaIsAnime,
                 )
                 total = targets.size
 
