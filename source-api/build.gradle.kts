@@ -71,7 +71,7 @@ dependencies {
     // we use, it is one an extension names.
     api(libs.okhttp.zstd)
     api(libs.okhttp.doh)
-    implementation("com.squareup.okio:okio:3.7.0")
+    implementation("com.squareup.okio:okio:3.18.2")
 
     // 1.9.0 in lockstep with :app — see the long note there. Short version:
     // extensions built with a newer serialization plugin omit
