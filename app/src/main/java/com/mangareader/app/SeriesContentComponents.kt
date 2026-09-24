@@ -322,6 +322,7 @@ internal fun SeriesChapterRow(
     chapter: Chapter,
     sourceId: String,
     readTick: Int,
+    isAnime: Boolean,
     downloadTick: Int,
     progress: DownloadQueue.DownloadProgress?,
     canDownload: Boolean,
@@ -340,8 +341,11 @@ internal fun SeriesChapterRow(
     val read = remember(key, readTick) {
         ReadState.isRead(context, key)
     }
-    val resume = remember(key, readTick) {
-        savedPage(context, key)
+    val resumePage = remember(key, readTick, isAnime) {
+        if (isAnime) 0 else savedPage(context, key)
+    }
+    val resumePositionMs = remember(key, readTick, isAnime) {
+        if (isAnime) VideoPlaybackProgress.position(context, key) else 0L
     }
     val bookmarked = remember(key, readTick) {
         Bookmarks.isBookmarked(context, key)
@@ -421,10 +425,13 @@ internal fun SeriesChapterRow(
                     formatChapterDate(chapter.dateUploaded),
                     chapter.scanlator,
                     sizeLabel,
-                    if (!read && resume > 0) {
-                        "Page ${resume + 1}"
-                    } else {
-                        null
+                    when {
+                        read -> null
+                        isAnime && resumePositionMs > 0L ->
+                            "Resume ${formatPlaybackTime(resumePositionMs)}"
+                        !isAnime && resumePage > 0 ->
+                            "Page ${resumePage + 1}"
+                        else -> null
                     },
                 )
 
@@ -435,7 +442,8 @@ internal fun SeriesChapterRow(
                             read ->
                                 MaterialTheme.colorScheme.onSurfaceVariant
                                     .copy(alpha = READ_DIM)
-                            resume > 0 ->
+                            (isAnime && resumePositionMs > 0L) ||
+                                (!isAnime && resumePage > 0) ->
                                 MaterialTheme.colorScheme.primary
                             else ->
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -541,4 +549,17 @@ internal fun SeriesChapterRow(
     }
 
     HorizontalDivider()
+}
+
+
+private fun formatPlaybackTime(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
 }
