@@ -96,6 +96,8 @@
             android:name=".VideoPlayerActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="false"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.Yomu" />
 
