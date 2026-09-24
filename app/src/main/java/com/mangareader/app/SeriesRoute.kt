@@ -58,7 +58,19 @@ internal fun SeriesRoute(
         },
         onSetRead = { list, value ->
             list.forEach {
-                ReadState.setRead(context, chapterKeyOf(resolvedSourceId, it), value)
+                val key = chapterKeyOf(resolvedSourceId, it)
+                ReadState.setRead(context, key, value)
+                if (source?.isAnime == true) {
+                    if (value) {
+                        VideoPlaybackProgress.markCompleted(
+                            context,
+                            key,
+                            VideoPlaybackProgress.duration(context, key),
+                        )
+                    } else {
+                        VideoPlaybackProgress.markIncomplete(context, key)
+                    }
+                }
             }
             onReadStateChanged()
         },
