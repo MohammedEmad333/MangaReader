@@ -162,7 +162,7 @@ internal fun SeriesScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val isAnimeSource = sourceId.startsWith("aniyomi:")
+    val isAnimeSource = sourceId.isAnimeExtensionSourceId()
     var playbackStateTick by remember(series.id) { mutableIntStateOf(0) }
     DisposableEffect(context, series.id) {
         val lifecycle = (context as? ComponentActivity)?.lifecycle
