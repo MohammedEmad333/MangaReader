@@ -44,6 +44,7 @@ import androidx.compose.material3.*
 // NOT reach it — that is exactly the 0.98 CI failure.
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -88,7 +89,18 @@ internal fun HistoryScreen(
      */
     onRefresh: () -> Unit
 ) {
+    val context = LocalContext.current
     var refreshing by remember { mutableStateOf(false) }
+    var mediaFilter by rememberSaveable { mutableStateOf("All") }
+    val shownHistory = remember(history, mediaFilter) {
+        history.filter {
+            when (mediaFilter) {
+                "Anime" -> it.mediaType == "anime"
+                "Manga" -> it.mediaType != "anime"
+                else -> true
+            }
+        }
+    }
 
     // Cleared from an EFFECT, not from the gesture lambda.
     //
@@ -127,11 +139,29 @@ internal fun HistoryScreen(
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         ErrorBanner(error)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("All", "Manga", "Anime").forEach { label ->
+                FilterChip(
+                    selected = mediaFilter == label,
+                    onClick = { mediaFilter = label },
+                    label = { Text(label) },
+                )
+            }
+        }
         HorizontalDivider()
 
-        if (history.isEmpty()) {
+        if (shownHistory.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Nothing read yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (history.isEmpty()) "Nothing read or watched yet."
+                    else "Nothing in this history filter.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         } else PullToRefreshBox(
             isRefreshing = refreshing,
@@ -151,7 +181,7 @@ internal fun HistoryScreen(
             // item count is the data count.
             val listState = rememberLazyListState()
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(history) { entry ->
+                items(shownHistory) { entry ->
                     // History holds entries for series that may since have been
                     // removed from the library, so most of these carry nothing.
                     val dim = marks.dim(entry.seriesId)
@@ -182,14 +212,34 @@ internal fun HistoryScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
-                                    else "Page ${entry.page + 1}"
-                                )
+                                if (entry.mediaType == "anime") {
+                                    val position = VideoPlaybackProgress.position(context, entry.chapterKey)
+                                    val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
+                                    Text(
+                                        buildString {
+                                            if (entry.detail.isNotBlank()) append(entry.detail)
+                                            if (position > 0L) {
+                                                if (isNotEmpty()) append(" • ")
+                                                append(formatVideoTime(position))
+                                                if (duration > 0L) append(" / ${formatVideoTime(duration)}")
+                                            } else if (isNotEmpty()) {
+                                                append(" • Watched")
+                                            } else {
+                                                append("Watched")
+                                            }
+                                        },
+                                    )
+                                } else {
+                                    Text(
+                                        if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
+                                        else "Page ${entry.page + 1}"
+                                    )
+                                }
                                 EntryBadges(
                                     downloaded = marks.downloaded(entry.seriesId),
                                     local = marks.badgeLocal &&
-                                        !entry.sourceId.startsWith("tachi:"),
+                                        !entry.sourceId.startsWith("tachi:") &&
+                                        !entry.sourceId.startsWith("aniyomi:"),
                                     unread = marks.unreadOf(entry.seriesId)
                                 )
                             }
@@ -231,8 +281,11 @@ internal fun HistoryScreen(
             text = {
                 Text(
                     "\u201c${pendingRemove.title}\u201d leaves the history list. " +
-                        "The chapter, your read mark and your place in it are " +
-                        "untouched."
+                        if (pendingRemove.mediaType == "anime") {
+                            "Playback progress is kept."
+                        } else {
+                            "The chapter, your read mark and your place in it are untouched."
+                        }
                 )
             },
             confirmButton = {
@@ -253,9 +306,8 @@ internal fun HistoryScreen(
             title = { Text("Clear all history?") },
             text = {
                 Text(
-                    "Every entry is removed. Read marks and saved pages are kept, " +
-                        "so nothing about your progress changes \u2014 only the list " +
-                        "of what you opened recently."
+                    "Every entry is removed. Reading and playback progress are kept, " +
+                        "so only the recent-history list is cleared."
                 )
             },
             confirmButton = {
@@ -271,3 +323,16 @@ internal fun HistoryScreen(
     }
 }
 
+
+
+private fun formatVideoTime(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}

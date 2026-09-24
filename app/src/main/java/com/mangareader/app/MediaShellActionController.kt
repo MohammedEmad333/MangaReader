@@ -23,6 +23,37 @@ internal class MediaShellActionController(
 
     fun openExternalVideo(video: PlayableVideo) {
         runCatching {
+            val source = browseState.source
+            val series = seriesState.active
+            if (
+                source?.isAnime == true &&
+                series != null &&
+                video.resumeKey.isNotBlank() &&
+                !isIncognito(context)
+            ) {
+                val cover = when (val value = series.cover) {
+                    is String -> value
+                    is java.io.File -> value.absolutePath
+                    else -> ""
+                }
+                History.touch(
+                    context,
+                    HistoryEntry(
+                        chapterKey = video.resumeKey,
+                        title = series.title,
+                        sourceId = source.id,
+                        seriesId = series.id,
+                        coverPath = cover,
+                        page = 0,
+                        total = 0,
+                        updatedAt = System.currentTimeMillis(),
+                        mediaType = "anime",
+                        detail = video.episodeTitle,
+                    ),
+                )
+                appState.history = History.forDisplay(context)
+            }
+
             context.startActivity(
                 VideoPlayerActivity.intent(
                     context = context,

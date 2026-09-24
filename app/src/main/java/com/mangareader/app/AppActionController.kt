@@ -66,7 +66,8 @@ internal class AppActionController(
         globalSearch = globalSearch,
         migrationState = migrationState,
         enrichSeries = seriesActions::enrich,
-        openChapter = seriesActions::openChapter
+        openChapter = seriesActions::openChapter,
+        openEpisode = seriesActions::findVideos,
     )
 
     fun openSource(
