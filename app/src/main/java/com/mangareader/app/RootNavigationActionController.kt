@@ -77,7 +77,8 @@ internal class RootNavigationActionController(
             sourceId,
             active.title
         )
-        globalSearch.mediaIsAnime = browseState.source?.isAnime
+        globalSearch.mediaIsAnime =
+            browseState.source?.isAnime ?: sourceId.startsWith("aniyomi:")
         seriesState.tagReturn = active
         seriesState.active = null
         appState.error = null
@@ -120,6 +121,8 @@ internal class RootNavigationActionController(
         source: Source,
         series: Series
     ) {
+        val expectedMedia = globalSearch.mediaIsAnime
+        if (expectedMedia != null && source.isAnime != expectedMedia) return
         migrationState.target = source to series
     }
 
