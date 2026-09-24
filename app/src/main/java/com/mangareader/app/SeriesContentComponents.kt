@@ -358,8 +358,11 @@ internal fun SeriesChapterRow(
         icon = {
             Icon(
                 if (read) Icons.Default.Clear else Icons.Default.Check,
-                contentDescription =
-                    if (read) "Mark unread" else "Mark read",
+                contentDescription = if (isAnime) {
+                    if (read) "Mark unwatched" else "Mark watched"
+                } else {
+                    if (read) "Mark unread" else "Mark read"
+                },
                 modifier = Modifier.padding(16.dp),
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
             )
