@@ -235,10 +235,15 @@ internal fun DownloadsTab(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                val isAnime = entry.sourceId.startsWith("aniyomi:")
+                                val unit = when {
+                                    isAnime && entry.chapters.size == 1 -> "episode"
+                                    isAnime -> "episodes"
+                                    entry.chapters.size == 1 -> "chapter"
+                                    else -> "chapters"
+                                }
                                 Text(
-                                    "${entry.chapters.size} " +
-                                        (if (entry.chapters.size == 1) "chapter" else "chapters") +
-                                        " \u00b7 ${formatBytes(entry.sizeBytes)}"
+                                    "${entry.chapters.size} $unit \u00b7 ${formatBytes(entry.sizeBytes)}"
                                 )
                                 // No DL chip here. Every row on this screen is
                                 // downloaded by definition, so it would be a
@@ -246,7 +251,8 @@ internal fun DownloadsTab(
                                 EntryBadges(
                                     downloaded = false,
                                     local = marks.badgeLocal &&
-                                        !entry.sourceId.startsWith("tachi:"),
+                                        !entry.sourceId.startsWith("tachi:") &&
+                                        !entry.sourceId.startsWith("aniyomi:"),
                                     unread = marks.unreadOf(entry.seriesId)
                                 )
                             }
