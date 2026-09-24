@@ -1,13 +1,15 @@
 # MangaReader / Yomu
 
-A native Android manga reader built with Kotlin and Jetpack Compose.
+A native Android manga and anime reader built with Kotlin and Jetpack Compose.
 
-Yomu supports local reading, downloadable chapters, library management, source extensions, global search, source migration, backups, reading history, configurable reader behavior, and background download/library-refresh jobs.
+Yomu supports local manga reading, downloadable chapters, library management, Tachiyomi/Mihon-style manga extensions, Aniyomi anime extensions, global search, source migration, backups, reading/watch history, configurable reader behavior, and background download/library-refresh jobs.
+
+Anime episodes use the built-in Media3 player with stream selection, subtitles, resume progress, watched state, playback history, retry handling, audio focus, and Android picture-in-picture support. Manga and anime can be filtered independently across Browse, Extensions, Library, History, and global search.
 
 ## Project structure
 
 - `app/` — Android application and Compose UI
-- `source-api/` — compatibility layer used by supported Tachiyomi/Mihon-style source extensions
+- `source-api/` — compatibility layer used by supported Tachiyomi/Mihon manga and Aniyomi anime source extensions
 - `.github/workflows/build.yml` — CI build, unit tests, APK artifacts, and the rolling `latest` prerelease
 - `docs/ARCHITECTURE.md` — current module boundaries, compatibility constraints, and maintenance guidance
 - `docs/RELEASE_SIGNING.md` — secret-backed release signing migration
@@ -63,7 +65,7 @@ gradle testDebugUnitTest
 
 The large activity/shared-UI refactor has been completed: navigation, state, actions, overlays, reader components, and feature UI now live in focused files. Future refactors should target only files that remain genuinely cohesive-but-large, rather than recreating broad shared containers.
 
-The `source-api` module intentionally carries compatibility dependencies required by external source APKs. Dependency upgrades—especially Kotlin, OkHttp, serialization, and R8 rules—should be tested against installed extensions rather than treated as ordinary library bumps.
+The `source-api` module intentionally carries compatibility dependencies required by external manga and anime source APKs. Dependency upgrades—especially Kotlin, OkHttp, serialization, coroutines, and R8 rules—should be tested against installed Tachiyomi/Mihon and Aniyomi extensions rather than treated as ordinary library bumps.
 
 ## Security and permissions
 
@@ -75,6 +77,7 @@ Before publishing a release:
 
 1. Run unit tests.
 2. Build and install the debug APK.
-3. Verify extension loading, browse/search, series details, reader, downloads, and library refresh.
-4. Verify backup/restore and downloaded-content behavior.
-5. Build the signed release only after the debug build has passed the same compatibility checks.
+3. Verify manga and anime extension loading, browse/search, and series details.
+4. Verify manga reader behavior, downloads, library refresh, backup/restore, and downloaded-content behavior.
+5. Verify anime stream selection, playback, subtitles, resume/watch state, History, retry behavior, audio focus, and picture-in-picture.
+6. Build the signed release only after the debug build has passed the same compatibility checks.
