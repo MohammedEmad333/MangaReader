@@ -9,16 +9,30 @@ object VideoPlaybackProgress {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun position(context: Context, key: String): Long =
-        if (key.isBlank()) 0L else prefs(context).getLong(key, 0L)
+    fun position(context: Context, key: String): Long {
+        if (key.isBlank()) return 0L
+        val p = prefs(context)
+        return p.getLong("pos:$key", p.getLong(key, 0L))
+    }
 
-    fun save(context: Context, key: String, positionMs: Long) {
+    fun duration(context: Context, key: String): Long =
+        if (key.isBlank()) 0L else prefs(context).getLong("dur:$key", 0L)
+
+    fun save(context: Context, key: String, positionMs: Long, durationMs: Long) {
         if (key.isBlank() || positionMs <= 0L) return
-        prefs(context).edit().putLong(key, positionMs).apply()
+        prefs(context).edit()
+            .remove(key)
+            .putLong("pos:$key", positionMs)
+            .putLong("dur:$key", durationMs.coerceAtLeast(0L))
+            .apply()
     }
 
     fun clear(context: Context, key: String) {
         if (key.isBlank()) return
-        prefs(context).edit().remove(key).apply()
+        prefs(context).edit()
+            .remove(key)
+            .remove("pos:$key")
+            .remove("dur:$key")
+            .apply()
     }
 }

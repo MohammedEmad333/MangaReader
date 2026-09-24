@@ -173,7 +173,7 @@ private fun VideoPlayerScreen(
             val duration = player.duration
             val position = player.currentPosition
             if (duration > 0L && position > 5_000L && position < duration - 10_000L) {
-                VideoPlaybackProgress.save(context, progressKey, position)
+                VideoPlaybackProgress.save(context, progressKey, position, duration)
             } else if (duration > 0L && position >= duration - 10_000L) {
                 VideoPlaybackProgress.clear(context, progressKey)
             }

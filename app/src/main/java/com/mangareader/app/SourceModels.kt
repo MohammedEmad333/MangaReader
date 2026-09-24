@@ -92,6 +92,7 @@ data class PlayableVideo(
     /** Stable episode identity; falls back to the stream URL for non-anime scans. */
     val resumeKey: String = "",
     val subtitles: List<VideoSubtitle> = emptyList(),
+    val episodeTitle: String = "",
 )
 
 data class VideoScan(

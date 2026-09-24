@@ -11,7 +11,8 @@ internal class SavedSeriesActionController(
     private val browseState: SourceBrowseState,
     private val seriesState: SeriesNavigationState,
     private val enrichSeries: (Source, Series) -> Unit,
-    private val openChapter: (Int) -> Unit
+    private val openChapter: (Int) -> Unit,
+    private val openEpisode: (Chapter) -> Unit,
 ) {
     fun openLibrary(entry: LibraryEntry) {
         appState.error = null
@@ -105,7 +106,11 @@ internal class SavedSeriesActionController(
                     seriesState.active = target.series
                     seriesState.chapters = target.chapters
                     enrichSeries(target.source, target.series)
-                    openChapter(target.index)
+                    if (target.source.isAnime) {
+                        target.chapters.getOrNull(target.index)?.let(openEpisode)
+                    } else {
+                        openChapter(target.index)
+                    }
                 }
             } catch (error: Throwable) {
                 appState.error = sourceFailureMessage(

@@ -18,7 +18,9 @@ data class HistoryEntry(
     val coverPath: String,
     val page: Int,
     val total: Int,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val mediaType: String = "manga",
+    val detail: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("chapterKey", chapterKey)
@@ -29,6 +31,8 @@ data class HistoryEntry(
         put("page", page)
         put("total", total)
         put("updatedAt", updatedAt)
+        put("mediaType", mediaType)
+        put("detail", detail)
     }
 
     companion object {
@@ -40,7 +44,9 @@ data class HistoryEntry(
             coverPath = o.optString("coverPath"),
             page = o.optInt("page"),
             total = o.optInt("total"),
-            updatedAt = o.optLong("updatedAt")
+            updatedAt = o.optLong("updatedAt"),
+            mediaType = o.optString("mediaType", "manga"),
+            detail = o.optString("detail"),
         )
     }
 }
