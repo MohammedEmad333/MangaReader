@@ -8,6 +8,17 @@ package com.mangareader.app
  */
 internal val releaseNotes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 208,
+            name = "0.208",
+            header = "Anime playback, resume, history, subtitles and PiP",
+            body = "Anime extensions now open episodes in the built-in video player " +
+                "instead of the manga reader. Playback remembers where you stopped, " +
+                "marks completed episodes watched, appears in History, supports " +
+                "subtitle tracks, and can continue in picture-in-picture while you " +
+                "use another app. Anime and manga sources can also be filtered " +
+                "separately, and anime screens use episode/stream wording throughout.",
+        ),
+        ReleaseNote(
             code = 207,
             name = "0.207",
             header = "Downloads survive source changes and keep their covers",
