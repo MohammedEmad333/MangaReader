@@ -41,6 +41,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Full-screen in-app video player for direct streams discovered by Yomu.
@@ -57,6 +60,7 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemBars()
 
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
@@ -92,6 +96,21 @@ class VideoPlayerActivity : ComponentActivity() {
                     onPlaybackActiveChanged = ::updatePictureInPictureState,
                 )
             }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !inPictureInPicture) {
+            hideSystemBars()
+        }
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 
