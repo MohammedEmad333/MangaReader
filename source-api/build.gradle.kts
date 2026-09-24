@@ -81,8 +81,8 @@ dependencies {
     implementation(libs.serialization.json)
     // OkHttpExtensions.kt calls decodeFromBufferedSource, which lives here.
     implementation(libs.serialization.json.okio)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     implementation(libs.androidx.preference)
     implementation("com.squareup.logcat:logcat:0.4")
