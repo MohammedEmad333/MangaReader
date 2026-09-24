@@ -111,7 +111,7 @@ internal fun LibraryScreen(
      * after adding or removing a series without leaving the screen.
      */
     libraryTick: Int,
-    /** Drives the `Local` chip; extension sources are `tachi:`-prefixed. */
+    /** Drives the `Local` chip; extension sources use `tachi:` or `aniyomi:` prefixes. */
     isLocalSource: Boolean,
     /** Held by the root so the grid's position outlives this branch. */
     scroll: ScrollMemory,
