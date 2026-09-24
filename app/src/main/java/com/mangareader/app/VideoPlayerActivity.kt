@@ -1,9 +1,13 @@
 package com.mangareader.app
 
+import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -40,6 +44,8 @@ import androidx.media3.ui.PlayerView
  */
 class VideoPlayerActivity : ComponentActivity() {
 
+    private var inPictureInPicture by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -74,9 +80,28 @@ class VideoPlayerActivity : ComponentActivity() {
                     headers = headers,
                     resumeKey = resumeKey,
                     subtitles = subtitles,
+                    inPictureInPicture = inPictureInPicture,
                 )
             }
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+            enterPictureInPictureMode(params)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPictureInPicture = isInPictureInPictureMode
     }
 
     companion object {
@@ -114,6 +139,7 @@ private fun VideoPlayerScreen(
     headers: Map<String, String>,
     resumeKey: String,
     subtitles: List<VideoSubtitle>,
+    inPictureInPicture: Boolean,
 ) {
     var buffering by remember { mutableStateOf(true) }
     val context = LocalContext.current
@@ -195,13 +221,14 @@ private fun VideoPlayerScreen(
         AndroidView(
             factory = { context ->
                 PlayerView(context).apply {
-                    useController = true
+                    useController = !inPictureInPicture
                     this.player = player
                     keepScreenOn = true
                 }
             },
             update = { view ->
                 view.player = player
+                view.useController = !inPictureInPicture
             },
             modifier = Modifier.fillMaxSize(),
         )
