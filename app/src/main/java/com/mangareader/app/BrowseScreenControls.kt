@@ -122,10 +122,13 @@ internal fun BrowseScreenControls(
 
     if (supportsLatest || supportsFilters) {
         Row(
-            modifier = Modifier.padding(
-                horizontal = 12.dp,
-                vertical = 4.dp,
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 4.dp,
+                ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilterChip(
