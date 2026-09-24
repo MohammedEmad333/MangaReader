@@ -8,6 +8,19 @@ package com.mangareader.app
  */
 internal val releaseNotes: List<ReleaseNote> = listOf(
         ReleaseNote(
+            code = 209,
+            name = "0.209",
+            header = "Anime polish, safer migration and better global search",
+            body = "Anime playback now has cleaner picture-in-picture behavior, " +
+                "immersive fullscreen, retry on playback errors, durable resume progress, " +
+                "better audio focus, a scrollable stream picker, visible rewatch " +
+                "progress, and more consistent watched/unwatched state. " +
+                "Global search can filter Both, Manga, or Anime, library entries " +
+                "identify anime at a glance, migration stays within the same media type, " +
+                "and bulk actions avoid " +
+                "non-downloadable sources with clearer messages.",
+        ),
+        ReleaseNote(
             code = 208,
             name = "0.208",
             header = "Anime playback, resume, history, subtitles and PiP",
