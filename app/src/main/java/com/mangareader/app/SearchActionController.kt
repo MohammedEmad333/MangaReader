@@ -27,6 +27,16 @@ internal class SearchActionController(
         globalSearch.cancel()
     }
 
+    fun setMediaFilter(value: String) {
+        globalSearch.setMediaFilter(
+            context,
+            scope,
+            appState.configs,
+            appState.extensionSources,
+            value
+        )
+    }
+
     fun setPinnedOnly(value: Boolean) {
         globalSearch.setPinnedOnly(
             context,
