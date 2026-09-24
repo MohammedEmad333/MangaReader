@@ -220,6 +220,12 @@ internal fun HistoryScreen(
                                         buildString {
                                             if (entry.detail.isNotBlank()) append(entry.detail)
                                             when {
+                                                completed && position > 0L -> {
+                                                    if (isNotEmpty()) append(" • ")
+                                                    append("Watched • Rewatch ")
+                                                    append(formatMediaTime(position))
+                                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
+                                                }
                                                 completed -> {
                                                     if (isNotEmpty()) append(" • ")
                                                     append("Watched")
