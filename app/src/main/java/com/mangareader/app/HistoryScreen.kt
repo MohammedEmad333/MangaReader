@@ -89,6 +89,7 @@ internal fun HistoryScreen(
      */
     onRefresh: () -> Unit
 ) {
+    val context = LocalContext.current
     var refreshing by remember { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
     val shownHistory = remember(history, mediaFilter) {
@@ -305,9 +306,8 @@ internal fun HistoryScreen(
             title = { Text("Clear all history?") },
             text = {
                 Text(
-                    "Every entry is removed. Read marks and saved pages are kept, " +
-                        "so nothing about your progress changes \u2014 only the list " +
-                        "of what you opened recently."
+                    "Every entry is removed. Reading and playback progress are kept, " +
+                        "so only the recent-history list is cleared."
                 )
             },
             confirmButton = {
