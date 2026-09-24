@@ -13,9 +13,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -24,16 +29,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Full-screen in-app video player for direct streams discovered by Yomu.
@@ -45,10 +55,12 @@ import androidx.media3.ui.PlayerView
 class VideoPlayerActivity : ComponentActivity() {
 
     private var inPictureInPicture by mutableStateOf(false)
+    private var playbackActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemBars()
 
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
@@ -81,19 +93,56 @@ class VideoPlayerActivity : ComponentActivity() {
                     resumeKey = resumeKey,
                     subtitles = subtitles,
                     inPictureInPicture = inPictureInPicture,
+                    onPlaybackActiveChanged = ::updatePictureInPictureState,
                 )
             }
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !inPictureInPicture) {
+            hideSystemBars()
+        }
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational(16, 9))
-                .build()
-            enterPictureInPictureMode(params)
+        if (
+            Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
+            playbackActive &&
+            !isInPictureInPictureMode
+        ) {
+            enterPictureInPictureMode(buildPictureInPictureParams(autoEnter = false))
         }
+    }
+
+    private fun updatePictureInPictureState(active: Boolean) {
+        playbackActive = active
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            setPictureInPictureParams(
+                buildPictureInPictureParams(
+                    autoEnter = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && active,
+                ),
+            )
+        }
+    }
+
+    private fun buildPictureInPictureParams(autoEnter: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoEnter)
+        }
+        return builder.build()
     }
 
     override fun onPictureInPictureModeChanged(
@@ -140,8 +189,10 @@ private fun VideoPlayerScreen(
     resumeKey: String,
     subtitles: List<VideoSubtitle>,
     inPictureInPicture: Boolean,
+    onPlaybackActiveChanged: (Boolean) -> Unit,
 ) {
     var buffering by remember { mutableStateOf(true) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     val progressKey = remember(url, resumeKey) { resumeKey.ifBlank { "url:$url" } }
@@ -188,6 +239,9 @@ private fun VideoPlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING ||
                     playbackState == Player.STATE_IDLE
+                if (playbackState == Player.STATE_READY) {
+                    playbackError = null
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     VideoPlaybackProgress.markCompleted(
                         context,
@@ -197,9 +251,20 @@ private fun VideoPlayerScreen(
                     ReadState.setRead(context, progressKey, true)
                 }
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                buffering = false
+                playbackError = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Video playback failed"
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                onPlaybackActiveChanged(isPlaying)
+            }
         }
         player.addListener(listener)
         onDispose {
+            onPlaybackActiveChanged(false)
             player.removeListener(listener)
             val duration = player.duration
             val position = player.currentPosition
@@ -233,7 +298,28 @@ private fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (buffering) {
+        if (playbackError != null) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = playbackError.orEmpty(),
+                    color = Color.White,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        playbackError = null
+                        buffering = true
+                        player.prepare()
+                        player.playWhenReady = true
+                    },
+                ) {
+                    Text("Retry")
+                }
+            }
+        } else if (buffering) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
             )
