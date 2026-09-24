@@ -26,7 +26,7 @@ internal fun ExtensionResumeObserver(
                     val sources = withContext(Dispatchers.IO) {
                         runCatching {
                             SourceManager.listAllSources(context)
-                                .filter { it.id.startsWith("tachi:") }
+                                .filter { it.id.isExtensionSourceId() }
                         }.getOrDefault(emptyList())
                     }
                     onSourcesChanged(sources)
