@@ -91,7 +91,13 @@ internal suspend fun queueLibraryDownloads(
         var skipped = 0
 
         for (entry in entries) {
-            val chapters = chaptersForBulk(context, entry, sources[entry.sourceId])
+            val source = sources[entry.sourceId]
+            if (source == null || !source.supportsDownload) {
+                skipped++
+                continue
+            }
+
+            val chapters = chaptersForBulk(context, entry, source)
             if (chapters.isEmpty()) {
                 skipped++
                 continue
