@@ -90,6 +90,9 @@ internal class AppActionController(
     fun setGlobalPinnedOnly(value: Boolean) =
         searchActions.setPinnedOnly(value)
 
+    fun setGlobalMediaFilter(value: String) =
+        searchActions.setMediaFilter(value)
+
     fun openGlobalResult(source: Source, series: Series) =
         searchActions.openResult(source, series)
 
