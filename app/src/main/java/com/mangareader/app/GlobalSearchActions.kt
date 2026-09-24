@@ -9,6 +9,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal fun globalSearchMediaIsAnime(filter: String): Boolean? = when (filter) {
+    "Anime" -> true
+    "Manga" -> false
+    else -> null
+}
+
 internal suspend fun globalSearchTargets(
     context: Context,
     configs: List<SourceConfig>,
@@ -144,11 +150,8 @@ internal class GlobalSearchState(
         recents = SourcePrefs.addRecentSearch(context, newQuery)
         job = scope.launch {
             try {
-                val effectiveMediaIsAnime = mediaIsAnime ?: when (mediaFilter) {
-                    "Anime" -> true
-                    "Manga" -> false
-                    else -> null
-                }
+                val effectiveMediaIsAnime =
+                    mediaIsAnime ?: globalSearchMediaIsAnime(mediaFilter)
                 val targets = globalSearchTargets(
                     context = context,
                     configs = configs,
