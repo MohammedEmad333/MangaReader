@@ -13,6 +13,7 @@ internal class RootNavigationActionController(
     private val runGlobalSearch: (String) -> Unit
 ) {
     fun openGlobalSearch() {
+        globalSearch.mediaIsAnime = null
         globalSearch.open = true
         if (
             globalSearch.query.isNotBlank() &&
@@ -59,6 +60,7 @@ internal class RootNavigationActionController(
     }
 
     fun searchGlobalTag(tag: String) {
+        globalSearch.mediaIsAnime = null
         seriesState.tagReturn = seriesState.active
         seriesState.active = null
         appState.error = null
@@ -75,6 +77,7 @@ internal class RootNavigationActionController(
             sourceId,
             active.title
         )
+        globalSearch.mediaIsAnime = browseState.source?.isAnime
         seriesState.tagReturn = active
         seriesState.active = null
         appState.error = null
@@ -86,6 +89,7 @@ internal class RootNavigationActionController(
         globalSearch.cancel()
         globalSearch.open = false
         migrationState.from = null
+        globalSearch.mediaIsAnime = null
         browseState.series = null
 
         val cameFromTag = seriesState.tagReturn
