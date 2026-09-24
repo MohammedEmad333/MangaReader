@@ -356,7 +356,7 @@ private fun persistPlaybackProgress(
     val duration = player.duration
     val position = player.currentPosition
     when {
-        duration > 0L && position >= duration - 10_000L -> {
+        shouldMarkPlaybackCompleted(position, duration) -> {
             VideoPlaybackProgress.markCompleted(context, progressKey, duration)
             if (resumeKey.isNotBlank()) {
                 ReadState.setRead(context, resumeKey, true)
