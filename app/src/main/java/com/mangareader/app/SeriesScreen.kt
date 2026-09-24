@@ -439,11 +439,20 @@ internal fun SeriesScreen(
                         // Only once there is an answer. Before that the
                         // progress indicator above is the honest thing on
                         // screen, and a sentence claiming a result would not be.
-                        chapters.isEmpty() -> "This source returned no chapters"
+                        chapters.isEmpty() ->
+                            if (isAnimeSource) "This source returned no episodes"
+                            else "This source returned no chapters"
                         visible.size != chapters.size ->
-                            "${visible.size} of ${chapters.size} chapters"
-                        chapters.size == 1 -> "1 chapter"
-                        else -> "${chapters.size} chapters"
+                            if (isAnimeSource) {
+                                "${visible.size} of ${chapters.size} episodes"
+                            } else {
+                                "${visible.size} of ${chapters.size} chapters"
+                            }
+                        chapters.size == 1 ->
+                            if (isAnimeSource) "1 episode" else "1 chapter"
+                        else ->
+                            if (isAnimeSource) "${chapters.size} episodes"
+                            else "${chapters.size} chapters"
                     },
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
