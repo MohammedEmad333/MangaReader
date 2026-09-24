@@ -25,4 +25,10 @@ class SourceIdClassificationTest {
         assertFalse("local:downloads".isExtensionSourceId())
         assertTrue("".isLocalSourceId())
     }
+
+    @Test
+    fun stripsExtensionPrefixesFromUnknownSourceLabels() {
+        assertTrue(SourceNames.unnamed("tachi:123456789").endsWith("456789)"))
+        assertTrue(SourceNames.unnamed("aniyomi:987654321").endsWith("654321)"))
+    }
 }
