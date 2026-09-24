@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,6 +83,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     var report by remember { mutableStateOf<String?>(null) }
     var filter by remember { mutableStateOf("") }
     var installedOnly by remember { mutableStateOf(false) }
+    var mediaFilter by rememberSaveable { mutableStateOf("All") }
 
     // Installing and uninstalling both finish in the system's UI, in another
     // process, so this screen can't be told when they're done — the only signal
@@ -143,6 +145,9 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         available.filter { ext ->
             (showNsfw || !ext.isNsfw) &&
                 (!installedOnly || ext.isInstalled) &&
+                (mediaFilter == "All" ||
+                    (mediaFilter == "Anime" && ext.isAnime) ||
+                    (mediaFilter == "Manga" && !ext.isAnime)) &&
                 (q.isBlank() ||
                     ext.name.contains(q, ignoreCase = true) ||
                     ext.pkgName.contains(q, ignoreCase = true))
@@ -212,6 +217,13 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
                     onClick = { installedOnly = !installedOnly },
                     label = { Text("Installed only") }
                 )
+                listOf("All", "Manga", "Anime").forEach { label ->
+                    FilterChip(
+                        selected = mediaFilter == label,
+                        onClick = { mediaFilter = label },
+                        label = { Text(label) },
+                    )
+                }
                 Text(
                     "${shownExtensions.size} of ${available.size}",
                     style = MaterialTheme.typography.bodySmall,

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -97,6 +98,7 @@ internal fun BrowseTab(
     val lastUsedId = remember { SourcePrefs.lastUsed(context) }
     var settingsFor by remember { mutableStateOf<Source?>(null) }
     var showSourceFilter by remember { mutableStateOf(false) }
+    var mediaFilter by rememberSaveable { mutableStateOf("All") }
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
@@ -115,6 +117,7 @@ internal fun BrowseTab(
                 iconPkg = null,
                 isNsfw = false,
                 configurable = false,
+                isAnime = false,
                 config = cfg,
                 source = null
             )
@@ -126,6 +129,7 @@ internal fun BrowseTab(
                 iconPkg = src.iconPkg,
                 isNsfw = src.isNsfw,
                 configurable = SourceSettings.isConfigurable(src),
+                isAnime = src.isAnime,
                 config = null,
                 source = src
             )
@@ -137,7 +141,11 @@ internal fun BrowseTab(
     val visibleRows = rows.filter {
         SourcePrefs.isVisible(
             it.id, it.lang.ifBlank { "Other" }, it.isNsfw, hiddenIds, enabledLangs, showNsfw
-        )
+        ) && when (mediaFilter) {
+            "Anime" -> it.isAnime
+            "Manga" -> !it.isAnime
+            else -> true
+        }
     }
 
     val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
@@ -229,6 +237,21 @@ internal fun BrowseTab(
             modifier = Modifier.weight(1f)
         ) { page ->
             if (page == 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("All", "Manga", "Anime").forEach { label ->
+                        FilterChip(
+                            selected = mediaFilter == label,
+                            onClick = { mediaFilter = label },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+
                 val openRow: (BrowseRow) -> Unit = { row ->
                     row.config?.let { onOpenConfig(it) }
                     row.source?.let { onOpenExtension(it) }

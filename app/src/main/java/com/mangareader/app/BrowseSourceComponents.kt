@@ -77,6 +77,7 @@ internal data class BrowseRow(
     val iconPkg: String?,
     val isNsfw: Boolean,
     val configurable: Boolean,
+    val isAnime: Boolean,
     val config: SourceConfig?,
     val source: Source?
 )
@@ -111,6 +112,13 @@ internal fun BrowseSourceRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (row.lang.isNotBlank()) Text(row.lang)
+                if (row.isAnime) {
+                    Text(
+                        "Anime",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
                 if (row.isNsfw) NsfwBadge()
             }
         },

@@ -44,6 +44,13 @@ internal fun ExtensionRow(
                         else ext.versionName
                     ).filter { it.isNotBlank() }.joinToString(" ")
                 )
+                if (ext.isAnime) {
+                    Text(
+                        "Anime",
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                    )
+                }
                 if (ext.isNsfw) NsfwBadge()
             }
         },
