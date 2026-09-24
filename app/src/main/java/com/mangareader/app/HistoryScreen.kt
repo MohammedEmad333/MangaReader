@@ -215,17 +215,24 @@ internal fun HistoryScreen(
                                 if (entry.mediaType == "anime") {
                                     val position = VideoPlaybackProgress.position(context, entry.chapterKey)
                                     val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
+                                    val completed = VideoPlaybackProgress.isCompleted(context, entry.chapterKey)
                                     Text(
                                         buildString {
                                             if (entry.detail.isNotBlank()) append(entry.detail)
-                                            if (position > 0L) {
-                                                if (isNotEmpty()) append(" • ")
-                                                append(formatVideoTime(position))
-                                                if (duration > 0L) append(" / ${formatVideoTime(duration)}")
-                                            } else if (isNotEmpty()) {
-                                                append(" • Watched")
-                                            } else {
-                                                append("Watched")
+                                            when {
+                                                completed -> {
+                                                    if (isNotEmpty()) append(" • ")
+                                                    append("Watched")
+                                                }
+                                                position > 0L -> {
+                                                    if (isNotEmpty()) append(" • ")
+                                                    append(formatVideoTime(position))
+                                                    if (duration > 0L) append(" / ${formatVideoTime(duration)}")
+                                                }
+                                                else -> {
+                                                    if (isNotEmpty()) append(" • ")
+                                                    append("Started")
+                                                }
                                             }
                                         },
                                     )
