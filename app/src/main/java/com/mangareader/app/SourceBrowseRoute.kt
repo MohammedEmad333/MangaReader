@@ -46,7 +46,8 @@ internal fun SourceBrowseRoute(
         onOpen = onOpen,
         onBack = onBack,
         libraryTick = libraryTick,
-        isLocalSource = !sourceId.orEmpty().startsWith("tachi:"),
+        isLocalSource = !sourceId.orEmpty().startsWith("tachi:") &&
+            !sourceId.orEmpty().startsWith("aniyomi:"),
         scroll = scroll,
         onSolveChallenge = onSolveChallenge
     )
