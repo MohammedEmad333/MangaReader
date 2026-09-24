@@ -251,8 +251,7 @@ internal fun DownloadsTab(
                                 EntryBadges(
                                     downloaded = false,
                                     local = marks.badgeLocal &&
-                                        !entry.sourceId.startsWith("tachi:") &&
-                                        !entry.sourceId.startsWith("aniyomi:"),
+                                        entry.sourceId.isLocalSourceId(),
                                     unread = marks.unreadOf(entry.seriesId)
                                 )
                             }
