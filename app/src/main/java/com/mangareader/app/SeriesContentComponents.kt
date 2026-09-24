@@ -429,9 +429,9 @@ internal fun SeriesChapterRow(
                     chapter.scanlator,
                     sizeLabel,
                     when {
-                        read -> null
                         isAnime && resumePositionMs > 0L ->
-                            "Resume ${formatMediaTime(resumePositionMs)}"
+                            "${if (read) "Rewatch" else "Resume"} ${formatMediaTime(resumePositionMs)}"
+                        read -> null
                         !isAnime && resumePage > 0 ->
                             "Page ${resumePage + 1}"
                         else -> null
@@ -442,12 +442,12 @@ internal fun SeriesChapterRow(
                     Text(
                         bits.joinToString(" • "),
                         color = when {
-                            read ->
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                                    .copy(alpha = READ_DIM)
                             (isAnime && resumePositionMs > 0L) ||
                                 (!isAnime && resumePage > 0) ->
                                 MaterialTheme.colorScheme.primary
+                            read ->
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                                    .copy(alpha = READ_DIM)
                             else ->
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         },
