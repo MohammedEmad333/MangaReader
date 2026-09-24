@@ -12,7 +12,8 @@ internal class LibraryActionController(
     globalSearch: GlobalSearchState,
     migrationState: MigrationNavigationState,
     enrichSeries: (Source, Series) -> Unit,
-    openChapter: (Int) -> Unit
+    openChapter: (Int) -> Unit,
+    openEpisode: (Chapter) -> Unit,
 ) {
     private val bulkActions = LibraryBulkActionController(
         context = context,
@@ -31,7 +32,8 @@ internal class LibraryActionController(
         browseState = browseState,
         seriesState = seriesState,
         enrichSeries = enrichSeries,
-        openChapter = openChapter
+        openChapter = openChapter,
+        openEpisode = openEpisode,
     )
 
     fun bulkSetRead(ids: Set<String>, value: Boolean) =
