@@ -88,6 +88,7 @@ internal fun DataSettings() {
     var confirmChapterLists by remember { mutableStateOf(false) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var storageBusy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val use = rememberStorageUse(tick)
 
@@ -161,17 +162,38 @@ internal fun DataSettings() {
 
         DataStorageUsageSection(
             use = use,
+            busy = storageBusy,
             onDeleteDownloads = { confirmDownloads = true },
             onClearPageCache = {
-                runCatching { File(context.cacheDir, "pages").deleteRecursively() }
-                tick++
+                storageBusy = true
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                File(context.cacheDir, "pages").deleteRecursively()
+                            }
+                        }
+                    } finally {
+                        storageBusy = false
+                        tick++
+                    }
+                }
             },
             onClearCoverCache = {
-                runCatching {
-                    context.imageLoader.memoryCache?.clear()
-                    context.imageLoader.diskCache?.clear()
+                storageBusy = true
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                context.imageLoader.memoryCache?.clear()
+                                context.imageLoader.diskCache?.clear()
+                            }
+                        }
+                    } finally {
+                        storageBusy = false
+                        tick++
+                    }
                 }
-                tick++
             },
             onClearChapterLists = { confirmChapterLists = true },
         )
@@ -269,16 +291,34 @@ internal fun DataSettings() {
         confirmDownloads = confirmDownloads,
         onDismissDownloads = { confirmDownloads = false },
         onConfirmDownloads = {
-            Downloads.deleteAll(context)
             confirmDownloads = false
-            tick++
+            storageBusy = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        Downloads.deleteAll(context.applicationContext)
+                    }
+                } finally {
+                    storageBusy = false
+                    tick++
+                }
+            }
         },
         confirmChapterLists = confirmChapterLists,
         onDismissChapterLists = { confirmChapterLists = false },
         onConfirmChapterLists = {
-            ChapterCache.clearAll(context)
             confirmChapterLists = false
-            tick++
+            storageBusy = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        ChapterCache.clearAll(context.applicationContext)
+                    }
+                } finally {
+                    storageBusy = false
+                    tick++
+                }
+            }
         },
     )
 

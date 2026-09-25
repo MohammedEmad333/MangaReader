@@ -35,6 +35,7 @@ internal class ShellActionController(
 
     private val media = MediaShellActionController(
         context = context,
+        scope = scope,
         appState = appState,
         browseState = browseState,
         seriesState = seriesState,
