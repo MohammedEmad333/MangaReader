@@ -177,9 +177,9 @@ object DownloadIndex {
     @Synchronized
     fun deleteSeries(context: Context, series: DownloadedSeries) {
         invalidate()
-        series.chapters.forEach { Downloads.delete(context, it.chapterId) }
-        DownloadCovers.delete(context, series.seriesId)
         val gone = series.chapters.map { it.chapterId }.toSet()
+        Downloads.deleteMany(context, gone)
+        DownloadCovers.delete(context, series.seriesId)
         DownloadIndexStorage.write(context, DownloadIndexStorage.read(context).filterNot { it.chapterId in gone })
     }
 
