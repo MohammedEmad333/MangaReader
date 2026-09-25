@@ -199,7 +199,6 @@ internal fun SeriesContent(
         SeriesTopBar(
             title = series.title,
             canDownload = canDownload,
-            chapters = chapters,
             visibleChapters = visibleChapters,
             sourceId = sourceId,
             onDownloadBatch = onDownloadBatch,
