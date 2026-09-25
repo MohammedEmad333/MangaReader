@@ -24,20 +24,20 @@ import kotlin.math.roundToInt
 
 @Composable
 internal fun LibraryFilterOptions(
-    downloaded: Int,
-    local: Int,
-    read: Int,
-    unread: Int,
-    started: Int,
-    completed: Int,
-    nsfw: Int,
-    onDownloadedChange: (Int) -> Unit,
-    onLocalChange: (Int) -> Unit,
-    onReadChange: (Int) -> Unit,
-    onUnreadChange: (Int) -> Unit,
-    onStartedChange: (Int) -> Unit,
-    onCompletedChange: (Int) -> Unit,
-    onNsfwChange: (Int) -> Unit,
+    downloaded: FilterState,
+    local: FilterState,
+    read: FilterState,
+    unread: FilterState,
+    started: FilterState,
+    completed: FilterState,
+    nsfw: FilterState,
+    onDownloadedChange: (FilterState) -> Unit,
+    onLocalChange: (FilterState) -> Unit,
+    onReadChange: (FilterState) -> Unit,
+    onUnreadChange: (FilterState) -> Unit,
+    onStartedChange: (FilterState) -> Unit,
+    onCompletedChange: (FilterState) -> Unit,
+    onNsfwChange: (FilterState) -> Unit,
 ) {
     TriFilterRow("Downloaded", downloaded, onDownloadedChange)
     TriFilterRow("Local source", local, onLocalChange)
@@ -121,7 +121,7 @@ internal fun LibraryDisplayOptions(
     showTabs: Boolean,
     showCount: Boolean,
     onDisplayChange: (LibraryDisplay) -> Unit,
-    onPerRowChange: (Int) -> Unit,
+    onPerRowChange: (FilterState) -> Unit,
     onBadgeDownloadedChange: (Boolean) -> Unit,
     onBadgeLocalChange: (Boolean) -> Unit,
     onBadgeUnreadChange: (Boolean) -> Unit,
