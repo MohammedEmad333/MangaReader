@@ -117,175 +117,39 @@ internal fun GlobalSearchScreen(
     val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(if (migrating) "Migrate to…" else "Search all sources") },
-            navigationIcon = { BackButton(onBack) }
+        GlobalSearchControls(
+            migrating = migrating,
+            field = field,
+            onFieldChange = { field = it },
+            running = running,
+            onSearch = { onSearch(field.trim()) },
+            onCancel = onCancel,
+            pinnedOnly = pinnedOnly,
+            hasPinned = hasPinned,
+            onTogglePinnedOnly = onTogglePinnedOnly,
+            hasResultsOnly = hasResultsOnly,
+            onToggleHasResultsOnly = onToggleHasResultsOnly,
+            mediaFilter = mediaFilter,
+            onMediaFilterChange = onMediaFilterChange,
+            done = done,
+            total = total,
+            withHits = withHits,
+            onBack = onBack,
         )
 
-        if (migrating) {
-            Text(
-                "Pick the source to move this series to.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = field,
-                onValueChange = { field = it },
-                label = { Text("Search") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            if (running) {
-                OutlinedButton(onClick = onCancel) { Text("Stop") }
-            } else {
-                Button(
-                    enabled = field.isNotBlank(),
-                    onClick = { onSearch(field.trim()) }
-                ) { Text("Go") }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Pinned and All are one scope choice; Has results filters what's
-            // displayed without re-running anything.
-            FilterChip(
-                selected = pinnedOnly && hasPinned,
-                enabled = hasPinned,
-                onClick = { onTogglePinnedOnly(true) },
-                label = { Text("Pinned") }
-            )
-            FilterChip(
-                selected = !pinnedOnly || !hasPinned,
-                onClick = { onTogglePinnedOnly(false) },
-                label = { Text("All") }
-            )
-            FilterChip(
-                selected = hasResultsOnly,
-                onClick = { onToggleHasResultsOnly(!hasResultsOnly) },
-                label = { Text("Has results") }
-            )
-            if (!migrating) {
-                FilterChip(
-                    selected = mediaFilter == "All",
-                    onClick = { onMediaFilterChange("All") },
-                    label = { Text("Both") },
-                )
-                FilterChip(
-                    selected = mediaFilter == "Manga",
-                    onClick = { onMediaFilterChange("Manga") },
-                    label = { Text("Manga") },
-                )
-                FilterChip(
-                    selected = mediaFilter == "Anime",
-                    onClick = { onMediaFilterChange("Anime") },
-                    label = { Text("Anime") },
-                )
-            }
-        }
-
-        if (running) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        if (total > 0) {
-            Text(
-                "Searched $done of $total sources \u00b7 $withHits with results",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-
         if (shown.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    when {
-                        running -> "Searching\u2026"
-                        query.isBlank() -> "Type something to search every source at once."
-                        else -> "No source returned a match for \u201c$query\u201d."
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
-                // Recent queries turn a re-search into a single tap. Hidden while a
-                // search is in flight \u2014 the counter above already speaks for that
-                // state, and re-running mid-search would just fight the running job.
-                if (!running && recents.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Recent searches",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = onClearRecents) { Text("Clear") }
-                    }
-                    FlowRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        recents.forEach { q ->
-                            InputChip(
-                                selected = false,
-                                onClick = {
-                                    field = q
-                                    onSearch(q)
-                                },
-                                label = {
-                                    Text(q, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.History,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
-                                trailingIcon = {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription = "Remove \u201c$q\u201d",
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .clickable { onRemoveRecent(q) }
-                                    )
-                                }
-                            )
-                        }
-                    }
-                }
-            }
+            GlobalSearchEmptyState(
+                running = running,
+                query = query,
+                recents = recents,
+                onRecentSearch = { recent ->
+                    field = recent
+                    onSearch(recent)
+                },
+                onRemoveRecent = onRemoveRecent,
+                onClearRecents = onClearRecents,
+                modifier = Modifier.weight(1f),
+            )
         } else Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -304,91 +168,15 @@ internal fun GlobalSearchScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(shown) { result ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 8.dp, top = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            result.source.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (result.source.isAnime) {
-                            Text(
-                                "Anime",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp),
-                            )
-                        }
-                        if (result.series.isNotEmpty() && !migrating) {
-                            TextButton(onClick = { onOpenSource(result.source) }) {
-                                Text("See all")
-                            }
-                        }
-                    }
-                    if (result.series.isEmpty()) {
-                        Text(
-                            "No results",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                        )
-                    }
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(result.series) { s ->
-                            // Results already in the library carry their marks,
-                            // which is the useful half here: a global search is
-                            // usually asking whether this series exists on a
-                            // source you can actually read, and half the answer
-                            // is whether you already have it.
-                            val dim = marks.dim(s.id)
-                            Column(
-                                modifier = Modifier
-                                    .width(110.dp)
-                                    .clickable { onOpenSeries(result.source, s) }
-                            ) {
-                                Box {
-                                    CoverImage(
-                                        cover = s.cover,
-                                        title = s.title,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(0.7f)
-                                            .alpha(if (dim) 0.4f else 1f)
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(4.dp)
-                                    ) {
-                                        EntryBadges(
-                                            downloaded = marks.downloaded(s.id),
-                                            local = false,
-                                            unread = marks.unreadOf(s.id)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = s.title,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .padding(top = 4.dp)
-                                        .alpha(if (dim) 0.4f else 1f)
-                                )
-                            }
-                        }
-                    }
-                    HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
+                    GlobalSearchResultRow(
+                        result = result,
+                        migrating = migrating,
+                        dimFor = { marks.dim(it) },
+                        downloadedFor = { marks.downloaded(it) },
+                        unreadFor = { marks.unreadOf(it) },
+                        onOpenSource = onOpenSource,
+                        onOpenSeries = onOpenSeries,
+                    )
                 }
             }
             ListScrollHandle(
