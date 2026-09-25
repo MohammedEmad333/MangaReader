@@ -123,8 +123,14 @@ internal class SeriesActionController(
     }
 
     fun cancelDownloads(seriesId: String) {
-        if (cancelSeriesDownloadsAction(context, seriesId)) {
-            appState.downloadTick++
+        val appContext = context.applicationContext
+        scope.launch {
+            val changed = withContext(Dispatchers.IO) {
+                cancelSeriesDownloadsAction(appContext, seriesId)
+            }
+            if (changed) {
+                appState.downloadTick++
+            }
         }
     }
 }
