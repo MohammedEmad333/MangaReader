@@ -248,69 +248,16 @@ internal object StorageLocation {
 
     // ---------- moving ----------
 
-    /**
-     * Moves the contents of [from] into [to], returning how many entries moved.
-     *
-     * `renameTo` across mount points fails — internal storage to an SD card is
-     * exactly that case — and it fails by returning false rather than throwing,
-     * which would silently move nothing. Copy-then-delete is the fallback, and
-     * it's why this can take a while on a large library and is called off the
-     * main thread.
-     *
-     * A partial move is safe to retry: anything already at the destination is
-     * replaced, and the source entry is only deleted once its copy exists.
-     */
-    fun move(from: File, to: File): Result<Int> = runCatching {
-        if (!from.exists() || !from.isDirectory) return@runCatching 0
-        // Resetting to app storage while the chosen folder was already falling
-        // back to it lands here with both sides equal. Renaming every child onto
-        // itself is harmless but pointless, and the delete at the end would then
-        // be trying to remove the live download root.
-        if (from.absolutePath == to.absolutePath) return@runCatching 0
-        if (!ensureWritable(to)) error("Can't write to the new folder")
-
-        var moved = 0
-        from.listFiles()?.forEach { child ->
-            val target = File(to, child.name)
-            if (child.renameTo(target)) {
-                moved++
-            } else {
-                if (target.exists()) target.deleteRecursively()
-                child.copyRecursively(target, overwrite = true)
-                child.deleteRecursively()
-                moved++
-            }
-        }
-        runCatching { from.delete() }
-        moved
-    }
-
-    /** The subfolders this app owns. Everything else in a base is someone else's. */
-    private val OWNED = listOf(DOWNLOADS, CHAPTERS, BACKUPS)
+    /** Moves the contents of [from] into [to]. */
+    fun move(from: File, to: File): Result<Int> =
+        StorageMover.move(from, to)
 
     /** Whether a base has anything worth moving, for the move prompt. */
-    fun hasStore(base: File): Boolean = runCatching {
-        OWNED.any {
-            val dir = File(base, it)
-            dir.isDirectory && (dir.listFiles()?.isNotEmpty() == true)
-        }
-    }.getOrDefault(false)
+    fun hasStore(base: File): Boolean =
+        StorageMover.hasStore(base)
 
-    /**
-     * Moves only the folders this app owns from one base to another.
-     *
-     * Not the whole base: when the old one is `filesDir` it also holds the
-     * chapter-list cache, the download queue and the path index, none of which
-     * belong in the user's folder — and moving `download_queue.json` out from
-     * under a running service is a good way to lose a queue.
-     */
-    fun moveStore(from: File, to: File): Result<Int> = runCatching {
-        if (from.absolutePath == to.absolutePath) return@runCatching 0
-        var moved = 0
-        OWNED.forEach { name ->
-            val source = File(from, name)
-            if (source.isDirectory) moved += move(source, File(to, name)).getOrDefault(0)
-        }
-        moved
-    }
+    /** Moves only the folders this app owns from one base to another. */
+    fun moveStore(from: File, to: File): Result<Int> =
+        StorageMover.moveStore(from, to)
+
 }
