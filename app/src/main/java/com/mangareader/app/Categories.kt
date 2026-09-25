@@ -97,8 +97,7 @@ object Categories {
             }
             if (kept.length() > 0) cleaned.put(key, kept)
         }
-        prefs(context).edit().putString(KEY_ASSIGN, cleaned.toString()).apply()
-        invalidateAssignments()
+        saveAssignments(context, cleaned)
     }
 
     // Parsing this map is cheap once and ruinous several thousand times.
@@ -116,9 +115,16 @@ object Categories {
     @Volatile
     private var assignCache: JSONObject? = null
 
-    private fun invalidateAssignments() {
-        assignRaw = null
-        assignCache = null
+    /**
+     * Persists the mutable assignment object and seeds the raw/object cache with
+     * exactly what was written. Callers commonly read it again immediately; forcing
+     * a parse after our own write is wasted work on large libraries.
+     */
+    private fun saveAssignments(context: Context, map: JSONObject) {
+        val text = map.toString()
+        prefs(context).edit().putString(KEY_ASSIGN, text).apply()
+        assignRaw = text
+        assignCache = map
     }
 
     /**
@@ -250,20 +256,51 @@ object Categories {
                 map.put(seriesId, arr)
             }
         }
-        prefs(context).edit().putString(KEY_ASSIGN, map.toString()).apply()
-        invalidateAssignments()
+        saveAssignments(context, map)
+    }
+
+    /**
+     * Removes all category assignments for a batch of series with one
+     * serialization and one SharedPreferences write.
+     */
+    fun removeAssignmentsFor(context: Context, seriesIds: Set<String>) {
+        if (seriesIds.isEmpty()) return
+        val map = assignments(context)
+        var changed = false
+        seriesIds.forEach { seriesId ->
+            if (map.has(seriesId)) {
+                map.remove(seriesId)
+                changed = true
+            }
+        }
+        if (changed) saveAssignments(context, map)
+    }
+
+    /**
+     * Replaces assignments for the supplied series in one write.
+     *
+     * Entries not present in [categoriesBySeries] are untouched, matching repeated
+     * [setCategoriesFor] calls. An empty set removes that series' assignment.
+     */
+    fun setCategoriesForMany(
+        context: Context,
+        categoriesBySeries: Map<String, Set<String>>,
+    ) {
+        if (categoriesBySeries.isEmpty()) return
+        val map = assignments(context)
+        categoriesBySeries.forEach { (seriesId, catIds) ->
+            if (catIds.isEmpty()) {
+                map.remove(seriesId)
+            } else {
+                val arr = JSONArray()
+                catIds.forEach { arr.put(it) }
+                map.put(seriesId, arr)
+            }
+        }
+        saveAssignments(context, map)
     }
 
     fun setCategoriesFor(context: Context, seriesId: String, catIds: Set<String>) {
-        val map = assignments(context)
-        if (catIds.isEmpty()) {
-            map.remove(seriesId)
-        } else {
-            val arr = JSONArray()
-            catIds.forEach { arr.put(it) }
-            map.put(seriesId, arr)
-        }
-        prefs(context).edit().putString(KEY_ASSIGN, map.toString()).apply()
-        invalidateAssignments()
+        setCategoriesForMany(context, mapOf(seriesId to catIds))
     }
 }
