@@ -139,6 +139,30 @@ object Categories {
         return out
     }
 
+    /**
+     * Category id -> all series assigned to it, built in one pass.
+     *
+     * Library grouping used to call [seriesIn] once per category. Each call
+     * scans the complete assignment object, so ten categories over a large
+     * import meant ten full passes every time the grouped library was rebuilt.
+     */
+    fun seriesByCategory(context: Context): Map<String, Set<String>> {
+        val map = assignments(context)
+        val out = LinkedHashMap<String, MutableSet<String>>()
+        val keys = map.keys()
+        while (keys.hasNext()) {
+            val seriesId = keys.next()
+            val arr = map.optJSONArray(seriesId) ?: continue
+            for (i in 0 until arr.length()) {
+                val categoryId = arr.optString(i)
+                if (categoryId.isNotBlank()) {
+                    out.getOrPut(categoryId) { LinkedHashSet() }.add(seriesId)
+                }
+            }
+        }
+        return out
+    }
+
     private fun assignments(context: Context): JSONObject {
         val raw = prefs(context).getString(KEY_ASSIGN, null) ?: return JSONObject()
         val hit = assignCache
