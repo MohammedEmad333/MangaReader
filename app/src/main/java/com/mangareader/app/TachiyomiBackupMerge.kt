@@ -106,11 +106,12 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
     Library.mergeAll(context, entries)
     ReadState.setReadBulk(context, readKeys)
     savePageBulk(context, pages)
-    assignments.forEach { (id, cats) -> Categories.setCategoriesFor(context, id, cats) }
+    Categories.setCategoriesForMany(context, assignments.toMap())
 
     // History caps at 40, so only the newest are worth writing — and oldest
-    // first, because each touch() moves its entry to the front.
-    history.sortedBy { it.updatedAt }.takeLast(40).forEach { History.touch(context, it) }
+    // first, because each touch moves its entry to the front. Apply the batch
+    // in memory and serialize the capped store once.
+    History.touchAll(context, history.sortedBy { it.updatedAt }.takeLast(40))
 
     return buildString {
         appendLine("Imported ${entries.size} series.")

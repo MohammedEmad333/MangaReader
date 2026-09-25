@@ -141,8 +141,36 @@ object History {
         save(context, items)
     }
 
+    /**
+     * Applies many history touches in memory and persists the final capped list once.
+     *
+     * This preserves the exact sequential [touch] semantics while avoiding one full
+     * JSON serialization / SharedPreferences write per imported entry.
+     */
+    @Synchronized
+    fun touchAll(context: Context, entries: List<HistoryEntry>) {
+        if (entries.isEmpty()) return
+        val items = list(context).toMutableList()
+        entries.forEach { entry ->
+            items.removeAll {
+                it.chapterKey == entry.chapterKey ||
+                    (entry.seriesId.isNotBlank() && it.seriesId == entry.seriesId)
+            }
+            items.add(0, entry)
+            while (items.size > CAP) items.removeAt(items.size - 1)
+        }
+        save(context, items)
+    }
+
     @Synchronized
     fun remove(context: Context, chapterKey: String) {
         save(context, list(context).filterNot { it.chapterKey == chapterKey })
+    }
+
+    /** Clears the capped history store with a single write. */
+    @Synchronized
+    fun clear(context: Context) {
+        if (list(context).isEmpty()) return
+        save(context, emptyList())
     }
 }

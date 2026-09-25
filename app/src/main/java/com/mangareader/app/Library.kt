@@ -182,13 +182,9 @@ object Library {
         val present = list(context)
         val kept = present.filterNot { it.seriesId in seriesIds }
         if (kept.size != present.size) save(context, kept)
-        // Only the ones that actually have assignments: setCategoriesFor
-        // rewrites the whole assignment JSON, so blindly calling it per id
-        // would reintroduce the quadratic write this method exists to avoid.
-        val assigned = Categories.assignedSeries(context)
-        seriesIds.forEach {
-            if (it in assigned) Categories.setCategoriesFor(context, it, emptySet())
-        }
+        // Category assignments are another whole-store JSON blob. Remove the
+        // selected ids in one pass/write instead of serializing it once per series.
+        Categories.removeAssignmentsFor(context, seriesIds)
         // Chapter counts are only ever recorded for series in the library, so
         // leaving these behind is weight in a store that gets rewritten whole.
         SeriesIndex.forget(context, seriesIds)
