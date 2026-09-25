@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ---------- library ----------
@@ -102,8 +103,37 @@ internal fun LibraryTab(
     var localTick by remember { mutableIntStateOf(0) }
     val tick = libraryTick + localTick
 
-    val allEntries = remember(tick) { Library.list(context) }
+    val base = rememberLibraryBaseState(context, tick)
+    if (base == null) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            ErrorBanner(error)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Loading library…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
+    val allEntries = base.entries
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
+
+    // Keep the text field immediate while avoiding a full multi-thousand-entry
+    // filter/sort for every intermediate key event. The old synchronous path
+    // did that work inline; the background path would otherwise launch and
+    // cancel the same expensive job repeatedly while someone is typing.
+    var arrangedSearch by remember { mutableStateOf(search) }
+    LaunchedEffect(search) {
+        delay(120)
+        arrangedSearch = search
+    }
+
     val entries = remember(allEntries, mediaFilter) {
         allEntries.filter { entry ->
             val anime = entry.sourceId.startsWith("aniyomi:") ||
@@ -115,7 +145,7 @@ internal fun LibraryTab(
             }
         }
     }
-    val categories = remember(tick) { Categories.list(context) }
+    val categories = base.categories
 
     val sort = remember(tick) { LibraryPrefs.sort(context) }
     val ascending = remember(tick) { LibraryPrefs.ascending(context) }
@@ -147,7 +177,7 @@ internal fun LibraryTab(
         entries = entries,
         categories = categories,
         grouping = grouping,
-        search = search,
+        search = arrangedSearch,
         mediaFilter = mediaFilter,
         sort = sort,
         ascending = ascending,
@@ -163,6 +193,23 @@ internal fun LibraryTab(
         fNsfw = fNsfw,
         scroll = scroll,
     )
+    if (derived == null) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            ErrorBanner(error)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Preparing library…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
     val readIds = derived.readIds
     val downloadedIds = derived.downloadedIds
     val counts = derived.counts
@@ -171,6 +218,25 @@ internal fun LibraryTab(
 
     val tabIndex = groups.indexOfFirst { it.key == activeCategory }.let { if (it < 0) 0 else it }
     val pagerState = rememberPagerState(initialPage = tabIndex) { groups.size }
+
+    val currentPage = pagerState.currentPage
+    val visibleIds = remember(groups, currentPage) {
+        groups.getOrNull(currentPage)
+            ?.items
+            .orEmpty()
+            .map { it.seriesId }
+    }
+    val unreadCounts = remember(counts, badgeUnread) {
+        if (!badgeUnread) {
+            emptyMap()
+        } else {
+            counts.asSequence()
+                .mapNotNull { (seriesId, value) ->
+                    value.unread.takeIf { it > 0 }?.let { seriesId to it }
+                }
+                .toMap()
+        }
+    }
 
     // The pager owns the position. This is the only thing that reports it
     // outward, and it reads settledPage rather than currentPage on purpose.
@@ -201,12 +267,12 @@ internal fun LibraryTab(
         LibraryTopControls(
             selecting = selecting,
             selectedCount = selected.size,
-            visibleIds = groups.getOrNull(pagerState.currentPage)?.items.orEmpty().map { it.seriesId },
+            visibleIds = visibleIds,
             search = search,
             searchOpen = searchOpen,
             mediaFilter = mediaFilter,
             groups = groups,
-            currentPage = pagerState.currentPage,
+            currentPage = currentPage,
             showTabs = showTabs,
             showCount = showCount,
             filterActive = LibraryPrefs.anyFilterActive(context),
@@ -255,11 +321,7 @@ internal fun LibraryTab(
             readIds = readIds,
             downloadedIds = if (badgeDl) downloadedIds else emptySet(),
             badgeLocal = badgeLocal,
-            unreadCounts = if (badgeUnread) {
-                counts.mapValues { (_, counts) -> counts.unread }.filterValues { it > 0 }
-            } else {
-                emptyMap()
-            },
+            unreadCounts = unreadCounts,
             selected = selected,
             onOpen = onOpen,
             onToggle = { id ->
