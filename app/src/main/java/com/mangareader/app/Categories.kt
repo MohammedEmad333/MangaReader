@@ -20,13 +20,24 @@ object Categories {
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
+    @Volatile
+    private var catsRaw: String? = null
+
+    @Volatile
+    private var catsCache: List<Category>? = null
+
     fun list(context: Context): List<Category> {
         val raw = prefs(context).getString(KEY_CATS, null) ?: return emptyList()
+        val hit = catsCache
+        if (hit != null && catsRaw == raw) return hit
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
                 Category(o.getString("id"), o.getString("name"))
+            }.also {
+                catsCache = it
+                catsRaw = raw
             }
         } catch (e: Exception) {
             emptyList()
@@ -36,7 +47,10 @@ object Categories {
     private fun saveCats(context: Context, cats: List<Category>) {
         val arr = JSONArray()
         cats.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name)) }
-        prefs(context).edit().putString(KEY_CATS, arr.toString()).apply()
+        val text = arr.toString()
+        prefs(context).edit().putString(KEY_CATS, text).apply()
+        catsCache = cats
+        catsRaw = text
     }
 
     fun add(context: Context, name: String) {
