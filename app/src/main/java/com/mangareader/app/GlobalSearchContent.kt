@@ -220,7 +220,7 @@ internal fun GlobalSearchResultRow(
     migrating: Boolean,
     dimFor: (String) -> Boolean,
     downloadedFor: (String) -> Boolean,
-    unreadFor: (String) -> Int,
+    unreadFor: (String) -> Int?,
     onOpenSource: (Source) -> Unit,
     onOpenSeries: (Source, Series) -> Unit,
 ) {
