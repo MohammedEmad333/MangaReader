@@ -128,11 +128,15 @@ internal suspend fun queueLibraryDownloads(
         items to skipped
     }
 
-    val added = DownloadQueue.enqueue(context, items)
-    if (added > 0) {
-        if (DownloadQueue.paused) {
-            DownloadQueue.setPaused(context, false)
+    val appContext = context.applicationContext
+    val added = withContext(Dispatchers.IO) {
+        val changed = DownloadQueue.enqueue(appContext, items)
+        if (changed > 0 && DownloadQueue.paused) {
+            DownloadQueue.setPaused(appContext, false)
         }
+        changed
+    }
+    if (added > 0) {
         DownloadService.start(context)
     }
 
