@@ -202,15 +202,14 @@ object DownloadQueue {
 
     // ---------- failures ----------
 
-    /** Moves failures back into the queue. Returns how many went back. */
     @Synchronized
     fun retry(context: Context, chapterIds: Set<String>): Int {
-        val back = failed.filter { it.item.chapterId in chapterIds }
-        if (back.isEmpty()) return 0
-        failed = failed.filterNot { it.item.chapterId in chapterIds }
-        items = items + back.map { it.item }
+        val edit = DownloadQueueFailures.retry(items, failed, chapterIds)
+        if (edit.changed == 0) return 0
+        items = edit.items
+        failed = edit.failed
         save(context)
-        return back.size
+        return edit.changed
     }
 
     fun retryAll(context: Context): Int =
@@ -218,13 +217,13 @@ object DownloadQueue {
 
     @Synchronized
     fun dismissFailed(context: Context, chapterId: String) {
-        failed = failed.filterNot { it.item.chapterId == chapterId }
+        failed = DownloadQueueFailures.dismiss(items, failed, chapterId).failed
         save(context)
     }
 
     @Synchronized
     fun clearFailed(context: Context) {
-        failed = emptyList()
+        failed = DownloadQueueFailures.clear(items, failed).failed
         save(context)
     }
 

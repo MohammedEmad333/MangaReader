@@ -65,39 +65,50 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
-internal fun ReaderTopBar(title: String, subtitle: String, onClose: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Ui.BackButton, like every other screen. This was the one place
-            // still drawing its own arrow as a TextButton, which sat at a
-            // different size and alignment to the rest of the app.
-            BackButton(onClose)
-            Column(modifier = Modifier.weight(1f)) {
+internal fun ChapterPickerSheet(
+    chapters: List<Chapter>,
+    current: Int,
+    onSelect: (Int) -> Unit
+) {
+    // Opens on the chapter being read instead of at the top of the series. A
+    // 400-chapter list in a 420dp window shows about eight rows, so the picker
+    // was landing hundreds of rows from anything the reader could want, and the
+    // one thing it is for — stepping to a neighbouring chapter — was the hardest
+    // thing to do with it.
+    //
+    // Seeded into the state rather than scrolled to from an effect: an effect
+    // runs after the first composition, so the list would be drawn at the top
+    // and then jump. Two rows of lead-in, so the current chapter isn't jammed
+    // against the top edge with nothing above it to show there is more.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = (current - 2).coerceAtLeast(0)
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Chapters",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+        )
+        LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
+            itemsIndexed(chapters) { index, chapter ->
+                val selected = index == current
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = chapter.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.secondaryContainer
+                            else Color.Transparent
+                        )
+                        .clickable { onSelect(index) }
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
                 )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
         }
+        Spacer(Modifier.height(12.dp))
     }
 }

@@ -65,39 +65,33 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
-internal fun ReaderTopBar(title: String, subtitle: String, onClose: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Ui.BackButton, like every other screen. This was the one place
-            // still drawing its own arrow as a TextButton, which sat at a
-            // different size and alignment to the rest of the app.
-            BackButton(onClose)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+internal fun VerticalSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    length: Dp,
+    modifier: Modifier = Modifier
+) {
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = valueRange,
+        modifier = modifier
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.height, placeable.width) {
+                    placeable.place(
+                        x = (placeable.height - placeable.width) / 2,
+                        y = (placeable.width - placeable.height) / 2
                     )
                 }
             }
-        }
-    }
+            // Clockwise, not anti-: rotating the other way puts the slider's
+            // start at the bottom, so dragging down walked *backwards* through
+            // the chapter while looking perfectly normal sitting there.
+            .rotate(90f)
+            .requiredWidth(length)
+    )
 }

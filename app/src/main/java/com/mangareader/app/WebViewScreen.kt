@@ -263,23 +263,3 @@ internal fun ChallengeWebViewScreen(
 }
 
 /** Name of the cookie Cloudflare issues once a challenge has been passed. */
-private const val CLEARANCE_COOKIE = "cf_clearance"
-private const val POLL_MS = 250L
-private const val SETTLE_MS = 600L
-
-/**
- * Whether the browser cookie store holds clearance for [url].
- *
- * Parsed into names rather than a substring check on the raw header, so a
- * cookie whose *value* happens to contain the string can't report a false pass.
- */
-private fun hasClearanceCookie(url: String): Boolean =
-    runCatching {
-        CookieManager.getInstance().getCookie(url)
-            ?.split(";")
-            ?.any { it.substringBefore("=").trim() == CLEARANCE_COOKIE } == true
-    }.getOrDefault(false)
-
-/** Host part of a URL for the title bar, falling back to the whole string. */
-private fun hostOf(url: String): String =
-    runCatching { android.net.Uri.parse(url).host ?: url }.getOrDefault(url)

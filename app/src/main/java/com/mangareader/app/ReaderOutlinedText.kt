@@ -65,39 +65,40 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
-internal fun ReaderTopBar(title: String, subtitle: String, onClose: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Ui.BackButton, like every other screen. This was the one place
-            // still drawing its own arrow as a TextButton, which sat at a
-            // different size and alignment to the rest of the app.
-            BackButton(onClose)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+internal fun OutlinedText(
+    text: String,
+    color: Color,
+    outline: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier) {
+        val w = 1.2.dp
+        // Diagonals only: at this width the four of them already close the ring,
+        // and the axis-aligned four would be four more Text layouts for a
+        // difference nobody can see on a label this size.
+        listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f).forEach { (dx, dy) ->
+            Text(
+                text = text,
+                color = outline,
+                style = style,
+                modifier = Modifier.offset(x = w * dx, y = w * dy)
+            )
         }
+        Text(text = text, color = color, style = style)
     }
 }
+
+/**
+ * A [Slider] stood on end.
+ *
+ * Compose has no vertical slider, and rotating one is only half the job:
+ * `Modifier.rotate` changes what is drawn and never what was measured, so a
+ * rotated slider still claims its whole length horizontally and shoulders the
+ * page aside. The `layout` block reports the rotated footprint instead —
+ * measure the child as usual, then hand the parent the swapped dimensions and
+ * place the child centred inside them.
+ *
+ * Pointer input travels through the same transform, so the drag runs along the
+ * axis it looks like it should.
+ */
