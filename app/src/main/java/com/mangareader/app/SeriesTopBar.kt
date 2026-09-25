@@ -69,7 +69,7 @@ internal fun SeriesTopBar(
         },
         navigationIcon = { BackButton(onBack) },
         actions = {
-            if (canDownload && chapters.isNotEmpty()) {
+            if (canDownload && visibleChapters.isNotEmpty()) {
                 Box {
                     IconButton(
                         enabled = !preparingDownloads,
