@@ -41,6 +41,7 @@ internal fun SeriesContent(
     filtersActive: Boolean,
     resumeIndex: Int,
     anyProgress: Boolean,
+    chapterStateReady: Boolean,
     listState: LazyListState,
     barAlpha: Float,
     seriesUrl: String?,
@@ -126,6 +127,7 @@ internal fun SeriesContent(
                         chapterCount = chapters.size,
                         visibleCount = visibleChapters.size,
                         isAnimeSource = isAnimeSource,
+                        chapterStateReady = chapterStateReady,
                     )
                 }
 
@@ -214,7 +216,7 @@ internal fun SeriesContent(
         )
 
         SeriesResumeFab(
-            visible = chapters.isNotEmpty() && !selecting,
+            visible = chapterStateReady && chapters.isNotEmpty() && !selecting,
             chapters = chapters,
             resumeIndex = resumeIndex,
             anyProgress = anyProgress,
