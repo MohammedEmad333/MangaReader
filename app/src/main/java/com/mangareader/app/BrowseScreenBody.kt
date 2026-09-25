@@ -177,7 +177,11 @@ internal fun ColumnScope.BrowseScreenBody(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(6.dp)
         ) {
-            items(shown) { s ->
+            items(
+                shown,
+                key = { it.id },
+                contentType = { view },
+            ) { s ->
                 when (view) {
                     BrowseView.COMFORTABLE -> ComfortableCell(s, marks, isLocalSource, onOpen)
                     BrowseView.COMPACT -> CompactCell(s, marks, isLocalSource, onOpen)
@@ -188,7 +192,11 @@ internal fun ColumnScope.BrowseScreenBody(
             // Paging is manual rather than infinite-scroll: one tap per page
             // keeps request volume predictable and visible.
             if (hasNext) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(
+                    key = "browse:load-more",
+                    contentType = "load-more",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
