@@ -360,58 +360,14 @@ internal fun SeriesScreen(
             }
 
             item {
-                if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                // Same test the browse screen uses: the failure arrives as an
-                // already-formatted string from `Response.failureMessage()`,
-                // which is the one place that can see the Cloudflare headers.
-                //
-                // Worth having here and not only on browse, because these are
-                // different requests that fail separately. A source can list its
-                // catalogue from cached clearance and then 403 on the chapter
-                // list, which left the only way to solve it on a screen the user
-                // had already moved past.
-                val challengeable = onSolveChallenge != null &&
-                    error?.contains("Cloudflare", ignoreCase = true) == true
-                ErrorBanner(
+                SeriesChapterStatus(
+                    loading = loading,
                     error = error,
-                    actionLabel = if (challengeable) "Open in WebView" else null,
-                    onAction = if (challengeable) onSolveChallenge else null
-                )
-                if (chaptersFetched || chapters.isNotEmpty()) Text(
-                    // Says so when rows are hidden. A filtered list that just
-                    // reports a smaller number reads as chapters having gone
-                    // missing, which is the report this would otherwise produce.
-                    //
-                    // And zero is words, not a number. "0 chapters" reads as a
-                    // count this app measured, which it did not: an extension
-                    // whose selector matched nothing returns the same empty list
-                    // as a series that genuinely has none, because Jsoup's
-                    // select() yields an empty set rather than throwing. Saying
-                    // the source returned nothing claims only what is known.
-                    // The honest half — telling those two apart at all — needs
-                    // the source layer to record that a fetch completed, and is
-                    // still open on its own card.
-                    when {
-                        // Only once there is an answer. Before that the
-                        // progress indicator above is the honest thing on
-                        // screen, and a sentence claiming a result would not be.
-                        chapters.isEmpty() ->
-                            if (isAnimeSource) "This source returned no episodes"
-                            else "This source returned no chapters"
-                        visible.size != chapters.size ->
-                            if (isAnimeSource) {
-                                "${visible.size} of ${chapters.size} episodes"
-                            } else {
-                                "${visible.size} of ${chapters.size} chapters"
-                            }
-                        chapters.size == 1 ->
-                            if (isAnimeSource) "1 episode" else "1 chapter"
-                        else ->
-                            if (isAnimeSource) "${chapters.size} episodes"
-                            else "${chapters.size} chapters"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    onSolveChallenge = onSolveChallenge,
+                    chaptersFetched = chaptersFetched,
+                    chapterCount = chapters.size,
+                    visibleCount = visible.size,
+                    isAnimeSource = isAnimeSource,
                 )
             }
 
@@ -464,43 +420,27 @@ internal fun SeriesScreen(
         )
 
         if (selecting) {
-            ChapterSelectionBar(
-                count = selectedChapters.size,
+            SeriesSelectionOverlay(
+                selectedChapters = selectedChapters,
+                visibleChapters = visible,
                 canDownload = canDownload,
-                // What is on screen, not what exists. Selecting rows a filter
-                // is hiding and then deleting them is not what the button looks
-                // like it does.
-                onSelectAll = { selectedIds = visible.map { it.id }.toSet() },
+                sourceId = sourceId,
+                onSelectAll = { selectedIds = it },
                 onClear = { selectedIds = emptySet() },
-                onDownload = {
-                    selectedChapters.forEach { onDownload(it) }
+                onDownload = { chaptersToDownload ->
+                    chaptersToDownload.forEach(onDownload)
                     selectedIds = emptySet()
                 },
-                onRead = {
-                    onSetRead(selectedChapters, true)
+                onSetRead = { read ->
+                    onSetRead(selectedChapters, read)
                     selectedIds = emptySet()
                 },
-                onUnread = {
-                    onSetRead(selectedChapters, false)
-                    selectedIds = emptySet()
-                },
-                // One button, and what it does is decided by the selection: if
-                // anything in it is not bookmarked, bookmark everything;
-                // otherwise clear them all. A per-chapter toggle over a mixed
-                // selection would flip half of them the wrong way, which is the
-                // rule `onSetRead` already follows for read state.
-                bookmarkAdds = selectedChapters.any {
-                    !Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, it))
-                },
-                onBookmark = { adding ->
+                onSetBookmarked = { adding ->
                     onSetBookmarked(selectedChapters, adding)
                     selectedIds = emptySet()
                 },
-                // Asks first, and the selection is kept until it's answered —
-                // the dialog needs it, and cancelling should leave the bar
-                // exactly as it was.
                 onDelete = { confirmDeleteSelection = true },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
 
@@ -536,49 +476,38 @@ internal fun SeriesScreen(
         )
     }
 
-    SeriesDeleteDialogs(
-        chapter = confirmDeleteChapter,
-        onDismissChapter = { confirmDeleteChapter = null },
+    SeriesAuxiliaryDialogs(
+        series = series,
+        sourceId = sourceId,
+        confirmDeleteChapter = confirmDeleteChapter,
+        onDismissDeleteChapter = { confirmDeleteChapter = null },
         onDeleteChapter = {
             onDeleteChapter(it)
             confirmDeleteChapter = null
         },
-        selectionOpen = confirmDeleteSelection,
+        confirmDeleteSelection = confirmDeleteSelection,
         selectedChapters = selectedChapters,
         downloadTick = downloadTick,
-        onDismissSelection = { confirmDeleteSelection = false },
+        onDismissDeleteSelection = { confirmDeleteSelection = false },
         onDeleteSelection = {
             selectedChapters.forEach(onDeleteChapter)
             selectedIds = emptySet()
             confirmDeleteSelection = false
         },
+        showCategories = showCategories,
+        onDismissCategories = { showCategories = false },
+        showAddToLibrary = showAddToLibrary,
+        onDismissAddToLibrary = { showAddToLibrary = false },
+        onSavedToLibrary = {
+            showAddToLibrary = false
+            inLibrary = true
+            onLibraryChanged()
+        },
+        showChapterOptions = showChapterOptions,
+        onDismissChapterOptions = { showChapterOptions = false },
+        onChapterOptionsChanged = { optionsTick++ },
+        coverOpen = coverOpen,
+        onDismissCover = { coverOpen = false },
     )
 
-    if (showCategories) {
-        CategoryAssignDialog(seriesId = series.id, onDismiss = { showCategories = false })
-    }
-
-    if (showAddToLibrary) {
-        AddToLibraryDialog(
-            series = series,
-            sourceId = sourceId,
-            onDismiss = { showAddToLibrary = false },
-            onSaved = {
-                showAddToLibrary = false
-                inLibrary = true
-                onLibraryChanged()
-            }
-        )
-    }
-
-    if (showChapterOptions) {
-        ChapterOptionsSheet(
-            onDismiss = { showChapterOptions = false },
-            onChanged = { optionsTick++ }
-        )
-    }
-
-    if (coverOpen && series.cover != null) {
-        CoverViewer(cover = series.cover, onDismiss = { coverOpen = false })
-    }
 }
