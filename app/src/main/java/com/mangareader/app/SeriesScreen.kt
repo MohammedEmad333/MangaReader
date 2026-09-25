@@ -293,188 +293,72 @@ internal fun SeriesScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Pull down to re-fetch the chapter list — the same `onRefresh` the
-        // Options menu calls, so there is one refresh path rather than two.
-        //
-        // `isRefreshing` is the app-wide `loading` flag, gated on already having
-        // chapters. That gate is doing real work: without it the indicator would
-        // appear on every ordinary open, because opening a series sets the same
-        // flag. It is also why this is not simply `loading` — that flag is
-        // written by six launch blocks in `YomuApp`, and 0.89 is the release
-        // that had to stop the reader sharing it. Here the blast radius is a
-        // spinner rather than a page of failures, so it is not worth a second
-        // flag; if it ever spins when it shouldn't, this is the line.
-        //
-        // The LazyColumn body below is deliberately NOT re-indented under this
-        // wrapper: Kotlin doesn't care, and re-indenting 490 lines would bury a
-        // four-line change in a diff nobody could read.
-        PullToRefreshBox(
-            isRefreshing = loading && chapters.isNotEmpty(),
-            onRefresh = onRefresh,
-            modifier = Modifier.fillMaxSize()
-        ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            item {
-                SeriesHero(
-                    series = series,
-                    sourceName = sourceName,
-                    inLibrary = inLibrary,
-                    canDownload = canDownload,
-                    hasChapters = chapters.isNotEmpty(),
-                    downloadingAll = downloadingAll,
-                    downloadedCount = downloadedCount,
-                    onOpenCover = { coverOpen = true },
-                    onGlobalSearch = onGlobalSearchTag,
-                    onLibraryAction = {
-                        if (inLibrary) {
-                            Library.remove(context, series.id)
-                            inLibrary = false
-                            onLibraryChanged()
-                        } else {
-                            showAddToLibrary = true
-                        }
-                    },
-                    onCategories = { showCategories = true },
-                    onToggleAllDownloads = {
-                        if (downloadingAll) onCancelDownloads() else onDownloadAll()
-                    },
-                    onDeleteDownloads = onDeleteDownloads,
-                )
+    SeriesContent(
+        series = series,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        chapters = chapters,
+        visibleChapters = visible,
+        chaptersFetched = chaptersFetched,
+        loading = loading,
+        error = error,
+        isAnimeSource = isAnimeSource,
+        inLibrary = inLibrary,
+        canDownload = canDownload,
+        downloadingAll = downloadingAll,
+        downloadedCount = downloadedCount,
+        downloadTick = downloadTick,
+        downloadProgress = downloadProgress,
+        effectiveReadTick = effectiveReadTick,
+        chapterDisplay = chapterDisplay,
+        selecting = selecting,
+        selectedIds = selectedIds,
+        selectedChapters = selectedChapters,
+        filtersActive = filtersActive,
+        resumeIndex = resumeIndex,
+        anyProgress = anyProgress,
+        listState = listState,
+        barAlpha = barAlpha,
+        seriesUrl = seriesUrl,
+        onOpenCover = { coverOpen = true },
+        onGlobalSearchTag = onGlobalSearchTag,
+        onLibraryAction = {
+            if (inLibrary) {
+                Library.remove(context, series.id)
+                inLibrary = false
+                onLibraryChanged()
+            } else {
+                showAddToLibrary = true
             }
-
-            item {
-                SeriesDescriptionAndGenres(
-                    series = series,
-                    expanded = descriptionExpanded,
-                    onToggleExpanded = {
-                        descriptionExpanded = !descriptionExpanded
-                    },
-                    sourceName = sourceName,
-                    onSearchTag = onSearchTag,
-                    onGlobalSearchTag = onGlobalSearchTag,
-                )
-            }
-
-            item {
-                SeriesChapterStatus(
-                    loading = loading,
-                    error = error,
-                    onSolveChallenge = onSolveChallenge,
-                    chaptersFetched = chaptersFetched,
-                    chapterCount = chapters.size,
-                    visibleCount = visible.size,
-                    isAnimeSource = isAnimeSource,
-                )
-            }
-
-            itemsIndexed(visible) { _, ch ->
-                SeriesChapterRow(
-                    chapter = ch,
-                    sourceId = sourceId,
-                    readTick = effectiveReadTick,
-                    isAnime = isAnimeSource,
-                    downloadTick = downloadTick,
-                    progress = downloadProgress[ch.id],
-                    canDownload = canDownload,
-                    selecting = selecting,
-                    selected = ch.id in selectedIds,
-                    chapterDisplay = chapterDisplay,
-                    onSetRead = { read ->
-                        onSetRead(listOf(ch), read)
-                    },
-                    onSetBookmarked = { bookmarked ->
-                        onSetBookmarked(listOf(ch), bookmarked)
-                    },
-                    onOpen = { onOpen(ch.id) },
-                    onToggleSelected = {
-                        selectedIds = selectedIds.toggle(ch.id)
-                    },
-                    onDeleteChapter = {
-                        confirmDeleteChapter = ch
-                    },
-                    onDownload = { onDownload(ch) },
-                )
-            }
-
-            // Clearance so the last row isn't trapped under the button.
-            item { Spacer(Modifier.height(88.dp)) }
-        }
-        } // PullToRefreshBox
-
-        // A series can carry a four-figure chapter list, which is the longest
-        // scroll in the app after the library itself.
-        //
-        // This used to pass `visible.size + 3` — the chapters plus the cover
-        // header, the count block and the trailing spacer. It went wrong when
-        // 0.157 added two more lazy items to this screen (the tag row, and the
-        // chevron for a series with tags and no description) and left the `+ 3`
-        // alone, so the handle stopped two chapters short and nothing in the
-        // code looked wrong. The count comes off the list itself now.
-        ListScrollHandle(
-            state = listState,
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
-
-        if (selecting) {
-            SeriesSelectionOverlay(
-                selectedChapters = selectedChapters,
-                visibleChapters = visible,
-                canDownload = canDownload,
-                sourceId = sourceId,
-                onSelectAll = { selectedIds = it },
-                onClear = { selectedIds = emptySet() },
-                onDownload = { chaptersToDownload ->
-                    chaptersToDownload.forEach(onDownload)
-                    selectedIds = emptySet()
-                },
-                onSetRead = { read ->
-                    onSetRead(selectedChapters, read)
-                    selectedIds = emptySet()
-                },
-                onSetBookmarked = { adding ->
-                    onSetBookmarked(selectedChapters, adding)
-                    selectedIds = emptySet()
-                },
-                onDelete = { confirmDeleteSelection = true },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
-
-                SeriesTopBar(
-            title = series.title,
-            canDownload = canDownload,
-            chapters = chapters,
-            visibleChapters = visible,
-            sourceId = sourceId,
-            onDownload = onDownload,
-            filtersActive = filtersActive,
-            onOpenChapterOptions = { showChapterOptions = true },
-            onRefresh = onRefresh,
-            onFindVideos = onFindVideos,
-            inLibrary = inLibrary,
-            onEditCategories = { showCategories = true },
-            onMigrate = onMigrate,
-            seriesUrl = seriesUrl,
-            onBack = onBack,
-            barAlpha = barAlpha,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-
-        SeriesResumeFab(
-            visible = chapters.isNotEmpty() && !selecting,
-            chapters = chapters,
-            resumeIndex = resumeIndex,
-            anyProgress = anyProgress,
-            onOpen = onOpen,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-        )
-    }
+        },
+        onCategories = { showCategories = true },
+        onToggleAllDownloads = {
+            if (downloadingAll) onCancelDownloads() else onDownloadAll()
+        },
+        onDeleteDownloads = onDeleteDownloads,
+        descriptionExpanded = descriptionExpanded,
+        onToggleDescriptionExpanded = {
+            descriptionExpanded = !descriptionExpanded
+        },
+        onSearchTag = onSearchTag,
+        onSolveChallenge = onSolveChallenge,
+        onRefresh = onRefresh,
+        onSetRead = onSetRead,
+        onSetBookmarked = onSetBookmarked,
+        onOpen = onOpen,
+        onToggleSelected = { chapterId ->
+            selectedIds = selectedIds.toggle(chapterId)
+        },
+        onRequestDeleteChapter = { confirmDeleteChapter = it },
+        onDownload = onDownload,
+        onSelectAll = { selectedIds = it },
+        onClearSelection = { selectedIds = emptySet() },
+        onRequestDeleteSelection = { confirmDeleteSelection = true },
+        onOpenChapterOptions = { showChapterOptions = true },
+        onFindVideos = onFindVideos,
+        onMigrate = onMigrate,
+        onBack = onBack,
+    )
 
     SeriesAuxiliaryDialogs(
         series = series,
