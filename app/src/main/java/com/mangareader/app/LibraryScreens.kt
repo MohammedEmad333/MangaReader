@@ -139,7 +139,6 @@ internal fun LibraryTab(
     var optionsOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var assignOpen by remember { mutableStateOf(false) }
-    var bulkMenuOpen by remember { mutableStateOf(false) }
     val selecting = selected.isNotEmpty()
 
     // "Read" is a normal user category, so this is a name match rather than a
@@ -299,157 +298,50 @@ internal fun LibraryTab(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (selecting) {
-            // Contextual bar. Replaces the normal one rather than sitting under
-            // it, so the grid doesn't jump by a bar's height on every long press.
-            TopAppBar(
-                title = { Text("${selected.size} selected") },
-                navigationIcon = {
-                    IconButton(onClick = { selected = emptySet() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear selection")
-                    }
-                },
-                actions = {
-                    val visible = groups.getOrNull(pagerState.currentPage)?.items.orEmpty()
-                    IconButton(onClick = { selected = visible.map { it.seriesId }.toSet() }) {
-                        Icon(Icons.Default.Check, contentDescription = "Select all")
-                    }
-                    IconButton(onClick = { assignOpen = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Change categories")
-                    }
-                    IconButton(onClick = {
-                        onRemoveMany(selected)
-                        selected = emptySet()
-                    }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove from library")
-                    }
-                    // The heavier actions — each resolves a chapter list per
-                    // series — live in an overflow so the bar stays legible.
-                    Box {
-                        IconButton(onClick = { bulkMenuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
-                        }
-                        DropdownMenu(
-                            expanded = bulkMenuOpen,
-                            onDismissRequest = { bulkMenuOpen = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Mark as read") },
-                                onClick = {
-                                    onMarkRead(selected)
-                                    bulkMenuOpen = false
-                                    selected = emptySet()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Mark as unread") },
-                                onClick = {
-                                    onMarkUnread(selected)
-                                    bulkMenuOpen = false
-                                    selected = emptySet()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Download") },
-                                onClick = {
-                                    onDownloadMany(selected)
-                                    bulkMenuOpen = false
-                                    selected = emptySet()
-                                }
-                            )
-                        }
-                    }
-                }
-            )
-        } else {
-            TopAppBar(
-                title = {
-                    if (searchOpen) {
-                        // Not an OutlinedTextField: a bordered box inside a bar
-                        // is taller than the bar's own content slot and clips.
-                        TextField(
-                            value = search,
-                            onValueChange = onSearchChange,
-                            placeholder = { Text("Search library") },
-                            singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        Text("Library")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        if (searchOpen) onSearchChange("")
-                        onSearchOpenChange(!searchOpen)
-                    }) {
-                        Icon(
-                            if (searchOpen) Icons.Default.Close else Icons.Default.Search,
-                            contentDescription = if (searchOpen) "Close search" else "Search"
-                        )
-                    }
-                    IconButton(onClick = { optionsOpen = true }) {
-                        // A funnel at last. This was a hamburger because
-                        // material-icons-core has no FilterList; the extended
-                        // pack landed in 0.108.
-                        Icon(
-                            Icons.Default.FilterList,
-                            contentDescription = "Filter, sort and display options",
-                            tint = if (LibraryPrefs.anyFilterActive(context))
-                                MaterialTheme.colorScheme.primary
-                            else LocalContentColor.current
-                        )
-                    }
-                }
-            )
-        }
+        LibraryTopControls(
+            selecting = selecting,
+            selectedCount = selected.size,
+            visibleIds = groups.getOrNull(pagerState.currentPage)?.items.orEmpty().map { it.seriesId },
+            search = search,
+            searchOpen = searchOpen,
+            mediaFilter = mediaFilter,
+            groups = groups,
+            currentPage = pagerState.currentPage,
+            showTabs = showTabs,
+            showCount = showCount,
+            filterActive = LibraryPrefs.anyFilterActive(context),
+            onClearSelection = { selected = emptySet() },
+            onSelectAll = { selected = it.toSet() },
+            onAssignCategories = { assignOpen = true },
+            onRemoveSelection = {
+                onRemoveMany(selected)
+                selected = emptySet()
+            },
+            onMarkRead = {
+                onMarkRead(selected)
+                selected = emptySet()
+            },
+            onMarkUnread = {
+                onMarkUnread(selected)
+                selected = emptySet()
+            },
+            onDownload = {
+                onDownloadMany(selected)
+                selected = emptySet()
+            },
+            onSearchChange = onSearchChange,
+            onSearchOpenChange = onSearchOpenChange,
+            onOpenOptions = { optionsOpen = true },
+            onMediaFilterChange = {
+                mediaFilter = it
+                selected = emptySet()
+            },
+            onTabSelected = { index ->
+                scope.launch { pagerState.animateScrollToPage(index) }
+            },
+        )
 
         ErrorBanner(error)
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            listOf("All", "Manga", "Anime").forEach { label ->
-                FilterChip(
-                    selected = mediaFilter == label,
-                    onClick = {
-                        mediaFilter = label
-                        selected = emptySet()
-                    },
-                    label = { Text(label) },
-                )
-            }
-        }
-
-        if (groups.size > 1 && showTabs) {
-            ScrollableTabRow(
-                selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.size - 1),
-                edgePadding = 8.dp
-            ) {
-                groups.forEachIndexed { index, g ->
-                    Tab(
-                        selected = index == pagerState.currentPage,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                        text = {
-                            Text(
-                                if (showCount) "${g.label} (${g.items.size})" else g.label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    )
-                }
-            }
-        }
 
         if (groups.isEmpty()) {
             LibraryEmpty(allEmpty = true, modifier = Modifier.weight(1f))
