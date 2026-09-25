@@ -1,17 +1,19 @@
 package com.mangareader.app
 
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-internal class AppUiState(context: Context) {
+internal class AppUiState(
+    initialConfigs: List<SourceConfig>,
+    initialHistory: List<HistoryEntry>,
+) {
     var currentTab by mutableIntStateOf(0)
 
-    var configs by mutableStateOf(SourceManager.list(context))
+    var configs by mutableStateOf(initialConfigs)
     var extensionSources by mutableStateOf<List<Source>>(emptyList())
-    var history by mutableStateOf(History.forDisplay(context))
+    var history by mutableStateOf(initialHistory)
 
     var showSourceDialog by mutableStateOf(false)
     var editingConfig by mutableStateOf<SourceConfig?>(null)

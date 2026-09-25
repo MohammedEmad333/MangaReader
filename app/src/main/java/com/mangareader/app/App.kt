@@ -46,10 +46,6 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Injekt.importModule(AppModule(this))
-        // Runs for every process entry point, not just the Activity — including
-        // the system restarting DownloadService on its own, which is the case
-        // that makes a queue survive being killed.
-        DownloadQueue.restore(this)
     }
 
     /**
