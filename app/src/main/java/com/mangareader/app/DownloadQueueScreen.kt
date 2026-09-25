@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 internal fun DownloadQueueScreen(onBack: () -> Unit) {
     BackHandler { onBack() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val items = DownloadQueue.items
     val failed = DownloadQueue.failed
@@ -56,6 +58,7 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                     failed = failed,
                     queued = items,
                     queuePaused = paused,
+                    scope = scope,
                 )
                 downloadQueuedSection(
                     context = context,
@@ -63,6 +66,7 @@ internal fun DownloadQueueScreen(onBack: () -> Unit) {
                     activeId = activeId,
                     queuePaused = paused,
                     pausedIds = pausedIds,
+                    scope = scope,
                 )
             }
         }
