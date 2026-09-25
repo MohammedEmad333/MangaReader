@@ -35,7 +35,6 @@ import kotlinx.coroutines.withContext
 internal fun SeriesTopBar(
     title: String,
     canDownload: Boolean,
-    chapters: List<Chapter>,
     visibleChapters: List<Chapter>,
     sourceId: String,
     onDownloadBatch: (List<Chapter>) -> Unit,
