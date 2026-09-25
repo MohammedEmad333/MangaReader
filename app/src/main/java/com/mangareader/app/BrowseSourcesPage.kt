@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -48,6 +49,11 @@ internal fun BrowseSourcesPage(
         "sources",
         ordering,
     )
+    val sortedGroups = remember(groups) {
+        groups.map { (lang, rows) ->
+            lang to rows.sortedBy { it.name.lowercase() }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -55,8 +61,11 @@ internal fun BrowseSourcesPage(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (lastUsedRow != null) {
-                item { SectionHeader("Last used") }
-                item {
+                item(key = "sources:last-header", contentType = "header") { SectionHeader("Last used") }
+                item(
+                    key = "sources:last:${lastUsedRow.id}",
+                    contentType = "source",
+                ) {
                     BrowseSourceRow(
                         row = lastUsedRow,
                         pinned = lastUsedRow.id in pinnedIds,
@@ -70,8 +79,12 @@ internal fun BrowseSourcesPage(
             }
 
             if (pinnedRows.isNotEmpty()) {
-                item { SectionHeader("Pinned") }
-                items(pinnedRows) { row ->
+                item(key = "sources:pinned-header", contentType = "header") { SectionHeader("Pinned") }
+                items(
+                    pinnedRows,
+                    key = { "sources:pinned:${it.id}" },
+                    contentType = { "source" },
+                ) { row ->
                     BrowseSourceRow(
                         row = row,
                         pinned = true,
@@ -84,9 +97,16 @@ internal fun BrowseSourcesPage(
                 }
             }
 
-            groups.forEach { (lang, rowsInGroup) ->
-                item { SectionHeader(lang) }
-                items(rowsInGroup.sortedBy { it.name.lowercase() }) { row ->
+            sortedGroups.forEach { (lang, rowsInGroup) ->
+                item(
+                    key = "sources:group-header:$lang",
+                    contentType = "header",
+                ) { SectionHeader(lang) }
+                items(
+                    rowsInGroup,
+                    key = { "sources:group:$lang:${it.id}" },
+                    contentType = { "source" },
+                ) { row ->
                     BrowseSourceRow(
                         row = row,
                         pinned = false,
@@ -100,7 +120,10 @@ internal fun BrowseSourcesPage(
             }
 
             if (visibleRowsEmpty) {
-                item {
+                item(
+                    key = "sources:empty",
+                    contentType = "empty",
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -118,7 +141,10 @@ internal fun BrowseSourcesPage(
                 }
             }
 
-            item {
+            item(
+                key = "sources:add",
+                contentType = "action",
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
