@@ -237,121 +237,28 @@ internal fun BrowseTab(
             modifier = Modifier.weight(1f)
         ) { page ->
             if (page == 0) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("All", "Manga", "Anime").forEach { label ->
-                        FilterChip(
-                            selected = mediaFilter == label,
-                            onClick = { mediaFilter = label },
-                            label = { Text(label) },
-                        )
-                    }
-                }
-
-                val openRow: (BrowseRow) -> Unit = { row ->
-                    row.config?.let { onOpenConfig(it) }
-                    row.source?.let { onOpenExtension(it) }
-                }
-
-                // THE Sources TAB, which is what card 87 named and what 0.171
-                // missed: that release put a handle on the "All sources" screen
-                // instead — a different list, reached from a different place.
-                // Hoisted so the handle and the list share one state.
-                val sourcesListState =
-                    rememberRestoredListState(scroll, "sources", sourcesOrdering)
-                Box(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(
-                    state = sourcesListState,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    if (lastUsedRow != null) {
-                        item { SectionHeader("Last used") }
-                        item {
-                            BrowseSourceRow(
-                                row = lastUsedRow,
-                                pinned = lastUsedRow.id in pinnedIds,
-                                onOpen = { openRow(lastUsedRow) },
-                                onTogglePin = {
-                                    pinnedIds = SourcePrefs.togglePin(context, lastUsedRow.id)
-                                },
-                                onEditConfig = onEdit,
-                                onDeleteConfig = onDelete,
-                                onOpenSettings = { settingsFor = it }
-                            )
-                        }
-                    }
-
-                    if (pinnedRows.isNotEmpty()) {
-                        item { SectionHeader("Pinned") }
-                        items(pinnedRows) { row ->
-                            BrowseSourceRow(
-                                row = row,
-                                pinned = true,
-                                onOpen = { openRow(row) },
-                                onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
-                                onEditConfig = onEdit,
-                                onDeleteConfig = onDelete,
-                                onOpenSettings = { settingsFor = it }
-                            )
-                        }
-                    }
-
-                    groups.forEach { (lang, rowsInGroup) ->
-                        item { SectionHeader(lang) }
-                        items(rowsInGroup.sortedBy { it.name.lowercase() }) { row ->
-                            BrowseSourceRow(
-                                row = row,
-                                pinned = false,
-                                onOpen = { openRow(row) },
-                                onTogglePin = { pinnedIds = SourcePrefs.togglePin(context, row.id) },
-                                onEditConfig = onEdit,
-                                onDeleteConfig = onDelete,
-                                onOpenSettings = { settingsFor = it }
-                            )
-                        }
-                    }
-
-                    if (visibleRows.isEmpty()) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "No sources yet. Add a local folder, or install " +
-                                        "extensions from the Extensions tab.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onAdd,
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Add a local source") }
-                        }
-                    }
-                }
-                ListScrollHandle(
-                    state = sourcesListState,
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                BrowseSourcesPage(
+                    mediaFilter = mediaFilter,
+                    onMediaFilterChange = { mediaFilter = it },
+                    lastUsedRow = lastUsedRow,
+                    pinnedRows = pinnedRows,
+                    groups = groups,
+                    visibleRowsEmpty = visibleRows.isEmpty(),
+                    pinnedIds = pinnedIds,
+                    onTogglePin = { row ->
+                        pinnedIds = SourcePrefs.togglePin(context, row.id)
+                    },
+                    onOpen = { row ->
+                        row.config?.let(onOpenConfig)
+                        row.source?.let(onOpenExtension)
+                    },
+                    onEdit = onEdit,
+                    onDelete = onDelete,
+                    onOpenSettings = { settingsFor = it },
+                    onAdd = onAdd,
+                    scroll = scroll,
+                    ordering = sourcesOrdering,
                 )
-                }
             } else {
                 ExtensionsScreen(
                     modifier = Modifier.fillMaxSize(),
