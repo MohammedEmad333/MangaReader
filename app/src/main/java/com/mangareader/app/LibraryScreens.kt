@@ -207,6 +207,25 @@ internal fun LibraryTab(
     val tabIndex = groups.indexOfFirst { it.key == activeCategory }.let { if (it < 0) 0 else it }
     val pagerState = rememberPagerState(initialPage = tabIndex) { groups.size }
 
+    val currentPage = pagerState.currentPage
+    val visibleIds = remember(groups, currentPage) {
+        groups.getOrNull(currentPage)
+            ?.items
+            .orEmpty()
+            .map { it.seriesId }
+    }
+    val unreadCounts = remember(counts, badgeUnread) {
+        if (!badgeUnread) {
+            emptyMap()
+        } else {
+            counts.asSequence()
+                .mapNotNull { (seriesId, value) ->
+                    value.unread.takeIf { it > 0 }?.let { seriesId to it }
+                }
+                .toMap()
+        }
+    }
+
     // The pager owns the position. This is the only thing that reports it
     // outward, and it reads settledPage rather than currentPage on purpose.
     //
@@ -236,12 +255,12 @@ internal fun LibraryTab(
         LibraryTopControls(
             selecting = selecting,
             selectedCount = selected.size,
-            visibleIds = groups.getOrNull(pagerState.currentPage)?.items.orEmpty().map { it.seriesId },
+            visibleIds = visibleIds,
             search = search,
             searchOpen = searchOpen,
             mediaFilter = mediaFilter,
             groups = groups,
-            currentPage = pagerState.currentPage,
+            currentPage = currentPage,
             showTabs = showTabs,
             showCount = showCount,
             filterActive = LibraryPrefs.anyFilterActive(context),
@@ -290,11 +309,7 @@ internal fun LibraryTab(
             readIds = readIds,
             downloadedIds = if (badgeDl) downloadedIds else emptySet(),
             badgeLocal = badgeLocal,
-            unreadCounts = if (badgeUnread) {
-                counts.mapValues { (_, counts) -> counts.unread }.filterValues { it > 0 }
-            } else {
-                emptyMap()
-            },
+            unreadCounts = unreadCounts,
             selected = selected,
             onOpen = onOpen,
             onToggle = { id ->
