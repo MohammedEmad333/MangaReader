@@ -111,10 +111,12 @@ internal fun SeriesScreen(
     downloadTick: Int,
     downloadingAll: Boolean,
     onDownload: (Chapter) -> Unit,
+    onDownloadBatch: (List<Chapter>) -> Unit,
     onDownloadAll: () -> Unit,
     onCancelDownloads: () -> Unit,
     onDeleteDownloads: () -> Unit,
     onDeleteChapter: (Chapter) -> Unit,
+    onDeleteChapters: (List<Chapter>) -> Unit,
     onSetRead: (List<Chapter>, Boolean) -> Unit,
     /** Bookmarks a batch. Independent of read state — see `Bookmarks`. */
     onSetBookmarked: (List<Chapter>, Boolean) -> Unit,
@@ -219,6 +221,7 @@ internal fun SeriesScreen(
     val filtersActive = derived.filtersActive
     val downloadedCount = derived.downloadedCount
     val anyProgress = derived.anyProgress
+    val chapterStateReady = derived.chapterStateReady
     val listState = derived.listState
     val barAlpha = derived.barAlpha
 
@@ -246,6 +249,7 @@ internal fun SeriesScreen(
         filtersActive = filtersActive,
         resumeIndex = resumeIndex,
         anyProgress = anyProgress,
+        chapterStateReady = chapterStateReady,
         listState = listState,
         barAlpha = barAlpha,
         seriesUrl = seriesUrl,
@@ -280,6 +284,7 @@ internal fun SeriesScreen(
         },
         onRequestDeleteChapter = { confirmDeleteChapter = it },
         onDownload = onDownload,
+        onDownloadBatch = onDownloadBatch,
         onSelectAll = { selectedIds = it },
         onClearSelection = { selectedIds = emptySet() },
         onRequestDeleteSelection = { confirmDeleteSelection = true },
@@ -303,7 +308,7 @@ internal fun SeriesScreen(
         downloadTick = downloadTick,
         onDismissDeleteSelection = { confirmDeleteSelection = false },
         onDeleteSelection = {
-            selectedChapters.forEach(onDeleteChapter)
+            onDeleteChapters(selectedChapters)
             selectedIds = emptySet()
             confirmDeleteSelection = false
         },

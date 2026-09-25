@@ -41,6 +41,7 @@ internal fun SeriesContent(
     filtersActive: Boolean,
     resumeIndex: Int,
     anyProgress: Boolean,
+    chapterStateReady: Boolean,
     listState: LazyListState,
     barAlpha: Float,
     seriesUrl: String?,
@@ -61,6 +62,7 @@ internal fun SeriesContent(
     onToggleSelected: (String) -> Unit,
     onRequestDeleteChapter: (Chapter) -> Unit,
     onDownload: (Chapter) -> Unit,
+    onDownloadBatch: (List<Chapter>) -> Unit,
     onSelectAll: (Set<String>) -> Unit,
     onClearSelection: () -> Unit,
     onRequestDeleteSelection: () -> Unit,
@@ -126,6 +128,7 @@ internal fun SeriesContent(
                         chapterCount = chapters.size,
                         visibleCount = visibleChapters.size,
                         isAnimeSource = isAnimeSource,
+                        chapterStateReady = chapterStateReady,
                     )
                 }
 
@@ -177,7 +180,7 @@ internal fun SeriesContent(
                 onSelectAll = onSelectAll,
                 onClear = onClearSelection,
                 onDownload = { chaptersToDownload ->
-                    chaptersToDownload.forEach(onDownload)
+                    onDownloadBatch(chaptersToDownload)
                     onClearSelection()
                 },
                 onSetRead = { read ->
@@ -196,10 +199,9 @@ internal fun SeriesContent(
         SeriesTopBar(
             title = series.title,
             canDownload = canDownload,
-            chapters = chapters,
             visibleChapters = visibleChapters,
             sourceId = sourceId,
-            onDownload = onDownload,
+            onDownloadBatch = onDownloadBatch,
             filtersActive = filtersActive,
             onOpenChapterOptions = onOpenChapterOptions,
             onRefresh = onRefresh,
@@ -214,7 +216,7 @@ internal fun SeriesContent(
         )
 
         SeriesResumeFab(
-            visible = chapters.isNotEmpty() && !selecting,
+            visible = chapterStateReady && chapters.isNotEmpty() && !selecting,
             chapters = chapters,
             resumeIndex = resumeIndex,
             anyProgress = anyProgress,
