@@ -68,8 +68,24 @@ internal object DownloadPaths {
 
     @Synchronized
     fun forget(context: Context, chapterId: String) {
+        forgetMany(context, listOf(chapterId))
+    }
+
+    /**
+     * Drops many chapter paths and persists the mapping once.
+     *
+     * The series screen can delete hundreds of chapters at once; rewriting the
+     * whole path index once per chapter makes that operation quadratic.
+     */
+    @Synchronized
+    fun forgetMany(context: Context, chapterIds: Collection<String>) {
+        if (chapterIds.isEmpty()) return
         load(context)
-        if (chapters.remove(chapterId) != null) save(context)
+        var changed = false
+        chapterIds.forEach { chapterId ->
+            if (chapters.remove(chapterId) != null) changed = true
+        }
+        if (changed) save(context)
     }
 
     @Synchronized
