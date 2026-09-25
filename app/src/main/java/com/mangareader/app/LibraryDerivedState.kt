@@ -32,6 +32,7 @@ internal fun rememberLibraryDerivedState(
     fStarted: FilterState,
     fCompleted: FilterState,
     fNsfw: FilterState,
+    scroll: ScrollMemory,
 ): LibraryDerivedState {
     // "Read" is a normal user category, so this is a name match rather than a
     // new field. One parse for the members; asking it per entry, through
