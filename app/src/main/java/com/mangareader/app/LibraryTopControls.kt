@@ -174,7 +174,7 @@ internal fun LibraryTopControls(
                     onClick = { onTabSelected(index) },
                     text = {
                         Text(
-                            if (showCount) "\${group.label} (\${group.items.size})" else group.label,
+                            if (showCount) "${group.label} (${group.items.size})" else group.label,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
