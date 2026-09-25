@@ -3,6 +3,7 @@ package com.mangareader.app
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
@@ -37,6 +38,7 @@ private const val ZOOM_ANIM_MS = 200
  * gesture/state system. Keeping it here makes the screen responsible for reader
  * orchestration while this helper owns the long-strip interaction details.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun rememberReaderStripZoomModifier(
     baseModifier: Modifier,
