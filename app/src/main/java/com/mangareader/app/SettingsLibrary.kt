@@ -140,13 +140,3 @@ internal fun LibrarySettings() {
     }
 
 }
-
-/**
- * Picks which sources a refresh should cover.
- *
- * Built from the *library*, not from `SourceManager`: a source with nothing
- * saved from it has nothing to refresh, and an entry whose extension has since
- * been uninstalled still needs to be listed — it is exactly the kind of thing
- * someone comes here to retry. That also keeps this off the classloading path,
- * which is not something to do from a dialog.
- */
