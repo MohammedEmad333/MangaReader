@@ -160,7 +160,17 @@ internal fun HistoryScreen(
             // item count is the data count.
             val listState = rememberLazyListState()
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(shownHistory) { entry ->
+                items(
+                    shownHistory,
+                    key = {
+                        if (it.seriesId.isBlank()) {
+                            "history:chapter:${it.chapterKey}"
+                        } else {
+                            "history:series:${it.seriesId}"
+                        }
+                    },
+                    contentType = { "history-entry" },
+                ) { entry ->
                     HistoryEntryRow(
                         entry = entry,
                         dim = marks.dim(entry.seriesId),
