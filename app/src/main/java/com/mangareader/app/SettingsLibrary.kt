@@ -83,7 +83,6 @@ import java.util.Locale
 internal fun LibrarySettings() {
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
-    var sourcePickerOpen by remember { mutableStateOf(false) }
     var categoryTick by remember { mutableIntStateOf(0) }
     val sizes = listOf("small", "medium", "large")
     var coverSize by remember {
@@ -91,19 +90,6 @@ internal fun LibrarySettings() {
     }
     val categoryCount = remember(categoryTick, showCategories) { Categories.list(context).size }
     val entryCount = remember { Library.list(context).size }
-    // How many series the index still knows nothing about. Both reads are
-    // memoised on their raw pref strings, and this recomputes when a sweep ends
-    // — which is exactly when the answer changes.
-    val uncountedCount = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
-        val known = SeriesIndex.all(context).keys
-        Library.list(context).count { it.seriesId !in known }
-    }
-    // The last sweep's numbers, if this process didn't run it. Here rather than
-    // in onCreate: this is the only screen that shows them, and the startup path
-    // is not the place for a read nothing on the first frame needs. Guarded
-    // internally, so calling it on every recomposition of this screen is free.
-    remember { LibraryRefresh.loadSummary(context) }
-
     SettingsColumn {
         SectionHeader("Display")
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -142,199 +128,8 @@ internal fun LibrarySettings() {
             supportingContent = { Text("$entryCount in the library") }
         )
 
-        SectionHeader("Chapter counts")
-        if (LibraryRefresh.running) {
-            val total = LibraryRefresh.total
-            val done = LibraryRefresh.done
-            ListItem(
-                headlineContent = { Text("Refreshing\u2026") },
-                supportingContent = {
-                    Text(
-                        listOfNotNull(
-                            if (total > 0) "$done of $total" else "Starting",
-                            LibraryRefresh.currentTitle.ifBlank { null }
-                        ).joinToString(" \u2022 ")
-                    )
-                }
-            )
-            LinearProgressIndicator(
-                progress = { if (total <= 0) 0f else done.toFloat() / total },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            )
-            Row(modifier = Modifier.padding(16.dp)) {
-                OutlinedButton(onClick = { LibraryRefreshService.stop(context) }) {
-                    Text("Stop")
-                }
-            }
-            if (LibraryRefresh.scopeLabel.isNotBlank()) {
-                PrefNote("Only ${LibraryRefresh.scopeLabel}. This one can't be resumed " +
-                    "\u2014 it is short enough to just run again.")
-            }
-            PrefNote(
-                if (LibraryRefresh.resumed > 0) {
-                    "Resumed \u2014 ${LibraryRefresh.resumed} series were already " +
-                        "counted and are not being fetched again. This keeps going " +
-                        "with the app closed, and stopping picks up here."
-                } else {
-                    "This keeps going with the app closed. Stopping keeps whatever " +
-                        "it has already counted, and starting again picks up where " +
-                        "it stopped rather than from the top."
-                }
-            )
-        } else {
-            // Both keyed on finishedAt so they re-read when a sweep ends, which
-            // is the moment the cursor is either cleared or left behind.
-            val sweepStartedAt = remember(entryCount, LibraryRefresh.finishedAt) {
-                RefreshCursor.startedAt(context)
-            }
-            val alreadyCounted = remember(sweepStartedAt, LibraryRefresh.finishedAt) {
-                if (sweepStartedAt <= 0L) 0
-                else SeriesIndex.sweptSince(context, sweepStartedAt).size
-            }
-            val unfinished = sweepStartedAt > 0L
-            ListItem(
-                headlineContent = {
-                    Text(if (unfinished) "Resume refresh" else "Refresh library")
-                },
-                supportingContent = {
-                    Text(
-                        when {
-                            // The covers line belongs in *both* arms. It was
-                            // added to the finished one alone, and `unfinished`
-                            // wins this `when` after every stop — so the one
-                            // number that says whether a repair pass did
-                            // anything was unreachable in exactly the state you
-                            // read it from.
-                            unfinished -> listOfNotNull(
-                                "$alreadyCounted of $entryCount counted",
-                                LibraryRefresh.coversRepaired.get()
-                                    .takeIf { it > 0 }
-                                    ?.let { "$it covers fixed" }
-                            ).joinToString(" \u2022 ") + " \u2014 carries on from there"
-                            // `resumed` belongs here even though it is zero on
-                            // most runs. The end-of-sweep check is
-                            // `counted + failed + skipped == total - resumed`,
-                            // and with `resumed` absent from this row the one
-                            // input it needs is invisible after a sweep ends —
-                            // which makes the tempting move computing it from
-                            // the other three, turning the identity into x == x
-                            // and destroying the whole check.
-                            LibraryRefresh.finishedAt > 0L -> listOfNotNull(
-                                "${LibraryRefresh.counted} counted",
-                                if (LibraryRefresh.failed > 0) {
-                                    "${LibraryRefresh.failed} failed"
-                                } else null,
-                                if (LibraryRefresh.skipped > 0) {
-                                    "${LibraryRefresh.skipped} skipped"
-                                } else null,
-                                if (LibraryRefresh.resumed > 0) {
-                                    "${LibraryRefresh.resumed} resumed"
-                                } else null,
-                                // Outside the arithmetic above, deliberately.
-                                // A repaired cover is not a fourth outcome
-                                // alongside counted/failed/skipped — the same
-                                // series is counted *and* possibly repaired, so
-                                // adding this to that sum would break the one
-                                // identity this row exists to let you check.
-                                LibraryRefresh.coversRepaired.get()
-                                    .takeIf { it > 0 }
-                                    ?.let { "$it covers fixed" }
-                            ).joinToString(" \u2022 ")
-                            else -> "Fetch chapter lists for all $entryCount series"
-                        }
-                    )
-                },
-                modifier = Modifier.clickable { LibraryRefreshService.start(context) }
-            )
-            // Offered only when nothing is running: two sweeps would fight over
-            // the same counters and the same foreground service.
-            if (!LibraryRefresh.running && uncountedCount > 0) {
-                ListItem(
-                    headlineContent = { Text("Refresh what's missing") },
-                    supportingContent = {
-                        Text(
-                            "$uncountedCount series have no chapter count yet \u2014 " +
-                                "usually ones whose extension wasn't installed when " +
-                                "the last refresh ran, or ones it failed on."
-                        )
-                    },
-                    modifier = Modifier.clickable {
-                        LibraryRefreshService.startUncounted(context, uncountedCount)
-                    }
-                )
-            }
-            if (!LibraryRefresh.running) {
-                ListItem(
-                    headlineContent = { Text("Refresh some sources") },
-                    supportingContent = {
-                        Text(
-                            "Pick which sources to fetch instead of the whole " +
-                                "library \u2014 useful when the summary above names " +
-                                "one that failed."
-                        )
-                    },
-                    modifier = Modifier.clickable { sourcePickerOpen = true }
-                )
-            }
-            if (unfinished) {
-                Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    TextButton(onClick = { LibraryRefreshService.startOver(context) }) {
-                        Text("Start over")
-                    }
-                }
-                PrefNote(
-                    "A refresh was stopped before it finished. Resuming fetches " +
-                        "only the series it hadn't reached; starting over fetches " +
-                        "every series again, which is what you want if the counts " +
-                        "are old rather than incomplete."
-                )
-            } else if (LibraryRefresh.finishedAt > 0L) {
-                // The summary is process-lifetime snapshot state with nothing
-                // persisting it, so without a dismiss it sits on this row until
-                // something kills the app and the plain "fetch chapter lists"
-                // copy never comes back. Clearing it is also what removes the
-                // first-error note below.
-                Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    TextButton(onClick = { LibraryRefresh.clearSummary(context) }) {
-                        Text("Dismiss")
-                    }
-                }
-            }
-            LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
-            // Which sources are failing, not just how many series did. One error
-            // string names one series; this names the thing to go and look at,
-            // across the whole library, in one pass.
-            //
-            // Shown by name since 0.94. It read out raw ids before, and the
-            // justification written here — that the id is what identifies a
-            // source in the Extensions tab — was rationalising a limitation:
-            // `tachi:6202325652827735606 \u00d712` tells you a source is broken
-            // and gives you no way to find out which. Nothing stored a name
-            // anywhere until SourceNames.
-            val failures = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
-                LibraryRefresh.failureCounts()
-            }
-            if (failures.isNotEmpty()) {
-                PrefNote(
-                    // Named, not `tachi:6202325652827735606`. The tally exists to
-                    // point at the source that is failing, and an id points at
-                    // nothing — SourceNames is the map that makes it legible.
-                    "Failures by source: " + failures.take(8).joinToString(" \u2022 ") {
-                        "${SourceNames.nameOf(context, it.first)} \u00d7${it.second}"
-                    } + if (failures.size > 8) " \u2026" else ""
-                )
-            }
-            PrefNote(
-                "Unread counts, the unread badge and the Unread, Started and " +
-                    "Completed filters only know about series you have opened. " +
-                    "This fetches a chapter list for every series so they know " +
-                    "about all of them. It is one network request per series, so " +
-                    "on a large library it takes a while and is best left running " +
-                    "on Wi\u2011Fi. Nothing is downloaded \u2014 only the chapter lists."
-            )
-        }
+        LibraryRefreshSettingsSection()
+
     }
 
     if (showCategories) {
@@ -344,23 +139,4 @@ internal fun LibrarySettings() {
         })
     }
 
-    if (sourcePickerOpen) {
-        RefreshSourcePicker(
-            onDismiss = { sourcePickerOpen = false },
-            onStart = { ids, label ->
-                sourcePickerOpen = false
-                LibraryRefreshService.start(context, ids, label)
-            }
-        )
-    }
 }
-
-/**
- * Picks which sources a refresh should cover.
- *
- * Built from the *library*, not from `SourceManager`: a source with nothing
- * saved from it has nothing to refresh, and an entry whose extension has since
- * been uninstalled still needs to be listed — it is exactly the kind of thing
- * someone comes here to retry. That also keeps this off the classloading path,
- * which is not something to do from a dialog.
- */
