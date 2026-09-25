@@ -173,166 +173,34 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         loading = false
     }
 
-    Column(modifier = modifier) {
-        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        ErrorBanner(error)
-
-        TextButton(
-            onClick = { report = diagnoseExtensions(context) },
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) { Text("Why isn't my extension showing?") }
-
-        if (repos.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "No repositories configured.\nAdd one in More → Browse → Extension repositories.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                )
+    ExtensionsContent(
+        modifier = modifier,
+        reposEmpty = repos.isEmpty(),
+        loading = loading,
+        error = error,
+        filter = filter,
+        onFilterChange = { filter = it },
+        installedOnly = installedOnly,
+        onToggleInstalledOnly = { installedOnly = !installedOnly },
+        mediaFilter = mediaFilter,
+        onMediaFilterChange = { mediaFilter = it },
+        shownExtensions = shownExtensions,
+        availableCount = available.size,
+        onDiagnose = { report = diagnoseExtensions(context) },
+        onInstall = { ext ->
+            awaitingPackageChange = true
+            scope.launch {
+                ExtensionManager.install(context, ext)
+                onInstalled()
             }
-        } else {
-            OutlinedTextField(
-                value = filter,
-                onValueChange = { filter = it },
-                label = { Text("Search extensions") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (filter.isNotBlank()) {
-                        TextButton(onClick = { filter = "" }) { Text("Clear") }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = installedOnly,
-                    onClick = { installedOnly = !installedOnly },
-                    label = { Text("Installed only") }
-                )
-                listOf("All", "Manga", "Anime").forEach { label ->
-                    FilterChip(
-                        selected = mediaFilter == label,
-                        onClick = { mediaFilter = label },
-                        label = { Text(label) },
-                    )
-                }
-                Text(
-                    "${shownExtensions.size} of ${available.size}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        },
+        onUninstall = startUninstall,
+    )
 
-            if (shownExtensions.isEmpty() && !loading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (available.isEmpty()) "Nothing in the index yet."
-                        else "No extension matches that.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
 
-            val updatableExts = shownExtensions.filter { it.hasUpdate }
-                .sortedBy { it.name.lowercase() }
-            val installedExts = shownExtensions.filter { it.isInstalled && !it.hasUpdate }
-                .sortedBy { it.name.lowercase() }
-            val availableExts = shownExtensions.filterNot { it.isInstalled }
-                .sortedBy { it.name.lowercase() }
+    ExtensionDiagnosticsDialog(
+        report = report,
+        onDismiss = { report = null },
+    )
 
-            // This caller used to hand-count its items — three optional section
-            // headers plus the rows — which was the most conditional version of
-            // that arithmetic in the app and the most likely to rot. The handle
-            // reads the count off the list now; see ListScrollHandle.
-            val extListState = rememberLazyListState()
-
-            Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(state = extListState, modifier = Modifier.fillMaxSize()) {
-                if (updatableExts.isNotEmpty()) {
-                    item { SectionHeader("Update available (${updatableExts.size})") }
-                    items(updatableExts) { ext ->
-                        ExtensionRow(
-                            ext = ext,
-                            onInstall = {
-                                awaitingPackageChange = true
-                                scope.launch {
-                                    ExtensionManager.install(context, ext)
-                                    onInstalled()
-                                }
-                            },
-                            onUninstall = { startUninstall(ext.pkgName) }
-                        )
-                    }
-                }
-                if (installedExts.isNotEmpty()) {
-                    item { SectionHeader("Installed") }
-                    items(installedExts) { ext ->
-                        ExtensionRow(
-                            ext = ext,
-                            onInstall = { },
-                            onUninstall = { startUninstall(ext.pkgName) }
-                        )
-                    }
-                }
-                if (availableExts.isNotEmpty()) {
-                    item { SectionHeader("Available") }
-                    items(availableExts) { ext ->
-                        ExtensionRow(
-                            ext = ext,
-                            onInstall = {
-                                awaitingPackageChange = true
-                                scope.launch {
-                                    ExtensionManager.install(context, ext)
-                                    onInstalled()
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-            ListScrollHandle(
-                state = extListState,
-                modifier = Modifier.align(Alignment.CenterEnd)
-            )
-            }
-        }
-    }
-
-    val shownReport = report
-    if (shownReport != null) {
-        AlertDialog(
-            onDismissRequest = { report = null },
-            title = { Text("Extension diagnostics") },
-            text = {
-                SelectionContainer {
-                    Text(
-                        shownReport,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier
-                            .heightIn(max = 420.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
-                }
-            },
-            confirmButton = { Button(onClick = { report = null }) { Text("Close") } }
-        )
-    }
 }
-
-// ---------- global search ----------
