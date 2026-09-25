@@ -42,23 +42,37 @@ internal fun rememberDataSettingsLaunchers(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
-            val target = StorageLocation.pathFromTreeUri(uri)
-            when {
-                target == null -> onMessage(
-                    "That folder isn't on this device's storage. Pick one under " +
-                        "internal storage or an SD card — Drive and similar " +
-                        "providers have no path behind them."
-                )
-                !StorageLocation.ensureWritable(target) ->
-                    onMessage("Couldn't write to ${target.absolutePath}.")
-                else -> {
-                    val previous = StorageLocation.base(context)
-                    val worthMoving = StorageLocation.hasStore(previous)
-                    StorageLocation.set(context, target)
-                    refreshLocation()
-                    if (worthMoving) {
-                        onPendingMove(previous to StorageLocation.base(context))
+            val appContext = context.applicationContext
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    val target = StorageLocation.pathFromTreeUri(uri)
+                        ?: return@withContext Triple<File?, Pair<File, File>?, String>(
+                            null,
+                            null,
+                            "That folder isn't on this device's storage. Pick one under " +
+                                "internal storage or an SD card — Drive and similar " +
+                                "providers have no path behind them."
+                        )
+                    if (!StorageLocation.ensureWritable(target)) {
+                        return@withContext Triple<File?, Pair<File, File>?, String>(
+                            target,
+                            null,
+                            "Couldn't write to ${target.absolutePath}."
+                        )
                     }
+
+                    val previous = StorageLocation.base(appContext)
+                    val worthMoving = StorageLocation.hasStore(previous)
+                    StorageLocation.set(appContext, target)
+                    val next = StorageLocation.base(appContext)
+                    Triple(target, if (worthMoving) previous to next else null, "")
+                }
+
+                if (result.third.isNotEmpty()) {
+                    onMessage(result.third)
+                } else {
+                    refreshLocation()
+                    result.second?.let(onPendingMove)
                 }
             }
         }
