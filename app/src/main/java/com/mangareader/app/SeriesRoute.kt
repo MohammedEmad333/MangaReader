@@ -59,7 +59,7 @@ internal fun SeriesRoute(
             val snapshot = chapters.toList()
             scope.launch {
                 withContext(Dispatchers.IO) {
-                    snapshot.forEach { Downloads.delete(appContext, it.id) }
+                    Downloads.deleteMany(appContext, snapshot.map { it.id })
                 }
                 onDownloadStateChanged()
             }
@@ -76,7 +76,7 @@ internal fun SeriesRoute(
             val snapshot = selected.toList()
             scope.launch {
                 withContext(Dispatchers.IO) {
-                    snapshot.forEach { Downloads.delete(appContext, it.id) }
+                    Downloads.deleteMany(appContext, snapshot.map { it.id })
                 }
                 onDownloadStateChanged()
             }
