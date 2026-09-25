@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -42,6 +43,16 @@ internal fun YomuAppHost() {
     )
 
     val activity = context as? ComponentActivity
+
+    // Application startup no longer restores the queue on the main thread.
+    // Once the IO snapshot has restored it, resume exactly the same work the
+    // old MainActivity.onCreate path resumed.
+    LaunchedEffect(startup) {
+        if (DownloadQueue.items.isNotEmpty() && !DownloadQueue.paused) {
+            DownloadService.start(context)
+        }
+    }
+
     DoubleBackToExitHandler(activity)
 
     DownloadQueueIntentHandler(
