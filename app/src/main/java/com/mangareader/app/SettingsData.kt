@@ -100,7 +100,8 @@ internal fun DataSettings() {
     // while the app sits in the background.
     var hasAccess by remember { mutableStateOf(StorageLocation.hasAccess(context)) }
     var customDir by remember { mutableStateOf(StorageLocation.chosen(context)) }
-    var locationLabel by remember { mutableStateOf(StorageLocation.label(context)) }
+    var locationLabel by remember { mutableStateOf("Checking storage…") }
+    var storageActive by remember { mutableStateOf(false) }
     var askAccess by remember { mutableStateOf(false) }
     var pendingMove by remember { mutableStateOf<Pair<File, File>?>(null) }
     var moving by remember { mutableStateOf(false) }
@@ -109,10 +110,21 @@ internal fun DataSettings() {
     var reorganising by remember { mutableStateOf(false) }
 
     fun refreshLocation() {
-        StorageLocation.invalidate()
-        hasAccess = StorageLocation.hasAccess(context)
-        customDir = StorageLocation.chosen(context)
-        locationLabel = StorageLocation.label(context)
+        val appContext = context.applicationContext
+        scope.launch {
+            val snapshot = withContext(Dispatchers.IO) {
+                StorageLocation.invalidate()
+                val access = StorageLocation.hasAccess(appContext)
+                val chosen = StorageLocation.chosen(appContext)
+                val label = StorageLocation.label(appContext)
+                val active = StorageLocation.active(appContext)
+                listOf(access, chosen, label, active)
+            }
+            hasAccess = snapshot[0] as Boolean
+            customDir = snapshot[1] as File?
+            locationLabel = snapshot[2] as String
+            storageActive = snapshot[3] as Boolean
+        }
     }
 
     val launchers = rememberDataSettingsLaunchers(
@@ -131,16 +143,21 @@ internal fun DataSettings() {
             locationLabel = locationLabel,
             moving = moving,
             customDir = customDir,
-            active = StorageLocation.active(context),
+            active = storageActive,
             reorganising = reorganising,
             onChooseLocation = launchers.chooseLocation,
             onUseAppStorage = {
-                val previous = StorageLocation.base(context)
-                val worthMoving = StorageLocation.hasStore(previous)
-                StorageLocation.clear(context)
-                refreshLocation()
-                if (worthMoving) {
-                    pendingMove = previous to StorageLocation.base(context)
+                val appContext = context.applicationContext
+                scope.launch {
+                    val move = withContext(Dispatchers.IO) {
+                        val previous = StorageLocation.base(appContext)
+                        val worthMoving = StorageLocation.hasStore(previous)
+                        StorageLocation.clear(appContext)
+                        val next = StorageLocation.base(appContext)
+                        if (worthMoving) previous to next else null
+                    }
+                    refreshLocation()
+                    if (move != null) pendingMove = move
                 }
             },
             onImport = { importOpen = true },
@@ -324,6 +341,7 @@ internal fun DataSettings() {
 
     // Re-read on the way back in, so a backup written by the worker while this
     // screen was closed doesn't leave a stale "Never" on the row.
+    LaunchedEffect(Unit) { refreshLocation() }
     LaunchedEffect(tick) { lastBackup = Backup.lastBackupAt(context) }
 }
 
