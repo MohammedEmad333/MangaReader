@@ -8,10 +8,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private data class SeriesChapterDerivedSnapshot(
+    val seriesId: String,
+    val sourceId: String,
     val progress: SeriesProgressSummary,
     val visible: List<Chapter>,
     val chapterDisplay: ChapterDisplay,
     val filtersActive: Boolean,
+)
+
+private data class SeriesDownloadedCountSnapshot(
+    val seriesId: String,
+    val sourceId: String,
+    val count: Int,
 )
 
 internal data class SeriesDerivedState(
@@ -63,6 +71,8 @@ internal fun rememberSeriesDerivedState(
     ) {
         value = withContext(Dispatchers.IO) {
             SeriesChapterDerivedSnapshot(
+                seriesId = series.id,
+                sourceId = sourceId,
                 progress = seriesProgressSummary(
                     context = appContext,
                     chapters = chapters,
@@ -76,18 +86,38 @@ internal fun rememberSeriesDerivedState(
         }
     }
 
-    val chapterStateReady = chapterSnapshot != null
-    val progress = chapterSnapshot?.progress
+    // produceState intentionally keeps the previous value while its keys change.
+    // That is ideal for a filter/read-state refresh, but not for navigation to a
+    // different series. Ignore a retained snapshot until it belongs to this
+    // series, so rows and counts from the previous title can never flash here.
+    val currentChapterSnapshot = chapterSnapshot?.takeIf {
+        it.seriesId == series.id && it.sourceId == sourceId
+    }
+    val chapterStateReady = currentChapterSnapshot != null
+    val progress = currentChapterSnapshot?.progress
     val resumeIndex = progress?.resumeIndex ?: -1
-    val visible = chapterSnapshot?.visible.orEmpty()
-    val chapterDisplay = chapterSnapshot?.chapterDisplay ?: ChapterDisplay.NAME
-    val filtersActive = chapterSnapshot?.filtersActive ?: false
+    val visible = currentChapterSnapshot?.visible.orEmpty()
+    val chapterDisplay = currentChapterSnapshot?.chapterDisplay ?: ChapterDisplay.NAME
+    val filtersActive = currentChapterSnapshot?.filtersActive ?: false
 
-    val downloadedCount by produceState<Int?>(null, chapters, downloadTick) {
+    val downloadedSnapshot by produceState<SeriesDownloadedCountSnapshot?>(
+        initialValue = null,
+        series.id,
+        sourceId,
+        chapters,
+        downloadTick,
+    ) {
         value = withContext(Dispatchers.IO) {
-            chapters.count { Downloads.isComplete(appContext, it.id) }
+            SeriesDownloadedCountSnapshot(
+                seriesId = series.id,
+                sourceId = sourceId,
+                count = chapters.count { Downloads.isComplete(appContext, it.id) },
+            )
         }
     }
+    val downloadedCount = downloadedSnapshot
+        ?.takeIf { it.seriesId == series.id && it.sourceId == sourceId }
+        ?.count
 
     // The one place in the app that has a chapter list, its source and the
     // series id in hand at the same time, which is exactly what the index needs
