@@ -111,10 +111,12 @@ internal fun SeriesScreen(
     downloadTick: Int,
     downloadingAll: Boolean,
     onDownload: (Chapter) -> Unit,
+    onDownloadBatch: (List<Chapter>) -> Unit,
     onDownloadAll: () -> Unit,
     onCancelDownloads: () -> Unit,
     onDeleteDownloads: () -> Unit,
     onDeleteChapter: (Chapter) -> Unit,
+    onDeleteChapters: (List<Chapter>) -> Unit,
     onSetRead: (List<Chapter>, Boolean) -> Unit,
     /** Bookmarks a batch. Independent of read state — see `Bookmarks`. */
     onSetBookmarked: (List<Chapter>, Boolean) -> Unit,
@@ -282,6 +284,7 @@ internal fun SeriesScreen(
         },
         onRequestDeleteChapter = { confirmDeleteChapter = it },
         onDownload = onDownload,
+        onDownloadBatch = onDownloadBatch,
         onSelectAll = { selectedIds = it },
         onClearSelection = { selectedIds = emptySet() },
         onRequestDeleteSelection = { confirmDeleteSelection = true },
@@ -305,7 +308,7 @@ internal fun SeriesScreen(
         downloadTick = downloadTick,
         onDismissDeleteSelection = { confirmDeleteSelection = false },
         onDeleteSelection = {
-            selectedChapters.forEach(onDeleteChapter)
+            onDeleteChapters(selectedChapters)
             selectedIds = emptySet()
             confirmDeleteSelection = false
         },
