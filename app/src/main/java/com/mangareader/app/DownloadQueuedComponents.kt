@@ -30,6 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal fun LazyListScope.downloadQueuedSection(
     context: Context,
@@ -37,6 +41,7 @@ internal fun LazyListScope.downloadQueuedSection(
     activeId: String?,
     queuePaused: Boolean,
     pausedIds: Set<String>,
+    scope: CoroutineScope,
 ) {
     items(
         items = items,
@@ -53,6 +58,7 @@ internal fun LazyListScope.downloadQueuedSection(
             itemPaused = itemPaused,
             queuePaused = queuePaused,
             progress = progress,
+            scope = scope,
         )
     }
 }
@@ -65,6 +71,7 @@ internal fun DownloadQueuedRow(
     itemPaused: Boolean,
     queuePaused: Boolean,
     progress: DownloadQueue.DownloadProgress?,
+    scope: CoroutineScope,
 ) {
     ListItem(
         headlineContent = {
@@ -143,13 +150,18 @@ internal fun DownloadQueuedRow(
 
                 IconButton(
                     onClick = {
-                        DownloadQueue.remove(context, item.chapterId)
-                        if (isActive) {
-                            DownloadService.start(
-                                context,
-                                DownloadService.ACTION_SKIP,
-                                item.chapterId,
-                            )
+                        val appContext = context.applicationContext
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                DownloadQueue.remove(appContext, item.chapterId)
+                            }
+                            if (isActive) {
+                                DownloadService.start(
+                                    context,
+                                    DownloadService.ACTION_SKIP,
+                                    item.chapterId,
+                                )
+                            }
                         }
                     },
                 ) {
