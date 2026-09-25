@@ -114,25 +114,31 @@ internal class EntryMarks(
 @Composable
 internal fun rememberEntryMarks(tick: Int): EntryMarks {
     val context = LocalContext.current
-    return remember(tick) {
-        val badgeDl = LibraryPrefs.badgeDownloaded(context)
-        val badgeUnread = LibraryPrefs.badgeUnread(context)
-        // "Read" is an ordinary user category matched by name, exactly as the
-        // library grid matches it. No new field, one parse.
-        val readCat = Categories.list(context)
-            .firstOrNull { it.name.equals("Read", ignoreCase = true) }
-        EntryMarks(
-            readIds = if (readCat == null) emptySet()
-            else Categories.seriesIn(context, readCat.id),
-            downloadedIds = if (badgeDl) DownloadIndex.seriesIds(context) else emptySet(),
-            unread = if (badgeUnread) {
-                SeriesIndex.all(context)
-                    .mapValues { (_, c) -> c.unread }
-                    .filterValues { it > 0 }
-            } else emptyMap(),
-            badgeLocal = LibraryPrefs.badgeLocal(context)
-        )
+    val marks by produceState(initialValue = EntryMarks.NONE, tick) {
+        // These are whole-store reads and can parse thousands of entries.
+        // Keeping them inside remember() still ran the first cold read during
+        // composition, which made opening Browse/History/Downloads hitch on a
+        // large library. Preserve the previous snapshot while a refresh is
+        // computed and do the storage work away from the UI thread.
+        value = withContext(Dispatchers.IO) {
+            val badgeDl = LibraryPrefs.badgeDownloaded(context)
+            val badgeUnread = LibraryPrefs.badgeUnread(context)
+            val readCat = Categories.list(context)
+                .firstOrNull { it.name.equals("Read", ignoreCase = true) }
+            EntryMarks(
+                readIds = if (readCat == null) emptySet()
+                else Categories.seriesIn(context, readCat.id),
+                downloadedIds = if (badgeDl) DownloadIndex.seriesIds(context) else emptySet(),
+                unread = if (badgeUnread) {
+                    SeriesIndex.all(context)
+                        .mapValues { (_, c) -> c.unread }
+                        .filterValues { it > 0 }
+                } else emptyMap(),
+                badgeLocal = LibraryPrefs.badgeLocal(context)
+            )
+        }
     }
+    return marks
 }
 
 /**

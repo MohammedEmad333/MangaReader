@@ -31,14 +31,18 @@ internal fun rememberSeriesDerivedState(
     inLibrary: Boolean,
     scroll: ScrollMemory,
 ): SeriesDerivedState {
-    val resumeIndex = remember(chapters, effectiveReadTick, sourceId) {
-        seriesResumeIndex(
+    val progress = remember(chapters, effectiveReadTick, sourceId, isAnimeSource) {
+        // Resume target and "has progress" used to scan the entire chapter list
+        // independently and repeat the same SharedPreferences lookups. One
+        // snapshot keeps large-series opens cheaper without changing semantics.
+        seriesProgressSummary(
             context = context,
             chapters = chapters,
             sourceId = sourceId,
             isAnimeSource = isAnimeSource,
         )
     }
+    val resumeIndex = progress.resumeIndex
     /**
      * What the list below draws — filtered and sorted. **Not** what anything
      * indexes: see `onOpen`.
@@ -78,14 +82,7 @@ internal fun rememberSeriesDerivedState(
     // series has to be gone by then rather than one frame later.
     scroll.sync(series.id)
 
-    val anyProgress = remember(chapters, effectiveReadTick, sourceId) {
-        seriesHasAnyProgress(
-            context = context,
-            chapters = chapters,
-            sourceId = sourceId,
-            isAnimeSource = isAnimeSource,
-        )
-    }
+    val anyProgress = progress.anyProgress
 
     // Hoisted above the Box because the top bar and the list both read it. Built
     // inline at the LazyColumn until 0.109, which was fine while nothing else
