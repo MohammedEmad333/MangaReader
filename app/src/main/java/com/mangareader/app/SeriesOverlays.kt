@@ -10,9 +10,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun SeriesResumeFab(
@@ -87,9 +90,16 @@ internal fun SeriesDeleteDialogs(
     }
 
     if (selectionOpen) {
-        val onDisk = selectedChapters.count { selected ->
-            remember(selected.id, downloadTick) {
-                Downloads.isComplete(context, selected.id)
+        val appContext = context.applicationContext
+        val onDisk by produceState<Int?>(
+            initialValue = null,
+            selectedChapters,
+            downloadTick,
+        ) {
+            value = withContext(Dispatchers.IO) {
+                selectedChapters.count { selected ->
+                    Downloads.isComplete(appContext, selected.id)
+                }
             }
         }
 
@@ -97,20 +107,20 @@ internal fun SeriesDeleteDialogs(
             onDismissRequest = onDismissSelection,
             title = {
                 Text(
-                    if (onDisk == 1) {
-                        "Delete 1 download?"
-                    } else {
-                        "Delete $onDisk downloads?"
+                    when (onDisk) {
+                        null -> "Checking downloads…"
+                        1 -> "Delete 1 download?"
+                        else -> "Delete $onDisk downloads?"
                     },
                 )
             },
             text = {
                 Text(
-                    if (onDisk == 0) {
-                        "None of the selected chapters are downloaded, so there's " +
+                    when (onDisk) {
+                        null -> "Checking which selected chapters are on disk…"
+                        0 -> "None of the selected chapters are downloaded, so there's " +
                             "nothing to remove."
-                    } else {
-                        "Removed from storage. The chapters stay in the list and can " +
+                        else -> "Removed from storage. The chapters stay in the list and can " +
                             "be saved again, and your read marks and places in them " +
                             "are untouched."
                     },
@@ -118,7 +128,7 @@ internal fun SeriesDeleteDialogs(
             },
             confirmButton = {
                 Button(
-                    enabled = onDisk > 0,
+                    enabled = (onDisk ?: 0) > 0,
                     onClick = onDeleteSelection,
                 ) {
                     Text("Delete")
