@@ -121,7 +121,7 @@ internal fun LibraryDisplayOptions(
     showTabs: Boolean,
     showCount: Boolean,
     onDisplayChange: (LibraryDisplay) -> Unit,
-    onPerRowChange: (FilterState) -> Unit,
+    onPerRowChange: (Int) -> Unit,
     onBadgeDownloadedChange: (Boolean) -> Unit,
     onBadgeLocalChange: (Boolean) -> Unit,
     onBadgeUnreadChange: (Boolean) -> Unit,
