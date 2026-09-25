@@ -37,7 +37,10 @@ internal fun ReaderLongStripPages(
         state = listState,
         modifier = modifier,
     ) {
-        item {
+        item(
+            key = "reader:previous",
+            contentType = "transition",
+        ) {
             ChapterTransitionRow(
                 topLabel = if (hasPrev) "Previous" else null,
                 topName = if (hasPrev) chapters.getOrNull(chapterIndex - 1)?.name else null,
@@ -49,7 +52,11 @@ internal fun ReaderLongStripPages(
             )
         }
 
-        itemsIndexed(pages) { index, file ->
+        itemsIndexed(
+            pages,
+            key = { index, _ -> "reader:page:$index" },
+            contentType = { _, _ -> "page" },
+        ) { index, file ->
             ReaderPage(
                 file = file,
                 index = index,
@@ -63,7 +70,10 @@ internal fun ReaderLongStripPages(
             )
         }
 
-        item {
+        item(
+            key = "reader:next",
+            contentType = "transition",
+        ) {
             ChapterTransitionRow(
                 topLabel = "Finished",
                 topName = chapterName,
