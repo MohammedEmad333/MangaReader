@@ -69,19 +69,7 @@ class LibraryRefreshService : Service() {
     private var scopeUncounted = false
     private val foreground by lazy { LibraryRefreshForeground(this) }
 
-    /** Counts waiting to be flushed. Written from several source coroutines. */
-    private val pending = HashMap<String, SeriesCounts>()
-    private val pendingLock = Any()
-
-    /**
-     * Fresh covers waiting to be written, keyed by series id.
-     *
-     * Held and flushed exactly like [pending], for the same reason: `Library` is
-     * a single JSON string, so writing one cover per series over a sweep would
-     * rewrite several thousand entries several thousand times.
-     */
-    private val pendingCovers = HashMap<String, String>()
-    private val coverLock = Any()
+    private val batches = LibraryRefreshBatchBuffer(this, FLUSH_EVERY)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -154,7 +142,7 @@ class LibraryRefreshService : Service() {
                 // Whatever is still in hand goes in, cancelled or not: these are
                 // counts already fetched, and throwing them away would mean a
                 // stopped refresh had done nothing but spend the requests.
-                flush()
+                batches.flush()
                 // Only a *full* sweep that finished gives up its resume point.
                 // A targeted run never owned it, and clearing it here would
                 // silently discard a half-finished full sweep's progress.
@@ -303,7 +291,7 @@ class LibraryRefreshService : Service() {
                         this, entry.sourceId, chapters, sweptAt = startedAt
                     )
                     if (counts != null) {
-                        synchronized(pendingLock) { pending[entry.seriesId] = counts }
+                        batches.putCount(entry.seriesId, counts)
                         LibraryRefresh.counted++
                     }
                 }
@@ -325,7 +313,7 @@ class LibraryRefreshService : Service() {
                         val fresh = (src.loadDetails(series).cover as? String)
                             ?.takeIf { it.isNotBlank() && !isLoopback(it) }
                         if (fresh != null && fresh != entry.cover) {
-                            synchronized(coverLock) { pendingCovers[entry.seriesId] = fresh }
+                            batches.putCover(entry.seriesId, fresh)
                             LibraryRefresh.coversRepaired.incrementAndGet()
                         }
                     } catch (e: CancellationException) {
@@ -353,43 +341,12 @@ class LibraryRefreshService : Service() {
 
             LibraryRefresh.done++
             foreground.notifyThrottled()
-            if (pendingSize() >= FLUSH_EVERY || pendingCoverSize() >= FLUSH_EVERY) flush()
+            if (batches.shouldFlush()) batches.flush()
             delay(REQUEST_SPACING_MS)
         }
     }
 
-    private fun pendingSize(): Int = synchronized(pendingLock) { pending.size }
 
-    private fun pendingCoverSize(): Int = synchronized(coverLock) { pendingCovers.size }
-
-    /**
-     * One write for up to [FLUSH_EVERY] series, per store.
-     *
-     * Two stores now, and neither may return early on behalf of the other — an
-     * `if (empty) return` inside the first block would strand a batch of covers
-     * whenever the counts happened to be empty, which is every sweep of a
-     * library that has already been counted once.
-     */
-    private fun flush() {
-        val batch = synchronized(pendingLock) {
-            if (pending.isEmpty()) null else HashMap(pending).also { pending.clear() }
-        }
-        if (batch != null) runCatching { SeriesIndex.recordAll(this, batch) }
-
-        val covers = synchronized(coverLock) {
-            if (pendingCovers.isEmpty()) null
-            else HashMap(pendingCovers).also { pendingCovers.clear() }
-        }
-        if (covers != null) {
-            runCatching {
-                Library.setCovers(this, covers)
-                // Cleared only after the write lands. A repair that failed to
-                // save has to stay on the list, or the entry is never asked
-                // about again until it next fails to draw.
-                CoverRepair.clear(this, covers.keys)
-            }
-        }
-    }
 
     /**
      * `isActive` off the service's own job.
