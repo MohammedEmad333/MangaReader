@@ -9,12 +9,17 @@ import android.content.Context
  * entry resumes in place; a completed entry advances to the next unread one,
  * with a fallback to the first unread entry for out-of-order histories.
  */
-internal fun seriesResumeIndex(
+internal data class SeriesProgressSummary(
+    val resumeIndex: Int,
+    val anyProgress: Boolean,
+)
+
+internal fun seriesProgressSummary(
     context: Context,
     chapters: List<Chapter>,
     sourceId: String,
     isAnimeSource: Boolean,
-): Int {
+): SeriesProgressSummary {
     val read = BooleanArray(chapters.size)
     var lastTouched = -1
 
@@ -29,7 +34,7 @@ internal fun seriesResumeIndex(
         if (read[index] || hasPartialProgress) lastTouched = index
     }
 
-    return when {
+    val resumeIndex = when {
         lastTouched >= 0 && !read[lastTouched] -> lastTouched
         else -> {
             val from = lastTouched + 1
@@ -38,18 +43,32 @@ internal fun seriesResumeIndex(
                 ?: -1
         }
     }
+    return SeriesProgressSummary(
+        resumeIndex = resumeIndex,
+        anyProgress = lastTouched >= 0,
+    )
 }
+
+internal fun seriesResumeIndex(
+    context: Context,
+    chapters: List<Chapter>,
+    sourceId: String,
+    isAnimeSource: Boolean,
+): Int = seriesProgressSummary(
+    context = context,
+    chapters = chapters,
+    sourceId = sourceId,
+    isAnimeSource = isAnimeSource,
+).resumeIndex
 
 internal fun seriesHasAnyProgress(
     context: Context,
     chapters: List<Chapter>,
     sourceId: String,
     isAnimeSource: Boolean,
-): Boolean = chapters.any { chapter ->
-    val key = chapterKeyOf(sourceId, chapter)
-    ReadState.isRead(context, key) || if (isAnimeSource) {
-        VideoPlaybackProgress.position(context, key) > 0L
-    } else {
-        savedPage(context, key) > 0
-    }
-}
+): Boolean = seriesProgressSummary(
+    context = context,
+    chapters = chapters,
+    sourceId = sourceId,
+    isAnimeSource = isAnimeSource,
+).anyProgress

@@ -265,7 +265,11 @@ internal fun GlobalSearchResultRow(
         contentPadding = PaddingValues(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(result.series) { series ->
+        items(
+            result.series,
+            key = { it.id },
+            contentType = { "series" },
+        ) { series ->
             val dim = dimFor(series.id)
             Column(
                 modifier = Modifier

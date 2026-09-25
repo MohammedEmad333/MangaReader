@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Turns a stored cover string into something Coil can actually load.
@@ -62,7 +65,9 @@ fun CoverImage(
                 contentScale = ContentScale.Crop,
                 onError = { state ->
                     val cause = state.result.throwable
-                    failure = cause.message ?: cause::class.java.simpleName
+                    if (BuildConfig.DEBUG) {
+                        failure = cause.message ?: cause::class.java.simpleName
+                    }
                     if (seriesId != null && isMissingImage(cause)) {
                         CoverRepair.report(coverContext, seriesId)
                     }
@@ -133,7 +138,21 @@ internal fun SourceIcon(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val icon = remember(pkgName) { pkgName?.let { extensionIcon(context, it) } }
+    var icon by remember(pkgName) {
+        mutableStateOf(pkgName?.let { iconCache[it] as? Drawable })
+    }
+
+    // PackageManager icon lookup can cross a Binder boundary and decode an
+    // installed app resource. Doing that from composition makes the first fast
+    // scroll through Sources/Extensions pay the cost on the UI thread. Keep
+    // cached hits synchronous, but move the cold lookup to IO and update the
+    // row when it is ready.
+    LaunchedEffect(pkgName) {
+        if (pkgName == null || iconCache[pkgName] === NoIcon) return@LaunchedEffect
+        icon = (iconCache[pkgName] as? Drawable) ?: withContext(Dispatchers.IO) {
+            extensionIcon(context.applicationContext, pkgName)
+        }
+    }
 
     Surface(
         modifier = modifier.size(40.dp),

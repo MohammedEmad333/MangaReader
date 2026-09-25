@@ -79,7 +79,10 @@ internal fun SeriesContent(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                item {
+                item(
+                    key = "series:hero",
+                    contentType = "hero",
+                ) {
                     SeriesHero(
                         series = series,
                         sourceName = sourceName,
@@ -97,7 +100,10 @@ internal fun SeriesContent(
                     )
                 }
 
-                item {
+                item(
+                    key = "series:description",
+                    contentType = "description",
+                ) {
                     SeriesDescriptionAndGenres(
                         series = series,
                         expanded = descriptionExpanded,
@@ -108,7 +114,10 @@ internal fun SeriesContent(
                     )
                 }
 
-                item {
+                item(
+                    key = "series:status",
+                    contentType = "status",
+                ) {
                     SeriesChapterStatus(
                         loading = loading,
                         error = error,
@@ -120,7 +129,11 @@ internal fun SeriesContent(
                     )
                 }
 
-                itemsIndexed(visibleChapters) { _, chapter ->
+                itemsIndexed(
+                    visibleChapters,
+                    key = { _, chapter -> chapter.id },
+                    contentType = { _, _ -> "chapter" },
+                ) { _, chapter ->
                     SeriesChapterRow(
                         chapter = chapter,
                         sourceId = sourceId,
@@ -143,7 +156,10 @@ internal fun SeriesContent(
                     )
                 }
 
-                item { Spacer(Modifier.height(88.dp)) }
+                item(
+                    key = "series:bottom-spacer",
+                    contentType = "spacer",
+                ) { Spacer(Modifier.height(88.dp)) }
             }
         }
 
