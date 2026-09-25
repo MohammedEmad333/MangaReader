@@ -397,105 +397,40 @@ internal fun ReaderScreen(
         )
 
         if (settings.mode == ReaderMode.LONG_STRIP) {
-            LazyColumn(
-                state = listState,
-                modifier = zoomedStripModifier
-            ) {
-                item {
-                    ChapterTransitionRow(
-                        topLabel = if (hasPrev) "Previous" else null,
-                        topName = if (hasPrev) chapters.getOrNull(chapterIndex - 1)?.name else null,
-                        bottomLabel = "Current",
-                        bottomName = chapterName,
-                        fallback = "There's no previous chapter",
-                        textColor = onBackground,
-                        onClick = if (hasPrev) onPrev else null
-                    )
-                }
-                itemsIndexed(pages) { index, file ->
-                    ReaderPage(
-                        file = file,
-                        index = index,
-                        stillLoading = stillLoading,
-                        colorFilter = filter,
-                        // Height is left to the image in a strip: a fixed one
-                        // would letterbox every page to the screen and reinstate
-                        // the gaps this mode exists to remove. A *minimum* is
-                        // not that, and it's load-bearing — an AsyncImage with
-                        // an unbounded height measures zero until its bitmap
-                        // decodes, so every undecoded page was a zero-height
-                        // row. The whole chapter collapsed into a few hundred
-                        // pixels, then shoved itself apart page by page as the
-                        // images arrived, which is the reader "scrolling down
-                        // on its own" while untouched. It also made the list
-                        // briefly unscrollable, which the end-of-chapter test
-                        // above would otherwise read as "at the last page".
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 240.dp),
-                        contentScale = ContentScale.FillWidth,
-                        textColor = onBackground
-                    )
-                }
-                item {
-                    ChapterTransitionRow(
-                        topLabel = "Finished",
-                        topName = chapterName,
-                        bottomLabel = if (hasNext) "Next" else null,
-                        bottomName = if (hasNext) chapters.getOrNull(chapterIndex + 1)?.name else null,
-                        fallback = "There's no next chapter",
-                        textColor = onBackground,
-                        onClick = if (hasNext) onNext else null
-                    )
-                }
-            }
+            ReaderLongStripPages(
+                listState = listState,
+                modifier = zoomedStripModifier,
+                pages = pages,
+                stillLoading = stillLoading,
+                chapters = chapters,
+                chapterIndex = chapterIndex,
+                chapterName = chapterName,
+                hasPrev = hasPrev,
+                hasNext = hasNext,
+                onPrev = onPrev,
+                onNext = onNext,
+                colorFilter = filter,
+                textColor = onBackground,
+            )
         } else {
-            HorizontalPager(
-                state = pagerState,
-                reverseLayout = settings.mode == ReaderMode.PAGED_RTL,
-                modifier = pageModifier
-            ) { index ->
-                // Index 0 and the last index are transition pages, not pages of
-                // the chapter. Under RTL the pager is reversed, so the previous
-                // -chapter transition sits on the right — which is where a
-                // right-to-left reader starts, so it needs no special case.
-                when (index) {
-                    0 -> ChapterTransitionRow(
-                        topLabel = if (hasPrev) "Previous" else null,
-                        topName = if (hasPrev) chapters.getOrNull(chapterIndex - 1)?.name else null,
-                        bottomLabel = "Current",
-                        bottomName = chapterName,
-                        fallback = "There's no previous chapter",
-                        textColor = onBackground,
-                        onClick = if (hasPrev) onPrev else null
-                    )
-
-                    pages.size + headRows -> ChapterTransitionRow(
-                        topLabel = "Finished",
-                        topName = chapterName,
-                        bottomLabel = if (hasNext) "Next" else null,
-                        bottomName = if (hasNext) chapters.getOrNull(chapterIndex + 1)?.name
-                        else null,
-                        fallback = "There's no next chapter",
-                        textColor = onBackground,
-                        onClick = if (hasNext) onNext else null
-                    )
-
-                    else -> ReaderPage(
-                        file = pages.getOrNull(index - headRows),
-                        index = index - headRows,
-                        stillLoading = stillLoading,
-                        colorFilter = filter,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        textColor = onBackground,
-                        // Paged only. In a strip the same gestures already belong to
-                        // the list, and a pinch that also scrolls is neither.
-                        zoomable = true,
-                        onTap = { showControls = !showControls }
-                    )
-                }
-            }
+            ReaderPagedPages(
+                pagerState = pagerState,
+                modifier = pageModifier,
+                mode = settings.mode,
+                pages = pages,
+                stillLoading = stillLoading,
+                headRows = headRows,
+                chapters = chapters,
+                chapterIndex = chapterIndex,
+                chapterName = chapterName,
+                hasPrev = hasPrev,
+                hasNext = hasNext,
+                onPrev = onPrev,
+                onNext = onNext,
+                colorFilter = filter,
+                textColor = onBackground,
+                onTap = { showControls = !showControls },
+            )
         }
 
         ReaderControlsOverlay(
