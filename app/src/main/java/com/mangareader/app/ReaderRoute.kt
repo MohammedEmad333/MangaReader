@@ -41,7 +41,7 @@ internal fun ReaderRoute(
                     ReadState.setRead(context, chapterKey, true)
                 }
                 if (!isIncognito(context)) {
-                    History.touch(
+                    ReaderHistoryWriter.submit(
                         context,
                         HistoryEntry(
                             chapterKey = chapterKey,
