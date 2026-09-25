@@ -317,71 +317,21 @@ internal fun DataSettings() {
         )
         HorizontalDivider()
 
-        SectionHeader("Storage usage")
-        DeviceStorageBar()
-
-        SectionHeader("Used by Yomu")
-        ListItem(
-            headlineContent = { Text("Downloaded chapters") },
-            supportingContent = { Text(storageLine(use?.downloadCount, use?.downloads, "chapters")) },
-            trailingContent = {
-                if ((use?.downloadCount ?: 0) > 0) {
-                    TextButton(onClick = { confirmDownloads = true }) { Text("Delete") }
+        DataStorageUsageSection(
+            use = use,
+            onDeleteDownloads = { confirmDownloads = true },
+            onClearPageCache = {
+                runCatching { File(context.cacheDir, "pages").deleteRecursively() }
+                tick++
+            },
+            onClearCoverCache = {
+                runCatching {
+                    context.imageLoader.memoryCache?.clear()
+                    context.imageLoader.diskCache?.clear()
                 }
-            }
-        )
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text("Clear chapter cache") },
-            supportingContent = {
-                Text(
-                    if (use == null) "Measuring\u2026"
-                    else "${formatBytes(use.pageCache)} \u00b7 pages from chapters you read but didn't download"
-                )
+                tick++
             },
-            trailingContent = {
-                TextButton(onClick = {
-                    runCatching { File(context.cacheDir, "pages").deleteRecursively() }
-                    tick++
-                }) { Text("Clear") }
-            }
-        )
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text("Clear cover cache") },
-            supportingContent = {
-                Text(
-                    if (use == null) "Measuring\u2026"
-                    else "${formatBytes(use.images)} \u00b7 covers and thumbnails"
-                )
-            },
-            trailingContent = {
-                TextButton(onClick = {
-                    runCatching {
-                        context.imageLoader.memoryCache?.clear()
-                        context.imageLoader.diskCache?.clear()
-                    }
-                    tick++
-                }) { Text("Clear") }
-            }
-        )
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text("Clear chapter lists") },
-            supportingContent = {
-                Text(
-                    if (use == null) "Measuring\u2026"
-                    else "${formatBytes(use.chapterLists)} \u00b7 what makes a series open offline"
-                )
-            },
-            trailingContent = {
-                TextButton(onClick = { confirmChapterLists = true }) { Text("Clear") }
-            }
-        )
-        HorizontalDivider()
-        PrefNote(
-            "The chapter cache is the only one the system can reclaim on its own. " +
-                "Clearing the cover cache just means covers are fetched again."
+            onClearChapterLists = { confirmChapterLists = true },
         )
     }
 
