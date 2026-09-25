@@ -207,57 +207,31 @@ object LibraryRefresh {
         coversRepaired.set(0)
         scopeLabel = ""
         loaded = true
-        runCatching { prefs(context).edit().remove(SUMMARY_KEY).apply() }
+        runCatching { LibraryRefreshSummaryStore.clear(context) }
     }
 
     // ---------- persistence ----------
 
-    /**
-     * Where the finished summary lives between processes.
-     *
-     * One key holding one JSON object, not eight keys. The prefs file is 2.5 MB
-     * across several thousand entries and what makes it slow to load is the
-     * entry count rather than the byte size
-     * (`SESSION_HANDOFF_0.71_RESULT.md` §4), so adding eight entries to save six
-     * numbers would be paying in the currency that is actually scarce.
-     */
-    private const val SUMMARY_KEY = "refresh_last_summary"
-
     @Volatile
     private var loaded = false
 
-    /**
-     * Restores the last finished sweep's numbers, once per process.
-     *
-     * Called from the Settings screen rather than from `onCreate`, because that
-     * is the only screen that shows them and the startup path is not somewhere
-     * to add a read that nothing on the first frame needs.
-     *
-     * Why persist at all: every counter here is Compose state with nothing
-     * behind it, so installing a build — or anything else that ends the process
-     * — destroyed the summary. That is how sweep 1's numbers were lost and how
-     * sweep 2's were nearly lost, and those numbers are the whole input to the
-     * `counted + failed + skipped == total - resumed` check that bugs 3 and 6
-     * announce themselves through.
-     */
     fun loadSummary(context: Context) {
         if (loaded || running) return
         loaded = true
         runCatching {
-            val raw = prefs(context).getString(SUMMARY_KEY, null) ?: return
-            val o = JSONObject(raw)
-            total = o.optInt("total")
-            done = o.optInt("done")
-            counted = o.optInt("counted")
-            resumed = o.optInt("resumed")
-            failed = o.optInt("failed")
-            skipped = o.optInt("skipped")
-            finishedAt = o.optLong("finishedAt")
-            coversRepaired.set(o.optInt("coversRepaired"))
-            firstError = if (o.isNull("firstError")) null else o.optString("firstError")
-            o.optJSONObject("failures")?.let { f ->
-                failureTally.clear()
-                for (key in f.keys()) failureTally[key] = AtomicInteger(f.optInt(key))
+            val summary = LibraryRefreshSummaryStore.load(context) ?: return
+            total = summary.total
+            done = summary.done
+            counted = summary.counted
+            resumed = summary.resumed
+            failed = summary.failed
+            skipped = summary.skipped
+            finishedAt = summary.finishedAt
+            firstError = summary.firstError
+            coversRepaired.set(summary.coversRepaired)
+            failureTally.clear()
+            summary.failures.forEach { (key, value) ->
+                failureTally[key] = AtomicInteger(value)
             }
         }
     }
@@ -265,22 +239,24 @@ object LibraryRefresh {
     private fun saveSummary(context: Context) {
         loaded = true
         runCatching {
-            val failures = JSONObject()
-            for ((key, value) in failureTally) failures.put(key, value.get())
-            val o = JSONObject()
-                .put("total", total)
-                .put("done", done)
-                .put("counted", counted)
-                .put("resumed", resumed)
-                .put("failed", failed)
-                .put("skipped", skipped)
-                .put("finishedAt", finishedAt)
-                .put("firstError", firstError ?: JSONObject.NULL)
-                .put("coversRepaired", coversRepaired.get())
-                .put("failures", failures)
-            prefs(context).edit().putString(SUMMARY_KEY, o.toString()).apply()
+            LibraryRefreshSummaryStore.save(
+                context,
+                LibraryRefreshSummary(
+                    total = total,
+                    done = done,
+                    counted = counted,
+                    resumed = resumed,
+                    failed = failed,
+                    skipped = skipped,
+                    finishedAt = finishedAt,
+                    firstError = firstError,
+                    coversRepaired = coversRepaired.get(),
+                    failures = failureTally.mapValues { it.value.get() },
+                ),
+            )
         }
     }
+
 }
 
 /**

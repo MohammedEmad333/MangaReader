@@ -195,103 +195,32 @@ internal fun SeriesScreen(
     }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
-    val resumeIndex = remember(chapters, effectiveReadTick, sourceId) {
-        seriesResumeIndex(
-            context = context,
-            chapters = chapters,
-            sourceId = sourceId,
-            isAnimeSource = isAnimeSource,
-        )
-    }
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
     // Bumped when the sheet writes a pref, so the derived list below recomputes.
     // The prefs are the store; this is only the signal that they moved.
     var optionsTick by remember { mutableIntStateOf(0) }
 
-    /**
-     * What the list below draws — filtered and sorted. **Not** what anything
-     * indexes: see `onOpen`.
-     *
-     * Keyed on both ticks because the filters read read-state and disk, so
-     * finishing a chapter or a download changes which rows belong here.
-     */
-    val visible = remember(chapters, effectiveReadTick, downloadTick, optionsTick, sourceId) {
-        visibleChapters(context, chapters, sourceId)
-    }
-    val chapterDisplay = remember(optionsTick) { ChapterPrefs.display(context) }
-    val filtersActive = remember(optionsTick) { ChapterPrefs.anyFilterActive(context) }
-    val downloadedCount = remember(chapters, downloadTick) {
-        chapters.count { Downloads.isComplete(context, it.id) }
-    }
-
-    // The one place in the app that has a chapter list, its source and the
-    // series id in hand at the same time, which is exactly what the index needs
-    // and the reason it's written from here rather than from the fetch in
-    // YomuApp. Keyed on readTick as well as the list, so marking chapters read
-    // — here or by finishing one in the reader, which bumps the same tick on the
-    // way out — corrects the stored count rather than leaving it to drift until
-    // the next fetch.
-    //
-    // Gated on library membership: this store only feeds the library screen, and
-    // recording every series merely *browsed* would grow a JSON that gets
-    // rewritten in full, for entries nothing will ever read.
-    LaunchedEffect(chapters, effectiveReadTick, inLibrary, sourceId) {
-        if (!inLibrary || chapters.isEmpty()) return@LaunchedEffect
-        withContext(Dispatchers.IO) {
-            SeriesIndex.record(context, sourceId, series.id, chapters)
-        }
-    }
-
-    // Seeded before the list below composes, not in an effect: the LazyColumn
-    // builds its state as it composes, so a position belonging to a different
-    // series has to be gone by then rather than one frame later.
-    scroll.sync(series.id)
-
-    val anyProgress = remember(chapters, effectiveReadTick, sourceId) {
-        seriesHasAnyProgress(
-            context = context,
-            chapters = chapters,
-            sourceId = sourceId,
-            isAnimeSource = isAnimeSource,
-        )
-    }
-
-    // Hoisted above the Box because the top bar and the list both read it. Built
-    // inline at the LazyColumn until 0.109, which was fine while nothing else
-    // needed it — construct it twice and the bar gets a state that never
-    // scrolls, and the symptom is a bar that simply never fades in, which reads
-    // as the alpha arithmetic being wrong rather than as two objects.
-    val listState = rememberRestoredListState(scroll, "series", series.id)
-
-    // dp converted once, out here: `firstVisibleItemScrollOffset` is in pixels,
-    // so a raw pixel constant would fade over a third of the distance on a
-    // high-density phone that it does on a low-density one.
-    val fadeOverPx = with(LocalDensity.current) { TOP_BAR_FADE_OVER.toPx() }
-
-    /**
-     * How opaque the top bar is, from how far the header has scrolled.
-     *
-     * The bar sits *over* the cover backdrop rather than above it, so at rest it
-     * is invisible and only the back arrow shows against the art — which is what
-     * the screen looked like before it had a bar at all. It fades in as the
-     * cover leaves, so the title arrives exactly when the thing it names is
-     * gone. Modelled on SY's `MangaToolbar`, which takes the same two alphas
-     * from its own scroll state.
-     *
-     * `derivedStateOf`, not a plain read: `firstVisibleItemScrollOffset` changes
-     * every frame of a drag, and reading it directly would recompose the whole
-     * screen — a 171-row chapter list included — on every pixel.
-     *
-     * [TOP_BAR_FADE_OVER] is deliberately shorter than the header: the bar wants
-     * to be solid before the chapter rows reach it, not when the header ends.
-     */
-    val barAlpha by remember(listState, fadeOverPx) {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) 1f
-            else (listState.firstVisibleItemScrollOffset / fadeOverPx).coerceIn(0f, 1f)
-        }
-    }
+    val derived = rememberSeriesDerivedState(
+        context = context,
+        series = series,
+        chapters = chapters,
+        effectiveReadTick = effectiveReadTick,
+        sourceId = sourceId,
+        isAnimeSource = isAnimeSource,
+        downloadTick = downloadTick,
+        optionsTick = optionsTick,
+        inLibrary = inLibrary,
+        scroll = scroll,
+    )
+    val resumeIndex = derived.resumeIndex
+    val visible = derived.visible
+    val chapterDisplay = derived.chapterDisplay
+    val filtersActive = derived.filtersActive
+    val downloadedCount = derived.downloadedCount
+    val anyProgress = derived.anyProgress
+    val listState = derived.listState
+    val barAlpha = derived.barAlpha
 
     SeriesContent(
         series = series,

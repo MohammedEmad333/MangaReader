@@ -78,70 +78,44 @@ import kotlin.math.roundToInt
  * seeking is `scrollToItem`, which counts them too.
  */
 @Composable
-internal fun ListScrollHandle(
-    state: LazyListState,
+internal fun GridScrollHandle(
+    state: LazyGridState,
     modifier: Modifier = Modifier
 ) {
-    // The count comes from the LIST, not from the caller.
-    //
-    // Every caller used to pass its own arithmetic — `visible.size + 3` for the
-    // chapter list, a three-way conditional for Extensions, `shown.size` for
-    // global search — and each was a hand-maintained restatement of something
-    // the LazyColumn already knows exactly. The chapter list's went wrong the
-    // moment 0.157 added two lazy items to that screen and left the `+ 3`
-    // alone: the handle then stopped two chapters short, and nothing about the
-    // code looked wrong.
-    //
-    // layoutInfo.totalItemsCount cannot drift from the composition, because it
-    // IS the composition's count. Deleting the parameter deletes the whole
-    // class of bug rather than this instance of it.
-    val totalItems = state.layoutInfo.totalItemsCount
-    var seekTo by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(seekTo) {
-        if (seekTo >= 0) state.scrollToItem(seekTo)
-    }
-    // visibleItemsInfo.size counts PARTIALLY visible items too, and that was the
-    // bug behind every "the handle stops short" report: `span = totalItems -
-    // visibleItems` treats a row clipped by the viewport edge as one that fits,
-    // so the maximum index it can seek to is short by however many are clipped —
-    // one at each end, usually. Measured on device: thumb hard against the
-    // bottom of its track, list still 20% short of the last row.
-    //
-    // Counting only the ones that fit ENTIRELY gives the true capacity, and the
-    // true capacity is what makes `totalItems - visibleItems` the index that
-    // puts the last item flush with the bottom.
     val info = state.layoutInfo
-    val fullyVisible = info.visibleItemsInfo.count {
-        it.offset >= info.viewportStartOffset && it.offset + it.size <= info.viewportEndOffset
-    }.coerceAtLeast(1)
+    // From the grid itself — see ListScrollHandle for why no caller passes this.
+    // Cells, not rows; the conversion below is what makes it a row count.
+    val totalItems = info.totalItemsCount
+    // maxOf(column) + 1 rather than a span calculation: with Adaptive columns
+    // this is the only place the real count exists. Coerced because an empty
+    // or not-yet-measured grid reports nothing and a zero would divide.
+    val columns = ((info.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1).coerceAtLeast(1)
+    // Rows that fit ENTIRELY, not rows with any pixel on screen. A row clipped
+    // by the viewport edge counted as one that fits, which made the seekable
+    // span short by a row at each end — see ListScrollHandle for the measurement.
+    val visibleRows = info.visibleItemsInfo
+        .filter {
+            it.offset.y >= info.viewportStartOffset &&
+                it.offset.y + it.size.height <= info.viewportEndOffset
+        }
+        .map { it.row }
+        .distinct()
+        .size
+        .coerceAtLeast(1)
+    val totalRows = (totalItems + columns - 1) / columns
+
+    var seekRow by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(seekRow) {
+        // Back into cell units for the grid: the first cell of that row.
+        if (seekRow >= 0) state.scrollToItem((seekRow * columns).coerceIn(0, (totalItems - 1).coerceAtLeast(0)))
+    }
 
     ScrollHandle(
-        firstVisibleIndex = state.firstVisibleItemIndex,
-        visibleItems = fullyVisible,
-        totalItems = totalItems,
+        firstVisibleIndex = state.firstVisibleItemIndex / columns,
+        visibleItems = visibleRows,
+        totalItems = totalRows,
         isScrolling = state.isScrollInProgress,
-        onSeek = { seekTo = it },
+        onSeek = { seekRow = it },
         modifier = modifier
     )
 }
-
-/**
- * A [ScrollHandle] for a grid, measured in ROWS rather than cells.
- *
- * **The cell-index version could not reach the last row and that is arithmetic,
- * not layout.** `ScrollHandle` seeks to `totalItems - visibleItems`, which for a
- * LIST puts the last item exactly at the bottom. On a grid `scrollToItem`
- * aligns the ROW CONTAINING that index to the top, so the start is pulled back
- * to a row boundary and the final partial row falls below the fold — by up to
- * `columns - 1` cells. With three columns and a hundred entries, dragging to the
- * bottom stopped at cell 98 of 99.
- *
- * It is invisible whenever the last row happens to be full and the arithmetic
- * happens to land on a boundary, which is why it survived being "verified" on
- * the library in 0.133 and on browse in 0.158.
- *
- * Columns are read off the layout rather than passed in: both callers use
- * `GridCells.Adaptive`, so the count changes with the window and with the
- * display mode, and anything the caller could pass would be a guess about a
- * number the grid already knows.
- */

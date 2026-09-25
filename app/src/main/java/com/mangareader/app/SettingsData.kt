@@ -114,68 +114,16 @@ internal fun DataSettings() {
         locationLabel = StorageLocation.label(context)
     }
 
-    // API 30+: a system settings page, which returns no result — the answer is
-    // read back out of Environment when it closes, not from the result code.
-    val accessLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { refreshLocation() }
-
-    // API 29 and below, where it's still an ordinary runtime permission.
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { refreshLocation() }
-
-    val treePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val target = StorageLocation.pathFromTreeUri(uri)
-            when {
-                target == null -> message =
-                    "That folder isn't on this device's storage. Pick one under " +
-                        "internal storage or an SD card \u2014 Drive and similar " +
-                        "providers have no path behind them."
-                !StorageLocation.ensureWritable(target) -> message =
-                    "Couldn't write to ${target.absolutePath}."
-                else -> {
-                    // Read before the switch: after set() the old base is gone,
-                    // and with it any way to find what needs moving.
-                    val previous = StorageLocation.base(context)
-                    val worthMoving = StorageLocation.hasStore(previous)
-                    StorageLocation.set(context, target)
-                    refreshLocation()
-                    if (worthMoving) pendingMove = previous to StorageLocation.base(context)
-                }
-            }
-        }
-    }
-
-    val chooseLocation: () -> Unit = {
-        if (StorageLocation.hasAccess(context)) treePicker.launch(null) else askAccess = true
-    }
-
-    val createPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        if (uri != null) {
-            busy = true
-            scope.launch {
-                val result = withContext(Dispatchers.IO) { Backup.writeTo(context, uri) }
-                message = result.fold(
-                    { "Backup saved" },
-                    { "Backup failed: ${it.message ?: it::class.java.simpleName}" }
-                )
-                busy = false
-            }
-        }
-    }
-
-    // "*/*" rather than "application/json": a backup that's been through a chat
-    // app or a cloud drive comes back with whatever MIME type that service felt
-    // like, and a filtered picker greys out the file the user is looking at.
-    val restorePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> if (uri != null) pendingRestore = uri }
+    val launchers = rememberDataSettingsLaunchers(
+        context = context,
+        scope = scope,
+        refreshLocation = { refreshLocation() },
+        onNeedAccess = { askAccess = true },
+        onMessage = { message = it },
+        onPendingMove = { pendingMove = it },
+        onPendingRestore = { pendingRestore = it },
+        onBusyChange = { busy = it },
+    )
 
     SettingsColumn {
         DataStorageLocationSection(
@@ -184,7 +132,7 @@ internal fun DataSettings() {
             customDir = customDir,
             active = StorageLocation.active(context),
             reorganising = reorganising,
-            onChooseLocation = chooseLocation,
+            onChooseLocation = launchers.chooseLocation,
             onUseAppStorage = {
                 val previous = StorageLocation.base(context)
                 val worthMoving = StorageLocation.hasStore(previous)
@@ -203,8 +151,8 @@ internal fun DataSettings() {
             frequency = frequency,
             lastBackup = lastBackup,
             customDirectorySelected = customDir != null,
-            onCreateBackup = { createPicker.launch(defaultBackupName()) },
-            onRestoreBackup = { restorePicker.launch(arrayOf("*/*")) },
+            onCreateBackup = launchers.createBackup,
+            onRestoreBackup = launchers.restoreBackup,
             onFrequencyChange = {
                 frequency = it
                 Backup.setFrequency(context, it)
@@ -234,12 +182,7 @@ internal fun DataSettings() {
         onDismissAccess = { askAccess = false },
         onGrantAccess = {
             askAccess = false
-            val intent = StorageLocation.accessIntent(context)
-            if (intent != null) {
-                accessLauncher.launch(intent)
-            } else {
-                permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
+            launchers.grantStorageAccess()
         },
         importOpen = importOpen,
         onDismissImport = { importOpen = false },
