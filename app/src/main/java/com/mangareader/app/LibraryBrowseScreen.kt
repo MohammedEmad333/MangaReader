@@ -193,124 +193,23 @@ internal fun LibraryScreen(
             onBack = onBack,
         )
 
-        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        // Matched on the message rather than a status code because that's all
-        // that survives: the failure arrives here as an already-formatted string
-        // from `Response.failureMessage()`, which is the one place that can see
-        // the Cloudflare headers.
-        val challengeable = onSolveChallenge != null &&
-            error?.contains("Cloudflare", ignoreCase = true) == true
-        ErrorBanner(
+        BrowseScreenBody(
+            loading = loading,
             error = error,
-            actionLabel = if (challengeable) "Open in WebView" else null,
-            onAction = if (challengeable) onSolveChallenge else null
+            onSolveChallenge = onSolveChallenge,
+            shown = shown,
+            query = query,
+            isLocalSource = isLocalSource,
+            onDiagnose = onDiagnose,
+            libraryTick = libraryTick,
+            onRescan = onRescan,
+            view = view,
+            coverMinDp = coverMinDp,
+            gridState = gridState,
+            hasNext = hasNext,
+            loadingMore = loadingMore,
+            onLoadMore = onLoadMore,
+            onOpen = onOpen,
         )
-
-        if (shown.isEmpty()) {
-            BrowseEmptyState(
-                loading = loading,
-                error = error,
-                query = query,
-                isLocalSource = isLocalSource,
-                onDiagnose = onDiagnose,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-            )
-        } else {
-            // Once per screen, never per cell — each field behind this is a
-            // whole-store read, and asking per row is the shape §5 records as
-            // "an import is a load test".
-            val marks = rememberEntryMarks(libraryTick)
-
-            // RESTORED in 0.165. 0.163 took this back out on the theory that
-            // it broke the scroll handle's reach — it did not. Reverting it
-            // changed nothing, the arithmetic was the cause (0.164), and the
-            // wrapper was blamed only because it was the most recent change.
-            // Removing it was still the right call at the time: it was a
-            // feature bundled into a bug-fix release, and a real fix should not
-            // wait behind one.
-            var refreshing by remember { mutableStateOf(false) }
-            // Cleared from an EFFECT: PullToRefreshBox has to observe the flag
-            // go true and then false to run its retract animation, and clearing
-            // it inline leaves the arrow parked on screen (0.160/0.161).
-            LaunchedEffect(refreshing) {
-                if (refreshing) refreshing = false
-            }
-            PullToRefreshBox(
-                // onRescan already reloads page one with the current query and
-                // mode, and is what the ⋮ menu calls, so the gesture and the
-                // menu cannot drift into meaning different things.
-                //
-                // This one IS a network call, unlike Downloads and History, and
-                // the indicator still retracts immediately rather than tracking
-                // it. Deliberate: `loading` is app-wide and written by six
-                // launch blocks in YomuApp, and binding a gesture to it is how
-                // the series screen came to need a chapters.isNotEmpty() gate.
-                isRefreshing = refreshing,
-                onRefresh = {
-                    refreshing = true
-                    onRescan()
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-                // List is the same grid with one column, so paging, the empty
-                // state and "Load more" stay on one code path instead of two.
-                columns = if (view == BrowseView.LIST) GridCells.Fixed(1)
-                else GridCells.Adaptive(minSize = coverMinDp),
-                state = gridState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(6.dp)
-            ) {
-                items(shown) { s ->
-                    when (view) {
-                        BrowseView.COMFORTABLE -> ComfortableCell(s, marks, isLocalSource, onOpen)
-                        BrowseView.COMPACT -> CompactCell(s, marks, isLocalSource, onOpen)
-                        BrowseView.LIST -> ListRow(s, marks, isLocalSource, onOpen)
-                    }
-                }
-
-                // Paging is manual rather than infinite-scroll: one tap per page
-                // keeps request volume predictable and visible.
-                if (hasNext) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (loadingMore) {
-                                CircularProgressIndicator()
-                            } else {
-                                OutlinedButton(onClick = onLoadMore) { Text("Load more") }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // GridScrollHandle, which seeks in ROWS. 0.158 used ScrollHandle
-            // with cell indices and could not reach the last cell: scrollToItem
-            // aligns the row containing an index to the top, so the start gets
-            // pulled back to a row boundary and the final partial row drops
-            // below the fold. 0.163 wrongly blamed a PullToRefreshBox wrapper
-            // and reverting it changed nothing, because the arithmetic was
-            // always the cause.
-            //
-            // shown.size + 1 when there is a next page, because "Load more" is
-            // a lazy item and scrollToItem counts it. It spans the full width,
-            // so it is its own row and the row arithmetic handles it.
-            GridScrollHandle(
-                state = gridState,
-                modifier = Modifier.align(Alignment.CenterEnd)
-            )
-            }
-            } // PullToRefreshBox
-        }
     }
 }
