@@ -69,7 +69,7 @@ internal fun DownloadsSeriesRow(
     entry: DownloadedSeries,
     dim: Boolean,
     badgeLocal: Boolean,
-    unread: Int,
+    unread: Int?,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
