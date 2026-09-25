@@ -125,35 +125,14 @@ internal fun HistoryScreen(
     var confirmRemove by remember { mutableStateOf<HistoryEntry?>(null) }
     var confirmClearAll by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("History", style = MaterialTheme.typography.titleLarge)
-            if (history.isNotEmpty()) {
-                TextButton(onClick = { confirmClearAll = true }) { Text("Clear all") }
-            }
-        }
-        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        ErrorBanner(error)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            listOf("All", "Manga", "Anime").forEach { label ->
-                FilterChip(
-                    selected = mediaFilter == label,
-                    onClick = { mediaFilter = label },
-                    label = { Text(label) },
-                )
-            }
-        }
-        HorizontalDivider()
+        HistoryHeader(
+            historyCount = history.size,
+            loading = loading,
+            error = error,
+            mediaFilter = mediaFilter,
+            onMediaFilterChange = { mediaFilter = it },
+            onClearAll = { confirmClearAll = true },
+        )
 
         if (shownHistory.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -182,95 +161,15 @@ internal fun HistoryScreen(
             val listState = rememberLazyListState()
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(shownHistory) { entry ->
-                    // History holds entries for series that may since have been
-                    // removed from the library, so most of these carry nothing.
-                    val dim = marks.dim(entry.seriesId)
-                    ListItem(
-                        leadingContent = {
-                            CoverImage(
-                                cover = coverModel(entry.coverPath),
-                                title = entry.title,
-                                modifier = Modifier
-                                    .width(64.dp)
-                                    .aspectRatio(0.7f)
-                                    .alpha(if (dim) 0.4f else 1f)
-                            )
-                        },
-                        headlineContent = {
-                            Text(
-                                entry.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.alpha(if (dim) 0.4f else 1f)
-                            )
-                        },
-                        supportingContent = {
-                            // Beside the page position rather than over the
-                            // cover: 40dp is the smallest thumbnail in the app
-                            // and a chip on it would hide most of the art.
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (entry.mediaType == "anime") {
-                                    val position = VideoPlaybackProgress.position(context, entry.chapterKey)
-                                    val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
-                                    val completed = VideoPlaybackProgress.isCompleted(context, entry.chapterKey)
-                                    Text(
-                                        buildString {
-                                            if (entry.detail.isNotBlank()) append(entry.detail)
-                                            when {
-                                                completed && position > 0L -> {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append("Watched • Rewatch ")
-                                                    append(formatMediaTime(position))
-                                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                                                }
-                                                completed -> {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append("Watched")
-                                                }
-                                                position > 0L -> {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append(formatMediaTime(position))
-                                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                                                }
-                                                else -> {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append("Started")
-                                                }
-                                            }
-                                        },
-                                    )
-                                } else {
-                                    Text(
-                                        if (entry.total > 0) "Page ${entry.page + 1} of ${entry.total}"
-                                        else "Page ${entry.page + 1}"
-                                    )
-                                }
-                                EntryBadges(
-                                    downloaded = marks.downloaded(entry.seriesId),
-                                    local = marks.badgeLocal &&
-                                        entry.sourceId.isLocalSourceId(),
-                                    unread = marks.unreadOf(entry.seriesId)
-                                )
-                            }
-                        },
-                        modifier = Modifier.clickable { onOpen(entry) },
-                        trailingContent = {
-                            // An icon, matching the Downloads tab and the chapter
-                            // rows. The word was wider than the thing it acted on
-                            // and pushed the title into two lines on most entries.
-                            IconButton(onClick = { confirmRemove = entry }) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Remove from history",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    HistoryEntryRow(
+                        entry = entry,
+                        dim = marks.dim(entry.seriesId),
+                        downloaded = marks.downloaded(entry.seriesId),
+                        badgeLocal = marks.badgeLocal && entry.sourceId.isLocalSourceId(),
+                        unread = marks.unreadOf(entry.seriesId),
+                        onOpen = { onOpen(entry) },
+                        onRemove = { confirmRemove = entry },
                     )
-                    HorizontalDivider()
                 }
             }
             ListScrollHandle(
@@ -281,56 +180,19 @@ internal fun HistoryScreen(
         } // PullToRefreshBox
     }
 
-    // Both of these ask first. Removing one entry is small and recoverable only
-    // by re-reading the chapter; Clear all wipes the lot and had no guard at
-    // all, which made the most destructive control on the screen the one that
-    // needed the fewest taps.
-    val pendingRemove = confirmRemove
-    if (pendingRemove != null) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = null },
-            title = { Text("Remove from history?") },
-            text = {
-                Text(
-                    "\u201c${pendingRemove.title}\u201d leaves the history list. " +
-                        if (pendingRemove.mediaType == "anime") {
-                            "Playback progress is kept."
-                        } else {
-                            "The chapter, your read mark and your place in it are untouched."
-                        }
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onDelete(pendingRemove)
-                    confirmRemove = null
-                }) { Text("Remove") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRemove = null }) { Text("Cancel") }
-            }
-        )
-    }
+    HistoryDialogs(
+        pendingRemove = confirmRemove,
+        clearAllOpen = confirmClearAll,
+        onDismissRemove = { confirmRemove = null },
+        onConfirmRemove = {
+            onDelete(it)
+            confirmRemove = null
+        },
+        onDismissClearAll = { confirmClearAll = false },
+        onConfirmClearAll = {
+            onClearAll()
+            confirmClearAll = false
+        },
+    )
 
-    if (confirmClearAll) {
-        AlertDialog(
-            onDismissRequest = { confirmClearAll = false },
-            title = { Text("Clear all history?") },
-            text = {
-                Text(
-                    "Every entry is removed. Reading and playback progress are kept, " +
-                        "so only the recent-history list is cleared."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onClearAll()
-                    confirmClearAll = false
-                }) { Text("Clear all") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearAll = false }) { Text("Cancel") }
-            }
-        )
-    }
 }
