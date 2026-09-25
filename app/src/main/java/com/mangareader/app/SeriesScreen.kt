@@ -195,55 +195,13 @@ internal fun SeriesScreen(
     }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
 
-    /**
-     * Where the Start/Resume button goes. Recomputed on readTick so marking
-     * something read moves the target without reopening the screen.
-     *
-     * **This used to be the first unread chapter, and that is not what Resume
-     * means.** On an imported library, read state arrives from the backup and is
-     * routinely full of holes — a series read to chapter 50 with a few early
-     * ones never marked leaves "first unread" pointing at chapter 3, so a button
-     * labelled Resume opened the beginning of the series.
-     *
-     * The furthest chapter with *any* progress is the honest anchor: part-way
-     * through it means resume there, finished means the next one along. Progress
-     * is read state or a stored page, the same pair `anyProgress` uses, because
-     * a chapter opened and abandoned is progress even though nothing marked it.
-     *
-     * `History` would be the obvious source and cannot answer this: it is capped
-     * at 40 entries for the whole app, so on a 3575-entry library almost no
-     * series has one. `ReadState` and `savedPage` are per chapter and uncapped.
-     *
-     * One pass, and the read flags are kept rather than re-queried — this runs
-     * over every chapter of the series and both lookups are a prefs read each.
-     */
     val resumeIndex = remember(chapters, effectiveReadTick, sourceId) {
-        val read = BooleanArray(chapters.size)
-        var lastTouched = -1
-        chapters.forEachIndexed { index, chapter ->
-            val key = chapterKeyOf(sourceId, chapter)
-            read[index] = ReadState.isRead(context, key)
-            val hasPartialProgress = if (isAnimeSource) {
-                VideoPlaybackProgress.position(context, key) > 0L
-            } else {
-                savedPage(context, key) > 0
-            }
-            if (read[index] || hasPartialProgress) lastTouched = index
-        }
-        when {
-            // Started and not finished: this is the chapter, and the reader's
-            // own saved page puts you back on the right page of it.
-            lastTouched >= 0 && !read[lastTouched] -> lastTouched
-            // Nothing touched, or the furthest one is done: the next unread
-            // after it, falling back to the first unread anywhere for a series
-            // whose later chapters were read out of order.
-            else -> {
-                val from = lastTouched + 1
-                (from until chapters.size).firstOrNull { !read[it] }
-                    ?: read.indices.firstOrNull { !read[it] }
-                    ?: -1
-            }
-        }
+        seriesResumeIndex(
+            context = context,
+            chapters = chapters,
+            sourceId = sourceId,
+            isAnimeSource = isAnimeSource,
+        )
     }
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
@@ -291,14 +249,12 @@ internal fun SeriesScreen(
     scroll.sync(series.id)
 
     val anyProgress = remember(chapters, effectiveReadTick, sourceId) {
-        chapters.any {
-            val k = chapterKeyOf(sourceId, it)
-            ReadState.isRead(context, k) || if (isAnimeSource) {
-                VideoPlaybackProgress.position(context, k) > 0L
-            } else {
-                savedPage(context, k) > 0
-            }
-        }
+        seriesHasAnyProgress(
+            context = context,
+            chapters = chapters,
+            sourceId = sourceId,
+            isAnimeSource = isAnimeSource,
+        )
     }
 
     // Hoisted above the Box because the top bar and the list both read it. Built
