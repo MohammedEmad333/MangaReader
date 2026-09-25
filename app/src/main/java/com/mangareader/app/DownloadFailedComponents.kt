@@ -30,12 +30,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal fun LazyListScope.downloadFailedSection(
     context: Context,
     failed: List<FailedDownload>,
     queued: List<DownloadItem>,
     queuePaused: Boolean,
+    scope: CoroutineScope,
 ) {
     if (failed.isEmpty()) return
 
@@ -55,18 +60,30 @@ internal fun LazyListScope.downloadFailedSection(
             Row {
                 TextButton(
                     onClick = {
-                        if (DownloadQueue.retryAll(context) > 0) {
-                            if (queuePaused) {
-                                DownloadQueue.setPaused(context, false)
+                        val appContext = context.applicationContext
+                        scope.launch {
+                            val retried = withContext(Dispatchers.IO) {
+                                val changed = DownloadQueue.retryAll(appContext)
+                                if (changed > 0 && queuePaused) {
+                                    DownloadQueue.setPaused(appContext, false)
+                                }
+                                changed
                             }
-                            DownloadService.start(context)
+                            if (retried > 0) {
+                                DownloadService.start(context)
+                            }
                         }
                     },
                 ) {
                     Text("Retry all")
                 }
                 TextButton(
-                    onClick = { DownloadQueue.clearFailed(context) },
+                    onClick = {
+                        val appContext = context.applicationContext
+                        scope.launch(Dispatchers.IO) {
+                            DownloadQueue.clearFailed(appContext)
+                        }
+                    },
                 ) {
                     Text("Clear")
                 }
@@ -82,6 +99,7 @@ internal fun LazyListScope.downloadFailedSection(
             entry = entry,
             queuePaused = queuePaused,
             context = context,
+            scope = scope,
         )
     }
 
@@ -105,6 +123,7 @@ internal fun DownloadFailedRow(
     entry: FailedDownload,
     queuePaused: Boolean,
     context: Context,
+    scope: CoroutineScope,
 ) {
     ListItem(
         headlineContent = {
@@ -136,16 +155,21 @@ internal fun DownloadFailedRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
                     onClick = {
-                        if (
-                            DownloadQueue.retry(
-                                context,
-                                setOf(entry.item.chapterId),
-                            ) > 0
-                        ) {
-                            if (queuePaused) {
-                                DownloadQueue.setPaused(context, false)
+                        val appContext = context.applicationContext
+                        scope.launch {
+                            val retried = withContext(Dispatchers.IO) {
+                                val changed = DownloadQueue.retry(
+                                    appContext,
+                                    setOf(entry.item.chapterId),
+                                )
+                                if (changed > 0 && queuePaused) {
+                                    DownloadQueue.setPaused(appContext, false)
+                                }
+                                changed
                             }
-                            DownloadService.start(context)
+                            if (retried > 0) {
+                                DownloadService.start(context)
+                            }
                         }
                     },
                 ) {
@@ -153,10 +177,13 @@ internal fun DownloadFailedRow(
                 }
                 TextButton(
                     onClick = {
-                        DownloadQueue.dismissFailed(
-                            context,
-                            entry.item.chapterId,
-                        )
+                        val appContext = context.applicationContext
+                        scope.launch(Dispatchers.IO) {
+                            DownloadQueue.dismissFailed(
+                                appContext,
+                                entry.item.chapterId,
+                            )
+                        }
                     },
                 ) {
                     Text("Dismiss")
