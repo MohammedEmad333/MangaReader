@@ -69,10 +69,35 @@ internal object DownloadAliases {
     /** Removes every alias that points at the same stored chapter. */
     @Synchronized
     fun forget(context: Context, chapterId: String) {
+        forgetMany(context, listOf(chapterId))
+    }
+
+    /**
+     * Removes aliases for many stored chapters with one persistence write.
+     *
+     * Resolve against a snapshot before mutating the map. That also makes alias
+     * chains deterministic: deleting A removes every key whose chain ultimately
+     * lands on A's stored chapter, regardless of iteration order.
+     */
+    @Synchronized
+    fun forgetMany(context: Context, chapterIds: Collection<String>) {
+        if (chapterIds.isEmpty()) return
         load(context)
-        val target = resolve(context, chapterId)
-        val removed = aliases.entries.removeAll { (key, value) ->
-            key == chapterId || key == target || resolve(context, value) == target
+
+        val snapshot = aliases.toMap()
+        fun resolveSnapshot(chapterId: String): String {
+            var current = chapterId
+            val seen = mutableSetOf<String>()
+            while (seen.add(current)) {
+                val next = snapshot[current] ?: break
+                current = next
+            }
+            return current
+        }
+
+        val targets = chapterIds.mapTo(mutableSetOf(), ::resolveSnapshot)
+        val removed = aliases.entries.removeAll { (key, _) ->
+            resolveSnapshot(key) in targets
         }
         if (removed) save(context)
     }

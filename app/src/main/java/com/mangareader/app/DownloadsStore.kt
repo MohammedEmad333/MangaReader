@@ -102,6 +102,53 @@ object Downloads {
         DownloadAliases.forget(context, chapterId)
     }
 
+    /**
+     * Deletes a chapter batch without rewriting the path/alias indexes for every
+     * item. Resolve every location first, then mutate the indexes once after the
+     * filesystem work is complete.
+     */
+    fun deleteMany(context: Context, chapterIds: Collection<String>) {
+        val ids = chapterIds.filter { it.isNotBlank() }.distinct()
+        if (ids.isEmpty()) return
+        if (ids.size == 1) {
+            delete(context, ids.first())
+            return
+        }
+
+        data class Target(
+            val publicId: String,
+            val storedId: String,
+            val dir: File,
+        )
+
+        val targets = ids.map { chapterId ->
+            Target(
+                publicId = chapterId,
+                storedId = DownloadAliases.resolve(context, chapterId),
+                dir = dirFor(context, chapterId),
+            )
+        }
+
+        // A bulk deletion invalidates the whole inexpensive in-memory cache once,
+        // rather than invalidating the same DownloadIndex for every chapter.
+        invalidateCompletion()
+
+        targets
+            .distinctBy { it.dir.absolutePath }
+            .forEach { target ->
+                runCatching { target.dir.deleteRecursively() }
+            }
+
+        // Prune after all children are gone so a series/source parent can become
+        // empty once and be removed without repeated index writes.
+        targets
+            .distinctBy { it.dir.parentFile?.absolutePath ?: it.dir.absolutePath }
+            .forEach { target -> pruneEmptyParents(context, target.dir) }
+
+        DownloadPaths.forgetMany(context, targets.map { it.storedId })
+        DownloadAliases.forgetMany(context, targets.map { it.publicId })
+    }
+
     private fun pruneEmptyParents(context: Context, from: File) {
         runCatching {
             val stop = downloadsRoot(context).absolutePath
