@@ -186,4 +186,3 @@ internal val releaseNotes78To67: List<ReleaseNote> = listOf(
                 "you have saved open more accurately without a connection."
         ),
 )
-)
