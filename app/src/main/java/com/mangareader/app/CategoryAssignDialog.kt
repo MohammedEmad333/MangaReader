@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Category editor for a selection of any size.
@@ -50,11 +54,13 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     val all = remember { Categories.list(context) }
     var selected by remember { mutableStateOf(Categories.categoriesFor(context, seriesId)) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("Categories") },
         text = {
             if (all.isEmpty()) {
@@ -87,11 +93,29 @@ internal fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(onClick = {
-                Categories.setCategoriesFor(context, seriesId, selected)
-                onDismiss()
-            }) { Text("Save") }
+            Button(
+                enabled = !saving,
+                onClick = {
+                    val appContext = context.applicationContext
+                    val next = selected
+                    saving = true
+                    scope.launch {
+                        val saved = runCatching {
+                            withContext(Dispatchers.IO) {
+                                Categories.setCategoriesFor(appContext, seriesId, next)
+                            }
+                        }.isSuccess
+                        saving = false
+                        if (saved) onDismiss()
+                    }
+                }
+            ) { Text(if (saving) "Saving…" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(
+                enabled = !saving,
+                onClick = onDismiss,
+            ) { Text("Cancel") }
+        }
     )
 }
