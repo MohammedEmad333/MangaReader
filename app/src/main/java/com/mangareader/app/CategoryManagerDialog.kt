@@ -72,11 +72,13 @@ import java.io.File
 @Composable
 internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     var cats by remember { mutableStateOf(Categories.list(context)) }
     var newName by remember { mutableStateOf("") }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("Categories") },
         text = {
             Column {
@@ -88,10 +90,23 @@ internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(cat.name, modifier = Modifier.weight(1f))
-                        TextButton(onClick = {
-                            Categories.remove(context, cat.id)
-                            cats = Categories.list(context)
-                        }) { Text("Delete") }
+                        TextButton(
+                            enabled = !saving,
+                            onClick = {
+                                val appContext = context.applicationContext
+                                saving = true
+                                scope.launch {
+                                    val next = runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            Categories.remove(appContext, cat.id)
+                                            Categories.list(appContext)
+                                        }
+                                    }.getOrNull()
+                                    saving = false
+                                    if (next != null) cats = next
+                                }
+                            }
+                        ) { Text("Delete") }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -105,17 +120,30 @@ internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        enabled = newName.isNotBlank(),
+                        enabled = newName.isNotBlank() && !saving,
                         onClick = {
-                            Categories.add(context, newName.trim())
-                            cats = Categories.list(context)
-                            newName = ""
+                            val appContext = context.applicationContext
+                            val name = newName.trim()
+                            saving = true
+                            scope.launch {
+                                val next = runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        Categories.add(appContext, name)
+                                        Categories.list(appContext)
+                                    }
+                                }.getOrNull()
+                                saving = false
+                                if (next != null) {
+                                    cats = next
+                                    newName = ""
+                                }
+                            }
                         }
-                    ) { Text("Add") }
+                    ) { Text(if (saving) "Saving…" else "Add") }
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Done") } }
+        confirmButton = { Button(enabled = !saving, onClick = onDismiss) { Text("Done") } }
     )
 }
 
