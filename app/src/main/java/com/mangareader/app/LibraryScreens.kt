@@ -102,7 +102,25 @@ internal fun LibraryTab(
     var localTick by remember { mutableIntStateOf(0) }
     val tick = libraryTick + localTick
 
-    val allEntries = remember(tick) { Library.list(context) }
+    val base = rememberLibraryBaseState(context, tick)
+    if (base == null) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            ErrorBanner(error)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Loading library…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
+    val allEntries = base.entries
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
     val entries = remember(allEntries, mediaFilter) {
         allEntries.filter { entry ->
@@ -115,7 +133,7 @@ internal fun LibraryTab(
             }
         }
     }
-    val categories = remember(tick) { Categories.list(context) }
+    val categories = base.categories
 
     val sort = remember(tick) { LibraryPrefs.sort(context) }
     val ascending = remember(tick) { LibraryPrefs.ascending(context) }
@@ -163,6 +181,23 @@ internal fun LibraryTab(
         fNsfw = fNsfw,
         scroll = scroll,
     )
+    if (derived == null) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            ErrorBanner(error)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Preparing library…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
     val readIds = derived.readIds
     val downloadedIds = derived.downloadedIds
     val counts = derived.counts
