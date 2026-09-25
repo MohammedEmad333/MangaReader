@@ -15,15 +15,15 @@ class MainActivity : ComponentActivity() {
         setTheme(R.style.Theme_Yomu)
         super.onCreate(savedInstanceState)
 
-        StartupTimings.once("Prefs load (onCreate)") { SourceManager.migrateLegacy(this) }
         ensureNotificationPermission()
 
-        AppTheme.load(this)
-        AppTheme.applySecureScreen(this, AppTheme.secureScreen(this))
-
-        if (DownloadQueue.items.isNotEmpty() && !DownloadQueue.paused) {
-            DownloadService.start(this)
+        // Theme is the one persisted value that must be ready before the first
+        // composition or a light/custom-theme user gets a visible colour flash.
+        // Everything else is hydrated by StartupUiSnapshot off the UI thread.
+        StartupTimings.once("Theme prefs load (onCreate)") {
+            AppTheme.load(this)
         }
+        AppTheme.applySecureScreen(this, AppTheme.secureScreen(this))
 
         setContent {
             MaterialTheme(colorScheme = yomuColorScheme()) {

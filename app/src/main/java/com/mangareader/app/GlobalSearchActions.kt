@@ -72,7 +72,8 @@ internal suspend fun searchGlobalBatch(
 
 
 internal class GlobalSearchState(
-    context: Context
+    initialPinnedOnly: Boolean,
+    initialRecents: List<String>,
 ) {
     var open by androidx.compose.runtime.mutableStateOf(false)
     var query by androidx.compose.runtime.mutableStateOf("")
@@ -80,14 +81,10 @@ internal class GlobalSearchState(
     var running by androidx.compose.runtime.mutableStateOf(false)
     var done by androidx.compose.runtime.mutableIntStateOf(0)
     var total by androidx.compose.runtime.mutableIntStateOf(0)
-    var pinnedOnly by androidx.compose.runtime.mutableStateOf(
-        SourcePrefs.pinnedOnlySearch(context)
-    )
+    var pinnedOnly by androidx.compose.runtime.mutableStateOf(initialPinnedOnly)
     var hasResultsOnly by androidx.compose.runtime.mutableStateOf(true)
     var mediaFilter by androidx.compose.runtime.mutableStateOf("All")
-    var recents by androidx.compose.runtime.mutableStateOf(
-        SourcePrefs.recentSearches(context)
-    )
+    var recents by androidx.compose.runtime.mutableStateOf(initialRecents)
     // Null = all media. During migration this is pinned to the source media type
     // so a manga cannot be migrated into an anime source (or vice versa).
     var mediaIsAnime by androidx.compose.runtime.mutableStateOf<Boolean?>(null)
