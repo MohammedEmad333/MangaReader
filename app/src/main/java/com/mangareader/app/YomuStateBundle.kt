@@ -1,15 +1,19 @@
 package com.mangareader.app
 
-import android.content.Context
-
 internal class YomuStateBundle(
-    context: Context
+    startup: StartupUiSnapshot,
 ) {
-    val app = AppUiState(context)
+    val app = AppUiState(
+        initialConfigs = startup.configs,
+        initialHistory = startup.history,
+    )
     val browse = SourceBrowseState()
     val series = SeriesNavigationState()
     val reader = ReaderSessionState()
-    val search = GlobalSearchState(context)
+    val search = GlobalSearchState(
+        initialPinnedOnly = startup.searchPinnedOnly,
+        initialRecents = startup.recentSearches,
+    )
     val migration = MigrationNavigationState()
     val media = MediaNavigationState()
 }
