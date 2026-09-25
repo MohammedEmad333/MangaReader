@@ -89,6 +89,7 @@ internal fun LibrarySettings() {
         mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
     }
     val categoryCount = remember(categoryTick, showCategories) { Categories.list(context).size }
+    val entryCount = remember { Library.list(context).size }
     SettingsColumn {
         SectionHeader("Display")
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
