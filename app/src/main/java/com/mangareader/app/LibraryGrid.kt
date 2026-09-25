@@ -138,202 +138,19 @@ internal fun LibraryGrid(
                 .padding(horizontal = 8.dp)
         ) {
             items(shown, key = { it.seriesId }) { entry ->
-                val isSelected = entry.seriesId in selected
-                val isAnime = entry.sourceId.isAnimeExtensionSourceId() ||
-                    entry.seriesId.startsWith("anime:")
-                val dim = entry.seriesId in readIds && !isSelected
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isSelected)
-                                Modifier.background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                                )
-                            else Modifier
-                        )
-                        .pointerInput(entry.seriesId, selecting) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (selecting) onToggle(entry.seriesId) else onOpen(entry)
-                                },
-                                onLongPress = { onToggle(entry.seriesId) }
-                            )
-                        }
-                        .padding(vertical = 6.dp)
-                ) {
-                    CoverImage(
-                        cover = entry.cover.ifBlank { null },
-                        title = entry.title,
-                        // The library grid is where a stale cover is visible and
-                        // where the entry behind it is known, so this is the one
-                        // place a failed draw can be turned into a repair.
-                        // Without it CoverRepair never learns about a 404 and
-                        // half the cover fix is inert.
-                        seriesId = entry.seriesId,
-                        modifier = Modifier
-                            .width(44.dp)
-                            .aspectRatio(0.7f)
-                            .alpha(if (dim) 0.4f else 1f)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .alpha(if (dim) 0.4f else 1f)
-                    )
-                    if (isAnime) {
-                        LibraryAnimeBadge()
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    EntryBadges(
-                        downloaded = entry.seriesId in downloadedIds,
-                        local = badgeLocal &&
-                            entry.sourceId.isLocalSourceId(),
-                        unread = unreadCounts[entry.seriesId]
-                    )
-                }
-            }
-        }
-    } else {
-
-    // Hoisted out of the LazyVerticalGrid call so the scroll handle beside it
-    // reads the same state object. Two would give the handle a state that never
-    // scrolls, and the symptom is a handle that never moves — which reads as the
-    // arithmetic being wrong rather than as two objects. That is the 0.109 top
-    // bar, one screen over.
-    val gridState = rememberRestoredGridState(scroll, "$scrollKey#grid", ordering)
-    // The seek target and its keyed effect moved into GridScrollHandle, which
-    // owns them for both grid callers now. The reasoning is unchanged and lives
-    // there: a `launch { scrollToItem() }` per drag delta queues dozens of
-    // scrolls on the grid's own mutex and they run in order, so the grid
-    // finishes arriving where the finger was half a second ago. Holding the
-    // target in state and scrolling from a keyed effect cancels the superseded
-    // one on every new value.
-
-    Box(modifier = Modifier.fillMaxSize()) {
-    LazyVerticalGrid(
-        // A fixed count when the user has set one, otherwise size-driven.
-        columns = if (perRow > 0) GridCells.Fixed(perRow)
-        else GridCells.Adaptive(minSize = 110.dp),
-        state = gridState,
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(shown, key = { it.seriesId }) { entry ->
             val isSelected = entry.seriesId in selected
-            val isAnime = entry.sourceId.isAnimeExtensionSourceId() ||
-                entry.seriesId.startsWith("anime:")
-            // Read entries are dimmed everywhere, not only inside the Read tab:
-            // the same series showing bright in Manhwa and dim in Read would be
-            // a state that depends on where you're standing.
-            val dim = entry.seriesId in readIds && !isSelected
-
-            Column(
-                modifier = Modifier
-                    .padding(vertical = 4.dp)
-                    .pointerInput(entry.seriesId, selecting) {
-                        detectTapGestures(
-                            onTap = {
-                                if (selecting) onToggle(entry.seriesId) else onOpen(entry)
-                            },
-                            onLongPress = { onToggle(entry.seriesId) }
-                        )
-                    }
-            ) {
-                Box {
-                    CoverImage(
-                        cover = entry.cover.ifBlank { null },
-                        title = entry.title,
-                        // The library grid is where a stale cover is visible and
-                        // where the entry behind it is known, so this is the one
-                        // place a failed draw can be turned into a repair.
-                        // Without it CoverRepair never learns about a 404 and
-                        // half the cover fix is inert.
-                        seriesId = entry.seriesId,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .alpha(if (dim) 0.4f else 1f)
-                    )
-
-                    Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                        EntryBadges(
-                            downloaded = entry.seriesId in downloadedIds,
-                            local = badgeLocal &&
-                            entry.sourceId.isLocalSourceId(),
-                            unread = unreadCounts[entry.seriesId]
-                        )
-                    }
-
-                    if (display == LibraryDisplay.COMPACT_GRID) {
-                        // Title over the cover, on a scrim. A plain Text here is
-                        // unreadable on a pale cover, which is most of them.
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = 0.55f))
-                                .padding(horizontal = 4.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                entry.title,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.alpha(if (dim) 0.6f else 1f)
-                            )
-                        }
-                    }
-
-                    if (isAnime && !isSelected) {
-                        LibraryAnimeBadge(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp),
-                        )
-                    }
-
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                        )
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Selected",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .padding(2.dp)
-                        )
-                    }
-                }
-
-                if (display == LibraryDisplay.COMFORTABLE_GRID) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.alpha(if (dim) 0.4f else 1f)
-                    )
-                }
-            }
+            LibraryGridEntryCard(
+                entry = entry,
+                display = display,
+                isSelected = isSelected,
+                dim = entry.seriesId in readIds && !isSelected,
+                downloaded = entry.seriesId in downloadedIds,
+                badgeLocal = badgeLocal && entry.sourceId.isLocalSourceId(),
+                unread = unreadCounts[entry.seriesId],
+                selecting = selecting,
+                onOpen = { onOpen(entry) },
+                onToggle = { onToggle(entry.seriesId) },
+            )
         }
     }
 
@@ -349,21 +166,4 @@ internal fun LibraryGrid(
     }
     } // else (grid)
     } // PullToRefreshBox
-}
-
-
-@Composable
-private fun LibraryAnimeBadge(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    ) {
-        Text(
-            "Anime",
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-        )
-    }
 }
