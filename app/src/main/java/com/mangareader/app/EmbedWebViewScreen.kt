@@ -1,37 +1,24 @@
 package com.mangareader.app
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.view.View
-import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,13 +28,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import kotlinx.coroutines.delay
@@ -185,139 +170,28 @@ internal fun EmbedWebViewScreen(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        AndroidView(
-            // weight, not fillMaxSize: as the last child of a Column that
-            // already spent height on the bar, fillMaxSize asks for the whole
-            // screen and the bottom of the page falls off it.
-            // One pixel when hidden rather than zero: a WebView with no size
-            // does not lay out, and a player that never lays out never starts.
-            modifier = if (reveal) {
-                Modifier.fillMaxWidth().weight(1f)
-            } else {
-                Modifier.size(1.dp)
+        EmbeddedPlayerWebView(
+            url = url,
+            referer = referer,
+            reveal = reveal,
+            onWebViewReady = { webView = it },
+            onProgress = { progress = it },
+            onTitle = { pageTitle = it },
+            onShowFullscreen = { view, callback ->
+                fullscreenExit = callback
+                fullscreenView = view
             },
-            factory = { context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-                    // Players are the main reason this exists, and many will not
-                    // start without it.
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    // NO setLayerType HERE, AND THAT IS DELIBERATE. 0.183 set
-                    // LAYER_TYPE_HARDWARE on the reasoning that inline video
-                    // needs a hardware layer; frames went from 341 to 1352 and
-                    // the screen stayed white, so it did nothing — and forcing
-                    // a WebView into an offscreen hardware layer is a known way
-                    // to BREAK video overlays, because the video composites
-                    // outside the texture the layer captures. A change that did
-                    // not help and can hurt does not get to stay.
-                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    // The player's host is the only place this screen may go.
-                    val allowedHost = runCatching { Uri.parse(url).host }.getOrNull()
-                    webViewClient = object : WebViewClient() {
-                        // POPUNDERS. These free embed hosts monetise clicks: a
-                        // tap anywhere on the page navigates the whole WebView
-                        // to an advertiser, and the player is gone. Blocking
-                        // off-host navigation is not politeness, it is the
-                        // difference between a usable player and one that
-                        // cannot be touched.
-                        //
-                        // Host-scoped rather than a blocklist: the page may
-                        // legitimately move within its own domain, and naming
-                        // advertisers one at a time is a race nobody wins.
-                        override fun shouldOverrideUrlLoading(
-                            v: WebView?,
-                            request: WebResourceRequest?
-                        ): Boolean {
-                            val target = request?.url?.host ?: return false
-                            return allowedHost != null && target != allowedHost
-                        }
-
-                        override fun onRenderProcessGone(
-                            v: WebView?,
-                            detail: RenderProcessGoneDetail?
-                        ): Boolean {
-                            runCatching {
-                                (v?.parent as? ViewGroup)?.removeView(v)
-                                v?.destroy()
-                            }
-                            return true
-                        }
-                    }
-                    // window.open and target=_blank take a different path and
-                    // would sail past the check above. Refused outright: this
-                    // screen has one job.
-                    settings.setSupportMultipleWindows(true)
-                    settings.javaScriptCanOpenWindowsAutomatically = false
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onProgressChanged(v: WebView?, newProgress: Int) {
-                            progress = newProgress
-                        }
-
-                        override fun onReceivedTitle(v: WebView?, title: String?) {
-                            pageTitle = title
-                        }
-
-                        // WITHOUT THIS THE PAGE GOES BLANK AND THE VIDEO PLAYS
-                        // ANYWAY. A player asking for HTML5 fullscreen pulls its
-                        // video out of the document and hands it here; a
-                        // WebChromeClient that does not implement this drops it,
-                        // so the page renders empty while the media keeps
-                        // streaming. That is exactly what 0.177 did — a white
-                        // screen at 1MB/s.
-                        override fun onShowCustomView(
-                            view: View?,
-                            callback: CustomViewCallback?
-                        ) {
-                            fullscreenExit = callback
-                            fullscreenView = view
-                        }
-
-                        override fun onHideCustomView() {
-                            fullscreenExit = null
-                            fullscreenView = null
-                        }
-                    }
-                    loadUrl(url, mapOf("Referer" to referer))
-                }.also { webView = it }
-            }
+            onHideFullscreen = {
+                fullscreenExit = null
+                fullscreenView = null
+            },
         )
-        // What the page used to occupy. Says what is happening instead of
-        // showing a white rectangle that is doing something invisible.
-        if (!reveal) {
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (!searched) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(20.dp))
-                    Text("Finding the video\u2026", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "The player is loading in the background. When the video " +
-                            "address turns up it opens in your video player.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                } else {
-                    Text("No video address found", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "This player may build its stream entirely in the page, " +
-                            "which leaves nothing an outside app can open.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    // Worth offering even knowing it does not draw: the page may
-                    // carry a download link of its own, and being shown the
-                    // thing beats being told about it.
-                    TextButton(onClick = { reveal = true }) { Text("Show the page anyway") }
-                }
-            }
-        }
+
+        EmbeddedPlayerStatus(
+            reveal = reveal,
+            searched = searched,
+            onReveal = { reveal = true },
+        )
 
     }
 
