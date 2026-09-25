@@ -187,7 +187,11 @@ internal fun DownloadsTab(
             // getting it wrong stops the handle short of the end.
             val listState = rememberLazyListState()
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(series, key = { it.seriesId }) { entry ->
+                items(
+                    series,
+                    key = { it.seriesId },
+                    contentType = { "downloaded-series" },
+                ) { entry ->
                     DownloadsSeriesRow(
                         entry = entry,
                         dim = marks.dim(entry.seriesId),
