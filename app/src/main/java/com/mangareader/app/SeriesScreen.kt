@@ -164,6 +164,7 @@ internal fun SeriesScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isAnimeSource = sourceId.isAnimeExtensionSourceId()
     var playbackStateTick by remember(series.id) { mutableIntStateOf(0) }
     DisposableEffect(context, series.id) {
@@ -196,6 +197,7 @@ internal fun SeriesScreen(
         if (selecting) selectedIds = emptySet() else onBack()
     }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
+    var libraryBusy by remember(series.id) { mutableStateOf(false) }
 
     var coverOpen by remember(series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
@@ -256,12 +258,25 @@ internal fun SeriesScreen(
         onOpenCover = { coverOpen = true },
         onGlobalSearchTag = onGlobalSearchTag,
         onLibraryAction = {
-            if (inLibrary) {
-                Library.remove(context, series.id)
-                inLibrary = false
-                onLibraryChanged()
-            } else {
-                showAddToLibrary = true
+            if (!libraryBusy) {
+                if (inLibrary) {
+                    val appContext = context.applicationContext
+                    libraryBusy = true
+                    scope.launch {
+                        val removed = runCatching {
+                            withContext(Dispatchers.IO) {
+                                Library.remove(appContext, series.id)
+                            }
+                        }.isSuccess
+                        libraryBusy = false
+                        if (removed) {
+                            inLibrary = false
+                            onLibraryChanged()
+                        }
+                    }
+                } else {
+                    showAddToLibrary = true
+                }
             }
         },
         onCategories = { showCategories = true },

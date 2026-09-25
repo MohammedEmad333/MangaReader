@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Category editor for a selection of any size.
@@ -56,6 +60,8 @@ internal fun AddToLibraryDialog(
     onSaved: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
 
     // Guarantees there is always at least one category to save into.
     val default = remember { Categories.ensureDefault(context) }
@@ -132,12 +138,12 @@ internal fun AddToLibraryDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                // Never save with zero categories; fall back to Default.
-                val finalCats = if (selected.isEmpty()) setOf(default.id) else selected
-                Library.add(
-                    context,
-                    LibraryEntry(
+            Button(
+                enabled = !saving,
+                onClick = {
+                    // Never save with zero categories; fall back to Default.
+                    val finalCats = if (selected.isEmpty()) setOf(default.id) else selected
+                    val entry = LibraryEntry(
                         seriesId = series.id,
                         sourceId = sourceId,
                         title = series.title,
@@ -146,10 +152,20 @@ internal fun AddToLibraryDialog(
                             ?: "",
                         addedAt = System.currentTimeMillis()
                     )
-                )
-                Categories.setCategoriesFor(context, series.id, finalCats)
-                onSaved()
-            }) { Text("Save") }
+                    val appContext = context.applicationContext
+                    saving = true
+                    scope.launch {
+                        val saved = runCatching {
+                            withContext(Dispatchers.IO) {
+                                Library.add(appContext, entry)
+                                Categories.setCategoriesFor(appContext, series.id, finalCats)
+                            }
+                        }.isSuccess
+                        saving = false
+                        if (saved) onSaved()
+                    }
+                }
+            ) { Text(if (saving) "Saving…" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
