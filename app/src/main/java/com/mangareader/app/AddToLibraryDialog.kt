@@ -62,6 +62,7 @@ internal fun AddToLibraryDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
+    var categoryBusy by remember { mutableStateOf(false) }
 
     // Guarantees there is always at least one category to save into.
     val default = remember { Categories.ensureDefault(context) }
@@ -70,7 +71,7 @@ internal fun AddToLibraryDialog(
     var newName by remember { mutableStateOf("") }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving && !categoryBusy) onDismiss() },
         title = { Text("Add to library") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -126,20 +127,34 @@ internal fun AddToLibraryDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     TextButton(
-                        enabled = newName.isNotBlank(),
+                        enabled = newName.isNotBlank() && !saving && !categoryBusy,
                         onClick = {
-                            val created = Categories.addAndGet(context, newName.trim())
-                            cats = Categories.list(context)
-                            selected = selected + created.id
-                            newName = ""
+                            val appContext = context.applicationContext
+                            val name = newName.trim()
+                            categoryBusy = true
+                            scope.launch {
+                                val result = runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        val created = Categories.addAndGet(appContext, name)
+                                        created to Categories.list(appContext)
+                                    }
+                                }.getOrNull()
+                                categoryBusy = false
+                                if (result != null) {
+                                    val (created, nextCategories) = result
+                                    cats = nextCategories
+                                    selected = selected + created.id
+                                    newName = ""
+                                }
+                            }
                         }
-                    ) { Text("Add") }
+                    ) { Text(if (categoryBusy) "Adding…" else "Add") }
                 }
             }
         },
         confirmButton = {
             Button(
-                enabled = !saving,
+                enabled = !saving && !categoryBusy,
                 onClick = {
                     // Never save with zero categories; fall back to Default.
                     val finalCats = if (selected.isEmpty()) setOf(default.id) else selected
@@ -167,6 +182,11 @@ internal fun AddToLibraryDialog(
                 }
             ) { Text(if (saving) "Saving…" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(
+                enabled = !saving && !categoryBusy,
+                onClick = onDismiss,
+            ) { Text("Cancel") }
+        }
     )
 }
