@@ -161,6 +161,7 @@ internal fun LibraryTab(
         fStarted = fStarted,
         fCompleted = fCompleted,
         fNsfw = fNsfw,
+        scroll = scroll,
     )
     val readIds = derived.readIds
     val downloadedIds = derived.downloadedIds
