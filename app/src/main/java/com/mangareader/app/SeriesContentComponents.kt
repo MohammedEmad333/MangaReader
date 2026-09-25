@@ -44,7 +44,7 @@ internal fun SeriesHero(
     canDownload: Boolean,
     hasChapters: Boolean,
     downloadingAll: Boolean,
-    downloadedCount: Int,
+    downloadedCount: Int?,
     onOpenCover: () -> Unit,
     onGlobalSearch: (String) -> Unit,
     onLibraryAction: () -> Unit,
@@ -207,7 +207,7 @@ internal fun SeriesHero(
                         onClick = onToggleAllDownloads,
                     )
 
-                    if (downloadedCount > 0) {
+                    if (downloadedCount != null && downloadedCount > 0) {
                         SeriesAction(
                             icon = Icons.Default.Delete,
                             label = "Delete ($downloadedCount)",

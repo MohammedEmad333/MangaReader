@@ -12,14 +12,46 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.saket.swipe.SwipeAction
 import me.saket.swipe.SwipeableActionsBox
+
+private data class ChapterDownloadUiState(
+    val complete: Boolean,
+    val sizeLabel: String?,
+)
+
+@Composable
+private fun rememberChapterDownloadUiState(
+    chapterId: String,
+    downloadTick: Int,
+): ChapterDownloadUiState? {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val state by produceState<ChapterDownloadUiState?>(null, chapterId, downloadTick) {
+        value = withContext(Dispatchers.IO) {
+            val complete = Downloads.isComplete(appContext, chapterId)
+            ChapterDownloadUiState(
+                complete = complete,
+                sizeLabel = if (complete) {
+                    formatBytes(Downloads.sizeOf(appContext, chapterId))
+                } else {
+                    null
+                },
+            )
+        }
+    }
+    return state
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -55,6 +87,10 @@ internal fun SeriesChapterRow(
     val bookmarked = remember(key, readTick) {
         Bookmarks.isBookmarked(context, key)
     }
+    val downloadState = rememberChapterDownloadUiState(
+        chapterId = chapter.id,
+        downloadTick = downloadTick,
+    )
 
     val toggleRead = SwipeAction(
         onSwipe = {
@@ -119,15 +155,7 @@ internal fun SeriesChapterRow(
                 )
             },
             supportingContent = {
-                val sizeLabel = remember(chapter.id, downloadTick) {
-                    if (Downloads.isComplete(context, chapter.id)) {
-                        formatBytes(
-                            Downloads.sizeOf(context, chapter.id),
-                        )
-                    } else {
-                        null
-                    }
-                }
+                val sizeLabel = downloadState?.sizeLabel
 
                 val bits = listOfNotNull(
                     formatChapterDate(chapter.dateUploaded),
@@ -174,13 +202,7 @@ internal fun SeriesChapterRow(
 
                     if (canDownload) {
                         val percent = progress?.percent
-                        val downloaded =
-                            remember(chapter.id, downloadTick) {
-                                Downloads.isComplete(
-                                    context,
-                                    chapter.id,
-                                )
-                            }
+                        val downloaded = downloadState?.complete
                         val active =
                             DownloadQueue.activeId == chapter.id
                         val queued =
@@ -207,7 +229,7 @@ internal fun SeriesChapterRow(
                                     MaterialTheme.colorScheme.onSurfaceVariant,
                             )
 
-                            downloaded -> IconButton(
+                            downloaded == true -> IconButton(
                                 onClick = onDeleteChapter,
                             ) {
                                 Icon(
@@ -218,6 +240,11 @@ internal fun SeriesChapterRow(
                                         MaterialTheme.colorScheme.primary,
                                 )
                             }
+
+                            downloaded == null -> CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
 
                             else -> IconButton(
                                 onClick = onDownload,

@@ -30,7 +30,7 @@ internal fun SeriesContent(
     inLibrary: Boolean,
     canDownload: Boolean,
     downloadingAll: Boolean,
-    downloadedCount: Int,
+    downloadedCount: Int?,
     downloadTick: Int,
     downloadProgress: Map<String, DownloadQueue.DownloadProgress>,
     effectiveReadTick: Int,

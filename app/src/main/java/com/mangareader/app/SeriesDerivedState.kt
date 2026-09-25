@@ -12,7 +12,7 @@ internal data class SeriesDerivedState(
     val visible: List<Chapter>,
     val chapterDisplay: ChapterDisplay,
     val filtersActive: Boolean,
-    val downloadedCount: Int,
+    val downloadedCount: Int?,
     val anyProgress: Boolean,
     val listState: LazyListState,
     val barAlpha: Float,
@@ -55,8 +55,10 @@ internal fun rememberSeriesDerivedState(
     }
     val chapterDisplay = remember(optionsTick) { ChapterPrefs.display(context) }
     val filtersActive = remember(optionsTick) { ChapterPrefs.anyFilterActive(context) }
-    val downloadedCount = remember(chapters, downloadTick) {
-        chapters.count { Downloads.isComplete(context, it.id) }
+    val downloadedCount by produceState<Int?>(null, chapters, downloadTick) {
+        value = withContext(Dispatchers.IO) {
+            chapters.count { Downloads.isComplete(context, it.id) }
+        }
     }
 
     // The one place in the app that has a chapter list, its source and the
