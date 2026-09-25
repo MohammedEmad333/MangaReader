@@ -20,8 +20,15 @@ internal class AppShellActionController(
     }
 
     fun removeLibrary(ids: Set<String>) {
-        Library.removeAll(context, ids)
-        appState.libraryTick++
+        if (ids.isEmpty()) return
+        val appContext = context.applicationContext
+        val snapshot = ids.toSet()
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                Library.removeAll(appContext, snapshot)
+            }
+            appState.libraryTick++
+        }
     }
 
     fun addSource() {
@@ -60,9 +67,7 @@ internal class AppShellActionController(
     }
 
     fun clearHistory() {
-        History.list(context).forEach {
-            History.remove(context, it.chapterKey)
-        }
+        History.clear(context)
         refreshHistory()
     }
 
