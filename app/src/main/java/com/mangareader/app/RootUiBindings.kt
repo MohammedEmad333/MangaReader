@@ -27,12 +27,15 @@ internal data class RootUiBindings(
 
 @Composable
 internal fun rememberRootUiBindings(
-    context: Context
+    context: Context,
+    initialLibraryCategory: String?,
+    releaseNotes: List<ReleaseNote>,
 ): RootUiBindings {
+    // These values were already loaded by StartupUiSnapshot on IO. Starting
+    // from them preserves the exact old restore behavior without making the
+    // first composition pay for SharedPreferences parsing.
     var libraryCategory by rememberSaveable {
-        mutableStateOf<String?>(
-            LibraryPrefs.lastCategory(context)
-        )
+        mutableStateOf(initialLibraryCategory)
     }
     var librarySearch by rememberSaveable {
         mutableStateOf("")
@@ -46,9 +49,6 @@ internal fun rememberRootUiBindings(
     val seriesScroll = remember { ScrollMemory() }
     val sourcesScroll = remember { ScrollMemory() }
 
-    val releaseNotes = remember {
-        WhatsNew.pending(context)
-    }
     var whatsNewOpen by remember {
         mutableStateOf(releaseNotes.isNotEmpty())
     }
