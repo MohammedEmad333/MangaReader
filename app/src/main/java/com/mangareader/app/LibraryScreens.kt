@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ---------- library ----------
@@ -122,6 +123,17 @@ internal fun LibraryTab(
 
     val allEntries = base.entries
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
+
+    // Keep the text field immediate while avoiding a full multi-thousand-entry
+    // filter/sort for every intermediate key event. The old synchronous path
+    // did that work inline; the background path would otherwise launch and
+    // cancel the same expensive job repeatedly while someone is typing.
+    var arrangedSearch by remember { mutableStateOf(search) }
+    LaunchedEffect(search) {
+        delay(120)
+        arrangedSearch = search
+    }
+
     val entries = remember(allEntries, mediaFilter) {
         allEntries.filter { entry ->
             val anime = entry.sourceId.startsWith("aniyomi:") ||
@@ -165,7 +177,7 @@ internal fun LibraryTab(
         entries = entries,
         categories = categories,
         grouping = grouping,
-        search = search,
+        search = arrangedSearch,
         mediaFilter = mediaFilter,
         sort = sort,
         ascending = ascending,
