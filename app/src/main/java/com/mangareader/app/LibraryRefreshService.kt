@@ -276,79 +276,28 @@ class LibraryRefreshService : Service() {
         const val EXTRA_SCOPE_LABEL = "com.mangareader.app.REFRESH_SCOPE"
         const val EXTRA_UNCOUNTED = "com.mangareader.app.REFRESH_UNCOUNTED"
 
-        /**
-         * Starts a refresh.
-         *
-         * Only ever called from a user action in a visible Activity, which is
-         * what keeps the foreground-service start legal on Android 12+.
-         */
-        /** Every source in the library. */
-        fun start(context: Context) = start(context, null, "")
+        fun start(context: Context) =
+            LibraryRefreshServiceCommands.start(context)
 
-        /**
-         * Refreshes only [sourceIds].
-         *
-         * Useful the moment the summary names a source that failed repeatedly:
-         * re-running the whole library to retry twelve series is most of an
-         * hour. This does not resume and cannot be resumed — see
-         * `LibraryRefreshService.scopeIds`.
-         */
-        /**
-         * Refreshes only series the index has no counts for.
-         *
-         * What to reach for after installing an extension the library already
-         * had entries from: those were skipped, never stamped, and a full sweep
-         * is the wrong size of hammer.
-         */
-        fun startUncounted(context: Context, count: Int) {
-            start(context, null, "$count never counted", uncounted = true)
-        }
+        fun startUncounted(context: Context, count: Int) =
+            LibraryRefreshServiceCommands.startUncounted(context, count)
 
         fun start(
             context: Context,
             sourceIds: Set<String>?,
             scopeLabel: String,
-            uncounted: Boolean = false
-        ) {
-            // Cleared here rather than left to begin(), which doesn't run until the
-            // worker has read the library and the swept set — a several-thousand
-            // entry parse each. Until it does, `running` is still false and the
-            // Settings row is showing the *last* sweep's summary beside a refresh
-            // that has already started.
-            LibraryRefresh.clearSummary(context)
-            val intent = Intent(context, LibraryRefreshService::class.java)
-            if (!sourceIds.isNullOrEmpty()) {
-                intent.putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sourceIds))
-            }
-            if (uncounted) intent.putExtra(EXTRA_UNCOUNTED, true)
-            if (!sourceIds.isNullOrEmpty() || uncounted) {
-                intent.putExtra(EXTRA_SCOPE_LABEL, scopeLabel)
-            }
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            }
-        }
+            uncounted: Boolean = false,
+        ) = LibraryRefreshServiceCommands.start(
+            context = context,
+            sourceIds = sourceIds,
+            scopeLabel = scopeLabel,
+            uncounted = uncounted,
+        )
 
-        /**
-         * Throws the resume point away, then starts.
-         *
-         * Kept separate from [start] because "refresh again from the top" is a
-         * real request — a sweep that finished a week ago is stale — and after
-         * this change a plain start would honour a stale cursor instead.
-         */
-        fun startOver(context: Context) {
-            RefreshCursor.clear(context)
-            start(context)
-        }
+        fun startOver(context: Context) =
+            LibraryRefreshServiceCommands.startOver(context)
 
-        fun stop(context: Context) {
-            val intent = Intent(context, LibraryRefreshService::class.java)
-                .setAction(ACTION_STOP)
-            runCatching { context.startService(intent) }
-        }
+        fun stop(context: Context) =
+            LibraryRefreshServiceCommands.stop(context)
     }
 }
