@@ -20,11 +20,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,7 +38,7 @@ internal fun SeriesTopBar(
     chapters: List<Chapter>,
     visibleChapters: List<Chapter>,
     sourceId: String,
-    onDownload: (Chapter) -> Unit,
+    onDownloadBatch: (List<Chapter>) -> Unit,
     filtersActive: Boolean,
     onOpenChapterOptions: () -> Unit,
     onRefresh: () -> Unit,
@@ -48,8 +52,11 @@ internal fun SeriesTopBar(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val appContext = context.applicationContext
+    val scope = rememberCoroutineScope()
     var showDownloadMenu by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
+    var preparingDownloads by remember { mutableStateOf(false) }
 
     TopAppBar(
         title = {
@@ -64,7 +71,10 @@ internal fun SeriesTopBar(
         actions = {
             if (canDownload && chapters.isNotEmpty()) {
                 Box {
-                    IconButton(onClick = { showDownloadMenu = true }) {
+                    IconButton(
+                        enabled = !preparingDownloads,
+                        onClick = { showDownloadMenu = true },
+                    ) {
                         Icon(Icons.Default.Download, contentDescription = "Download chapters")
                     }
                     DropdownMenu(
@@ -74,10 +84,23 @@ internal fun SeriesTopBar(
                         DownloadChoice.entries.forEach { choice ->
                             DropdownMenuItem(
                                 text = { Text(choice.label) },
+                                enabled = !preparingDownloads,
                                 onClick = {
                                     showDownloadMenu = false
-                                    downloadTargets(context, visibleChapters, sourceId, choice)
-                                        .forEach(onDownload)
+                                    val rows = visibleChapters.toList()
+                                    preparingDownloads = true
+                                    scope.launch {
+                                        val targets = withContext(Dispatchers.IO) {
+                                            downloadTargets(
+                                                appContext,
+                                                rows,
+                                                sourceId,
+                                                choice,
+                                            )
+                                        }
+                                        onDownloadBatch(targets)
+                                        preparingDownloads = false
+                                    }
                                 },
                             )
                         }
