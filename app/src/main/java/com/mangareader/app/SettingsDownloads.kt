@@ -84,8 +84,10 @@ import java.util.Locale
 @Composable
 internal fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var tick by remember { mutableIntStateOf(0) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
     val use = rememberStorageUse(tick)
 
     val queued = DownloadQueue.items.size
@@ -114,9 +116,19 @@ internal fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
         SectionHeader("On device")
         ListItem(
             headlineContent = { Text("Downloaded chapters") },
-            supportingContent = { Text(storageLine(use?.downloadCount, use?.downloads, "chapters")) },
+            supportingContent = {
+                Text(
+                    if (deleting) "Deleting…" else storageLine(
+                        use?.downloadCount,
+                        use?.downloads,
+                        "chapters",
+                    ),
+                )
+            },
             trailingContent = {
-                if ((use?.downloadCount ?: 0) > 0) {
+                if (deleting) {
+                    TextButton(onClick = {}, enabled = false) { Text("Deleting…") }
+                } else if ((use?.downloadCount ?: 0) > 0) {
                     TextButton(onClick = { confirmDelete = true }) { Text("Delete all") }
                 }
             }
@@ -141,9 +153,18 @@ internal fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
             },
             confirmButton = {
                 Button(onClick = {
-                    Downloads.deleteAll(context)
                     confirmDelete = false
-                    tick++
+                    deleting = true
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                Downloads.deleteAll(context.applicationContext)
+                            }
+                        } finally {
+                            deleting = false
+                            tick++
+                        }
+                    }
                 }) { Text("Delete") }
             },
             dismissButton = {
