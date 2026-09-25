@@ -99,12 +99,19 @@ internal class SeriesActionController(
     }
 
     fun queueDownloads(source: Source, chapters: List<Chapter>) {
-        queueSeriesDownloads(
-            context,
-            seriesState.active,
-            source,
-            chapters
-        )
+        // enqueue() checks every chapter against disk and persists the full queue.
+        // Both are storage work, and bulk actions can hand us hundreds of rows.
+        // Capture the series/list now, then keep the whole enqueue path off main.
+        val series = seriesState.active
+        val snapshot = chapters.toList()
+        scope.launch(Dispatchers.IO) {
+            queueSeriesDownloads(
+                context,
+                series,
+                source,
+                snapshot
+            )
+        }
     }
 
     fun downloadChapter(source: Source, chapter: Chapter) {
