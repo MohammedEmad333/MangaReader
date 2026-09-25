@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 @Composable
 internal fun DataStorageUsageSection(
     use: StorageUse?,
+    busy: Boolean,
     onDeleteDownloads: () -> Unit,
     onClearPageCache: () -> Unit,
     onClearCoverCache: () -> Unit,
@@ -25,7 +26,7 @@ internal fun DataStorageUsageSection(
         },
         trailingContent = {
             if ((use?.downloadCount ?: 0) > 0) {
-                TextButton(onClick = onDeleteDownloads) { Text("Delete") }
+                TextButton(onClick = onDeleteDownloads, enabled = !busy) { Text("Delete") }
             }
         },
     )
@@ -43,7 +44,7 @@ internal fun DataStorageUsageSection(
             )
         },
         trailingContent = {
-            TextButton(onClick = onClearPageCache) { Text("Clear") }
+            TextButton(onClick = onClearPageCache, enabled = !busy) { Text("Clear") }
         },
     )
     HorizontalDivider()
@@ -60,7 +61,7 @@ internal fun DataStorageUsageSection(
             )
         },
         trailingContent = {
-            TextButton(onClick = onClearCoverCache) { Text("Clear") }
+            TextButton(onClick = onClearCoverCache, enabled = !busy) { Text("Clear") }
         },
     )
     HorizontalDivider()
@@ -77,7 +78,7 @@ internal fun DataStorageUsageSection(
             )
         },
         trailingContent = {
-            TextButton(onClick = onClearChapterLists) { Text("Clear") }
+            TextButton(onClick = onClearChapterLists, enabled = !busy) { Text("Clear") }
         },
     )
     HorizontalDivider()
