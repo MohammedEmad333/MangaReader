@@ -58,11 +58,34 @@ object History {
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
+    // Reader progress touches history on every settled page. Re-parsing the
+    // same capped JSON array for every page is pure main/IO churn, so keep the
+    // decoded list beside the raw value exactly like Library does.
+    @Volatile
+    private var listRaw: String? = null
+
+    @Volatile
+    private var listCache: List<HistoryEntry>? = null
+
+    @Synchronized
     fun list(context: Context): List<HistoryEntry> {
-        val raw = prefs(context).getString(KEY, null) ?: return emptyList()
+        val raw = prefs(context).getString(KEY, null)
+        val hit = listCache
+        if (hit != null && listRaw == raw) return hit
+        if (raw == null) {
+            return emptyList<HistoryEntry>().also {
+                listRaw = null
+                listCache = it
+            }
+        }
         return try {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map { HistoryEntry.fromJson(arr.getJSONObject(it)) }
+            (0 until arr.length())
+                .map { HistoryEntry.fromJson(arr.getJSONObject(it)) }
+                .also {
+                    listRaw = raw
+                    listCache = it
+                }
         } catch (e: Exception) {
             emptyList()
         }
@@ -88,7 +111,10 @@ object History {
     private fun save(context: Context, items: List<HistoryEntry>) {
         val arr = JSONArray()
         items.forEach { arr.put(it.toJson()) }
-        prefs(context).edit().putString(KEY, arr.toString()).apply()
+        val text = arr.toString()
+        prefs(context).edit().putString(KEY, text).apply()
+        listRaw = text
+        listCache = items
     }
 
     /**
@@ -104,6 +130,7 @@ object History {
      * chapterKey, exactly as before — collapsing those by their (empty) series
      * would fold every unrelated single file into one row.
      */
+    @Synchronized
     fun touch(context: Context, entry: HistoryEntry) {
         val items = list(context).filterNot {
             it.chapterKey == entry.chapterKey ||
@@ -114,6 +141,7 @@ object History {
         save(context, items)
     }
 
+    @Synchronized
     fun remove(context: Context, chapterKey: String) {
         save(context, list(context).filterNot { it.chapterKey == chapterKey })
     }
