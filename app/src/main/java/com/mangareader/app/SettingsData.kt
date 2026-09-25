@@ -178,144 +178,38 @@ internal fun DataSettings() {
     ) { uri: Uri? -> if (uri != null) pendingRestore = uri }
 
     SettingsColumn {
-        SectionHeader("Storage location")
-        ListItem(
-            headlineContent = { Text(locationLabel) },
-            supportingContent = {
-                Text(
-                    if (moving) "Moving chapters\u2026"
-                    else "Chapter downloads and automatic backups"
-                )
-            },
-            trailingContent = {
-                TextButton(enabled = !moving, onClick = chooseLocation) { Text("Change") }
-            },
-            modifier = Modifier.clickable(enabled = !moving) { chooseLocation() }
-        )
-        HorizontalDivider()
-        if (customDir != null && !StorageLocation.active(context)) {
-            PrefNote(
-                "\u26a0 ${customDir?.absolutePath} can't be written to right now, so " +
-                    "downloads are going to app storage instead. Storage permission " +
-                    "revoked, or the card it's on isn't mounted."
-            )
-        }
-        if (customDir != null) {
-            ListItem(
-                headlineContent = { Text("Use app storage") },
-                supportingContent = { Text("Back to the default, inside the app") },
-                trailingContent = {
-                    TextButton(
-                        enabled = !moving,
-                        onClick = {
-                            val previous = StorageLocation.base(context)
-                            val worthMoving = StorageLocation.hasStore(previous)
-                            StorageLocation.clear(context)
-                            refreshLocation()
-                            if (worthMoving) {
-                                pendingMove = previous to StorageLocation.base(context)
-                            }
-                        }
-                    ) { Text("Reset") }
+        DataStorageLocationSection(
+            locationLabel = locationLabel,
+            moving = moving,
+            customDir = customDir,
+            active = StorageLocation.active(context),
+            reorganising = reorganising,
+            onChooseLocation = chooseLocation,
+            onUseAppStorage = {
+                val previous = StorageLocation.base(context)
+                val worthMoving = StorageLocation.hasStore(previous)
+                StorageLocation.clear(context)
+                refreshLocation()
+                if (worthMoving) {
+                    pendingMove = previous to StorageLocation.base(context)
                 }
-            )
-            HorizontalDivider()
-        }
-        ListItem(
-            headlineContent = { Text("Import Tachiyomi backup") },
-            supportingContent = {
-                Text("Library, categories, read state and history from a .tachibk file")
             },
-            trailingContent = {
-                TextButton(
-                    enabled = !reorganising && !moving,
-                    onClick = { importOpen = true }
-                ) { Text("Scan") }
-            }
-        )
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text("Reorganise downloads") },
-            supportingContent = {
-                Text(
-                    if (reorganising) "Filing chapters\u2026"
-                    else "File chapters from before this layout under source and series"
-                )
-            },
-            trailingContent = {
-                TextButton(
-                    enabled = !reorganising && !moving,
-                    onClick = { confirmReorganise = true }
-                ) { Text("Run") }
-            }
-        )
-        HorizontalDivider()
-        PrefNote(
-            "A \u201cYomu\u201d folder is created inside whatever you pick, holding " +
-                "\u201cdownloads\u201d and \u201cbackups\u201d. Chapters are filed under " +
-                "source, then series, then chapter, so the tree reads the same in a " +
-                "file manager as it does in the app. Anything left in app storage " +
-                "doesn\u2019t survive uninstalling; a folder you picked does."
+            onImport = { importOpen = true },
+            onReorganise = { confirmReorganise = true },
         )
 
-        SectionHeader("Backup and restore")
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                enabled = !busy,
-                onClick = { createPicker.launch(defaultBackupName()) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Create backup") }
-            OutlinedButton(
-                enabled = !busy,
-                onClick = { restorePicker.launch(arrayOf("*/*")) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Restore backup") }
-        }
-        Spacer(Modifier.height(8.dp))
-
-        SectionHeader("Automatic backup frequency")
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            PrefChipRow(
-                label = "Frequency",
-                options = BackupFrequency.entries.map { it.label },
-                selected = BackupFrequency.entries.indexOf(frequency),
-                onSelect = {
-                    val next = BackupFrequency.entries[it]
-                    frequency = next
-                    Backup.setFrequency(context, next)
-                }
-            )
-        }
-        PrefNote(
-            if (frequency != BackupFrequency.OFF && customDir == null)
-                "With the default location these land inside app storage, where a " +
-                    "file manager can't reach them \u2014 fine as a safety net, no use " +
-                    "for moving to another phone. Set a folder above for that."
-            else
-                "Keeps the five most recent, then deletes the oldest. A backup " +
-                    "holds the library, categories, history, read marks, resume " +
-                    "positions and every source's settings \u2014 not the downloaded " +
-                    "pages themselves."
+        DataBackupSettingsSection(
+            busy = busy,
+            frequency = frequency,
+            lastBackup = lastBackup,
+            customDirectorySelected = customDir != null,
+            onCreateBackup = { createPicker.launch(defaultBackupName()) },
+            onRestoreBackup = { restorePicker.launch(arrayOf("*/*")) },
+            onFrequencyChange = {
+                frequency = it
+                Backup.setFrequency(context, it)
+            },
         )
-        ListItem(
-            headlineContent = { Text("Last automatic backup") },
-            supportingContent = {
-                Text(
-                    if (lastBackup <= 0L) "Never"
-                    else DateUtils.getRelativeTimeSpanString(
-                        lastBackup,
-                        System.currentTimeMillis(),
-                        DateUtils.MINUTE_IN_MILLIS
-                    ).toString()
-                )
-            }
-        )
-        HorizontalDivider()
 
         DataStorageUsageSection(
             use = use,
