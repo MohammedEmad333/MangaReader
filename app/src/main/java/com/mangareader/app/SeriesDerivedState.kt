@@ -7,6 +7,13 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private data class SeriesChapterDerivedSnapshot(
+    val progress: SeriesProgressSummary,
+    val visible: List<Chapter>,
+    val chapterDisplay: ChapterDisplay,
+    val filtersActive: Boolean,
+)
+
 internal data class SeriesDerivedState(
     val resumeIndex: Int,
     val visible: List<Chapter>,
@@ -14,6 +21,7 @@ internal data class SeriesDerivedState(
     val filtersActive: Boolean,
     val downloadedCount: Int?,
     val anyProgress: Boolean,
+    val chapterStateReady: Boolean,
     val listState: LazyListState,
     val barAlpha: Float,
 )
@@ -31,33 +39,53 @@ internal fun rememberSeriesDerivedState(
     inLibrary: Boolean,
     scroll: ScrollMemory,
 ): SeriesDerivedState {
-    val progress = remember(chapters, effectiveReadTick, sourceId, isAnimeSource) {
-        // Resume target and "has progress" used to scan the entire chapter list
-        // independently and repeat the same SharedPreferences lookups. One
-        // snapshot keeps large-series opens cheaper without changing semantics.
-        seriesProgressSummary(
-            context = context,
-            chapters = chapters,
-            sourceId = sourceId,
-            isAnimeSource = isAnimeSource,
-        )
-    }
-    val resumeIndex = progress.resumeIndex
+    val appContext = context.applicationContext
+
     /**
-     * What the list below draws — filtered and sorted. **Not** what anything
-     * indexes: see `onOpen`.
+     * Everything below used to run from `remember { ... }`, which still means
+     * "run during composition" on the UI thread. On a long series that can be
+     * hundreds or thousands of SharedPreferences reads plus filesystem probes
+     * for the Downloaded filter before the first chapter row can be drawn.
      *
-     * Keyed on both ticks because the filters read read-state and disk, so
-     * finishing a chapter or a download changes which rows belong here.
+     * Keep the last completed snapshot visible while a new one is calculated,
+     * and do the storage-backed scan on IO. `produceState` preserves its current
+     * value when a key changes, so toggling a filter or finishing a chapter does
+     * not blank the list while the replacement snapshot is being prepared.
      */
-    val visible = remember(chapters, effectiveReadTick, downloadTick, optionsTick, sourceId) {
-        visibleChapters(context, chapters, sourceId)
+    val chapterSnapshot by produceState<SeriesChapterDerivedSnapshot?>(
+        initialValue = null,
+        chapters,
+        effectiveReadTick,
+        downloadTick,
+        optionsTick,
+        sourceId,
+        isAnimeSource,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            SeriesChapterDerivedSnapshot(
+                progress = seriesProgressSummary(
+                    context = appContext,
+                    chapters = chapters,
+                    sourceId = sourceId,
+                    isAnimeSource = isAnimeSource,
+                ),
+                visible = visibleChapters(appContext, chapters, sourceId),
+                chapterDisplay = ChapterPrefs.display(appContext),
+                filtersActive = ChapterPrefs.anyFilterActive(appContext),
+            )
+        }
     }
-    val chapterDisplay = remember(optionsTick) { ChapterPrefs.display(context) }
-    val filtersActive = remember(optionsTick) { ChapterPrefs.anyFilterActive(context) }
+
+    val chapterStateReady = chapterSnapshot != null
+    val progress = chapterSnapshot?.progress
+    val resumeIndex = progress?.resumeIndex ?: -1
+    val visible = chapterSnapshot?.visible.orEmpty()
+    val chapterDisplay = chapterSnapshot?.chapterDisplay ?: ChapterDisplay.NAME
+    val filtersActive = chapterSnapshot?.filtersActive ?: false
+
     val downloadedCount by produceState<Int?>(null, chapters, downloadTick) {
         value = withContext(Dispatchers.IO) {
-            chapters.count { Downloads.isComplete(context, it.id) }
+            chapters.count { Downloads.isComplete(appContext, it.id) }
         }
     }
 
@@ -75,7 +103,7 @@ internal fun rememberSeriesDerivedState(
     LaunchedEffect(chapters, effectiveReadTick, inLibrary, sourceId) {
         if (!inLibrary || chapters.isEmpty()) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            SeriesIndex.record(context, sourceId, series.id, chapters)
+            SeriesIndex.record(appContext, sourceId, series.id, chapters)
         }
     }
 
@@ -84,7 +112,7 @@ internal fun rememberSeriesDerivedState(
     // series has to be gone by then rather than one frame later.
     scroll.sync(series.id)
 
-    val anyProgress = progress.anyProgress
+    val anyProgress = progress?.anyProgress ?: false
 
     // Hoisted above the Box because the top bar and the list both read it. Built
     // inline at the LazyColumn until 0.109, which was fine while nothing else
@@ -130,6 +158,7 @@ internal fun rememberSeriesDerivedState(
         filtersActive = filtersActive,
         downloadedCount = downloadedCount,
         anyProgress = anyProgress,
+        chapterStateReady = chapterStateReady,
         listState = listState,
         barAlpha = barAlpha,
     )
