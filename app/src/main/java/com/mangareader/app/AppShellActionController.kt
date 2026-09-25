@@ -46,8 +46,14 @@ internal class AppShellActionController(
     }
 
     fun deleteSource(config: SourceConfig) {
-        SourceManager.remove(context, config.id)
-        reloadConfigs()
+        val appContext = context.applicationContext
+        scope.launch {
+            val configs = withContext(Dispatchers.IO) {
+                SourceManager.remove(appContext, config.id)
+                SourceManager.list(appContext)
+            }
+            appState.configs = configs
+        }
     }
 
     fun refreshExtensions() {
@@ -122,9 +128,15 @@ internal class AppShellActionController(
     }
 
     fun saveSource(config: SourceConfig) {
-        SourceManager.upsert(context, config)
-        reloadConfigs()
-        dismissSourceDialog()
+        val appContext = context.applicationContext
+        scope.launch {
+            val configs = withContext(Dispatchers.IO) {
+                SourceManager.upsert(appContext, config)
+                SourceManager.list(appContext)
+            }
+            appState.configs = configs
+            dismissSourceDialog()
+        }
     }
 
     private fun reloadConfigs() {
