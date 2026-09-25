@@ -22,7 +22,7 @@ internal fun rememberLibraryDerivedState(
     mediaFilter: String,
     sort: LibrarySort,
     ascending: Boolean,
-    randomSeed: Long,
+    randomSeed: Int,
     badgeDl: Boolean,
     badgeUnread: Boolean,
     fDownloaded: FilterState,
