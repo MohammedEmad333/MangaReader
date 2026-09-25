@@ -63,7 +63,7 @@ internal fun HistoryEntryRow(
     dim: Boolean,
     downloaded: Boolean,
     badgeLocal: Boolean,
-    unread: Int,
+    unread: Int?,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
 ) {
