@@ -33,6 +33,13 @@ internal fun rememberStartupUiSnapshot(context: Context): StartupUiSnapshot? {
     val appContext = context.applicationContext
     val snapshot by produceState<StartupUiSnapshot?>(initialValue = null, appContext) {
         value = withContext(Dispatchers.IO) {
+            // Both used to run synchronously before setContent. They touch disk
+            // and, for an existing queue, can probe download markers/storage.
+            // Restore them before exposing the snapshot so no user action can
+            // race with a late queue/source migration.
+            SourceManager.migrateLegacy(appContext)
+            DownloadQueue.restore(appContext)
+
             StartupUiSnapshot(
                 configs = SourceManager.list(appContext),
                 history = History.forDisplay(appContext),
