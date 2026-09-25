@@ -1,6 +1,9 @@
 package com.mangareader.app
 
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal enum class TransientRouteResult {
     NONE,
@@ -78,8 +81,13 @@ internal fun RootTransientRoute(
             onOpenChapter = { actions.openChapter(it) },
             onClose = {
                 readerSession.close()
-                appState.history = History.forDisplay(context)
                 appState.readTick++
+                root.scope.launch {
+                    ReaderHistoryWriter.flush()
+                    appState.history = withContext(Dispatchers.IO) {
+                        History.forDisplay(context)
+                    }
+                }
             }
         )
         return TransientRouteResult.CONTENT
