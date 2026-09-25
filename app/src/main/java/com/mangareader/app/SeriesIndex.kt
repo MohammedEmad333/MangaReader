@@ -1,7 +1,6 @@
 package com.mangareader.app
 
 import android.content.Context
-import org.json.JSONObject
 
 /**
  * What the library knows about one series' chapters without opening it.
@@ -83,11 +82,6 @@ data class SeriesCounts(
  * chapter fetch.
  */
 object SeriesIndex {
-    private const val KEY = "series_index_json"
-
-    private fun prefs(c: Context) =
-        c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
-
     /**
      * Serialises every read-modify-write on this store.
      *
@@ -107,82 +101,19 @@ object SeriesIndex {
      */
     private val writeLock = Any()
 
-    /**
-     * The parsed index and the exact raw string it came from, as one value.
-     *
-     * One field rather than two, and the reason is a real if narrow bug: written
-     * separately, a reader could match the *new* raw string against the *old*
-     * parsed map and hand back stale counts for one draw. A single volatile
-     * reference changes both halves at once, so a reader sees the new pair or the
-     * old pair and never a mix. Same memo-on-the-raw-string trick as
-     * `Library.list` and `Categories.assignments`, which is what makes an
-     * external write unable to leave a stale parse behind.
-     */
-    private class Memo(val raw: String, val items: Map<String, SeriesCounts>)
+    /** Lock-free reader view backed by the storage memo. */
+    fun all(context: Context): Map<String, SeriesCounts> =
+        SeriesIndexStorage.all(context)
 
-    @Volatile
-    private var memo: Memo? = null
+    fun of(context: Context, seriesId: String): SeriesCounts? =
+        all(context)[seriesId]
 
-    fun all(context: Context): Map<String, SeriesCounts> {
-        // Same mark name as Library's, deliberately: whichever of the two runs
-        // first pays the file load and `once` records only that one. Which name
-        // carries the cost is itself the answer to "who paid for it".
-        val raw = StartupTimings.once("Prefs first read") {
-            prefs(context).getString(KEY, null)
-        } ?: return emptyMap()
-        memo?.let { if (it.raw == raw) return it.items }
-        return try {
-            StartupTimings.once("SeriesIndex parse") {
-            val root = JSONObject(raw)
-            val out = HashMap<String, SeriesCounts>(root.length())
-            val keys = root.keys()
-            while (keys.hasNext()) {
-                val id = keys.next()
-                val o = root.optJSONObject(id) ?: continue
-                out[id] = SeriesCounts(
-                    total = o.optInt("t"),
-                    read = o.optInt("r"),
-                    latestChapterAt = o.optLong("l"),
-                    updatedAt = o.optLong("u"),
-                    sweptAt = o.optLong("s")
-                )
-            }
-            out.also { memo = Memo(raw, it) }
-            }
-        } catch (e: Exception) {
-            emptyMap()
-        }
-    }
-
-    fun of(context: Context, seriesId: String): SeriesCounts? = all(context)[seriesId]
-
-    /**
-     * Writes the whole index.
-     *
-     * Takes [writeLock] as well as being called from inside it — Kotlin's
-     * `synchronized` is reentrant, so this costs nothing and means a future caller
-     * that forgets the lock is still safe rather than silently racy.
-     */
-    private fun save(context: Context, items: Map<String, SeriesCounts>) {
-        synchronized(writeLock) {
-            val root = JSONObject()
-            items.forEach { (id, c) ->
-                root.put(
-                    id,
-                    JSONObject()
-                        .put("t", c.total)
-                        .put("r", c.read)
-                        .put("l", c.latestChapterAt)
-                        .put("u", c.updatedAt)
-                        .put("s", c.sweptAt)
-                )
-            }
-            val text = root.toString()
-            prefs(context).edit().putString(KEY, text).apply()
-            // Seeded rather than cleared, like Library.save: the caller normally
-            // reads straight back and this saves re-parsing what was just written.
-            memo = Memo(text, items)
-        }
+    /** Called only from write-locked read/modify/write paths below. */
+    private fun save(
+        context: Context,
+        items: Map<String, SeriesCounts>,
+    ) {
+        SeriesIndexStorage.save(context, items)
     }
 
     /**
@@ -336,8 +267,7 @@ object SeriesIndex {
     /** For the "clear cached data" action, which drops every derived store. */
     fun clearAll(context: Context) {
         synchronized(writeLock) {
-            prefs(context).edit().remove(KEY).apply()
-            memo = null
+            SeriesIndexStorage.clear(context)
         }
     }
 }
