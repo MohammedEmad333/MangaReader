@@ -93,7 +93,11 @@ internal fun LibraryGrid(
                     .fillMaxSize()
                     .padding(horizontal = 8.dp),
             ) {
-                items(shown, key = { it.seriesId }) { entry ->
+                items(
+                    shown,
+                    key = { it.seriesId },
+                    contentType = { "library-list" },
+                ) { entry ->
                     val isSelected = entry.seriesId in selected
                     LibraryListEntryRow(
                         entry = entry,
@@ -129,7 +133,11 @@ internal fun LibraryGrid(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(shown, key = { it.seriesId }) { entry ->
+                    items(
+                        shown,
+                        key = { it.seriesId },
+                        contentType = { "library-grid" },
+                    ) { entry ->
                         val isSelected = entry.seriesId in selected
                         LibraryGridEntryCard(
                             entry = entry,
