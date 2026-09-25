@@ -107,7 +107,7 @@ object DownloadIndex {
 
     fun list(context: Context): List<DownloadedSeries> {
         cached?.let { return it }
-        return build(context).also {
+        return DownloadIndexBuilder.build(context).also {
             cached = it
             cachedIds = it.mapTo(mutableSetOf()) { series -> series.seriesId }
         }
@@ -165,105 +165,10 @@ object DownloadIndex {
             .also { cachedIds = it }
     }
 
-    private fun build(context: Context): List<DownloadedSeries> {
-        val live = DownloadIndexStorage.read(context).filter { Downloads.isComplete(context, it.chapterId) }
-        val known = live.map { it.chapterId }.toMutableSet()
-
-        val recovered = mutableListOf<DownloadIndexRecord>()
-        val scanned = needsRecovery(context, known)
-        if (scanned) for (entry in Library.list(context)) {
-            for (chapter in ChapterCache.load(context, entry.seriesId)) {
-                if (chapter.id in known) continue
-                if (!Downloads.isComplete(context, chapter.id)) continue
-                known.add(chapter.id)
-                recovered += DownloadIndexRecord(
-                    chapterId = chapter.id,
-                    chapterName = chapter.name,
-                    sourceId = entry.sourceId,
-                    seriesId = entry.seriesId,
-                    title = entry.title,
-                    cover = entry.cover
-                )
-            }
-        }
-
-        // The scan has now run to completion, so the one-time migration it
-        // performs is done. See RECOVERY_DONE.
-        if (scanned) runCatching { prefs(context).edit().putBoolean(RECOVERY_DONE, true).apply() }
-
-        return (live + recovered)
-            .groupBy { it.seriesId }
-            .map { (seriesId, records) ->
-                val first = records.first()
-                DownloadedSeries(
-                    sourceId = first.sourceId,
-                    seriesId = seriesId,
-                    title = first.title.ifBlank { "Unknown series" },
-                    // Any one record's cover will do; they all came from the same
-                    // series, and a blank one just falls back to the placeholder.
-                    cover = records.firstOrNull { it.cover.isNotBlank() }?.cover ?: "",
-                    chapters = records.map { DownloadedChapter(it.chapterId, it.chapterName) },
-                    sizeBytes = records.sumOf { Downloads.sizeOf(context, it.chapterId) }
-                )
-            }
-            .sortedByDescending { it.sizeBytes }
-    }
-
-    /**
-     * Whether the scan below is worth running at all.
-     *
-     * That scan reads the chapter cache off disk for every series in the
-     * library. At forty series it was free; at several thousand it's thousands
-     * of file reads and JSON parses before the Downloads tab can draw, every
-     * single time it's opened. It's a repair for an index that has lost track of
-     * folders that are still on disk, and normally there's nothing to repair.
-     *
-     * So: ask the path index whether it knows of any downloaded chapter this
-     * one doesn't, and check whether the old flat layout — whose folder names
-     * are hashes and can't be mapped back to chapter ids, making a scan the only
-     * way to find them — has anything in it. If neither, there is nothing the
-     * scan could turn up.
-     */
-    private fun needsRecovery(context: Context, known: Set<String>): Boolean {
-        if (prefs(context).getBoolean(RECOVERY_DONE, false)) return false
-        if (DownloadPaths.knownChapterIds(context).any { it !in known }) return true
-        return StorageLocation.legacyRoots(context).any { root ->
-            root.listFiles()?.any { it.isDirectory } == true
-        }
-    }
-
-    /**
-     * Marks the recovery scan as having happened, so it never runs again.
-     *
-     * The gate above leaks, and it leaks permanently. `knownChapterIds` holds
-     * every chapter that was ever assigned a path, so **one cancelled download
-     * makes the first condition true forever** — that id is known to the path
-     * index and will never be a completed download. Behind the gate is a read
-     * of `ChapterCache` for every entry in the library, which on this library
-     * is thousands of files, on the composition thread, every time the memo is
-     * cold.
-     *
-     * What the scan recovers is downloads made before this index existed. That
-     * is a **migration**, not a routine check: there is a fixed, finite set of
-     * them and once they are found they are recorded. Re-deciding it on every
-     * cold cache is re-running a migration because a boolean happened to be
-     * true.
-     *
-     * Stamped after a build that ran the scan, not after every build, so a
-     * process that never reached the scan doesn't claim it happened.
-     *
-     * **If the download tree ever moves** — a storage-location change, or
-     * `DownloadPaths.rebuild` — this stamp should be cleared, because a fresh
-     * tree can hold folders this index has never seen. Nothing does that today;
-     * `invalidate()` deliberately doesn't, since dropping a memo is not the
-     * same event as relocating the files.
-     */
-    private const val RECOVERY_DONE = "download_index_recovered"
-
     /** Clears the stamp, so the next [list] scans again. For a moved tree. */
     fun forgetRecovery(context: Context) {
         invalidate()
-        runCatching { prefs(context).edit().remove(RECOVERY_DONE).apply() }
+        DownloadIndexBuilder.clearRecovery(context)
     }
 
     // ---------- deleting ----------
