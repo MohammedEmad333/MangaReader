@@ -5,68 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
-
-/**
- * One queued chapter.
- *
- * Everything here has to survive being written to disk and read back in a fresh
- * process, which rules out holding a [Source] or a [Chapter] — the chapter's
- * `handle` is the extension's own SChapter and isn't serialisable. The ids are
- * enough: [SourceManager.listAllSources] resolves the source, and
- * [Source.rehydrateChapter] rebuilds the handle from the chapter id, which is
- * the same path the offline chapter cache already relies on.
- *
- * [seriesId] and [cover] aren't needed to download anything. They're here so a
- * finished chapter can be filed under its series in [DownloadIndex] without a
- * network round trip to work out what it belonged to.
- */
-data class DownloadItem(
-    val sourceId: String,
-    val chapterId: String,
-    val chapterName: String,
-    val seriesTitle: String,
-    val seriesId: String = "",
-    val cover: String = ""
-) {
-    fun toJson(): JSONObject = JSONObject().apply {
-        put("sourceId", sourceId)
-        put("chapterId", chapterId)
-        put("chapterName", chapterName)
-        put("seriesTitle", seriesTitle)
-        put("seriesId", seriesId)
-        put("cover", cover)
-    }
-
-    companion object {
-        fun fromJson(o: JSONObject) = DownloadItem(
-            sourceId = o.getString("sourceId"),
-            chapterId = o.getString("chapterId"),
-            chapterName = o.optString("chapterName"),
-            seriesTitle = o.optString("seriesTitle"),
-            // optString, not getString: a queue written by 0.20 has neither.
-            seriesId = o.optString("seriesId"),
-            cover = o.optString("cover")
-        )
-    }
-}
-
-/** A chapter that came out of the queue without finishing, and why. */
-data class FailedDownload(
-    val item: DownloadItem,
-    val reason: String
-) {
-    fun toJson(): JSONObject = item.toJson().apply { put("reason", reason) }
-
-    companion object {
-        fun fromJson(o: JSONObject) = FailedDownload(
-            item = DownloadItem.fromJson(o),
-            reason = o.optString("reason").ifBlank { "Download failed" }
-        )
-    }
-}
 
 /**
  * The download queue, shared by the UI and [DownloadService].
@@ -84,8 +22,6 @@ data class FailedDownload(
  * page that was in flight.
  */
 object DownloadQueue {
-
-    private const val FILE = "download_queue.json"
 
     /** Waiting or in progress, head first. The head is what the service works on. */
     var items by mutableStateOf<List<DownloadItem>>(emptyList())
@@ -346,30 +282,14 @@ object DownloadQueue {
 
     // ---------- persistence ----------
 
-    private fun file(context: Context) =
-        File(context.applicationContext.filesDir, FILE)
-
     private fun save(context: Context) {
-        val queued = items
-        val bad = failed
-        val isPaused = paused
-        val pausedItems = pausedIds
-        runCatching {
-            val queuedArr = JSONArray()
-            queued.forEach { queuedArr.put(it.toJson()) }
-            val failedArr = JSONArray()
-            bad.forEach { failedArr.put(it.toJson()) }
-            val pausedArr = JSONArray()
-            pausedItems.forEach { pausedArr.put(it) }
-            file(context).writeText(
-                JSONObject().apply {
-                    put("paused", isPaused)
-                    put("pausedIds", pausedArr)
-                    put("items", queuedArr)
-                    put("failed", failedArr)
-                }.toString()
-            )
-        }
+        DownloadQueueStore.save(
+            context = context,
+            items = items,
+            failed = failed,
+            paused = paused,
+            pausedIds = pausedIds,
+        )
     }
 
     /**
@@ -383,30 +303,11 @@ object DownloadQueue {
     fun restore(context: Context) {
         if (restored) return
         restored = true
-        runCatching {
-            val f = file(context)
-            if (!f.exists()) return
-            val root = JSONObject(f.readText())
-            paused = root.optBoolean("paused", false)
-
-            root.optJSONArray("pausedIds")?.let { arr ->
-                pausedIds = (0 until arr.length()).map { arr.getString(it) }.toSet()
-            }
-
-            root.optJSONArray("items")?.let { arr ->
-                items = (0 until arr.length())
-                    .map { DownloadItem.fromJson(arr.getJSONObject(it)) }
-                    // A chapter that finished after the last save is already on disk.
-                    .filterNot { Downloads.isComplete(context, it.chapterId) }
-                // Pauses for chapters that are no longer queued would otherwise
-                // accumulate forever in a file nothing prunes.
-                pausedIds = pausedIds intersect items.map { it.chapterId }.toSet()
-            }
-            root.optJSONArray("failed")?.let { arr ->
-                failed = (0 until arr.length())
-                    .map { FailedDownload.fromJson(arr.getJSONObject(it)) }
-                    .filterNot { Downloads.isComplete(context, it.item.chapterId) }
-            }
+        DownloadQueueStore.restore(context)?.let { snapshot ->
+            paused = snapshot.paused
+            pausedIds = snapshot.pausedIds
+            items = snapshot.items
+            failed = snapshot.failed
         }
     }
 }
