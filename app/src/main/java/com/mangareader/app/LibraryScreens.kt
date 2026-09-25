@@ -343,99 +343,47 @@ internal fun LibraryTab(
 
         ErrorBanner(error)
 
-        if (groups.isEmpty()) {
-            LibraryEmpty(allEmpty = true, modifier = Modifier.weight(1f))
-        } else {
-            // A refresh that re-reads the on-disk state without starting the
-            // Settings sweep. Passed down into LibraryGrid rather than wrapped
-            // around the pager here: PullToRefreshBox reads the vertical
-            // overscroll off its child through nested scroll, and a
-            // HorizontalPager sitting between the box and the grid intercepts
-            // that signal — the gesture would attach but never fire. Each
-            // page's grid IS a scroll container, so the box goes there, exactly
-            // as it wraps the list on History, Downloads and browse.
-            //
-            // localTick is what "refresh" moves. Every remember(tick) read
-            // above re-runs when it bumps, and Library.list / SeriesIndex.all /
-            // Categories.list each re-read prefs and compare their cached raw
-            // string on that next call, so an out-of-band change is picked up
-            // for free.
-            //
-            // The download badge needs more than the index cleared, and this is
-            // where the first cut of this card got it wrong. The badge reads
-            // DownloadIndex.seriesIds, which filters records through
-            // Downloads.isComplete — and isComplete answers from its OWN
-            // completion memo. DownloadIndex.invalidate() drops the index and
-            // forces seriesIds to recompute, but the recompute calls isComplete
-            // again and gets the same cached "complete", so a series whose files
-            // were deleted with a file manager KEEPS its badge. That is the
-            // identical two-layer trap 0.162 hit on the Downloads tab.
-            // Downloads.invalidateCompletion() clears the completion and size
-            // memos AND the index — the whole point of it is "files moved or
-            // vanished out of band", which is exactly what a pull asserts.
-            val onLibraryPull: () -> Unit = {
+        LibraryPagerContent(
+            groups = groups,
+            allEntriesEmpty = allEntries.isEmpty(),
+            pagerState = pagerState,
+            selecting = selecting,
+            scroll = scroll,
+            ordering = ordering,
+            display = display,
+            perRow = perRow,
+            readIds = readIds,
+            downloadedIds = if (badgeDl) downloadedIds else emptySet(),
+            badgeLocal = badgeLocal,
+            unreadCounts = if (badgeUnread) {
+                counts.mapValues { (_, counts) -> counts.unread }.filterValues { it > 0 }
+            } else {
+                emptyMap()
+            },
+            selected = selected,
+            onOpen = onOpen,
+            onToggle = { id ->
+                selected = if (id in selected) selected - id else selected + id
+            },
+            onRefresh = {
                 Downloads.invalidateCompletion()
                 localTick++
-            }
-            HorizontalPager(
-                state = pagerState,
-                // A swipe that also drags entries around is not a swipe. Held
-                // off during selection so a mis-swipe can't change tab out from
-                // under a half-made selection.
-                userScrollEnabled = !selecting && groups.size > 1,
-                modifier = Modifier.weight(1f)
-            ) { page ->
-                LibraryGrid(
-                    shown = groups[page].items,
-                    allEmpty = allEntries.isEmpty(),
-                    // Per group, not per page index: the tabs can be reordered
-                    // or renamed under a position, and a category's own scroll
-                    // should follow the category.
-                    scrollKey = groups[page].key,
-                    scroll = scroll,
-                    ordering = ordering,
-                    display = display,
-                    perRow = perRow,
-                    readIds = readIds,
-                    downloadedIds = if (badgeDl) downloadedIds else emptySet(),
-                    badgeLocal = badgeLocal,
-                    // Only what the badge needs, and only when it's on: the grid
-                    // has no use for totals or dates, and handing it the whole
-                    // index would make every count change recompose every cell.
-                    unreadCounts = if (badgeUnread) {
-                        counts.mapValues { (_, c) -> c.unread }.filterValues { it > 0 }
-                    } else emptyMap(),
-                    selected = selected,
-                    selecting = selecting,
-                    onOpen = onOpen,
-                    onToggle = { id ->
-                        selected = if (id in selected) selected - id else selected + id
-                    },
-                    onRefresh = onLibraryPull,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-    }
-
-    if (optionsOpen) {
-        LibraryOptionsSheet(
-            onDismiss = { optionsOpen = false },
-            onChanged = { localTick++ }
+            },
+            modifier = Modifier.weight(1f),
         )
     }
 
-    if (assignOpen) {
-        BulkCategoryDialog(
-            seriesIds = selected,
-            onDismiss = { assignOpen = false },
-            onApplied = {
-                assignOpen = false
-                selected = emptySet()
-                localTick++
-            }
-        )
-    }
+    LibraryScreenDialogs(
+        optionsOpen = optionsOpen,
+        onDismissOptions = { optionsOpen = false },
+        onOptionsChanged = { localTick++ },
+        assignOpen = assignOpen,
+        selected = selected,
+        onDismissAssign = { assignOpen = false },
+        onAppliedAssign = {
+            assignOpen = false
+            selected = emptySet()
+            localTick++
+        },
+    )
 }
-
-// ---------- reader ----------
