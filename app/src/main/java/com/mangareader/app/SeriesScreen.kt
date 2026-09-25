@@ -219,6 +219,7 @@ internal fun SeriesScreen(
     val filtersActive = derived.filtersActive
     val downloadedCount = derived.downloadedCount
     val anyProgress = derived.anyProgress
+    val chapterStateReady = derived.chapterStateReady
     val listState = derived.listState
     val barAlpha = derived.barAlpha
 
@@ -246,6 +247,7 @@ internal fun SeriesScreen(
         filtersActive = filtersActive,
         resumeIndex = resumeIndex,
         anyProgress = anyProgress,
+        chapterStateReady = chapterStateReady,
         listState = listState,
         barAlpha = barAlpha,
         seriesUrl = seriesUrl,
