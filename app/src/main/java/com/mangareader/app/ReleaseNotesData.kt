@@ -11,5 +11,6 @@ internal val releaseNotes: List<ReleaseNote> =
     releaseNotes182To156 +
     releaseNotes155To119 +
     releaseNotes118To92 +
-    releaseNotes91To67 +
+    releaseNotes91To79 +
+    releaseNotes78To67 +
     releaseNotes65To52
