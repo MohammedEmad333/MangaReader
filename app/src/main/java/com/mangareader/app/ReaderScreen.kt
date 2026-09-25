@@ -4,16 +4,9 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,14 +22,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -46,49 +36,15 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
-import kotlin.math.abs
 import kotlin.math.roundToInt
-
-/**
- * How far a long strip can be pinched in.
- *
- * 3x rather than the 5x a single page can afford: this scales the whole list, so
- * every page above and below the one being read is scaled with it, and past
- * about 3x a webtoon panel is wider than the viewport in both directions at
- * once — which would need the two-axis panning this deliberately doesn't have.
- */
-private const val MAX_STRIP_ZOOM = 3f
-
-/**
- * Where a double tap lands, matching SY's `onDoubleTapConfirmed`.
- *
- * 2x rather than the 3x maximum: a double tap is meant to be one step to a
- * readable size and one step back, and jumping straight to the ceiling leaves
- * no room to pinch further without first pinching out.
- */
-private const val DOUBLE_TAP_ZOOM = 2f
-
-/**
- * How long a double-tap zoom takes to land. SY's `ANIMATOR_DURATION_TIME`.
- *
- * **This applies to the double tap and to nothing else.** A pinch must stay
- * instant: animating it would put every frame 200ms behind the fingers, which
- * reads as lag rather than as polish. That is why this drives an explicit
- * animation from the double-tap branch instead of the scale being an
- * `animateFloatAsState` — a blanket animation cannot tell the two sources of a
- * scale change apart, and one of them must not be smoothed.
- */
-private const val ZOOM_ANIM_MS = 200
 
 /**
  * How long a transition row must sit still on screen before the chapter turns.
@@ -432,176 +388,13 @@ internal fun ReaderScreen(
         // the zoom state.
         val stripModifier = pageModifier
 
-        // Long-strip zoom scales the WHOLE LIST, not a page.
-        //
-        // That is what TachiyomiSY does — it scales its `WebtoonRecyclerView` —
-        // and it is the only shape that works here. Zooming an item would fight
-        // the scroll the mode exists for, which is why §7 of the handoff listed
-        // this as "a piece of work rather than a flag" for eleven sessions.
-        //
-        // graphicsLayer scales the rendering and leaves the layout alone, so a
-        // zoomed strip overflows its box — hence clipToBounds, or it paints over
-        // the control bars.
-        var stripScale by remember(chapterIndex) { mutableFloatStateOf(1f) }
-        var stripPanX by remember(chapterIndex) { mutableFloatStateOf(0f) }
-        var stripPanY by remember(chapterIndex) { mutableFloatStateOf(0f) }
-        // The in-flight double-tap animation, held so a pinch can cancel it.
-        //
-        // Without this, starting a pinch during the 200ms would leave two
-        // writers on one value: the animation walking towards its target and
-        // the gesture multiplying whatever it finds there. The symptom is a
-        // pinch that drifts or snaps back, and it reads as a broken gesture
-        // rather than as two things driving one number — §5 of
-        // SESSION_HANDOFF_0.134.md, in a new place.
-        var zoomAnim by remember(chapterIndex) { mutableStateOf<Job?>(null) }
-        val viewportWidthPx = with(LocalDensity.current) {
-            LocalConfiguration.current.screenWidthDp.dp.toPx()
-        }
-        val viewportHeightPx = with(LocalDensity.current) {
-            LocalConfiguration.current.screenHeightDp.dp.toPx()
-        }
-        // Clamped to the overhang the zoom actually creates — `halfWidth *
-        // (scale - 1)`, which is SY's `getPositionX` exactly. Without it the
-        // content can be pushed off screen and left there, and a blank reader
-        // that needs a pinch to recover reads as a crash.
-        fun clampX(v: Float) =
-            v.coerceIn(-viewportWidthPx * (stripScale - 1f) / 2f, viewportWidthPx * (stripScale - 1f) / 2f)
-        fun clampY(v: Float) =
-            v.coerceIn(-viewportHeightPx * (stripScale - 1f) / 2f, viewportHeightPx * (stripScale - 1f) / 2f)
-
-        val stripTransform = rememberTransformableState { zoomChange, panChange, _ ->
-            // A live gesture always wins. Cancelling here rather than checking a
-            // flag means the animation never has to know a pinch exists.
-            zoomAnim?.cancel()
-            stripScale = (stripScale * zoomChange).coerceIn(1f, MAX_STRIP_ZOOM)
-            stripPanX = clampX(stripPanX + panChange.x)
-            // **The vertical component is discarded mid-chapter, not the
-            // gesture.** This is SY's rule, read out of `WebtoonRecyclerView`:
-            // `dy = if (atFirstPosition || atLastPosition) y - downY else 0`.
-            //
-            // 0.131 refused the whole drag whenever it was more vertical than
-            // horizontal, which meant a diagonal drag did nothing at all. Taking
-            // only the axis that has somewhere to go gives angled drags their
-            // horizontal half and leaves scrolling alone, because in the middle
-            // of a chapter there is no vertical overhang to pan into anyway —
-            // the list scrolls there instead.
-            // The vertical half of a drag goes to whichever thing can use it.
-            //
-            // SY discards it mid-chapter because its RecyclerView is still
-            // scrolling underneath — the gesture is shared. Here `transformable`
-            // has *claimed* the gesture, so discarding it means a diagonal drag
-            // moves horizontally only, which is what 0.132 did and what it felt
-            // like. Handing it to the list instead gives the same result SY
-            // gets: sideways pans, up and down scrolls, and a diagonal does
-            // both at once.
-            //
-            // Panning wins at the ends of the list, because that is the only
-            // place there is vertical overhang to pan into and the list has
-            // nothing left to give.
-            val atListEdge = !listState.canScrollBackward || !listState.canScrollForward
-            if (atListEdge) {
-                stripPanY = clampY(stripPanY + panChange.y)
-            } else {
-                // Negated: dragging up is a negative delta and has to scroll the
-                // list forward. Launched rather than awaited — this callback is
-                // not suspending and the scroll is fire-and-forget, the same
-                // shape `commitSeek` already uses.
-                scope.launch { listState.scrollBy(-panChange.y) }
-            }
-        }
-        val zoomedStripModifier = stripModifier
-            // Tap and double-tap share one detector, because they have to: a
-            // detector that knows about a double tap must wait out the
-            // double-tap timeout before it can call a single one, so declaring
-            // them separately would give the bars a delay AND a second detector
-            // racing the first.
-            //
-            // That delay is the real cost of this feature and it is paid on
-            // every tap in long strip. SY pays it too. If raising the bars comes
-            // to feel sluggish, this is why, and the honest fix is to drop
-            // double-tap rather than to tune the timeout.
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { showControls = !showControls },
-                    onDoubleTap = { offset ->
-                        // Both directions animate over ONE 0..1 driver rather
-                        // than three independent animations. SY uses an
-                        // AnimatorSet for the same reason: scale and the two
-                        // translations have to stay in step, and three separate
-                        // springs would let the content slide while it grows.
-                        val toScale: Float
-                        val toX: Float
-                        val toY: Float
-                        if (stripScale > 1f) {
-                            // Already zoomed: back to fit, centred.
-                            toScale = 1f
-                            toX = 0f
-                            toY = 0f
-                        } else {
-                            // SY's arithmetic, from `onDoubleTapConfirmed`:
-                            // toX = (halfWidth - tapX) * (toScale - 1). It puts
-                            // the point you tapped in the middle of the screen
-                            // rather than zooming the centre and leaving you to
-                            // pan to what you were looking at.
-                            toScale = DOUBLE_TAP_ZOOM
-                            toX = (viewportWidthPx / 2f - offset.x) * (DOUBLE_TAP_ZOOM - 1f)
-                            toY = (viewportHeightPx / 2f - offset.y) * (DOUBLE_TAP_ZOOM - 1f)
-                        }
-                        val fromScale = stripScale
-                        val fromX = stripPanX
-                        val fromY = stripPanY
-                        zoomAnim?.cancel()
-                        zoomAnim = scope.launch {
-                            animate(
-                                initialValue = 0f,
-                                targetValue = 1f,
-                                // Decelerate, which is SY's interpolator. The
-                                // motion should arrive rather than stop.
-                                animationSpec = tween(ZOOM_ANIM_MS, easing = LinearOutSlowInEasing),
-                            ) { t, _ ->
-                                stripScale = fromScale + (toScale - fromScale) * t
-                                // Clamped per frame, against the scale THIS
-                                // frame has. The overhang grows with the zoom,
-                                // so a pan interpolated straight to its target
-                                // would outrun the content early in the zoom-in
-                                // and show blank at the edge. Zooming out it
-                                // matters more: the overhang shrinks to nothing,
-                                // and the clamp is what walks the pan back to
-                                // centre instead of leaving a gap.
-                                stripPanX = clampX(fromX + (toX - fromX) * t)
-                                stripPanY = clampY(fromY + (toY - fromY) * t)
-                            }
-                        }
-                    }
-                )
-            }
-            .clipToBounds()
-            .graphicsLayer {
-                scaleX = stripScale
-                scaleY = stripScale
-                translationX = stripPanX
-                translationY = stripPanY
-            }
-            // `canPan` is the whole reason this can live on a scrollable list.
-            // At rest it refuses every pan, so the LazyColumn keeps its drags
-            // untouched and the strip behaves exactly as it did before. Zoomed,
-            // it claims only the drags that are more horizontal than vertical,
-            // which leaves scrolling with the list and gives panning the axis
-            // the list doesn't use.
-            //
-            // This is deliberately NOT a nested-scroll hook. Two of those were
-            // written for the strip in 0.101 and 0.102 and neither fired once;
-            // the lesson recorded then was to ask the layout, or use the API
-            // built for the job, rather than to guess at a phase.
-            .transformable(
-                state = stripTransform,
-                // Widened from `abs(x) > abs(y)`, which only admitted drags
-                // within 45 degrees of horizontal and so ignored anything
-                // diagonal. This admits anything within about 68 degrees, and a
-                // near-vertical drag still falls through to the list — which is
-                // what keeps a zoomed chapter readable.
-                canPan = { pan -> stripScale > 1f && abs(pan.x) > abs(pan.y) * 0.4f }
-            )
+        val zoomedStripModifier = rememberReaderStripZoomModifier(
+            baseModifier = stripModifier,
+            chapterIndex = chapterIndex,
+            listState = listState,
+            scope = scope,
+            onToggleControls = { showControls = !showControls },
+        )
 
         if (settings.mode == ReaderMode.LONG_STRIP) {
             LazyColumn(
