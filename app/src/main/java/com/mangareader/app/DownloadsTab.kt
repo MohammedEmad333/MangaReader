@@ -123,35 +123,13 @@ internal fun DownloadsTab(
     val failedCount = DownloadQueue.failed.size
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("Downloads", style = MaterialTheme.typography.titleLarge)
-                if (series.isNotEmpty()) {
-                    Text(
-                        "${series.size} series \u00b7 ${formatBytes(totalSize)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            TextButton(onClick = onOpenQueue) {
-                Text(
-                    when {
-                        failedCount > 0 && queued > 0 -> "Queue ($queued, $failedCount failed)"
-                        failedCount > 0 -> "Queue ($failedCount failed)"
-                        queued > 0 -> "Queue ($queued)"
-                        else -> "Queue"
-                    }
-                )
-            }
-        }
-        HorizontalDivider()
+        DownloadsHeader(
+            seriesCount = series.size,
+            totalSize = totalSize,
+            queued = queued,
+            failedCount = failedCount,
+            onOpenQueue = onOpenQueue,
+        )
 
         if (loaded == null) {
             Row(
@@ -210,67 +188,14 @@ internal fun DownloadsTab(
             val listState = rememberLazyListState()
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(series, key = { it.seriesId }) { entry ->
-                    val dim = marks.dim(entry.seriesId)
-                    ListItem(
-                        leadingContent = {
-                            CoverImage(
-                                cover = entry.cover.ifBlank { null },
-                                title = entry.title,
-                                modifier = Modifier
-                                    .width(64.dp)
-                                    .aspectRatio(0.7f)
-                                    .alpha(if (dim) 0.4f else 1f)
-                            )
-                        },
-                        headlineContent = {
-                            Text(
-                                entry.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.alpha(if (dim) 0.4f else 1f)
-                            )
-                        },
-                        supportingContent = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val isAnime = entry.sourceId.isAnimeExtensionSourceId()
-                                val unit = when {
-                                    isAnime && entry.chapters.size == 1 -> "episode"
-                                    isAnime -> "episodes"
-                                    entry.chapters.size == 1 -> "chapter"
-                                    else -> "chapters"
-                                }
-                                Text(
-                                    "${entry.chapters.size} $unit \u00b7 ${formatBytes(entry.sizeBytes)}"
-                                )
-                                // No DL chip here. Every row on this screen is
-                                // downloaded by definition, so it would be a
-                                // badge that is always on and says nothing.
-                                EntryBadges(
-                                    downloaded = false,
-                                    local = marks.badgeLocal &&
-                                        entry.sourceId.isLocalSourceId(),
-                                    unread = marks.unreadOf(entry.seriesId)
-                                )
-                            }
-                        },
-                        trailingContent = {
-                            // Icon rather than the word, matching History and the
-                            // chapter rows. The confirmation below is unchanged —
-                            // this deletes files, so it always asked.
-                            IconButton(onClick = { confirmDelete = entry }) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete downloads",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        },
-                        modifier = Modifier.clickable { onOpen(entry) }
+                    DownloadsSeriesRow(
+                        entry = entry,
+                        dim = marks.dim(entry.seriesId),
+                        badgeLocal = marks.badgeLocal && entry.sourceId.isLocalSourceId(),
+                        unread = marks.unreadOf(entry.seriesId),
+                        onOpen = { onOpen(entry) },
+                        onDelete = { confirmDelete = entry },
                     )
-                    HorizontalDivider()
                 }
             }
             ListScrollHandle(
@@ -281,28 +206,14 @@ internal fun DownloadsTab(
         } // PullToRefreshBox
     }
 
-    confirmDelete?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete downloads?") },
-            text = {
-                Text(
-                    "${entry.chapters.size} downloaded " +
-                        (if (entry.chapters.size == 1) "chapter" else "chapters") +
-                        " of \"${entry.title}\" will be removed from this device. " +
-                        "Reading progress is kept."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    DownloadIndex.deleteSeries(context, entry)
-                    localTick++
-                    confirmDelete = null
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = null }) { Text("Cancel") }
-            }
-        )
-    }
+    DownloadsDeleteDialog(
+        entry = confirmDelete,
+        onDismiss = { confirmDelete = null },
+        onConfirm = { entry ->
+            DownloadIndex.deleteSeries(context, entry)
+            localTick++
+            confirmDelete = null
+        },
+    )
+
 }
