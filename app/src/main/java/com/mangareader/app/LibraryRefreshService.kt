@@ -20,7 +20,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -70,6 +69,11 @@ class LibraryRefreshService : Service() {
     private val foreground by lazy { LibraryRefreshForeground(this) }
 
     private val batches = LibraryRefreshBatchBuffer(this, FLUSH_EVERY)
+    private val sourceWorker by lazy {
+        LibraryRefreshSourceWorker(this, batches, foreground) {
+            currentCoroutineIsActive()
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -226,7 +230,7 @@ class LibraryRefreshService : Service() {
         coroutineScope {
             bySource.entries.chunked(SOURCE_CONCURRENCY).forEach { batch ->
                 batch.map { (sourceId, list) ->
-                    async { refreshSource(sources[sourceId], list, startedAt) }
+                    async { sourceWorker.refresh(sources[sourceId], list, startedAt) }
                 }.awaitAll()
             }
         }
@@ -237,116 +241,6 @@ class LibraryRefreshService : Service() {
         // resume point at the exact moment it becomes the thing worth keeping.
         completed = currentCoroutineIsActive()
     }
-
-    /**
-     * One source's series, in order, with a gap between requests.
-     *
-     * Sequential on purpose. Chapter-list fetches are one request each, so the
-     * gain from running two at once on the same host is small and the risk is
-     * the failure mode §5 spent five attempts on: a CDN that starts refusing
-     * once a single connection has carried enough requests.
-     */
-    private suspend fun refreshSource(
-        src: Source?,
-        entries: List<LibraryEntry>,
-        startedAt: Long
-    ) {
-        // Read once for the whole pass, not per entry. The set only shrinks, and
-        // only when this sweep writes a repaired cover, so a stale read here can
-        // at worst repeat one repair — while re-reading it 3571 times would be
-        // the per-row cost §5 keeps finding.
-        val reportedCovers = CoverRepair.reported(this)
-
-        for (entry in entries) {
-            if (!currentCoroutineIsActive()) return
-
-            if (src == null) {
-                // The extension has been uninstalled. Not a failure — there is
-                // nothing wrong and nothing to fix — so it is counted apart from
-                // one, or a phone missing one extension would report hundreds of
-                // errors and bury a real one.
-                LibraryRefresh.skipped++
-                LibraryRefresh.done++
-                continue
-            }
-
-            LibraryRefresh.currentTitle = entry.title
-            try {
-                // restoreSeries, not getSeries: it builds the url + title pair a
-                // stored entry is and makes no network call, so this is one
-                // request per series rather than two. The details endpoint is
-                // exactly what this doesn't need — no metadata is being shown.
-                val series = src.restoreSeries(entry.seriesId, entry.title)
-                    ?: throw IllegalStateException("Couldn't rebuild the series")
-                val chapters = src.listChapters(series)
-                if (chapters.isNotEmpty()) {
-                    // Free, and worth having: this is the offline chapter list,
-                    // and the sweep has just fetched a newer one than whatever
-                    // was stored.
-                    ChapterCache.save(this, entry.seriesId, chapters)
-                    // Stamped with the sweep's start, not with `now`: this is
-                    // what marks the series as belonging to *this* sweep, and a
-                    // resume tests `>= startedAt`.
-                    val counts = SeriesIndex.countsFor(
-                        this, entry.sourceId, chapters, sweptAt = startedAt
-                    )
-                    if (counts != null) {
-                        batches.putCount(entry.seriesId, counts)
-                        LibraryRefresh.counted++
-                    }
-                }
-
-                // The cover, but only where the stored one is known to be
-                // wrong. This is a *second* request for the series, which is
-                // exactly what the comment above says the sweep avoids — so it
-                // is spent on the entries that need it rather than all 3571.
-                // An earlier plan had this coming free from the SManga already
-                // in hand; it doesn't, because restoreSeries never fetched one.
-                if (CoverRepair.needsRepair(entry, reportedCovers)) {
-                    // Caught separately from the counts above. A cover repair
-                    // that fails says nothing about whether the chapter list
-                    // landed, and letting it fall into the handler below would
-                    // record a failure against a series that was counted
-                    // perfectly — inflating the one tally whose job is to point
-                    // at sources that are genuinely broken.
-                    try {
-                        val fresh = (src.loadDetails(series).cover as? String)
-                            ?.takeIf { it.isNotBlank() && !isLoopback(it) }
-                        if (fresh != null && fresh != entry.cover) {
-                            batches.putCover(entry.seriesId, fresh)
-                            LibraryRefresh.coversRepaired.incrementAndGet()
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Throwable) {
-                        // Stays on the repair list, so the next sweep retries it.
-                    }
-                    // A second request to the same host inside one iteration, so
-                    // it gets its own spacing. Per-host request volume is the
-                    // variable the manhwatoon 400s turned on, and a repair pass
-                    // is not a reason to halve the gap between requests.
-                    delay(REQUEST_SPACING_MS)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                // Throwable: a sweep calls listChapters on every installed
-                // source, so one extension built against a newer API would
-                // otherwise take the whole sweep — and the app — down partway.
-                LibraryRefresh.noteFailure(
-                    entry.sourceId,
-                    "${entry.title} — ${e.message ?: e.javaClass.simpleName}"
-                )
-            }
-
-            LibraryRefresh.done++
-            foreground.notifyThrottled()
-            if (batches.shouldFlush()) batches.flush()
-            delay(REQUEST_SPACING_MS)
-        }
-    }
-
-
 
     /**
      * `isActive` off the service's own job.
@@ -366,9 +260,6 @@ class LibraryRefreshService : Service() {
 
         /** Sources worked on at once. Deliberately small; see the class note. */
         private const val SOURCE_CONCURRENCY = 3
-
-        /** Between two requests to the same source. */
-        private const val REQUEST_SPACING_MS = 250L
 
         /**
          * Series per index write.
