@@ -1,9 +1,14 @@
 package com.mangareader.app
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal class MediaShellActionController(
     private val context: Context,
+    private val scope: CoroutineScope,
     private val appState: AppUiState,
     private val browseState: SourceBrowseState,
     private val seriesState: SeriesNavigationState,
@@ -36,22 +41,26 @@ internal class MediaShellActionController(
                     is java.io.File -> value.absolutePath
                     else -> ""
                 }
-                History.touch(
-                    context,
-                    HistoryEntry(
-                        chapterKey = video.resumeKey,
-                        title = series.title,
-                        sourceId = source.id,
-                        seriesId = series.id,
-                        coverPath = cover,
-                        page = 0,
-                        total = 0,
-                        updatedAt = System.currentTimeMillis(),
-                        mediaType = "anime",
-                        detail = video.episodeTitle,
-                    ),
+                val entry = HistoryEntry(
+                    chapterKey = video.resumeKey,
+                    title = series.title,
+                    sourceId = source.id,
+                    seriesId = series.id,
+                    coverPath = cover,
+                    page = 0,
+                    total = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    mediaType = "anime",
+                    detail = video.episodeTitle,
                 )
-                appState.history = History.forDisplay(context)
+                val appContext = context.applicationContext
+                scope.launch {
+                    val refreshed = withContext(Dispatchers.IO) {
+                        History.touch(appContext, entry)
+                        History.forDisplay(appContext)
+                    }
+                    appState.history = refreshed
+                }
             }
 
             context.startActivity(
