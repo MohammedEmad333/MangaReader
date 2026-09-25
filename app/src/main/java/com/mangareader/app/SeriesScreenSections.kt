@@ -19,8 +19,9 @@ internal fun SeriesChapterStatus(
     chapterCount: Int,
     visibleCount: Int,
     isAnimeSource: Boolean,
+    chapterStateReady: Boolean,
 ) {
-    if (loading) {
+    if (loading || (!chapterStateReady && chapterCount > 0)) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
 
@@ -35,6 +36,9 @@ internal fun SeriesChapterStatus(
     if (chaptersFetched || chapterCount > 0) {
         Text(
             when {
+                chapterCount > 0 && !chapterStateReady ->
+                    if (isAnimeSource) "Preparing episodes…" else "Preparing chapters…"
+
                 chapterCount == 0 ->
                     if (isAnimeSource) "This source returned no episodes"
                     else "This source returned no chapters"
