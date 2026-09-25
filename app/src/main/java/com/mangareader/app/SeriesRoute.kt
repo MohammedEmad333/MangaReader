@@ -2,7 +2,11 @@ package com.mangareader.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun SeriesRoute(
@@ -32,6 +36,8 @@ internal fun SeriesRoute(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val appContext = context.applicationContext
+    val scope = rememberCoroutineScope()
     val resolvedSourceId = sourceId.orEmpty()
 
     SeriesScreen(
@@ -46,41 +52,71 @@ internal fun SeriesRoute(
         downloadTick = localDownloadTick + DownloadQueue.tick,
         downloadingAll = DownloadQueue.hasSeries(series.id),
         onDownload = { chapter -> source?.let { onDownload(it, chapter) } },
+        onDownloadBatch = { batch -> source?.let { onDownloadAll(it, batch) } },
         onDownloadAll = { source?.let { onDownloadAll(it, chapters) } },
         onCancelDownloads = { onCancelDownloads(series.id) },
         onDeleteDownloads = {
-            chapters.forEach { Downloads.delete(context, it.id) }
-            onDownloadStateChanged()
+            val snapshot = chapters.toList()
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    snapshot.forEach { Downloads.delete(appContext, it.id) }
+                }
+                onDownloadStateChanged()
+            }
         },
         onDeleteChapter = { chapter ->
-            Downloads.delete(context, chapter.id)
-            onDownloadStateChanged()
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    Downloads.delete(appContext, chapter.id)
+                }
+                onDownloadStateChanged()
+            }
+        },
+        onDeleteChapters = { selected ->
+            val snapshot = selected.toList()
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    snapshot.forEach { Downloads.delete(appContext, it.id) }
+                }
+                onDownloadStateChanged()
+            }
         },
         onSetRead = { list, value ->
-            list.forEach {
-                val key = chapterKeyOf(resolvedSourceId, it)
-                ReadState.setRead(context, key, value)
-                if (source?.isAnime == true) {
-                    if (value) {
-                        VideoPlaybackProgress.markCompleted(
-                            context,
-                            key,
-                            VideoPlaybackProgress.duration(context, key),
-                        )
-                    } else {
-                        VideoPlaybackProgress.markIncomplete(context, key)
+            val snapshot = list.toList()
+            val anime = source?.isAnime == true
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    snapshot.forEach {
+                        val key = chapterKeyOf(resolvedSourceId, it)
+                        ReadState.setRead(appContext, key, value)
+                        if (anime) {
+                            if (value) {
+                                VideoPlaybackProgress.markCompleted(
+                                    appContext,
+                                    key,
+                                    VideoPlaybackProgress.duration(appContext, key),
+                                )
+                            } else {
+                                VideoPlaybackProgress.markIncomplete(appContext, key)
+                            }
+                        }
                     }
                 }
+                onReadStateChanged()
             }
-            onReadStateChanged()
         },
         onSetBookmarked = { list, value ->
-            Bookmarks.setBookmarkedBulk(
-                context,
-                list.map { chapterKeyOf(resolvedSourceId, it) },
-                value
-            )
-            onReadStateChanged()
+            val keys = list.map { chapterKeyOf(resolvedSourceId, it) }
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    Bookmarks.setBookmarkedBulk(
+                        appContext,
+                        keys,
+                        value
+                    )
+                }
+                onReadStateChanged()
+            }
         },
         loading = loading,
         error = error,
