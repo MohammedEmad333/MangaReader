@@ -79,6 +79,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private data class StorageLocationUiSnapshot(
+    val hasAccess: Boolean,
+    val chosen: File?,
+    val label: String,
+    val active: Boolean,
+)
+
 @Composable
 internal fun DataSettings() {
     val context = LocalContext.current
@@ -114,16 +121,17 @@ internal fun DataSettings() {
         scope.launch {
             val snapshot = withContext(Dispatchers.IO) {
                 StorageLocation.invalidate()
-                val access = StorageLocation.hasAccess(appContext)
-                val chosen = StorageLocation.chosen(appContext)
-                val label = StorageLocation.label(appContext)
-                val active = StorageLocation.active(appContext)
-                listOf(access, chosen, label, active)
+                StorageLocationUiSnapshot(
+                    hasAccess = StorageLocation.hasAccess(appContext),
+                    chosen = StorageLocation.chosen(appContext),
+                    label = StorageLocation.label(appContext),
+                    active = StorageLocation.active(appContext),
+                )
             }
-            hasAccess = snapshot[0] as Boolean
-            customDir = snapshot[1] as File?
-            locationLabel = snapshot[2] as String
-            storageActive = snapshot[3] as Boolean
+            hasAccess = snapshot.hasAccess
+            customDir = snapshot.chosen
+            locationLabel = snapshot.label
+            storageActive = snapshot.active
         }
     }
 
