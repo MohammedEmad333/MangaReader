@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -125,15 +126,19 @@ internal fun ExtensionsContent(
             }
         }
 
-        val updatable = shownExtensions
-            .filter { it.hasUpdate }
-            .sortedBy { it.name.lowercase() }
-        val installed = shownExtensions
-            .filter { it.isInstalled && !it.hasUpdate }
-            .sortedBy { it.name.lowercase() }
-        val available = shownExtensions
-            .filterNot { it.isInstalled }
-            .sortedBy { it.name.lowercase() }
+        val (updatable, installed, available) = remember(shownExtensions) {
+            Triple(
+                shownExtensions
+                    .filter { it.hasUpdate }
+                    .sortedBy { it.name.lowercase() },
+                shownExtensions
+                    .filter { it.isInstalled && !it.hasUpdate }
+                    .sortedBy { it.name.lowercase() },
+                shownExtensions
+                    .filterNot { it.isInstalled }
+                    .sortedBy { it.name.lowercase() },
+            )
+        }
 
         val listState = rememberLazyListState()
         Box(modifier = Modifier.fillMaxSize()) {
@@ -142,10 +147,17 @@ internal fun ExtensionsContent(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (updatable.isNotEmpty()) {
-                    item {
+                    item(
+                        key = "extensions:update-header",
+                        contentType = "header",
+                    ) {
                         SectionHeader("Update available (${updatable.size})")
                     }
-                    items(updatable) { ext ->
+                    items(
+                        updatable,
+                        key = { "extensions:update:${it.pkgName}" },
+                        contentType = { "extension" },
+                    ) { ext ->
                         ExtensionRow(
                             ext = ext,
                             onInstall = { onInstall(ext) },
@@ -155,8 +167,15 @@ internal fun ExtensionsContent(
                 }
 
                 if (installed.isNotEmpty()) {
-                    item { SectionHeader("Installed") }
-                    items(installed) { ext ->
+                    item(
+                        key = "extensions:installed-header",
+                        contentType = "header",
+                    ) { SectionHeader("Installed") }
+                    items(
+                        installed,
+                        key = { "extensions:installed:${it.pkgName}" },
+                        contentType = { "extension" },
+                    ) { ext ->
                         ExtensionRow(
                             ext = ext,
                             onInstall = {},
@@ -166,8 +185,15 @@ internal fun ExtensionsContent(
                 }
 
                 if (available.isNotEmpty()) {
-                    item { SectionHeader("Available") }
-                    items(available) { ext ->
+                    item(
+                        key = "extensions:available-header",
+                        contentType = "header",
+                    ) { SectionHeader("Available") }
+                    items(
+                        available,
+                        key = { "extensions:available:${it.pkgName}" },
+                        contentType = { "extension" },
+                    ) { ext ->
                         ExtensionRow(
                             ext = ext,
                             onInstall = { onInstall(ext) },
