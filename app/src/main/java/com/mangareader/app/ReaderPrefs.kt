@@ -1,17 +1,14 @@
 package com.mangareader.app
 
 import android.content.Context
+import org.json.JSONObject
 
 /**
  * Reader settings, and where they're kept.
  *
- * One store for everything, global rather than per-series. Mihon scopes reading
- * mode and rotation per manga on top of a global default, which is genuinely
- * better for a library mixing manga and webtoons — but it needs a second store
- * keyed by series id and a "use default" state distinct from every real value,
- * and none of that is worth writing before the settings themselves have been
- * used. The enums below carry a `key`, so moving to a per-series overlay later
- * is additive.
+ * Global defaults live in [ReaderPrefs]. Optional per-series overrides live in
+ * [ReaderSeriesPrefs] and are keyed by source + series identity so unrelated
+ * extensions cannot collide even when they reuse the same internal series id.
  */
 internal enum class ReaderMode(val key: String, val label: String) {
     PAGED_LTR("paged_ltr", "Paged \u2192"),
@@ -132,5 +129,77 @@ internal object ReaderPrefs {
             .putBoolean(CUSTOM_BRIGHTNESS, settings.customBrightness)
             .putFloat(BRIGHTNESS, settings.brightness)
             .apply()
+    }
+}
+
+
+/**
+ * Optional per-series reader settings layered over [ReaderPrefs].
+ *
+ * Absence means "use global defaults". A stored value is a full snapshot, so
+ * turning the override on copies the current effective settings and subsequent
+ * edits stay isolated to that series until the override is cleared.
+ */
+internal object ReaderSeriesPrefs {
+    private fun p(c: Context) =
+        c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+
+    private fun key(sourceId: String, seriesId: String) =
+        "reader_series:" + sourceId.length + ":" + sourceId + ":" + seriesId
+
+    fun load(context: Context, sourceId: String, seriesId: String): ReaderSettings? {
+        if (sourceId.isBlank() || seriesId.isBlank()) return null
+        val raw = p(context).getString(key(sourceId, seriesId), null) ?: return null
+        return runCatching {
+            val o = JSONObject(raw)
+            ReaderSettings(
+                mode = ReaderMode.from(o.optString("mode").takeIf { it.isNotBlank() }),
+                rotation = ReaderRotation.from(
+                    o.optString("rotation").takeIf { it.isNotBlank() }
+                ),
+                background = ReaderBackground.from(
+                    o.optString("background").takeIf { it.isNotBlank() }
+                ),
+                sidePadding = o.optInt("sidePadding", 0),
+                showPageNumber = o.optBoolean("showPageNumber", true),
+                sliderPosition = ReaderSliderPosition.from(
+                    o.optString("sliderPosition").takeIf { it.isNotBlank() }
+                ),
+                fullscreen = o.optBoolean("fullscreen", true),
+                keepScreenOn = o.optBoolean("keepScreenOn", true),
+                grayscale = o.optBoolean("grayscale", false),
+                inverted = o.optBoolean("inverted", false),
+                customBrightness = o.optBoolean("customBrightness", false),
+                brightness = o.optDouble("brightness", 0.5).toFloat(),
+            )
+        }.getOrNull()
+    }
+
+    fun save(
+        context: Context,
+        sourceId: String,
+        seriesId: String,
+        settings: ReaderSettings,
+    ) {
+        if (sourceId.isBlank() || seriesId.isBlank()) return
+        val o = JSONObject()
+            .put("mode", settings.mode.key)
+            .put("rotation", settings.rotation.key)
+            .put("background", settings.background.key)
+            .put("sidePadding", settings.sidePadding)
+            .put("showPageNumber", settings.showPageNumber)
+            .put("sliderPosition", settings.sliderPosition.key)
+            .put("fullscreen", settings.fullscreen)
+            .put("keepScreenOn", settings.keepScreenOn)
+            .put("grayscale", settings.grayscale)
+            .put("inverted", settings.inverted)
+            .put("customBrightness", settings.customBrightness)
+            .put("brightness", settings.brightness.toDouble())
+        p(context).edit().putString(key(sourceId, seriesId), o.toString()).apply()
+    }
+
+    fun clear(context: Context, sourceId: String, seriesId: String) {
+        if (sourceId.isBlank() || seriesId.isBlank()) return
+        p(context).edit().remove(key(sourceId, seriesId)).apply()
     }
 }
