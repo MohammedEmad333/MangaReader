@@ -116,8 +116,13 @@ internal fun GlobalSearchScreen(
     val withHits = results.count { it.series.isNotEmpty() }
     val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
     val ordering = remember(query, shown, hasResultsOnly, mediaFilter, pinnedOnly) {
-        listOf(query, hasResultsOnly, mediaFilter, pinnedOnly) +
-            shown.map { result -> result.source.id }
+        buildList {
+            add(query)
+            add(hasResultsOnly.toString())
+            add(mediaFilter)
+            add(pinnedOnly.toString())
+            shown.forEach { result -> add(result.source.id.toString()) }
+        }
     }
     scroll.sync(ordering)
 
