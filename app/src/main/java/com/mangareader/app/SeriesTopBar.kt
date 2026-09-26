@@ -60,6 +60,9 @@ internal fun SeriesTopBar(
     var skipLibraryRefresh by remember(sourceId, seriesId) {
         mutableStateOf(LibraryRefreshPrefs.skipsSeries(appContext, sourceId, seriesId))
     }
+    var autoDownloadNew by remember(sourceId, seriesId) {
+        mutableStateOf(AutoDownloadPrefs.enabled(appContext, sourceId, seriesId))
+    }
 
     TopAppBar(
         title = {
@@ -172,6 +175,30 @@ internal fun SeriesTopBar(
                                 )
                             },
                         )
+                        if (canDownload) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (autoDownloadNew) {
+                                            "Disable auto-download"
+                                        } else {
+                                            "Auto-download new chapters"
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    val next = !autoDownloadNew
+                                    autoDownloadNew = next
+                                    AutoDownloadPrefs.setEnabled(
+                                        appContext,
+                                        sourceId,
+                                        seriesId,
+                                        next,
+                                    )
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Edit categories") },
                             onClick = {
