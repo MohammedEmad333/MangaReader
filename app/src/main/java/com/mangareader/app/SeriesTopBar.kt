@@ -37,6 +37,7 @@ internal fun SeriesTopBar(
     canDownload: Boolean,
     visibleChapters: List<Chapter>,
     sourceId: String,
+    seriesId: String,
     onDownloadBatch: (List<Chapter>) -> Unit,
     filtersActive: Boolean,
     onOpenChapterOptions: () -> Unit,
@@ -56,6 +57,9 @@ internal fun SeriesTopBar(
     var showDownloadMenu by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
     var preparingDownloads by remember { mutableStateOf(false) }
+    var skipLibraryRefresh by remember(sourceId, seriesId) {
+        mutableStateOf(LibraryRefreshPrefs.skipsSeries(appContext, sourceId, seriesId))
+    }
 
     TopAppBar(
         title = {
@@ -146,6 +150,28 @@ internal fun SeriesTopBar(
                     }
 
                     if (inLibrary) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (skipLibraryRefresh) {
+                                        "Include in library refresh"
+                                    } else {
+                                        "Skip library refresh"
+                                    }
+                                )
+                            },
+                            onClick = {
+                                showOptionsMenu = false
+                                val next = !skipLibraryRefresh
+                                skipLibraryRefresh = next
+                                LibraryRefreshPrefs.setSkipsSeries(
+                                    appContext,
+                                    sourceId,
+                                    seriesId,
+                                    next,
+                                )
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("Edit categories") },
                             onClick = {
