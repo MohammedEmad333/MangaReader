@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,17 +13,23 @@ import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.Theme_Yomu)
-        super.onCreate(savedInstanceState)
-
-        ensureNotificationPermission()
-
-        // Theme is the one persisted value that must be ready before the first
-        // composition or a light/custom-theme user gets a visible colour flash.
-        // Everything else is hydrated by StartupUiSnapshot off the UI thread.
+        // Theme is the one persisted value that has to be known before Android
+        // creates the Activity window. Reading it after super.onCreate() leaves
+        // light-theme users with a dark window/status bar until Compose paints.
         StartupTimings.once("Theme prefs load (onCreate)") {
             AppTheme.load(this)
         }
+        val darkWindow = when (AppTheme.mode) {
+            ThemeMode.DARK -> true
+            ThemeMode.LIGHT -> false
+            ThemeMode.SYSTEM ->
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
+        }
+        setTheme(if (darkWindow) R.style.Theme_Yomu else R.style.Theme_Yomu_Light)
+        super.onCreate(savedInstanceState)
+
+        ensureNotificationPermission()
         AppTheme.applySecureScreen(this, AppTheme.secureScreen(this))
 
         setContent {
