@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 221 down to 183, newest first. */
+/** Release-note chunk 222 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 222,
+            name = "0.222",
+            header = "Swipe volume and brightness, hold for 2×",
+            body = "While the video controls are hidden, swipe vertically on the left " +
+                "half to adjust screen brightness or on the right half to adjust media " +
+                "volume, with a live percentage indicator. Press and hold the video to " +
+                "temporarily watch at 2× speed; releasing immediately returns playback " +
+                "to 1× without pausing or restarting the stream.",
+        ),
         ReleaseNote(
             code = 221,
             name = "0.221",
