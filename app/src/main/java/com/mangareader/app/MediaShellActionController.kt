@@ -15,7 +15,7 @@ internal class MediaShellActionController(
     private val mediaState: MediaNavigationState
 ) {
     fun dismissVideoScan() {
-        mediaState.scan = null
+        mediaState.cancelScan()
     }
 
     fun openEmbed(url: String) {
