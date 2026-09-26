@@ -165,7 +165,20 @@ class LibraryRefreshService : Service() {
 
     private suspend fun sweep() {
         val scope = scopeIds
-        val entries = Library.list(this)
+        val allEntries = Library.list(this)
+        // Full-library sweeps respect refresh preferences. Explicitly targeted
+        // source refreshes and "what's missing" are user overrides and always
+        // include their requested entries.
+        val preferredEntries = if (ownsCursor) {
+            LibraryRefreshPrefs.eligibleForFullRefresh(
+                context = this,
+                entries = allEntries,
+                counts = SeriesIndex.all(this),
+            )
+        } else {
+            allEntries
+        }
+        val entries = preferredEntries
             .let { all -> if (scope == null) all else all.filter { it.sourceId in scope } }
             .let { picked ->
                 if (!scopeUncounted) picked else {
