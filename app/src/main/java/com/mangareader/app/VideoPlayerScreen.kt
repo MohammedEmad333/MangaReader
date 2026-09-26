@@ -53,6 +53,8 @@ internal fun VideoPlayerScreen(
     val context = LocalContext.current
     var selectedVideo by remember(initialVideo.url) { mutableStateOf(initialVideo) }
     var switchPositionMs by remember { mutableStateOf<Long?>(null) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsLocked by remember { mutableStateOf(false) }
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
@@ -169,6 +171,13 @@ internal fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(controlsVisible, controlsLocked, inPictureInPicture) {
+        if (controlsVisible && !controlsLocked && !inPictureInPicture) {
+            delay(4_000L)
+            controlsVisible = false
+        }
+    }
+
     LaunchedEffect(player, progressKey) {
         while (true) {
             delay(10_000L)
@@ -186,19 +195,27 @@ internal fun VideoPlayerScreen(
         AndroidView(
             factory = { context ->
                 PlayerView(context).apply {
-                    useController = !inPictureInPicture
+                    useController = !inPictureInPicture && !controlsLocked
+                    controllerAutoShow = false
                     this.player = player
                     keepScreenOn = true
+                    if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
             },
             update = { view ->
                 view.player = player
-                view.useController = !inPictureInPicture
+                view.useController = !inPictureInPicture && !controlsLocked
+                view.controllerAutoShow = false
+                if (controlsVisible && !controlsLocked && !inPictureInPicture) {
+                    view.showController()
+                } else {
+                    view.hideController()
+                }
             },
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (!inPictureInPicture) {
+        if (!inPictureInPicture && controlsVisible && !controlsLocked) {
             VideoPlayerQuickControls(
                 player = player,
                 subtitles = selectedVideo.subtitles,
@@ -224,10 +241,46 @@ internal fun VideoPlayerScreen(
                     VideoPlayerPrefs.setSpeed(context, next)
                     player.setPlaybackSpeed(next)
                 },
+                onLock = {
+                    controlsLocked = true
+                    controlsVisible = false
+                },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 12.dp),
             )
+        }
+
+        if (!inPictureInPicture && (!controlsVisible || controlsLocked)) {
+            VideoPlayerGestureLayer(
+                locked = controlsLocked,
+                onSingleTap = { controlsVisible = true },
+                onDoubleTapLeft = {
+                    player.seekTo(seekBackTarget(player.currentPosition))
+                },
+                onDoubleTapRight = {
+                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
+                },
+            )
+        }
+
+        if (!inPictureInPicture && controlsLocked) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+            ) {
+                Button(
+                    onClick = {
+                        controlsLocked = false
+                        controlsVisible = true
+                    },
+                ) {
+                    Text("Unlock")
+                }
+            }
         }
 
         if (playbackError != null) {
