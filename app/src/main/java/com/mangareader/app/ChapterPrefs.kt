@@ -127,6 +127,10 @@ internal fun visibleChapters(
     val fUnread = ChapterPrefs.filterUnread(context)
     val fBookmarked = ChapterPrefs.filterBookmarked(context)
     val selectedScanlators = ChapterPrefs.scanlators(context, seriesId)
+    val availableScanlators = chapters.mapNotNull {
+        it.scanlator?.takeIf(String::isNotBlank)
+    }.toSet()
+    val activeScanlators = selectedScanlators.intersect(availableScanlators)
 
     val filtered = chapters.filter { ch ->
         val downloadedOk = when (fDownloaded) {
@@ -152,8 +156,8 @@ internal fun visibleChapters(
         }
         if (!bookmarkedOk) return@filter false
 
-        selectedScanlators.isEmpty() ||
-            ch.scanlator?.takeIf { it.isNotBlank() } in selectedScanlators
+        activeScanlators.isEmpty() ||
+            ch.scanlator?.takeIf { it.isNotBlank() } in activeScanlators
     }
 
     val ascending = ChapterPrefs.ascending(context)
