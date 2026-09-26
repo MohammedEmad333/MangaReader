@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,13 +86,17 @@ internal fun RefreshSourcePicker(
     onStart: (Set<String>, String) -> Unit
 ) {
     val context = LocalContext.current
-    // One parse, not one per recomposition of a checkbox.
-    val rows = remember {
-        Library.list(context)
-            .groupingBy { it.sourceId }
-            .eachCount()
-            .map { (id, count) -> Triple(id, SourceNames.nameOf(context, id), count) }
-            .sortedByDescending { it.third }
+    val rows by produceState<List<Triple<String, String, Int>>?>(initialValue = null) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            Library.list(appContext)
+                .groupingBy { it.sourceId }
+                .eachCount()
+                .map { (id, count) ->
+                    Triple(id, SourceNames.nameOf(appContext, id), count)
+                }
+                .sortedByDescending { it.third }
+        }
     }
     var picked by remember { mutableStateOf(emptySet<String>()) }
 
@@ -99,11 +104,12 @@ internal fun RefreshSourcePicker(
         onDismissRequest = onDismiss,
         title = { Text("Refresh some sources") },
         text = {
-            if (rows.isEmpty()) {
-                Text("Nothing in the library yet.")
-            } else {
-                LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
-                    items(rows) { (id, name, count) ->
+            when {
+                rows == null -> Text("Loading sources…")
+                rows!!.isEmpty() -> Text("Nothing in the library yet.")
+                else -> {
+                    LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                        items(rows!!) { (id, name, count) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -128,9 +134,10 @@ internal fun RefreshSourcePicker(
         },
         confirmButton = {
             TextButton(
-                enabled = picked.isNotEmpty(),
+                enabled = rows != null && picked.isNotEmpty(),
                 onClick = {
-                    val label = rows.filter { it.first in picked }
+                    val loadedRows = rows ?: return@TextButton
+                    val label = loadedRows.filter { it.first in picked }
                         .let { chosen ->
                             if (chosen.size == 1) chosen.first().second
                             else "${chosen.size} sources"
@@ -140,7 +147,7 @@ internal fun RefreshSourcePicker(
             ) {
                 Text(
                     if (picked.isEmpty()) "Refresh"
-                    else "Refresh ${rows.filter { it.first in picked }.sumOf { it.third }}"
+                    else "Refresh ${rows.orEmpty().filter { it.first in picked }.sumOf { it.third }}"
                 )
             }
         },
