@@ -93,11 +93,12 @@ internal fun ReaderPage(
         }
 
     val rotateWide = remember(file, widePageMode) {
-        file != null && shouldRotateWidePage(
-            width = imageBounds(file).first,
-            height = imageBounds(file).second,
-            mode = widePageMode,
-        )
+        if (file == null) {
+            false
+        } else {
+            val (width, height) = imageBounds(file)
+            shouldRotateWidePage(width, height, widePageMode)
+        }
     }
 
     if (file != null && rotateWide) {
