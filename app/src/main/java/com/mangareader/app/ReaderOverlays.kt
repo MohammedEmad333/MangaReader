@@ -132,6 +132,9 @@ internal fun ReaderSheets(
     showSettings: Boolean,
     onDismissSettings: () -> Unit,
     settings: ReaderSettings,
+    useGlobalDefaults: Boolean,
+    canOverrideSeries: Boolean,
+    onUseGlobalDefaultsChange: (Boolean) -> Unit,
     onSettingsChange: (ReaderSettings) -> Unit,
 ) {
     if (showChapters) {
@@ -148,6 +151,9 @@ internal fun ReaderSheets(
         ModalBottomSheet(onDismissRequest = onDismissSettings) {
             ReaderSettingsSheet(
                 settings = settings,
+                useGlobalDefaults = useGlobalDefaults,
+                canOverrideSeries = canOverrideSeries,
+                onUseGlobalDefaultsChange = onUseGlobalDefaultsChange,
                 onChange = onSettingsChange,
             )
         }
