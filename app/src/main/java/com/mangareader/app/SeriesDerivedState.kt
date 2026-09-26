@@ -81,7 +81,14 @@ internal fun rememberSeriesDerivedState(
                 ),
                 visible = visibleChapters(appContext, chapters, sourceId, series.id),
                 chapterDisplay = ChapterPrefs.display(appContext),
-                filtersActive = ChapterPrefs.anyFilterActive(appContext, series.id),
+                filtersActive = ChapterPrefs.anyFilterActive(appContext) ||
+                    ChapterPrefs.scanlators(appContext, sourceId, series.id)
+                        .intersect(
+                            chapters.mapNotNull {
+                                it.scanlator?.takeIf { value -> value.isNotBlank() }
+                            }.toSet()
+                        )
+                        .isNotEmpty(),
             )
         }
     }
