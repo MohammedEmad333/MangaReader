@@ -65,6 +65,7 @@ internal fun DownloadsTab(
     downloadTick: Int,
     /** Bumped when library state moves; refreshes the corner markers. */
     libraryTick: Int,
+    scroll: ScrollMemory,
     onOpen: (DownloadedSeries) -> Unit,
     onOpenQueue: () -> Unit
 ) {
@@ -116,6 +117,8 @@ internal fun DownloadsTab(
         value = withContext(Dispatchers.IO) { DownloadIndex.list(context) }
     }
     val series = loaded ?: emptyList()
+    val downloadsOrdering = remember(series) { series.map { it.seriesId } }
+    scroll.sync(downloadsOrdering)
     val totalSize = remember(series) { series.sumOf { it.sizeBytes } }
     var confirmDelete by remember { mutableStateOf<DownloadedSeries?>(null) }
 
@@ -185,7 +188,11 @@ internal fun DownloadsTab(
             // actions block and no trailing spacer, so its item count IS the
             // data count. Every caller has its own version of this number and
             // getting it wrong stops the handle short of the end.
-            val listState = rememberLazyListState()
+            val listState = rememberRestoredListState(
+                scroll,
+                "downloads",
+                downloadsOrdering,
+            )
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
                     series,

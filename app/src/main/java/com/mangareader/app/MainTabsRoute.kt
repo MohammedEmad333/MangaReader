@@ -40,7 +40,9 @@ internal fun MainTabsRoute(
     onDeleteHistory: (HistoryEntry) -> Unit,
     onClearHistory: () -> Unit,
     onRefreshHistory: () -> Unit,
+    historyScroll: ScrollMemory,
     downloadTick: Int,
+    downloadsScroll: ScrollMemory,
     onOpenDownload: (DownloadedSeries) -> Unit,
     onOpenDownloadQueue: () -> Unit,
     onOpenSettings: () -> Unit
@@ -91,11 +93,13 @@ internal fun MainTabsRoute(
                     onDelete = onDeleteHistory,
                     libraryTick = libraryTick,
                     onClearAll = onClearHistory,
-                    onRefresh = onRefreshHistory
+                    onRefresh = onRefreshHistory,
+                    scroll = historyScroll
                 )
                 3 -> DownloadsTab(
                     downloadTick = downloadTick,
                     libraryTick = libraryTick,
+                    scroll = downloadsScroll,
                     onOpen = onOpenDownload,
                     onOpenQueue = onOpenDownloadQueue
                 )
