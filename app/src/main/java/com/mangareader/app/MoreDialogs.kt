@@ -73,8 +73,15 @@ import java.io.File
 internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    var repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
+    val scope = rememberCoroutineScope()
+    var repos by remember { mutableStateOf<List<String>?>(null) }
     var newRepo by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val appContext = context.applicationContext
+        repos = withContext(Dispatchers.IO) { ExtensionRepos.list(appContext) }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -98,16 +105,30 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        enabled = newRepo.isNotBlank(),
+                        enabled = repos != null && newRepo.isNotBlank() && !saving,
                         onClick = {
-                            ExtensionRepos.add(context, newRepo.trim())
-                            repos = ExtensionRepos.list(context)
-                            newRepo = ""
+                            val appContext = context.applicationContext
+                            val url = newRepo.trim()
+                            saving = true
+                            scope.launch {
+                                repos = withContext(Dispatchers.IO) {
+                                    ExtensionRepos.add(appContext, url)
+                                    ExtensionRepos.list(appContext)
+                                }
+                                newRepo = ""
+                                saving = false
+                            }
                         }
-                    ) { Text("Add") }
+                    ) { Text(if (saving) "Saving…" else "Add") }
                 }
 
-                if (repos.isEmpty()) {
+                if (repos == null) {
+                    Text(
+                        "Loading repositories…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (repos!!.isEmpty()) {
                     Text(
                         "No repositories yet.",
                         style = MaterialTheme.typography.bodySmall,
@@ -119,7 +140,7 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                             .heightIn(max = 260.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        repos.forEach { url ->
+                        repos.orEmpty().forEach { url ->
                             ListItem(
                                 headlineContent = {
                                     Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -134,10 +155,20 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                                                 android.widget.Toast.LENGTH_SHORT
                                             ).show()
                                         }) { Text("Copy") }
-                                        TextButton(onClick = {
-                                            ExtensionRepos.remove(context, url)
-                                            repos = ExtensionRepos.list(context)
-                                        }) { Text("Remove") }
+                                        TextButton(
+                                            enabled = !saving,
+                                            onClick = {
+                                                val appContext = context.applicationContext
+                                                saving = true
+                                                scope.launch {
+                                                    repos = withContext(Dispatchers.IO) {
+                                                        ExtensionRepos.remove(appContext, url)
+                                                        ExtensionRepos.list(appContext)
+                                                    }
+                                                    saving = false
+                                                }
+                                            }
+                                        ) { Text("Remove") }
                                     }
                                 }
                             )
@@ -147,6 +178,8 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Done") } }
+        confirmButton = {
+            Button(enabled = !saving, onClick = onDismiss) { Text("Done") }
+        }
     )
 }
