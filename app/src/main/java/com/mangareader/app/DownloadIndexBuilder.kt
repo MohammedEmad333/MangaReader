@@ -6,21 +6,25 @@ internal object DownloadIndexBuilder {
     private const val RECOVERY_DONE = "download_index_recovered"
 
     fun build(context: Context): List<DownloadedSeries> {
-        val live = DownloadIndexStorage.read(context)
-            .filter { Downloads.isComplete(context, it.chapterId) }
-        val known = live.map { it.chapterId }.toMutableSet()
+        val stored = DownloadIndexStorage.read(context)
 
-        val recovered = mutableListOf<DownloadIndexRecord>()
-
-        // Older readable downloads can predate the per-chapter .chapterid marker.
-        // Repair those first while Library + ChapterCache still provide a safe,
-        // unambiguous identity, then the ordinary path-index recovery below sees
-        // them exactly like a modern download.
+        // Repair readable folders before filtering stored records by isComplete:
+        // without their path mapping the old records would be discarded first.
+        DownloadPaths.recoverUnmarkedFromIndex(
+            context,
+            Downloads.downloadsRoot(context),
+            stored,
+        )
         DownloadPaths.recoverUnmarkedFromLibrary(
             context,
             Downloads.downloadsRoot(context),
         )
         Downloads.invalidateCompletion()
+
+        val live = stored.filter { Downloads.isComplete(context, it.chapterId) }
+        val known = live.map { it.chapterId }.toMutableSet()
+
+        val recovered = mutableListOf<DownloadIndexRecord>()
 
         // First recover directly from download_paths.json. This path does not
         // require the series to still be in the library and covers downloads
