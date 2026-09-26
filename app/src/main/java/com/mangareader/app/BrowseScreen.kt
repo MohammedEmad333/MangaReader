@@ -74,6 +74,7 @@ internal fun BrowseTab(
     configs: List<SourceConfig>,
     extensions: List<Source>,
     scroll: ScrollMemory,
+    extensionsScroll: ScrollMemory,
     onGlobalSearch: () -> Unit,
     onAdd: () -> Unit,
     onOpenConfig: (SourceConfig) -> Unit,
@@ -262,6 +263,7 @@ internal fun BrowseTab(
             } else {
                 ExtensionsScreen(
                     modifier = Modifier.fillMaxSize(),
+                    scroll = extensionsScroll,
                     onInstalled = onExtensionsChanged
                 )
             }
