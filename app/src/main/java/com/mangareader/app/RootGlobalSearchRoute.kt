@@ -37,7 +37,6 @@ internal fun RootGlobalSearchRoute(
             }
         },
         libraryTick = appState.libraryTick,
-        scroll = root.ui.globalSearchScroll,
         onBack = actions::backFromGlobalSearch,
 
         migrateFrom = migrationState.from,
