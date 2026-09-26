@@ -10,25 +10,60 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun LibraryRefreshSettingsSection() {
     val context = LocalContext.current
     var sourcePickerOpen by remember { mutableStateOf(false) }
-    val entryCount = remember { Library.list(context).size }
-    val uncountedCount = remember(LibraryRefresh.finishedAt, LibraryRefresh.running) {
-        val known = SeriesIndex.all(context).keys
-        Library.list(context).count { it.seriesId !in known }
-    }
 
-    remember { LibraryRefresh.loadSummary(context) }
+    data class RefreshSettingsSnapshot(
+        val entryCount: Int,
+        val uncountedCount: Int,
+        val sweepStartedAt: Long,
+        val alreadyCounted: Int,
+    )
+
+    val snapshot by produceState<RefreshSettingsSnapshot?>(
+        initialValue = null,
+        LibraryRefresh.finishedAt,
+        LibraryRefresh.running,
+    ) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            val entries = Library.list(appContext)
+            val known = SeriesIndex.all(appContext).keys
+            val startedAt = RefreshCursor.startedAt(appContext)
+            RefreshSettingsSnapshot(
+                entryCount = entries.size,
+                uncountedCount = entries.count { it.seriesId !in known },
+                sweepStartedAt = startedAt,
+                alreadyCounted = if (startedAt <= 0L) {
+                    0
+                } else {
+                    SeriesIndex.sweptSince(appContext, startedAt).size
+                },
+            )
+        }
+    }
+    val entryCount = snapshot?.entryCount ?: 0
+    val uncountedCount = snapshot?.uncountedCount ?: 0
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            LibraryRefresh.loadSummary(context.applicationContext)
+        }
+    }
 
     SectionHeader("Chapter counts")
     if (LibraryRefresh.running) {
@@ -74,13 +109,8 @@ internal fun LibraryRefreshSettingsSection() {
             },
         )
     } else {
-        val sweepStartedAt = remember(entryCount, LibraryRefresh.finishedAt) {
-            RefreshCursor.startedAt(context)
-        }
-        val alreadyCounted = remember(sweepStartedAt, LibraryRefresh.finishedAt) {
-            if (sweepStartedAt <= 0L) 0
-            else SeriesIndex.sweptSince(context, sweepStartedAt).size
-        }
+        val sweepStartedAt = snapshot?.sweepStartedAt ?: 0L
+        val alreadyCounted = snapshot?.alreadyCounted ?: 0
         val unfinished = sweepStartedAt > 0L
 
         ListItem(
