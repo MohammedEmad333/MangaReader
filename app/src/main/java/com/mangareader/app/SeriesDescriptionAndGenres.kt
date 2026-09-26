@@ -44,6 +44,7 @@ internal fun SeriesDescriptionAndGenres(
     onToggleExpanded: () -> Unit,
     sourceName: String,
     onSearchTag: (String) -> Unit,
+    onLibrarySearchTag: (String) -> Unit,
     onGlobalSearchTag: (String) -> Unit,
 ) {
     if (!series.description.isNullOrBlank()) {
@@ -113,6 +114,7 @@ internal fun SeriesDescriptionAndGenres(
                     genres = series.genres,
                     sourceName = sourceName,
                     onSearchTag = onSearchTag,
+                    onLibrarySearchTag = onLibrarySearchTag,
                     onGlobalSearchTag = onGlobalSearchTag,
                 )
             }
@@ -127,6 +129,7 @@ internal fun SeriesDescriptionAndGenres(
                     genres = series.genres,
                     sourceName = sourceName,
                     onSearchTag = onSearchTag,
+                    onLibrarySearchTag = onLibrarySearchTag,
                     onGlobalSearchTag = onGlobalSearchTag,
                 )
             }
