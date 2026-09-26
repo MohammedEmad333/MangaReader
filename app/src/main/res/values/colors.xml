@@ -4,4 +4,5 @@
     <!-- The startup screen, behind the app mark. The icon's own colour, so the
          splash reads as the icon rather than a screen that failed to load. -->
     <color name="splash_background">#101020</color>
+    <color name="window_background_light">#FAF9FE</color>
 </resources>
