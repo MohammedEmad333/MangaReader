@@ -190,6 +190,7 @@ internal fun BrowseSettings() {
 @Composable
 private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Snapshot once on open, but build it on IO: a restored library can contain
     // thousands of entries, and grouping it is not composition work.
@@ -220,42 +221,41 @@ private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
                 rows == null -> Text("Loading sources…")
                 rows!!.isEmpty() -> Text("Every source in your library has been classified.")
                 else -> {
-                Column {
-                    Text(
-                        "These sources aren't installed and aren't in any repository, " +
-                            "so nothing can tell whether they're 18+. Switch on the " +
-                            "ones that are and the library's 18+ filter will cover them.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
-                        items(rows!!) { (id, name, count) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(name)
-                                    Text(
-                                        if (count == 1) "1 in library" else "$count in library",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Column {
+                        Text(
+                            "These sources aren't installed and aren't in any repository, " +
+                                "so nothing can tell whether they're 18+. Switch on the " +
+                                "ones that are and the library's 18+ filter will cover them.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                            items(rows!!) { (id, name, count) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(name)
+                                        Text(
+                                            if (count == 1) "1 in library" else "$count in library",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = flags[id] ?: false,
+                                        onCheckedChange = { value ->
+                                            flags = flags + (id to value)
+                                            val appContext = context.applicationContext
+                                            scope.launch(Dispatchers.IO) {
+                                                SourceNsfw.record(appContext, mapOf(id to value))
+                                            }
+                                        }
                                     )
                                 }
-                                Switch(
-                                    checked = flags[id] ?: false,
-                                    onCheckedChange = { value ->
-                                        flags = flags + (id to value)
-                                        // Written on every flip rather than on
-                                        // Done, for the reader sheet's reason: a
-                                        // dialog can be dismissed by tapping
-                                        // outside it, and an answer lost that way
-                                        // is a bug nobody reports.
-                                        SourceNsfw.record(context, mapOf(id to value))
-                                    }
-                                )
                             }
                         }
                     }
