@@ -28,7 +28,6 @@ internal fun GlobalSearchRoute(
     migrating: Boolean,
     onOpenSeries: (Source, Series) -> Unit,
     libraryTick: Int,
-    scroll: ScrollMemory,
     onBack: () -> Unit,
     migrateFrom: MigrateFrom?,
     migrateTarget: Pair<Source, Series>?,
@@ -56,7 +55,6 @@ internal fun GlobalSearchRoute(
         migrating = migrating,
         onOpenSeries = onOpenSeries,
         libraryTick = libraryTick,
-        scroll = scroll,
         onBack = onBack
     )
 
