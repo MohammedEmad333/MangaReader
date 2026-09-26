@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 212 down to 183, newest first. */
+/** Release-note chunk 213 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 213,
+            name = "0.213",
+            header = "Choose when reader controls disappear",
+            body = "Reader settings now let you keep the controls visible, or hide " +
+                "them after 2, 4, 6, or 10 seconds. The default remains four seconds, " +
+                "and the countdown still pauses while the chapter picker or settings " +
+                "sheet is open.",
+        ),
         ReleaseNote(
             code = 212,
             name = "0.212",
