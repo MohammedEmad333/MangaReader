@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 216 down to 183, newest first. */
+/** Release-note chunk 217 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 217,
+            name = "0.217",
+            header = "Downloads remembers how you like to browse",
+            body = "Downloads can now filter All, Manga, or Anime. Your search, " +
+                "sort mode, direction, and media filter are remembered across app " +
+                "restarts, and a Clear button restores the default Downloads view " +
+                "without touching any files.",
+        ),
         ReleaseNote(
             code = 216,
             name = "0.216",
