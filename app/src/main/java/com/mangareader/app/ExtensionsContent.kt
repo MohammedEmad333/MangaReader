@@ -33,6 +33,7 @@ internal fun ExtensionsContent(
     shownExtensions: List<Extension>,
     availableCount: Int,
     scroll: ScrollMemory,
+    diagnosticsRunning: Boolean,
     onDiagnose: () -> Unit,
     onInstall: (Extension) -> Unit,
     onUninstall: (String) -> Unit,
@@ -45,9 +46,13 @@ internal fun ExtensionsContent(
 
         TextButton(
             onClick = onDiagnose,
+            enabled = !diagnosticsRunning,
             modifier = Modifier.padding(horizontal = 8.dp),
         ) {
-            Text("Why isn't my extension showing?")
+            Text(
+                if (diagnosticsRunning) "Checking extensions…"
+                else "Why isn't my extension showing?"
+            )
         }
 
         if (reposEmpty) {
