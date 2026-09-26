@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 220 down to 183, newest first. */
+/** Release-note chunk 221 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 221,
+            name = "0.221",
+            header = "Faster gestures and a safer screen lock",
+            body = "Video controls now get out of the way automatically. When hidden, " +
+                "tap once to bring them back, double-tap the left or right half to " +
+                "jump 10 seconds, or use Lock to block accidental touches during " +
+                "playback. While locked, only the Unlock button remains interactive.",
+        ),
         ReleaseNote(
             code = 220,
             name = "0.220",
