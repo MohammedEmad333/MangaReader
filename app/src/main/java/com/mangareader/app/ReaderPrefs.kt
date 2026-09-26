@@ -156,12 +156,18 @@ internal object ReaderSeriesPrefs {
         return runCatching {
             val o = JSONObject(raw)
             ReaderSettings(
-                mode = ReaderMode.from(o.optString("mode", null)),
-                rotation = ReaderRotation.from(o.optString("rotation", null)),
-                background = ReaderBackground.from(o.optString("background", null)),
+                mode = ReaderMode.from(o.optString("mode").takeIf { it.isNotBlank() }),
+                rotation = ReaderRotation.from(
+                    o.optString("rotation").takeIf { it.isNotBlank() }
+                ),
+                background = ReaderBackground.from(
+                    o.optString("background").takeIf { it.isNotBlank() }
+                ),
                 sidePadding = o.optInt("sidePadding", 0),
                 showPageNumber = o.optBoolean("showPageNumber", true),
-                sliderPosition = ReaderSliderPosition.from(o.optString("sliderPosition", null)),
+                sliderPosition = ReaderSliderPosition.from(
+                    o.optString("sliderPosition").takeIf { it.isNotBlank() }
+                ),
                 fullscreen = o.optBoolean("fullscreen", true),
                 keepScreenOn = o.optBoolean("keepScreenOn", true),
                 grayscale = o.optBoolean("grayscale", false),
