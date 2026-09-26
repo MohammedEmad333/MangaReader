@@ -47,20 +47,27 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest --build-cache
 
-      - name: Build debug APK
-        run: gradle assembleDebug --build-cache
-
-      - name: Prepare release keystore
-        if: inputs.release
+      # Every APK published from main must use one persistent signing
+      # certificate. GitHub-hosted runners otherwise generate a fresh debug
+      # keystore, which makes Android reject the next APK as an update.
+      # Pull-request builds deliberately skip this and use the ordinary debug
+      # key so forked PRs never need access to repository secrets.
+      - name: Prepare stable CI signing key
+        if: github.event_name != 'pull_request'
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
-            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
-          elif [ ! -f release.keystore ]; then
-            echo "::error::Release signing requires RELEASE_KEYSTORE_BASE64 or release.keystore."
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ] || [ -z "$RELEASE_KEYSTORE_PASSWORD" ]; then
+            echo "::error::Published APK signing requires RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD."
             exit 1
           fi
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Build debug APK
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        run: gradle assembleDebug --build-cache
 
       - name: Build release APK
         if: inputs.release
