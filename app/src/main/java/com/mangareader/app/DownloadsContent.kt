@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -58,6 +62,60 @@ internal fun DownloadsHeader(
                     queued > 0 -> "Queue (${queued})"
                     else -> "Queue"
                 },
+            )
+        }
+    }
+    HorizontalDivider()
+}
+
+@Composable
+internal fun DownloadsTools(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    sortMode: DownloadsSortMode,
+    onSortModeChange: (DownloadsSortMode) -> Unit,
+    descending: Boolean,
+    onDescendingChange: (Boolean) -> Unit,
+    shownCount: Int,
+    totalCount: Int,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Search downloads") },
+            placeholder = { Text("Series or chapter name") },
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DownloadsSortMode.entries.forEach { option ->
+                FilterChip(
+                    selected = sortMode == option,
+                    onClick = { onSortModeChange(option) },
+                    label = { Text(option.label) },
+                )
+            }
+            TextButton(onClick = { onDescendingChange(!descending) }) {
+                Text(if (descending) "Descending ↓" else "Ascending ↑")
+            }
+        }
+        if (query.isNotBlank()) {
+            Text(
+                "Showing $shownCount of $totalCount",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
