@@ -74,15 +74,20 @@ internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
-    var cats by remember { mutableStateOf(Categories.list(context)) }
+    var cats by remember { mutableStateOf<List<Category>?>(null) }
     var newName by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val appContext = context.applicationContext
+        cats = withContext(Dispatchers.IO) { Categories.list(appContext) }
+    }
 
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("Categories") },
         text = {
             Column {
-                cats.forEach { cat ->
+                cats.orEmpty().forEach { cat ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -120,7 +125,7 @@ internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        enabled = newName.isNotBlank() && !saving,
+                        enabled = cats != null && newName.isNotBlank() && !saving,
                         onClick = {
                             val appContext = context.applicationContext
                             val name = newName.trim()
@@ -143,7 +148,7 @@ internal fun CategoryManagerDialog(onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { Button(enabled = !saving, onClick = onDismiss) { Text("Done") } }
+        confirmButton = { Button(enabled = cats != null && !saving, onClick = onDismiss) { Text("Done") } }
     )
 }
 
