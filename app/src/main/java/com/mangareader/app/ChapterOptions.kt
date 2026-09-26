@@ -43,8 +43,11 @@ internal fun ChapterOptionsSheet(
             .distinct()
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
-    var selectedScanlators by remember(seriesId) {
-        mutableStateOf(ChapterPrefs.scanlators(context, seriesId))
+    var selectedScanlators by remember(seriesId, scanlatorOptions) {
+        mutableStateOf(
+            ChapterPrefs.scanlators(context, seriesId)
+                .intersect(scanlatorOptions.toSet())
+        )
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
