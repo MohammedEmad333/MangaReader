@@ -11,6 +11,27 @@ internal object DownloadIndexBuilder {
         val known = live.map { it.chapterId }.toMutableSet()
 
         val recovered = mutableListOf<DownloadIndexRecord>()
+
+        // First recover directly from download_paths.json. This path does not
+        // require the series to still be in the library and covers downloads
+        // created after readable paths existed but before downloads_index.json
+        // was populated reliably.
+        DownloadPaths.knownChapterIds(context).forEach { chapterId ->
+            if (chapterId in known) return@forEach
+            if (!Downloads.isComplete(context, chapterId)) return@forEach
+            val identity = DownloadPaths.recoverIdentity(context, chapterId)
+                ?: return@forEach
+            known.add(chapterId)
+            recovered += DownloadIndexRecord(
+                chapterId = identity.chapterId,
+                chapterName = identity.chapterName,
+                sourceId = identity.sourceId,
+                seriesId = identity.seriesId,
+                title = identity.seriesTitle,
+                cover = "",
+            )
+        }
+
         val scanned = needsRecovery(context, known)
 
         if (scanned) {
@@ -39,6 +60,12 @@ internal object DownloadIndexBuilder {
                     .putBoolean(RECOVERY_DONE, true)
                     .apply()
             }
+        }
+
+        // Persist recovered records so the expensive repair is one-time and
+        // later launches do not depend on the library/cache still being present.
+        if (recovered.isNotEmpty()) {
+            DownloadIndexStorage.write(context, live + recovered)
         }
 
         return (live + recovered)
