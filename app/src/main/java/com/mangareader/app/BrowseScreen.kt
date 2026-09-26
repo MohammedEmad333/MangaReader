@@ -226,7 +226,7 @@ internal fun BrowseTab(
             listOf("Sources", "Extensions").forEachIndexed { index, label ->
                 Tab(
                     selected = tab == index,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                    onClick = { scope.launch { pagerState.scrollToPage(index) } },
                     text = { Text(label) }
                 )
             }
