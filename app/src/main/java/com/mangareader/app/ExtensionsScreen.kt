@@ -68,7 +68,11 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> Unit) {
+internal fun ExtensionsScreen(
+    modifier: Modifier = Modifier,
+    scroll: ScrollMemory,
+    onInstalled: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -79,6 +83,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     val repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
     var available by remember { mutableStateOf<List<Extension>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var loadedOnce by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
     var diagnosticsRunning by remember { mutableStateOf(false) }
@@ -166,6 +171,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     LaunchedEffect(repos, refreshTick) {
         if (repos.isEmpty()) {
             available = emptyList()
+            loadedOnce = true
             return@LaunchedEffect
         }
         loading = true
@@ -180,12 +186,14 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
             error = sourceFailureMessage(e, "Could not reach the repository")
         }
         loading = false
+        loadedOnce = true
     }
 
     ExtensionsContent(
         modifier = modifier,
         reposEmpty = repos.isEmpty(),
         loading = loading,
+        loadedOnce = loadedOnce,
         error = error,
         filter = filter,
         onFilterChange = { filter = it },
@@ -195,6 +203,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         onMediaFilterChange = { mediaFilter = it },
         shownExtensions = shownExtensions,
         availableCount = available.size,
+        scroll = scroll,
         diagnosticsRunning = diagnosticsRunning,
         onDiagnose = {
             if (!diagnosticsRunning) {
