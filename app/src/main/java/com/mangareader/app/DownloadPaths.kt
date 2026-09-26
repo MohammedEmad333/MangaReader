@@ -237,77 +237,119 @@ internal object DownloadPaths {
         return found
     }
 
+    private data class RecoveryCandidate(
+        val sourceId: String,
+        val seriesId: String,
+        val seriesTitle: String,
+        val chapterId: String,
+        val chapterName: String,
+    )
+
     /**
-     * Repairs readable downloads created before [.chapterid] existed.
-     *
-     * Those folders already have human-readable Source/Series/Chapter names and
-     * a .complete marker, but after app metadata is lost there is no chapter id
-     * left in the tree for [scan] to recover. We only reconnect a folder when
-     * the source, series and chapter names each have one unambiguous match in
-     * the current Library + ChapterCache. A successful match is written back to
-     * both indexes and gets an ID marker, making the repair permanent.
+     * Repairs readable downloads created before [.chapterid] existed using the
+     * old download index. This also covers downloaded series no longer in the
+     * Library, as long as downloads_index.json survived.
+     */
+    @Synchronized
+    fun recoverUnmarkedFromIndex(
+        context: Context,
+        downloadsRoot: File,
+        records: List<DownloadIndexRecord>,
+    ): Int = recoverUnmarked(
+        context = context,
+        downloadsRoot = downloadsRoot,
+        candidates = records.map { record ->
+            RecoveryCandidate(
+                sourceId = record.sourceId,
+                seriesId = record.seriesId,
+                seriesTitle = record.title,
+                chapterId = record.chapterId,
+                chapterName = record.chapterName,
+            )
+        },
+    )
+
+    /**
+     * Library fallback for folders whose old download-index record is gone.
+     * The chapter cache supplies ids while the readable tree supplies the path.
      */
     @Synchronized
     fun recoverUnmarkedFromLibrary(context: Context, downloadsRoot: File): Int {
+        val candidates = buildList {
+            Library.list(context).forEach { entry ->
+                ChapterCache.load(context, entry.seriesId).forEach { chapter ->
+                    add(
+                        RecoveryCandidate(
+                            sourceId = entry.sourceId,
+                            seriesId = entry.seriesId,
+                            seriesTitle = entry.title,
+                            chapterId = chapter.id,
+                            chapterName = chapter.name,
+                        )
+                    )
+                }
+            }
+        }
+        return recoverUnmarked(context, downloadsRoot, candidates)
+    }
+
+    /**
+     * Reconnects only unambiguous Source/Series/Chapter folder matches. A match
+     * gets written to download_paths.json and receives .chapterid immediately,
+     * so this expensive repair is self-healing and future scans are direct.
+     */
+    private fun recoverUnmarked(
+        context: Context,
+        downloadsRoot: File,
+        candidates: List<RecoveryCandidate>,
+    ): Int {
         load(context)
-        if (!downloadsRoot.isDirectory) return 0
+        if (!downloadsRoot.isDirectory || candidates.isEmpty()) return 0
 
-        val sourceDirs = downloadsRoot.listFiles()
-            ?.filter { it.isDirectory }
-            .orEmpty()
+        val sourceDirs = downloadsRoot.listFiles()?.filter { it.isDirectory }.orEmpty()
         if (sourceDirs.isEmpty()) return 0
-
         val sourceNames = SourceNames.all(context)
         var recovered = 0
 
-        Library.list(context).forEach { entry ->
-            val sourceDesired = buildSet {
-                add(clean(entry.sourceId, entry.sourceId))
-                sourceNames[entry.sourceId]
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { add(clean(it, entry.sourceId)) }
+        candidates
+            .filter { it.sourceId.isNotBlank() && it.seriesId.isNotBlank() && it.chapterId.isNotBlank() }
+            .groupBy { it.sourceId to it.seriesId }
+            .forEach { (seriesKey, seriesCandidates) ->
+                val first = seriesCandidates.first()
+                val sourceDesired = buildSet {
+                    add(clean(first.sourceId, first.sourceId))
+                    sourceNames[first.sourceId]
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { add(clean(it, first.sourceId)) }
+                }
+                val sourceDir = uniqueMatchingDir(sourceDirs, sourceDesired) ?: return@forEach
+                val seriesDir = uniqueMatchingDir(
+                    sourceDir.listFiles()?.filter { it.isDirectory }.orEmpty(),
+                    setOf(clean(first.seriesTitle, "Unknown series")),
+                ) ?: return@forEach
+                val chapterDirs = seriesDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+
+                seriesCandidates.forEach chapterLoop@ { candidate ->
+                    if (chapters.containsKey(candidate.chapterId)) return@chapterLoop
+                    val chapterDir = uniqueMatchingDir(
+                        chapterDirs,
+                        setOf(clean(candidate.chapterName, "Chapter")),
+                    ) ?: return@chapterLoop
+                    if (!File(chapterDir, ".complete").isFile) return@chapterLoop
+
+                    chapters[candidate.chapterId] =
+                        "${sourceDir.name}/${seriesDir.name}/${chapterDir.name}"
+                    sources[candidate.sourceId] = sourceDir.name
+                    series["${seriesKey.first}|${seriesKey.second}"] = seriesDir.name
+                    runCatching { File(chapterDir, ID_MARKER).writeText(candidate.chapterId) }
+                    recovered++
+                }
             }
-            val sourceDir = uniqueMatchingDir(sourceDirs, sourceDesired) ?: return@forEach
-
-            val seriesDesired = setOf(clean(entry.title, "Unknown series"))
-            val seriesDir = uniqueMatchingDir(
-                sourceDir.listFiles()?.filter { it.isDirectory }.orEmpty(),
-                seriesDesired,
-            ) ?: return@forEach
-
-            val chapterDirs = seriesDir.listFiles()?.filter { it.isDirectory }.orEmpty()
-            if (chapterDirs.isEmpty()) return@forEach
-
-            ChapterCache.load(context, entry.seriesId).forEach chapterLoop@ { chapter ->
-                if (chapter.id.isBlank() || chapters.containsKey(chapter.id)) return@chapterLoop
-
-                val chapterDir = uniqueMatchingDir(
-                    chapterDirs,
-                    setOf(clean(chapter.name, "Chapter")),
-                ) ?: return@chapterLoop
-
-                if (!File(chapterDir, ".complete").isFile) return@chapterLoop
-
-                val relative =
-                    "${sourceDir.name}/${seriesDir.name}/${chapterDir.name}"
-                chapters[chapter.id] = relative
-                sources[entry.sourceId] = sourceDir.name
-                series["${entry.sourceId}|${entry.seriesId}"] = seriesDir.name
-
-                runCatching { File(chapterDir, ID_MARKER).writeText(chapter.id) }
-                recovered++
-            }
-        }
 
         if (recovered > 0) save(context)
         return recovered
     }
 
-    /**
-     * Matches either the original clean name or the stable "(abcdef)" suffix
-     * produced by [DownloadPathNaming.unique]. More than one match is refused:
-     * recovery must never guess which on-disk folder owns a chapter.
-     */
     private fun uniqueMatchingDir(
         dirs: List<File>,
         desiredNames: Set<String>,
