@@ -201,6 +201,7 @@ internal fun SeriesContent(
             canDownload = canDownload,
             visibleChapters = visibleChapters,
             sourceId = sourceId,
+            seriesId = series.id,
             onDownloadBatch = onDownloadBatch,
             filtersActive = filtersActive,
             onOpenChapterOptions = onOpenChapterOptions,
