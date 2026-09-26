@@ -311,6 +311,7 @@ internal fun SeriesScreen(
 
     SeriesAuxiliaryDialogs(
         series = series,
+        chapters = chapters,
         sourceId = sourceId,
         confirmDeleteChapter = confirmDeleteChapter,
         onDismissDeleteChapter = { confirmDeleteChapter = null },
