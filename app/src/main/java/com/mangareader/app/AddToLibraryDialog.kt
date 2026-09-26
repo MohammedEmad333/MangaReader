@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,12 +64,23 @@ internal fun AddToLibraryDialog(
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
     var categoryBusy by remember { mutableStateOf(false) }
-
-    // Guarantees there is always at least one category to save into.
-    val default = remember { Categories.ensureDefault(context) }
-    var cats by remember { mutableStateOf(Categories.list(context)) }
-    var selected by remember { mutableStateOf(setOf(default.id)) }
+    var defaultCategory by remember { mutableStateOf<Category?>(null) }
+    var cats by remember { mutableStateOf<List<Category>?>(null) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
     var newName by remember { mutableStateOf("") }
+
+    // ensureDefault() may write the whole category list, and list() may parse it.
+    // Neither belongs in composition on a large imported library.
+    LaunchedEffect(Unit) {
+        val appContext = context.applicationContext
+        val loaded = withContext(Dispatchers.IO) {
+            val default = Categories.ensureDefault(appContext)
+            default to Categories.list(appContext)
+        }
+        defaultCategory = loaded.first
+        cats = loaded.second
+        if (selected.isEmpty()) selected = setOf(loaded.first.id)
+    }
 
     AlertDialog(
         onDismissRequest = { if (!saving && !categoryBusy) onDismiss() },
@@ -93,7 +105,7 @@ internal fun AddToLibraryDialog(
                         .heightIn(max = 220.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    cats.forEach { cat ->
+                    cats.orEmpty().forEach { cat ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -127,7 +139,7 @@ internal fun AddToLibraryDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     TextButton(
-                        enabled = newName.isNotBlank() && !saving && !categoryBusy,
+                        enabled = cats != null && newName.isNotBlank() && !saving && !categoryBusy,
                         onClick = {
                             val appContext = context.applicationContext
                             val name = newName.trim()
@@ -154,10 +166,11 @@ internal fun AddToLibraryDialog(
         },
         confirmButton = {
             Button(
-                enabled = !saving && !categoryBusy,
+                enabled = defaultCategory != null && cats != null && !saving && !categoryBusy,
                 onClick = {
                     // Never save with zero categories; fall back to Default.
-                    val finalCats = if (selected.isEmpty()) setOf(default.id) else selected
+                    val defaultId = defaultCategory?.id ?: return@Button
+                    val finalCats = if (selected.isEmpty()) setOf(defaultId) else selected
                     val entry = LibraryEntry(
                         seriesId = series.id,
                         sourceId = sourceId,

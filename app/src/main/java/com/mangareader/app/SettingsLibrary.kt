@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,8 +89,14 @@ internal fun LibrarySettings() {
     var coverSize by remember {
         mutableStateOf(prefs(context).getString("cover_size", "medium") ?: "medium")
     }
-    val categoryCount = remember(categoryTick, showCategories) { Categories.list(context).size }
-    val entryCount = remember { Library.list(context).size }
+    val counts by produceState<Pair<Int, Int>?>(initialValue = null, categoryTick, showCategories) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            Categories.list(appContext).size to Library.list(appContext).size
+        }
+    }
+    val categoryCount = counts?.first
+    val entryCount = counts?.second
     SettingsColumn {
         SectionHeader("Display")
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -114,6 +121,7 @@ internal fun LibrarySettings() {
             supportingContent = {
                 Text(
                     when (categoryCount) {
+                        null -> "Loading…"
                         0 -> "None yet"
                         1 -> "1 category"
                         else -> "$categoryCount categories"
@@ -125,7 +133,9 @@ internal fun LibrarySettings() {
         HorizontalDivider()
         ListItem(
             headlineContent = { Text("Saved series") },
-            supportingContent = { Text("$entryCount in the library") }
+            supportingContent = {
+                Text(entryCount?.let { "$it in the library" } ?: "Loading…")
+            }
         )
 
         LibraryRefreshSettingsSection()
