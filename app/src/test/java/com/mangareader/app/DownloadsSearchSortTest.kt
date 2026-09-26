@@ -75,6 +75,32 @@ class DownloadsSearchSortTest {
     }
 
     @Test
+    fun mediaFilter_separatesMangaAndAnime() {
+        val anime = beta.copy(sourceId = "anime:source")
+        val manga = alpha.copy(sourceId = "manga:source")
+        assertEquals(
+            listOf("beta"),
+            filterAndSortDownloads(
+                listOf(manga, anime),
+                "",
+                DownloadsSortMode.TITLE,
+                false,
+                DownloadsMediaFilter.ANIME,
+            ).map { it.seriesId },
+        )
+        assertEquals(
+            listOf("alpha"),
+            filterAndSortDownloads(
+                listOf(manga, anime),
+                "",
+                DownloadsSortMode.TITLE,
+                false,
+                DownloadsMediaFilter.MANGA,
+            ).map { it.seriesId },
+        )
+    }
+
+    @Test
     fun chapterCountSort_ordersByDownloadedCount() {
         assertEquals(
             listOf("beta", "alpha", "gamma"),
