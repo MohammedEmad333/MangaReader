@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 219 down to 183, newest first. */
+/** Release-note chunk 220 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 220,
+            name = "0.220",
+            header = "Switch quality without leaving the player",
+            body = "Anime episodes now pass their resolved stream choices into the " +
+                "built-in player. When more than one quality or server is available, " +
+                "a stream selector appears beside the playback controls. Switching " +
+                "keeps your current playback position and uses that stream's own " +
+                "headers and subtitles instead of starting the episode over.",
+        ),
         ReleaseNote(
             code = 219,
             name = "0.219",
