@@ -39,7 +39,7 @@ internal fun ChapterOptionsSheet(
     var fUnread by remember { mutableStateOf(ChapterPrefs.filterUnread(context)) }
     var fBookmarked by remember { mutableStateOf(ChapterPrefs.filterBookmarked(context)) }
     val scanlatorOptions = remember(chapters) {
-        chapters.mapNotNull { it.scanlator?.trim()?.takeIf(String::isNotEmpty) }
+        chapters.mapNotNull { it.scanlator?.trim()?.takeIf { value -> value.isNotEmpty() } }
             .distinct()
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
