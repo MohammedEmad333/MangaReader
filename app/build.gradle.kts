@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystoreFile = rootProject.file("release.keystore")
+val releaseKeystorePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD").orEmpty()
+
 android {
     namespace = "com.mangareader.app"
     // 36 because okhttp-android 5.4.0's AAR metadata demands it — "requires
@@ -32,14 +35,14 @@ android {
     }
 
     signingConfigs {
-        // Use the Android Gradle Plugin's standard generated debug keystore.
-        // Keeping a project-level debug keystore in Git provides no benefit and
-        // makes signing material part of the repository history.
+        // The key itself is never committed. CI reconstructs release.keystore
+        // from GitHub Secrets. The same stable key can sign the published debug
+        // APK so Android accepts future CI builds as in-place updates.
         create("release") {
-            storeFile = rootProject.file("release.keystore")
-            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
+            storeFile = releaseKeystoreFile
+            storePassword = releaseKeystorePassword
             keyAlias = "yomu"
-            keyPassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
+            keyPassword = releaseKeystorePassword
         }
     }
 
@@ -126,6 +129,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+
+            // Local/PR builds keep Android's ordinary generated debug key.
+            // Main CI provides release.keystore + its password, making every
+            // published debug APK use one stable certificate and therefore
+            // install as an update instead of requiring an uninstall.
+            if (releaseKeystoreFile.isFile && releaseKeystorePassword.isNotBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         // Left off deliberately. Release is not built on push and not
         // installed, so enabling it would ship an untested R8 configuration to
