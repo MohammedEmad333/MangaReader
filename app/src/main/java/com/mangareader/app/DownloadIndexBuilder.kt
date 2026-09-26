@@ -101,8 +101,11 @@ internal object DownloadIndexBuilder {
         context: Context,
         known: Set<String>,
     ): Boolean {
-        if (prefs(context).getBoolean(RECOVERY_DONE, false)) return false
+        // New evidence on disk always wins over an old "recovery done" stamp.
+        // A previous build may have stamped recovery before path metadata or a
+        // chapter cache was available.
         if (DownloadPaths.knownChapterIds(context).any { it !in known }) return true
+        if (prefs(context).getBoolean(RECOVERY_DONE, false)) return false
 
         return StorageLocation.legacyRoots(context).any { root ->
             root.listFiles()?.any { it.isDirectory } == true
