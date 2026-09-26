@@ -36,6 +36,16 @@ class VideoPlayerControlsTest {
     }
 
     @Test
+    fun verticalGesture_clampsAndFormatsPercent() {
+        assertEquals(0f, adjustedGestureFraction(0.2f, -0.5f))
+        assertEquals(0.7f, adjustedGestureFraction(0.2f, 0.5f))
+        assertEquals(1f, adjustedGestureFraction(0.8f, 0.5f))
+        assertEquals("0%", gesturePercent(0f))
+        assertEquals("55%", gesturePercent(0.55f))
+        assertEquals("100%", gesturePercent(1.5f))
+    }
+
+    @Test
     fun playbackSpeed_labelsAreCompact() {
         assertEquals("1×", formatPlaybackSpeed(1f))
         assertEquals("1.25×", formatPlaybackSpeed(1.25f))
