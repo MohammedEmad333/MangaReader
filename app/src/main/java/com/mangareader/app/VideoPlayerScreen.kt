@@ -41,11 +41,9 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun VideoPlayerScreen(
-    url: String,
+    initialVideo: PlayableVideo,
+    streams: List<PlayableVideo>,
     referer: String,
-    headers: Map<String, String>,
-    resumeKey: String,
-    subtitles: List<VideoSubtitle>,
     inPictureInPicture: Boolean,
     onPlaybackActiveChanged: (Boolean) -> Unit,
     onClose: () -> Unit,
@@ -53,27 +51,30 @@ internal fun VideoPlayerScreen(
     var buffering by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    var selectedVideo by remember(initialVideo.url) { mutableStateOf(initialVideo) }
+    var switchPositionMs by remember { mutableStateOf<Long?>(null) }
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
 
-    val progressKey = remember(url, resumeKey) {
-        resumeKey.ifBlank { "url:$url" }
+    val progressKey = remember(selectedVideo.url, selectedVideo.selectedVideo.resumeKey) {
+        selectedVideo.selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
     }
     val resumePosition = remember(progressKey, context) {
         VideoPlaybackProgress.position(context, progressKey)
     }
 
     val player = remember(
-        url,
+        selectedVideo.url,
+        selectedVideo.headers,
+        selectedVideo.subtitles,
         referer,
-        headers,
         progressKey,
         resumePosition,
-        subtitles,
+        switchPositionMs,
         context,
     ) {
-        val requestHeaders = headers.toMutableMap().apply {
+        val requestHeaders = selectedVideo.headers.toMutableMap().apply {
             if (referer.isNotBlank() && "Referer" !in this) {
                 put("Referer", referer)
             }
@@ -96,7 +97,7 @@ internal fun VideoPlayerScreen(
                 )
                 setHandleAudioBecomingNoisy(true)
 
-                val subtitleConfigurations = subtitles.mapNotNull { subtitle ->
+                val subtitleConfigurations = selectedVideo.subtitles.mapNotNull { subtitle ->
                     subtitleMimeType(subtitle.url)?.let { mime ->
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
                             .setMimeType(mime)
@@ -110,12 +111,13 @@ internal fun VideoPlayerScreen(
                 }
 
                 val mediaItem = MediaItem.Builder()
-                    .setUri(url)
+                    .setUri(selectedVideo.url)
                     .setSubtitleConfigurations(subtitleConfigurations)
                     .build()
 
                 setMediaItem(mediaItem)
-                if (resumePosition > 0L) seekTo(resumePosition)
+                val startPosition = switchPositionMs ?: resumePosition
+                if (startPosition > 0L) seekTo(startPosition)
                 setPlaybackSpeed(playbackSpeed)
                 playWhenReady = true
                 prepare()
@@ -138,8 +140,8 @@ internal fun VideoPlayerScreen(
                         progressKey,
                         player.duration.coerceAtLeast(0L),
                     )
-                    if (resumeKey.isNotBlank()) {
-                        ReadState.setRead(context, resumeKey, true)
+                    if (selectedVideo.resumeKey.isNotBlank()) {
+                        ReadState.setRead(context, selectedVideo.resumeKey, true)
                     }
                 }
             }
@@ -153,7 +155,7 @@ internal fun VideoPlayerScreen(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onPlaybackActiveChanged(isPlaying)
                 if (!isPlaying && player.playbackState != Player.STATE_ENDED) {
-                    persistPlaybackProgress(context, progressKey, resumeKey, player)
+                    persistPlaybackProgress(context, progressKey, selectedVideo.resumeKey, player)
                 }
             }
         }
@@ -162,7 +164,7 @@ internal fun VideoPlayerScreen(
         onDispose {
             onPlaybackActiveChanged(false)
             player.removeListener(listener)
-            persistPlaybackProgress(context, progressKey, resumeKey, player)
+            persistPlaybackProgress(context, progressKey, selectedVideo.resumeKey, player)
             player.release()
         }
     }
@@ -171,7 +173,7 @@ internal fun VideoPlayerScreen(
         while (true) {
             delay(10_000L)
             if (player.playbackState != Player.STATE_ENDED) {
-                persistPlaybackProgress(context, progressKey, resumeKey, player)
+                persistPlaybackProgress(context, progressKey, selectedVideo.resumeKey, player)
             }
         }
     }
@@ -199,8 +201,24 @@ internal fun VideoPlayerScreen(
         if (!inPictureInPicture) {
             VideoPlayerQuickControls(
                 player = player,
-                subtitles = subtitles,
+                subtitles = selectedVideo.subtitles,
                 speed = playbackSpeed,
+                streams = streams,
+                selectedStream = selectedVideo,
+                onStreamChange = { next ->
+                    if (next.url != selectedVideo.url) {
+                        switchPositionMs = player.currentPosition.coerceAtLeast(0L)
+                        persistPlaybackProgress(
+                            context,
+                            progressKey,
+                            selectedVideo.resumeKey,
+                            player,
+                        )
+                        selectedVideo = next
+                        buffering = true
+                        playbackError = null
+                    }
+                },
                 onSpeedChange = { next ->
                     playbackSpeed = next
                     VideoPlayerPrefs.setSpeed(context, next)
@@ -259,7 +277,7 @@ internal fun VideoPlayerScreen(
 private fun persistPlaybackProgress(
     context: Context,
     progressKey: String,
-    resumeKey: String,
+    selectedVideo.resumeKey: String,
     player: Player,
 ) {
     val duration = player.duration
@@ -268,8 +286,8 @@ private fun persistPlaybackProgress(
     when {
         shouldMarkPlaybackCompleted(position, duration) -> {
             VideoPlaybackProgress.markCompleted(context, progressKey, duration)
-            if (resumeKey.isNotBlank()) {
-                ReadState.setRead(context, resumeKey, true)
+            if (selectedVideo.resumeKey.isNotBlank()) {
+                ReadState.setRead(context, selectedVideo.resumeKey, true)
             }
         }
 
