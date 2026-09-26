@@ -20,21 +20,34 @@ internal fun ExtensionResumeObserver(
     val scope = rememberCoroutineScope()
 
     DisposableEffect(activity) {
+        val appContext = context.applicationContext
+
+        fun refreshSources() {
+            scope.launch {
+                val sources = withContext(Dispatchers.IO) {
+                    runCatching {
+                        SourceManager.listAllSources(appContext)
+                            .filter { it.id.isExtensionSourceId() }
+                    }.getOrDefault(emptyList())
+                }
+                onSourcesChanged(sources)
+            }
+        }
+
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch {
-                    val sources = withContext(Dispatchers.IO) {
-                        runCatching {
-                            SourceManager.listAllSources(context)
-                                .filter { it.id.isExtensionSourceId() }
-                        }.getOrDefault(emptyList())
-                    }
-                    onSourcesChanged(sources)
-                }
+                refreshSources()
             }
         }
 
         activity?.lifecycle?.addObserver(observer)
+
+        // The observer can be attached after the Activity has already reached
+        // RESUMED. In that case Lifecycle will not emit another ON_RESUME until
+        // the app backgrounds and returns, leaving Browse > Sources empty on a
+        // fresh launch even though Extensions can see installed packages.
+        refreshSources()
+
         onDispose {
             activity?.lifecycle?.removeObserver(observer)
         }
