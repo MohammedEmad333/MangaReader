@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -100,6 +99,7 @@ internal fun GlobalSearchScreen(
     onOpenSeries: (Source, Series) -> Unit,
     /** Bumped when library state moves; refreshes the corner markers. */
     libraryTick: Int,
+    scroll: ScrollMemory,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
@@ -115,6 +115,17 @@ internal fun GlobalSearchScreen(
 
     val withHits = results.count { it.series.isNotEmpty() }
     val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
+    val ordering = remember(query, shown, pinnedOnly, hasResultsOnly, mediaFilter, migrating) {
+        buildList {
+            add(query)
+            add(pinnedOnly.toString())
+            add(hasResultsOnly.toString())
+            add(mediaFilter)
+            add(migrating.toString())
+            shown.forEach { add(it.source.id.toString()) }
+        }
+    }
+    scroll.sync(ordering)
 
     Column(modifier = Modifier.fillMaxSize()) {
         GlobalSearchControls(
@@ -162,7 +173,11 @@ internal fun GlobalSearchScreen(
             // short in items and tall in pixels. The handle seeks by item
             // index, which is still the right unit even when one item is most
             // of a screen.
-            val listState = rememberLazyListState()
+            val listState = rememberRestoredListState(
+                scroll,
+                "global-search",
+                ordering,
+            )
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
