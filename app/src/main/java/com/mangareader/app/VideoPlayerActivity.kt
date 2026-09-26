@@ -159,7 +159,7 @@ class VideoPlayerActivity : ComponentActivity() {
             Intent(context, VideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_REFERER, referer)
                 putExtra(EXTRA_VIDEO_JSON, encodeVideo(video).toString())
-                val options = (streams.ifEmpty { listOf(video) })
+                val options = (listOf(video) + streams)
                     .distinctBy { it.url }
                     .take(MAX_STREAM_OPTIONS)
                 putExtra(EXTRA_STREAMS_JSON, encodeVideos(options).toString())
