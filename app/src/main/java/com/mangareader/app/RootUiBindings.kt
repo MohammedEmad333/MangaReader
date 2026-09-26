@@ -20,6 +20,8 @@ internal data class RootUiBindings(
     val browseScroll: ScrollMemory,
     val seriesScroll: ScrollMemory,
     val sourcesScroll: ScrollMemory,
+    val historyScroll: ScrollMemory,
+    val downloadsScroll: ScrollMemory,
     val releaseNotes: List<ReleaseNote>,
     val whatsNewOpen: Boolean,
     val onDismissWhatsNew: () -> Unit
@@ -48,6 +50,8 @@ internal fun rememberRootUiBindings(
     val browseScroll = remember { ScrollMemory() }
     val seriesScroll = remember { ScrollMemory() }
     val sourcesScroll = remember { ScrollMemory() }
+    val historyScroll = remember { ScrollMemory() }
+    val downloadsScroll = remember { ScrollMemory() }
 
     var whatsNewOpen by remember {
         mutableStateOf(releaseNotes.isNotEmpty())
@@ -76,6 +80,8 @@ internal fun rememberRootUiBindings(
         browseScroll = browseScroll,
         seriesScroll = seriesScroll,
         sourcesScroll = sourcesScroll,
+        historyScroll = historyScroll,
+        downloadsScroll = downloadsScroll,
         releaseNotes = releaseNotes,
         whatsNewOpen = whatsNewOpen,
         onDismissWhatsNew = {
