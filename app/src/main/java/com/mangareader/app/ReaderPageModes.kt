@@ -110,6 +110,7 @@ internal fun ReaderPagedPages(
     colorFilter: ColorFilter?,
     textColor: Color,
     onTap: (Float) -> Unit,
+    widePageMode: ReaderWidePageMode,
 ) {
     HorizontalPager(
         state = pagerState,
@@ -147,6 +148,7 @@ internal fun ReaderPagedPages(
                 textColor = textColor,
                 zoomable = true,
                 onTap = onTap,
+                widePageMode = widePageMode,
             )
         }
     }

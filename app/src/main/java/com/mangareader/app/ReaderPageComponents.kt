@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.graphics.BitmapFactory
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -77,7 +78,8 @@ internal fun ReaderPage(
     /** Pinch, double-tap and pan. Paged modes only — see the call site. */
     zoomable: Boolean = false,
     /** Non-null when this page is responsible for its own taps. */
-    onTap: ((Float) -> Unit)? = null
+    onTap: ((Float) -> Unit)? = null,
+    widePageMode: ReaderWidePageMode = ReaderWidePageMode.FIT,
 ) {
     // A placeholder handles no gestures of its own, so where the page owns the
     // tap it has to be attached here too — otherwise tapping a page that hasn't
@@ -89,6 +91,50 @@ internal fun ReaderPage(
                 onTap(offset.x)
             }
         }
+
+    val rotateWide = remember(file, widePageMode) {
+        if (file == null) {
+            false
+        } else {
+            val (width, height) = imageBounds(file)
+            shouldRotateWidePage(width, height, widePageMode)
+        }
+    }
+
+    if (file != null && rotateWide) {
+        BoxWithConstraints(modifier = placeholder, contentAlignment = Alignment.Center) {
+            val density = LocalDensity.current
+            val screenWidthPx = with(density) { maxWidth.toPx() }
+            val rotatedModifier = Modifier
+                .width(maxHeight)
+                .height(maxWidth)
+                .rotate(90f)
+
+            if (zoomable) {
+                ZoomableAsyncImage(
+                    model = file,
+                    contentDescription = null,
+                    modifier = rotatedModifier,
+                    colorFilter = colorFilter,
+                    contentScale = contentScale,
+                    onClick = { offset ->
+                        // After a clockwise quarter-turn, the original Y axis
+                        // becomes screen X in reverse.
+                        onTap?.invoke((screenWidthPx - offset.y).coerceIn(0f, screenWidthPx))
+                    },
+                )
+            } else {
+                AsyncImage(
+                    model = file,
+                    contentDescription = null,
+                    modifier = rotatedModifier,
+                    contentScale = contentScale,
+                    colorFilter = colorFilter,
+                )
+            }
+        }
+        return
+    }
 
     when {
         file != null && zoomable -> ZoomableAsyncImage(
@@ -128,6 +174,25 @@ internal fun ReaderPage(
             )
         }
     }
+}
+
+
+internal fun shouldRotateWidePage(
+    width: Int,
+    height: Int,
+    mode: ReaderWidePageMode,
+): Boolean =
+    mode == ReaderWidePageMode.ROTATE_RIGHT &&
+        width > 0 &&
+        height > 0 &&
+        width > height
+
+private fun imageBounds(file: File): Pair<Int, Int> {
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    return runCatching {
+        BitmapFactory.decodeFile(file.absolutePath, options)
+        options.outWidth to options.outHeight
+    }.getOrDefault(0 to 0)
 }
 
 /**

@@ -82,6 +82,20 @@ internal fun ReaderSettingsSheet(
                         selected = ReaderRotation.entries.indexOf(settings.rotation),
                         onSelect = { onChange(settings.copy(rotation = ReaderRotation.entries[it])) }
                     )
+                    if (settings.mode != ReaderMode.LONG_STRIP) {
+                        ChipRow(
+                            label = "Wide pages",
+                            options = ReaderWidePageMode.entries.map { it.label },
+                            selected = ReaderWidePageMode.entries.indexOf(settings.widePageMode),
+                            onSelect = {
+                                onChange(
+                                    settings.copy(
+                                        widePageMode = ReaderWidePageMode.entries[it]
+                                    )
+                                )
+                            }
+                        )
+                    }
                     ChipRow(
                         label = "Page slider",
                         options = ReaderSliderPosition.entries.map { it.label },

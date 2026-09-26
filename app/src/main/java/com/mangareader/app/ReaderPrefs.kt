@@ -30,6 +30,15 @@ internal enum class ReaderRotation(val key: String, val label: String) {
     }
 }
 
+internal enum class ReaderWidePageMode(val key: String, val label: String) {
+    FIT("fit", "Fit"),
+    ROTATE_RIGHT("rotate_right", "Rotate 90°");
+
+    companion object {
+        fun from(key: String?) = entries.firstOrNull { it.key == key } ?: FIT
+    }
+}
+
 internal enum class ReaderBackground(val key: String, val label: String) {
     BLACK("black", "Black"),
     GRAY("gray", "Gray"),
@@ -66,6 +75,8 @@ internal data class ReaderSettings(
     val sidePadding: Int = 0,
     /** Vertical spacing between items in long-strip mode, in dp. */
     val pageGap: Int = 0,
+    /** How landscape/wide pages are presented in paged mode. */
+    val widePageMode: ReaderWidePageMode = ReaderWidePageMode.FIT,
     /** Outer thirds turn pages in paged modes; centre third toggles controls. */
     val tapZones: Boolean = true,
     /** Seconds before reader chrome hides itself. 0 keeps controls visible. */
@@ -88,6 +99,7 @@ internal object ReaderPrefs {
     private const val BACKGROUND = "reader_background"
     private const val SIDE_PADDING = "reader_side_padding"
     private const val PAGE_GAP = "reader_page_gap"
+    private const val WIDE_PAGE_MODE = "reader_wide_page_mode"
     private const val TAP_ZONES = "reader_tap_zones"
     private const val CONTROLS_AUTO_HIDE_SECONDS = "reader_controls_auto_hide_seconds"
     private const val PAGE_NUMBER = "reader_page_number"
@@ -108,6 +120,7 @@ internal object ReaderPrefs {
             background = ReaderBackground.from(p.getString(BACKGROUND, null)),
             sidePadding = p.getInt(SIDE_PADDING, defaults.sidePadding),
             pageGap = p.getInt(PAGE_GAP, defaults.pageGap),
+            widePageMode = ReaderWidePageMode.from(p.getString(WIDE_PAGE_MODE, null)),
             tapZones = p.getBoolean(TAP_ZONES, defaults.tapZones),
             controlsAutoHideSeconds = p.getInt(
                 CONTROLS_AUTO_HIDE_SECONDS,
@@ -136,6 +149,7 @@ internal object ReaderPrefs {
             .putString(BACKGROUND, settings.background.key)
             .putInt(SIDE_PADDING, settings.sidePadding)
             .putInt(PAGE_GAP, settings.pageGap)
+            .putString(WIDE_PAGE_MODE, settings.widePageMode.key)
             .putBoolean(TAP_ZONES, settings.tapZones)
             .putInt(CONTROLS_AUTO_HIDE_SECONDS, settings.controlsAutoHideSeconds)
             .putBoolean(PAGE_NUMBER, settings.showPageNumber)
@@ -180,6 +194,9 @@ internal object ReaderSeriesPrefs {
                 ),
                 sidePadding = o.optInt("sidePadding", 0),
                 pageGap = o.optInt("pageGap", 0),
+                widePageMode = ReaderWidePageMode.from(
+                    o.optString("widePageMode").takeIf { it.isNotBlank() }
+                ),
                 tapZones = o.optBoolean("tapZones", true),
                 controlsAutoHideSeconds = o.optInt("controlsAutoHideSeconds", 4)
                     .coerceIn(0, 10),
@@ -210,6 +227,7 @@ internal object ReaderSeriesPrefs {
             .put("background", settings.background.key)
             .put("sidePadding", settings.sidePadding)
             .put("pageGap", settings.pageGap)
+            .put("widePageMode", settings.widePageMode.key)
             .put("tapZones", settings.tapZones)
             .put("controlsAutoHideSeconds", settings.controlsAutoHideSeconds)
             .put("showPageNumber", settings.showPageNumber)

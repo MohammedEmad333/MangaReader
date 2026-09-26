@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 214 down to 183, newest first. */
+/** Release-note chunk 215 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 215,
+            name = "0.215",
+            header = "Wide pages can rotate for easier reading",
+            body = "Paged reader settings now include a Wide pages option. Keep Fit " +
+                "for the existing behavior, or choose Rotate 90° and Yomu will detect " +
+                "landscape pages from their image dimensions and rotate only those " +
+                "pages. Zoom and tap-zone navigation continue to work after rotation.",
+        ),
         ReleaseNote(
             code = 214,
             name = "0.214",
