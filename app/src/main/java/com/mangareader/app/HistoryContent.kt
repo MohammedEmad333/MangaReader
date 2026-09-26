@@ -89,50 +89,52 @@ internal fun HistoryEntryRow(
             )
         },
         supportingContent = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            val supportingText =
                 if (entry.mediaType == "anime") {
                     val position = VideoPlaybackProgress.position(context, entry.chapterKey)
                     val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
                     val completed = VideoPlaybackProgress.isCompleted(context, entry.chapterKey)
-                    Text(
-                        buildString {
-                            if (entry.detail.isNotBlank()) append(entry.detail)
-                            when {
-                                completed && position > 0L -> {
-                                    if (isNotEmpty()) append(" • ")
-                                    append("Watched • Rewatch ")
-                                    append(formatMediaTime(position))
-                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                                }
-                                completed -> {
-                                    if (isNotEmpty()) append(" • ")
-                                    append("Watched")
-                                }
-                                position > 0L -> {
-                                    if (isNotEmpty()) append(" • ")
-                                    append(formatMediaTime(position))
-                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                                }
-                                else -> {
-                                    if (isNotEmpty()) append(" • ")
-                                    append("Started")
-                                }
+                    buildString {
+                        if (entry.detail.isNotBlank()) append(entry.detail)
+                        when {
+                            completed && position > 0L -> {
+                                if (isNotEmpty()) append(" • ")
+                                append("Watched • Rewatch ")
+                                append(formatMediaTime(position))
+                                if (duration > 0L) append(" / ${formatMediaTime(duration)}")
                             }
-                        },
-                    )
+                            completed -> {
+                                if (isNotEmpty()) append(" • ")
+                                append("Watched")
+                            }
+                            position > 0L -> {
+                                if (isNotEmpty()) append(" • ")
+                                append(formatMediaTime(position))
+                                if (duration > 0L) append(" / ${formatMediaTime(duration)}")
+                            }
+                            else -> {
+                                if (isNotEmpty()) append(" • ")
+                                append("Started")
+                            }
+                        }
+                    }
+                } else if (entry.total > 0) {
+                    "Page ${entry.page + 1} of ${entry.total}"
                 } else {
-                    Text(
-                        if (entry.total > 0) {
-                            "Page ${entry.page + 1} of ${entry.total}"
-                        } else {
-                            "Page ${entry.page + 1}"
-                        },
-                    )
+                    "Page ${entry.page + 1}"
                 }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = supportingText,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 EntryBadges(
                     downloaded = downloaded,
                     local = badgeLocal,
