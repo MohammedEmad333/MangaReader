@@ -39,7 +39,36 @@ internal class LibraryRefreshSourceWorker(
                 val chapters = src.listChapters(series)
 
                 if (chapters.isNotEmpty()) {
+                    // Capture the previous snapshot before replacing it. An
+                    // empty snapshot is a baseline, never a signal to download
+                    // the whole backlog on first enable/refresh.
+                    val previous = if (
+                        src.supportsDownload &&
+                        AutoDownloadPrefs.enabled(context, entry.sourceId, entry.seriesId)
+                    ) {
+                        ChapterCache.load(context, entry.seriesId)
+                    } else {
+                        emptyList()
+                    }
+
                     ChapterCache.save(context, entry.seriesId, chapters)
+
+                    if (previous.isNotEmpty() && AutoDownloadPrefs.networkAllowed(context)) {
+                        val fresh = AutoDownloadPrefs.newChapters(
+                            context = context,
+                            previous = previous,
+                            fresh = chapters,
+                        )
+                        if (fresh.isNotEmpty()) {
+                            queueSeriesDownloads(
+                                context = context,
+                                series = series,
+                                source = src,
+                                chapters = fresh,
+                            )
+                        }
+                    }
+
                     val counts = SeriesIndex.countsFor(
                         context,
                         entry.sourceId,

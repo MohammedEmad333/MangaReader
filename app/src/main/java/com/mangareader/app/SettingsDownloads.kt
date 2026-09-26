@@ -88,6 +88,12 @@ internal fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
     var tick by remember { mutableIntStateOf(0) }
     var confirmDelete by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var autoDownloadWifiOnly by remember {
+        mutableStateOf(AutoDownloadPrefs.wifiOnly(context))
+    }
+    var autoDownloadLimit by remember {
+        mutableStateOf(AutoDownloadPrefs.limit(context))
+    }
     val use = rememberStorageUse(tick)
 
     val queued = DownloadQueue.items.size
@@ -110,6 +116,31 @@ internal fun DownloadSettings(onOpenDownloadQueue: () -> Unit) {
                 )
             },
             modifier = Modifier.clickable { onOpenDownloadQueue() }
+        )
+        HorizontalDivider()
+
+        SectionHeader("Automatic downloads")
+        PrefSwitchRow(
+            title = "Wi-Fi only",
+            checked = autoDownloadWifiOnly,
+            summary = "Applies to per-series auto-download when library refresh finds new chapters.",
+            onChange = { value ->
+                autoDownloadWifiOnly = value
+                AutoDownloadPrefs.setWifiOnly(context, value)
+            },
+        )
+        ListItem(
+            headlineContent = { Text("New chapters per series") },
+            supportingContent = { Text(autoDownloadLimit.label) },
+            modifier = Modifier.clickable {
+                val next = autoDownloadLimit.next()
+                autoDownloadLimit = next
+                AutoDownloadPrefs.setLimit(context, next)
+            },
+        )
+        PrefNote(
+            "Auto-download is enabled per series from its ⋮ menu. The first refresh " +
+                "after enabling establishes a baseline and never downloads the old backlog."
         )
         HorizontalDivider()
 
