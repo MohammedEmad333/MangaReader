@@ -128,7 +128,7 @@ internal fun visibleChapters(
     val fBookmarked = ChapterPrefs.filterBookmarked(context)
     val selectedScanlators = ChapterPrefs.scanlators(context, seriesId)
     val availableScanlators = chapters.mapNotNull {
-        it.scanlator?.takeIf(String::isNotBlank)
+        it.scanlator?.takeIf { value -> value.isNotBlank() }
     }.toSet()
     val activeScanlators = selectedScanlators.intersect(availableScanlators)
 
