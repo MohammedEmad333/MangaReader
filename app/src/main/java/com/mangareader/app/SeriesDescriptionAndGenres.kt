@@ -94,6 +94,11 @@ internal fun SeriesDescriptionAndGenres(
         )
     }
 
+    SeriesDiscoveryActions(
+        series = series,
+        onGlobalSearch = onGlobalSearchTag,
+    )
+
     if (series.genres.isNotEmpty()) {
         val tagModifier = Modifier
             .fillMaxWidth()
@@ -125,6 +130,46 @@ internal fun SeriesDescriptionAndGenres(
                     onGlobalSearchTag = onGlobalSearchTag,
                 )
             }
+        }
+    }
+}
+
+
+@Composable
+private fun SeriesDiscoveryActions(
+    series: Series,
+    onGlobalSearch: (String) -> Unit,
+) {
+    val similar = remember(series) { SeriesDiscovery.similarQuery(series) }
+    val author = series.author?.trim()?.takeIf { it.isNotEmpty() }
+    val artist = series.artist?.trim()?.takeIf { it.isNotEmpty() }
+
+    if (similar == null && author == null && artist == null) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        similar?.let { query ->
+            AssistChip(
+                onClick = { onGlobalSearch(query) },
+                label = { Text("Find similar") },
+            )
+        }
+        author?.let { name ->
+            AssistChip(
+                onClick = { onGlobalSearch(name) },
+                label = { Text("Author: $name", maxLines = 1) },
+            )
+        }
+        if (artist != null && artist != author) {
+            AssistChip(
+                onClick = { onGlobalSearch(artist) },
+                label = { Text("Artist: $artist", maxLines = 1) },
+            )
         }
     }
 }
