@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,6 +52,36 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
+
+internal enum class DownloadsSortMode(val label: String) {
+    SIZE("Size"),
+    TITLE("Title"),
+    CHAPTERS("Chapters"),
+}
+
+internal fun filterAndSortDownloads(
+    series: List<DownloadedSeries>,
+    query: String,
+    sortMode: DownloadsSortMode,
+    descending: Boolean,
+): List<DownloadedSeries> {
+    val needle = query.trim()
+    val filtered = if (needle.isEmpty()) {
+        series
+    } else {
+        series.filter { entry ->
+            entry.title.contains(needle, ignoreCase = true) ||
+                entry.chapters.any { it.name.contains(needle, ignoreCase = true) }
+        }
+    }
+    val sorted = when (sortMode) {
+        DownloadsSortMode.SIZE -> filtered.sortedBy { it.sizeBytes }
+        DownloadsSortMode.TITLE -> filtered.sortedBy { it.title.lowercase(Locale.ROOT) }
+        DownloadsSortMode.CHAPTERS -> filtered.sortedBy { it.chapters.size }
+    }
+    return if (descending) sorted.asReversed() else sorted
+}
 
 /**
  * The Downloads tab: series with chapters saved to permanent storage.
@@ -77,6 +108,9 @@ internal fun DownloadsTab(
     // back up to YomuApp for something no other screen cares about.
     var localTick by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var sortModeName by rememberSaveable { mutableStateOf(DownloadsSortMode.SIZE.name) }
+    var sortDescending by rememberSaveable { mutableStateOf(true) }
 
     // Cleared from an EFFECT, not from the gesture lambda.
     //
@@ -117,7 +151,12 @@ internal fun DownloadsTab(
         value = withContext(Dispatchers.IO) { DownloadIndex.list(context) }
     }
     val series = loaded ?: emptyList()
-    val downloadsOrdering = remember(series) { series.map { it.seriesId } }
+    val sortMode = runCatching { DownloadsSortMode.valueOf(sortModeName) }
+        .getOrDefault(DownloadsSortMode.SIZE)
+    val visibleSeries = remember(series, searchQuery, sortMode, sortDescending) {
+        filterAndSortDownloads(series, searchQuery, sortMode, sortDescending)
+    }
+    val downloadsOrdering = remember(visibleSeries) { visibleSeries.map { it.seriesId } }
     scroll.sync(downloadsOrdering)
     val totalSize = remember(series) { series.sumOf { it.sizeBytes } }
     var confirmDelete by remember { mutableStateOf<DownloadedSeries?>(null) }
@@ -133,6 +172,19 @@ internal fun DownloadsTab(
             failedCount = failedCount,
             onOpenQueue = onOpenQueue,
         )
+
+        if (loaded != null && series.isNotEmpty()) {
+            DownloadsTools(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                sortMode = sortMode,
+                onSortModeChange = { sortModeName = it.name },
+                descending = sortDescending,
+                onDescendingChange = { sortDescending = it },
+                shownCount = visibleSeries.size,
+                totalCount = series.size,
+            )
+        }
 
         if (loaded == null) {
             Row(
@@ -193,9 +245,16 @@ internal fun DownloadsTab(
                 "downloads",
                 downloadsOrdering,
             )
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            if (visibleSeries.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No downloaded series match your search.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
-                    series,
+                    visibleSeries,
                     key = { it.seriesId },
                     contentType = { "downloaded-series" },
                 ) { entry ->
