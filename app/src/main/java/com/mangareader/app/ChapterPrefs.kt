@@ -80,7 +80,29 @@ object ChapterPrefs {
     fun setFilterBookmarked(c: Context, v: FilterState) =
         p(c).edit().putInt("ch_f_bm", v.stored).apply()
 
-    /** Drives the tint on the top bar's filter icon, the way SY tints its own. */
+    private fun scanlatorKey(sourceId: String, seriesId: String) =
+        "ch_scanlator:" + sourceId.length + ":" + sourceId + ":" + seriesId
+
+    /** Empty means all scanlators for this source + series pair. */
+    fun scanlators(c: Context, sourceId: String, seriesId: String): Set<String> =
+        p(c).getStringSet(scanlatorKey(sourceId, seriesId), emptySet())
+            ?.toSet()
+            .orEmpty()
+
+    fun setScanlators(
+        c: Context,
+        sourceId: String,
+        seriesId: String,
+        values: Set<String>,
+    ) {
+        val key = scanlatorKey(sourceId, seriesId)
+        val edit = p(c).edit()
+        if (values.isEmpty()) edit.remove(key)
+        else edit.putStringSet(key, values.toSet())
+        edit.apply()
+    }
+
+    /** Drives the global filter tint. Per-series scanlator state is added by the caller. */
     fun anyFilterActive(c: Context) =
         filterDownloaded(c) != FilterState.OFF ||
             filterUnread(c) != FilterState.OFF ||
@@ -106,11 +128,17 @@ object ChapterPrefs {
 internal fun visibleChapters(
     context: Context,
     chapters: List<Chapter>,
-    sourceId: String
+    sourceId: String,
+    seriesId: String,
 ): List<Chapter> {
     val fDownloaded = ChapterPrefs.filterDownloaded(context)
     val fUnread = ChapterPrefs.filterUnread(context)
     val fBookmarked = ChapterPrefs.filterBookmarked(context)
+    val selectedScanlators = ChapterPrefs.scanlators(context, sourceId, seriesId)
+    val availableScanlators = chapters.mapNotNull {
+        it.scanlator?.takeIf { value -> value.isNotBlank() }
+    }.toSet()
+    val activeScanlators = selectedScanlators.intersect(availableScanlators)
 
     val filtered = chapters.filter { ch ->
         val downloadedOk = when (fDownloaded) {
@@ -129,11 +157,15 @@ internal fun visibleChapters(
         // absent case and the "not bookmarked" case are one lookup and there is
         // no third state to collapse here — unlike `SeriesIndex`, where absent
         // and zero mean different things.
-        when (fBookmarked) {
+        val bookmarkedOk = when (fBookmarked) {
             FilterState.OFF -> true
             FilterState.INCLUDE -> Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, ch))
             FilterState.EXCLUDE -> !Bookmarks.isBookmarked(context, chapterKeyOf(sourceId, ch))
         }
+        if (!bookmarkedOk) return@filter false
+
+        activeScanlators.isEmpty() ||
+            ch.scanlator?.takeIf { it.isNotBlank() } in activeScanlators
     }
 
     val ascending = ChapterPrefs.ascending(context)

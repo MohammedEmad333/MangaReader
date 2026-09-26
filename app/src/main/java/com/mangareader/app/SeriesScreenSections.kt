@@ -98,6 +98,7 @@ internal fun SeriesSelectionOverlay(
 @Composable
 internal fun SeriesAuxiliaryDialogs(
     series: Series,
+    chapters: List<Chapter>,
     sourceId: String,
     confirmDeleteChapter: Chapter?,
     onDismissDeleteChapter: () -> Unit,
@@ -147,6 +148,9 @@ internal fun SeriesAuxiliaryDialogs(
 
     if (showChapterOptions) {
         ChapterOptionsSheet(
+            sourceId = sourceId,
+            seriesId = series.id,
+            chapters = chapters,
             onDismiss = onDismissChapterOptions,
             onChanged = onChapterOptionsChanged,
         )
