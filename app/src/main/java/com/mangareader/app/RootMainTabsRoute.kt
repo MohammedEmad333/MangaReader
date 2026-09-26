@@ -31,6 +31,7 @@ internal fun RootMainTabsRoute(
         configs = appState.configs,
         extensions = appState.extensionSources,
         sourcesScroll = root.ui.sourcesScroll,
+        extensionsScroll = root.ui.extensionsScroll,
         onGlobalSearch = actions::showGlobalSearch,
         onAddSource = actions::addSource,
         onOpenConfig = { actions.openSourceConfig(it) },
