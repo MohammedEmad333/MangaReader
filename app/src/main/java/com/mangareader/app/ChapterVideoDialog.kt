@@ -26,7 +26,7 @@ internal fun ChapterVideoDialog(
     onOpenVideo: (PlayableVideo) -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = { if (!scanning) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text(if (isAnime) "Streams for this episode" else "Videos in this chapter") },
         text = {
             when {
@@ -91,10 +91,7 @@ internal fun ChapterVideoDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !scanning
-            ) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text("Close") }
         }
     )
 }
