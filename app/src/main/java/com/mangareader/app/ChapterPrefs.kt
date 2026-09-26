@@ -80,25 +80,33 @@ object ChapterPrefs {
     fun setFilterBookmarked(c: Context, v: FilterState) =
         p(c).edit().putInt("ch_f_bm", v.stored).apply()
 
-    private fun scanlatorKey(seriesId: String) = "ch_scanlator:$seriesId"
+    private fun scanlatorKey(sourceId: String, seriesId: String) =
+        "ch_scanlator:" + sourceId.length + ":" + sourceId + ":" + seriesId
 
-    /** Empty means all scanlators for this series. */
-    fun scanlators(c: Context, seriesId: String): Set<String> =
-        p(c).getStringSet(scanlatorKey(seriesId), emptySet())?.toSet().orEmpty()
+    /** Empty means all scanlators for this source + series pair. */
+    fun scanlators(c: Context, sourceId: String, seriesId: String): Set<String> =
+        p(c).getStringSet(scanlatorKey(sourceId, seriesId), emptySet())
+            ?.toSet()
+            .orEmpty()
 
-    fun setScanlators(c: Context, seriesId: String, values: Set<String>) {
+    fun setScanlators(
+        c: Context,
+        sourceId: String,
+        seriesId: String,
+        values: Set<String>,
+    ) {
+        val key = scanlatorKey(sourceId, seriesId)
         val edit = p(c).edit()
-        if (values.isEmpty()) edit.remove(scanlatorKey(seriesId))
-        else edit.putStringSet(scanlatorKey(seriesId), values.toSet())
+        if (values.isEmpty()) edit.remove(key)
+        else edit.putStringSet(key, values.toSet())
         edit.apply()
     }
 
-    /** Drives the tint on the top bar's filter icon, the way SY tints its own. */
-    fun anyFilterActive(c: Context, seriesId: String? = null) =
+    /** Drives the global filter tint. Per-series scanlator state is added by the caller. */
+    fun anyFilterActive(c: Context) =
         filterDownloaded(c) != FilterState.OFF ||
             filterUnread(c) != FilterState.OFF ||
-            filterBookmarked(c) != FilterState.OFF ||
-            (seriesId != null && scanlators(c, seriesId).isNotEmpty())
+            filterBookmarked(c) != FilterState.OFF
 }
 
 /**
@@ -126,7 +134,7 @@ internal fun visibleChapters(
     val fDownloaded = ChapterPrefs.filterDownloaded(context)
     val fUnread = ChapterPrefs.filterUnread(context)
     val fBookmarked = ChapterPrefs.filterBookmarked(context)
-    val selectedScanlators = ChapterPrefs.scanlators(context, seriesId)
+    val selectedScanlators = ChapterPrefs.scanlators(context, sourceId, seriesId)
     val availableScanlators = chapters.mapNotNull {
         it.scanlator?.takeIf { value -> value.isNotBlank() }
     }.toSet()
