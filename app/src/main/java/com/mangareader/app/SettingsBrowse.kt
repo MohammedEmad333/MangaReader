@@ -87,7 +87,10 @@ internal fun BrowseSettings() {
     var showUnclassified by remember { mutableStateOf(false) }
     var pinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
     var showNsfw by remember { mutableStateOf(SourcePrefs.showNsfw(context)) }
-    val repoCount = remember(showRepos) { ExtensionRepos.list(context).size }
+    val repoCount by produceState<Int?>(initialValue = null, showRepos) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) { ExtensionRepos.list(appContext).size }
+    }
     val unclassifiedCount by produceState<Int?>(initialValue = null, showUnclassified) {
         val appContext = context.applicationContext
         value = withContext(Dispatchers.IO) {
@@ -107,6 +110,7 @@ internal fun BrowseSettings() {
             supportingContent = {
                 Text(
                     when (repoCount) {
+                        null -> "Checking repositories…"
                         0 -> "None added"
                         1 -> "1 repository"
                         else -> "$repoCount repositories"

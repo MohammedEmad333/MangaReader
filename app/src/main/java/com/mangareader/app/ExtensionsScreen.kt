@@ -76,11 +76,13 @@ internal fun ExtensionsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // repos is read-only on this screen now — the editor lives in
-    // More → Browse → Extension repos. It's still state because the fetch below
-    // keys on it, and it re-reads from prefs whenever this screen re-enters the
-    // composition (which a bottom-nav tab switch always causes).
-    val repos by remember { mutableStateOf(ExtensionRepos.list(context)) }
+    // Parse the saved repository list off the UI thread before starting the
+    // catalogue fetch. This screen is recreated when Browse re-enters
+    // composition, so doing the JSON read in remember() would tax every visit.
+    val repos by produceState<List<String>?>(initialValue = null) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) { ExtensionRepos.list(appContext) }
+    }
     var available by remember { mutableStateOf<List<Extension>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var loadedOnce by remember { mutableStateOf(false) }
@@ -169,7 +171,8 @@ internal fun ExtensionsScreen(
     }
 
     LaunchedEffect(repos, refreshTick) {
-        if (repos.isEmpty()) {
+        val repoSnapshot = repos ?: return@LaunchedEffect
+        if (repoSnapshot.isEmpty()) {
             available = emptyList()
             loadedOnce = true
             return@LaunchedEffect
@@ -191,7 +194,7 @@ internal fun ExtensionsScreen(
 
     ExtensionsContent(
         modifier = modifier,
-        reposEmpty = repos.isEmpty(),
+        reposEmpty = repos?.isEmpty() == true,
         loading = loading,
         loadedOnce = loadedOnce,
         error = error,
