@@ -231,6 +231,7 @@ internal fun ReaderScreen(
                 onNext = onNext,
                 colorFilter = filter,
                 textColor = onBackground,
+                pageGap = settings.pageGap.dp,
             )
         } else {
             ReaderPagedPages(
