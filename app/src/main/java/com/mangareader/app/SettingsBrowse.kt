@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,12 +88,16 @@ internal fun BrowseSettings() {
     var pinnedOnly by remember { mutableStateOf(SourcePrefs.pinnedOnlySearch(context)) }
     var showNsfw by remember { mutableStateOf(SourcePrefs.showNsfw(context)) }
     val repoCount = remember(showRepos) { ExtensionRepos.list(context).size }
-    // Recomputed when the dialog closes, so the row's count drops as sources
-    // are classified. Two memoised reads and a grouping — the same shape
-    // RefreshSourcePicker uses on the same data.
-    val unclassifiedCount = remember(showUnclassified) {
-        val known = SourceNsfw.all(context)
-        Library.list(context).map { it.sourceId }.distinct().count { it !in known }
+    val unclassifiedCount by produceState<Int?>(initialValue = null, showUnclassified) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            val known = SourceNsfw.all(appContext)
+            Library.list(appContext)
+                .asSequence()
+                .map { it.sourceId }
+                .distinct()
+                .count { it !in known }
+        }
     }
 
     SettingsColumn {
@@ -131,6 +136,7 @@ internal fun BrowseSettings() {
             supportingContent = {
                 Text(
                     when (unclassifiedCount) {
+                        null -> "Checking library…"
                         0 -> "Every source in your library is classified"
                         1 -> "1 source in your library, 18+ unknown"
                         else -> "$unclassifiedCount sources in your library, 18+ unknown"
@@ -185,18 +191,21 @@ internal fun BrowseSettings() {
 private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
 
-    // Computed once, on open, and deliberately NOT recomputed as switches move.
-    // Classifying a source is exactly what takes it off this list, so a live
-    // list would delete each row from under the finger that just tapped it and
-    // shuffle the rest up under it. The list settles when the dialog closes.
-    val rows = remember {
-        val known = SourceNsfw.all(context)
-        Library.list(context)
-            .groupingBy { it.sourceId }
-            .eachCount()
-            .filterKeys { it !in known }
-            .map { (id, count) -> Triple(id, SourceNames.nameOf(context, id), count) }
-            .sortedByDescending { it.third }
+    // Snapshot once on open, but build it on IO: a restored library can contain
+    // thousands of entries, and grouping it is not composition work.
+    val rows by produceState<List<Triple<String, String, Int>>?>(initialValue = null) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            val known = SourceNsfw.all(appContext)
+            Library.list(appContext)
+                .groupingBy { it.sourceId }
+                .eachCount()
+                .filterKeys { it !in known }
+                .map { (id, count) ->
+                    Triple(id, SourceNames.nameOf(appContext, id), count)
+                }
+                .sortedByDescending { it.third }
+        }
     }
     // Only ids the user actually touched. An untouched switch must not record
     // "not 18+" — that is a claim nobody made, and storing it would take the
@@ -207,45 +216,42 @@ private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Unclassified sources") },
         text = {
-            if (rows.isEmpty()) {
-                Text("Every source in your library has been classified.")
-            } else {
-                Column {
-                    Text(
-                        "These sources aren't installed and aren't in any repository, " +
-                            "so nothing can tell whether they're 18+. Switch on the " +
-                            "ones that are and the library's 18+ filter will cover them.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
-                        items(rows) { (id, name, count) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(name)
-                                    Text(
-                                        if (count == 1) "1 in library" else "$count in library",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            when {
+                rows == null -> Text("Loading sources…")
+                rows!!.isEmpty() -> Text("Every source in your library has been classified.")
+                else -> {
+                    Column {
+                        Text(
+                            "These sources aren't installed and aren't in any repository, " +
+                                "so nothing can tell whether they're 18+. Switch on the " +
+                                "ones that are and the library's 18+ filter will cover them.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                            items(rows!!) { (id, name, count) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(name)
+                                        Text(
+                                            if (count == 1) "1 in library" else "$count in library",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = flags[id] ?: false,
+                                        onCheckedChange = { value ->
+                                            flags = flags + (id to value)
+                                            SourceNsfw.record(context, mapOf(id to value))
+                                        }
                                     )
                                 }
-                                Switch(
-                                    checked = flags[id] ?: false,
-                                    onCheckedChange = { value ->
-                                        flags = flags + (id to value)
-                                        // Written on every flip rather than on
-                                        // Done, for the reader sheet's reason: a
-                                        // dialog can be dismissed by tapping
-                                        // outside it, and an answer lost that way
-                                        // is a bug nobody reports.
-                                        SourceNsfw.record(context, mapOf(id to value))
-                                    }
-                                )
                             }
                         }
                     }

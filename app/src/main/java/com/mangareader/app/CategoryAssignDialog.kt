@@ -22,9 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,8 +58,18 @@ internal fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
-    val all = remember { Categories.list(context) }
-    var selected by remember { mutableStateOf(Categories.categoriesFor(context, seriesId)) }
+    val loaded by produceState<Pair<List<Category>, Set<String>>?>(null, seriesId) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            Categories.list(appContext) to Categories.categoriesFor(appContext, seriesId)
+        }
+    }
+    val all = loaded?.first.orEmpty()
+    var selected by remember(seriesId) { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(loaded) {
+        if (selected == null) selected = loaded?.second
+    }
+    val currentSelection = selected.orEmpty()
 
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
@@ -73,16 +85,16 @@ internal fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
                                 .fillMaxWidth()
                                 .clickable {
                                     selected =
-                                        if (selected.contains(cat.id)) selected - cat.id
-                                        else selected + cat.id
+                                        if (currentSelection.contains(cat.id)) currentSelection - cat.id
+                                        else currentSelection + cat.id
                                 }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
-                                checked = selected.contains(cat.id),
+                                checked = currentSelection.contains(cat.id),
                                 onCheckedChange = {
-                                    selected = if (it) selected + cat.id else selected - cat.id
+                                    selected = if (it) currentSelection + cat.id else currentSelection - cat.id
                                 }
                             )
                             Spacer(Modifier.width(8.dp))
@@ -94,10 +106,10 @@ internal fun CategoryAssignDialog(seriesId: String, onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(
-                enabled = !saving,
+                enabled = loaded != null && selected != null && !saving,
                 onClick = {
                     val appContext = context.applicationContext
-                    val next = selected
+                    val next = selected ?: return@Button
                     saving = true
                     scope.launch {
                         val saved = runCatching {
