@@ -156,7 +156,4 @@ internal class AppShellActionController(
         }
     }
 
-    private fun reloadConfigs() {
-        appState.configs = SourceManager.list(context)
-    }
 }
