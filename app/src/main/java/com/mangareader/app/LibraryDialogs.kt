@@ -25,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +35,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Category editor for a selection of any size.
@@ -54,28 +59,32 @@ internal fun BulkCategoryDialog(
     onApplied: () -> Unit
 ) {
     val context = LocalContext.current
-    val cats = remember { Categories.list(context) }
-
-    // One membership lookup per category against the cached assignment object,
-    // then a set test per selected id. The other direction — categoriesFor()
-    // per selected series — is a full parse each time.
-    val initial = remember(seriesIds, cats) {
-        cats.associate { cat ->
-            val members = Categories.seriesIn(context, cat.id)
-            val hits = seriesIds.count { it in members }
-            cat.id to when (hits) {
-                0 -> ToggleableState.Off
-                seriesIds.size -> ToggleableState.On
-                else -> ToggleableState.Indeterminate
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    val loaded by produceState<Pair<List<Category>, Map<String, ToggleableState>>?>(null, seriesIds) {
+        val appContext = context.applicationContext
+        value = withContext(Dispatchers.IO) {
+            val categories = Categories.list(appContext)
+            val initial = categories.associate { cat ->
+                val members = Categories.seriesIn(appContext, cat.id)
+                val hits = seriesIds.count { it in members }
+                cat.id to when (hits) {
+                    0 -> ToggleableState.Off
+                    seriesIds.size -> ToggleableState.On
+                    else -> ToggleableState.Indeterminate
+                }
             }
+            categories to initial
         }
     }
-    val state = remember(initial) {
+    val cats = loaded?.first.orEmpty()
+    val initial = loaded?.second.orEmpty()
+    val state = remember(loaded) {
         mutableStateMapOf<String, ToggleableState>().apply { putAll(initial) }
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("Categories") },
         text = {
             if (cats.isEmpty()) {
@@ -131,19 +140,25 @@ internal fun BulkCategoryDialog(
         },
         confirmButton = {
             Button(
-                enabled = cats.isNotEmpty(),
+                enabled = loaded != null && cats.isNotEmpty() && !saving,
                 onClick = {
-                    Categories.applyCategories(
-                        context,
-                        seriesIds,
-                        add = state.filterValues { it == ToggleableState.On }.keys.toSet(),
-                        remove = state.filterValues { it == ToggleableState.Off }.keys.toSet()
-                    )
-                    onApplied()
+                    val appContext = context.applicationContext
+                    val add = state.filterValues { it == ToggleableState.On }.keys.toSet()
+                    val remove = state.filterValues { it == ToggleableState.Off }.keys.toSet()
+                    saving = true
+                    scope.launch {
+                        val saved = runCatching {
+                            withContext(Dispatchers.IO) {
+                                Categories.applyCategories(appContext, seriesIds, add, remove)
+                            }
+                        }.isSuccess
+                        saving = false
+                        if (saved) onApplied()
+                    }
                 }
-            ) { Text("Save") }
+            ) { Text(if (saving) "Saving…" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
