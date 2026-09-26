@@ -100,6 +100,19 @@ internal fun ReaderSettingsSheet(
                         steps = 4,
                         onChange = { onChange(settings.copy(sidePadding = it.toInt())) }
                     )
+                    if (settings.mode != ReaderMode.LONG_STRIP) {
+                        SwitchRow("Tap zones", settings.tapZones) {
+                            onChange(settings.copy(tapZones = it))
+                        }
+                        if (settings.tapZones) {
+                            Text(
+                                "Outer thirds turn pages; the centre third toggles controls.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                    }
                     if (settings.mode == ReaderMode.LONG_STRIP) {
                         SliderRow(
                             label = "Page gap",
