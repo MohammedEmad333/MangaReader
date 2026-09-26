@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 211 down to 183, newest first. */
+/** Release-note chunk 212 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 212,
+            name = "0.212",
+            header = "Reader controls get out of the way automatically",
+            body = "Reader controls now hide themselves after four seconds of inactivity " +
+                "so pages stay unobstructed without another tap. The timer pauses while " +
+                "the chapter picker or reader settings are open, then resumes when you " +
+                "return to reading.",
+        ),
         ReleaseNote(
             code = 211,
             name = "0.211",
