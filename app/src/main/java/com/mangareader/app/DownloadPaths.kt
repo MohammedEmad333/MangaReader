@@ -237,8 +237,94 @@ internal object DownloadPaths {
         return found
     }
 
-    // ---------- naming ----------
+    /**
+     * Repairs readable downloads created before [.chapterid] existed.
+     *
+     * Those folders already have human-readable Source/Series/Chapter names and
+     * a .complete marker, but after app metadata is lost there is no chapter id
+     * left in the tree for [scan] to recover. We only reconnect a folder when
+     * the source, series and chapter names each have one unambiguous match in
+     * the current Library + ChapterCache. A successful match is written back to
+     * both indexes and gets an ID marker, making the repair permanent.
+     */
+    @Synchronized
+    fun recoverUnmarkedFromLibrary(context: Context, downloadsRoot: File): Int {
+        load(context)
+        if (!downloadsRoot.isDirectory) return 0
 
+        val sourceDirs = downloadsRoot.listFiles()
+            ?.filter { it.isDirectory }
+            .orEmpty()
+        if (sourceDirs.isEmpty()) return 0
+
+        val sourceNames = SourceNames.all(context)
+        var recovered = 0
+
+        Library.list(context).forEach { entry ->
+            val sourceDesired = buildSet {
+                add(clean(entry.sourceId, entry.sourceId))
+                sourceNames[entry.sourceId]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(clean(it, entry.sourceId)) }
+            }
+            val sourceDir = uniqueMatchingDir(sourceDirs, sourceDesired) ?: return@forEach
+
+            val seriesDesired = setOf(clean(entry.title, "Unknown series"))
+            val seriesDir = uniqueMatchingDir(
+                sourceDir.listFiles()?.filter { it.isDirectory }.orEmpty(),
+                seriesDesired,
+            ) ?: return@forEach
+
+            val chapterDirs = seriesDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+            if (chapterDirs.isEmpty()) return@forEach
+
+            ChapterCache.load(context, entry.seriesId).forEach chapterLoop@ { chapter ->
+                if (chapter.id.isBlank() || chapters.containsKey(chapter.id)) return@chapterLoop
+
+                val chapterDir = uniqueMatchingDir(
+                    chapterDirs,
+                    setOf(clean(chapter.name, "Chapter")),
+                ) ?: return@chapterLoop
+
+                if (!File(chapterDir, ".complete").isFile) return@chapterLoop
+
+                val relative =
+                    "${sourceDir.name}/${seriesDir.name}/${chapterDir.name}"
+                chapters[chapter.id] = relative
+                sources[entry.sourceId] = sourceDir.name
+                series["${entry.sourceId}|${entry.seriesId}"] = seriesDir.name
+
+                runCatching { File(chapterDir, ID_MARKER).writeText(chapter.id) }
+                recovered++
+            }
+        }
+
+        if (recovered > 0) save(context)
+        return recovered
+    }
+
+    /**
+     * Matches either the original clean name or the stable "(abcdef)" suffix
+     * produced by [DownloadPathNaming.unique]. More than one match is refused:
+     * recovery must never guess which on-disk folder owns a chapter.
+     */
+    private fun uniqueMatchingDir(
+        dirs: List<File>,
+        desiredNames: Set<String>,
+    ): File? {
+        val matches = dirs.filter { dir ->
+            desiredNames.any { desired ->
+                dir.name == desired || stableSuffixedName(dir.name, desired)
+            }
+        }
+        return matches.singleOrNull()
+    }
+
+    private fun stableSuffixedName(actual: String, desired: String): Boolean {
+        if (!actual.startsWith("$desired (") || !actual.endsWith(")")) return false
+        val suffix = actual.removePrefix("$desired (").removeSuffix(")")
+        return suffix.length == 6 && suffix.all { it in '0'..'9' || it in 'a'..'f' }
+    }
     // ---------- naming ----------
 
     /**
