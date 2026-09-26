@@ -68,6 +68,8 @@ internal fun ReaderScreen(
     pages: List<File?>,
     stillLoading: Boolean,
     initialPage: Int,
+    sourceId: String,
+    seriesId: String,
     seriesTitle: String,
     chapterName: String,
     chapters: List<Chapter>,
@@ -84,7 +86,16 @@ internal fun ReaderScreen(
     val context = view.context
     val scope = rememberCoroutineScope()
 
-    var settings by remember { mutableStateOf(ReaderPrefs.load(context)) }
+    val globalSettings = remember(sourceId, seriesId) { ReaderPrefs.load(context) }
+    val initialSeriesSettings = remember(sourceId, seriesId) {
+        ReaderSeriesPrefs.load(context, sourceId, seriesId)
+    }
+    var useGlobalDefaults by remember(sourceId, seriesId) {
+        mutableStateOf(initialSeriesSettings == null)
+    }
+    var settings by remember(sourceId, seriesId) {
+        mutableStateOf(initialSeriesSettings ?: globalSettings)
+    }
     var showControls by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
@@ -94,7 +105,23 @@ internal fun ReaderScreen(
     // was closed the wrong way is the kind of bug nobody reports.
     fun update(next: ReaderSettings) {
         settings = next
-        ReaderPrefs.save(context, next)
+        if (useGlobalDefaults || sourceId.isBlank() || seriesId.isBlank()) {
+            ReaderPrefs.save(context, next)
+        } else {
+            ReaderSeriesPrefs.save(context, sourceId, seriesId, next)
+        }
+    }
+
+    fun setUseGlobalDefaults(enabled: Boolean) {
+        useGlobalDefaults = enabled || sourceId.isBlank() || seriesId.isBlank()
+        settings = if (useGlobalDefaults) {
+            ReaderSeriesPrefs.clear(context, sourceId, seriesId)
+            ReaderPrefs.load(context)
+        } else {
+            val snapshot = settings
+            ReaderSeriesPrefs.save(context, sourceId, seriesId, snapshot)
+            snapshot
+        }
     }
 
     BackHandler {
@@ -263,6 +290,9 @@ internal fun ReaderScreen(
         showSettings = showSettings,
         onDismissSettings = { showSettings = false },
         settings = settings,
+        useGlobalDefaults = useGlobalDefaults,
+        canOverrideSeries = sourceId.isNotBlank() && seriesId.isNotBlank(),
+        onUseGlobalDefaultsChange = ::setUseGlobalDefaults,
         onSettingsChange = { update(it) },
     )
 

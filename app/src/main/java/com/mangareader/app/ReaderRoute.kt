@@ -26,6 +26,8 @@ internal fun ReaderRoute(
             pages = pages,
             stillLoading = stillLoading,
             initialPage = savedPage(context, chapterKey).coerceIn(0, total - 1),
+            sourceId = sourceId,
+            seriesId = series?.id.orEmpty(),
             seriesTitle = series?.title ?: "",
             chapterName = chapter.name,
             chapters = chapters,
