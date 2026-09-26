@@ -79,9 +79,9 @@ internal fun rememberSeriesDerivedState(
                     sourceId = sourceId,
                     isAnimeSource = isAnimeSource,
                 ),
-                visible = visibleChapters(appContext, chapters, sourceId),
+                visible = visibleChapters(appContext, chapters, sourceId, series.id),
                 chapterDisplay = ChapterPrefs.display(appContext),
-                filtersActive = ChapterPrefs.anyFilterActive(appContext),
+                filtersActive = ChapterPrefs.anyFilterActive(appContext, series.id),
             )
         }
     }
