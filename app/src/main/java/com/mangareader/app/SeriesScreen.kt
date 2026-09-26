@@ -182,6 +182,7 @@ internal fun SeriesScreen(
     var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
     var confirmDeleteChapter by remember(series.id) { mutableStateOf<Chapter?>(null) }
     var confirmDeleteSelection by remember(series.id) { mutableStateOf(false) }
+    var confirmDeleteAllDownloads by remember(series.id) { mutableStateOf(false) }
     // Chapter ids, not indices: the list is re-fetched on rescan and after a
     // solved challenge, and indices would silently point at different chapters.
     var selectedIds by remember(series.id) { mutableStateOf(emptySet<String>()) }
@@ -283,7 +284,7 @@ internal fun SeriesScreen(
         onToggleAllDownloads = {
             if (downloadingAll) onCancelDownloads() else onDownloadAll()
         },
-        onDeleteDownloads = onDeleteDownloads,
+        onDeleteDownloads = { confirmDeleteAllDownloads = true },
         descriptionExpanded = descriptionExpanded,
         onToggleDescriptionExpanded = {
             descriptionExpanded = !descriptionExpanded
@@ -320,12 +321,19 @@ internal fun SeriesScreen(
         },
         confirmDeleteSelection = confirmDeleteSelection,
         selectedChapters = selectedChapters,
+        confirmDeleteAllDownloads = confirmDeleteAllDownloads,
+        downloadedCount = downloadedCount,
         downloadTick = downloadTick,
         onDismissDeleteSelection = { confirmDeleteSelection = false },
         onDeleteSelection = {
             onDeleteChapters(selectedChapters)
             selectedIds = emptySet()
             confirmDeleteSelection = false
+        },
+        onDismissDeleteAllDownloads = { confirmDeleteAllDownloads = false },
+        onDeleteAllDownloads = {
+            onDeleteDownloads()
+            confirmDeleteAllDownloads = false
         },
         showCategories = showCategories,
         onDismissCategories = { showCategories = false },
