@@ -28,6 +28,7 @@ internal fun GenreChips(
     genres: List<String>,
     sourceName: String,
     onSearchTag: (String) -> Unit,
+    onLibrarySearchTag: (String) -> Unit,
     onGlobalSearchTag: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
@@ -47,6 +48,13 @@ internal fun GenreChips(
                     onClick = {
                         tagMenu = false
                         onSearchTag(genre)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Search library") },
+                    onClick = {
+                        tagMenu = false
+                        onLibrarySearchTag(genre)
                     },
                 )
                 DropdownMenuItem(
