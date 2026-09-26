@@ -33,6 +33,9 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun ReaderSettingsSheet(
     settings: ReaderSettings,
+    useGlobalDefaults: Boolean,
+    canOverrideSeries: Boolean,
+    onUseGlobalDefaultsChange: (Boolean) -> Unit,
     onChange: (ReaderSettings) -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -50,6 +53,21 @@ internal fun ReaderSettingsSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
+            if (canOverrideSeries) {
+                SwitchRow("Use global defaults", useGlobalDefaults) {
+                    onUseGlobalDefaultsChange(it)
+                }
+                Text(
+                    if (useGlobalDefaults) {
+                        "Changes here update the defaults used by every series."
+                    } else {
+                        "Changes here apply only to this series."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
             when (tab) {
                 0 -> {
                     ChipRow(
