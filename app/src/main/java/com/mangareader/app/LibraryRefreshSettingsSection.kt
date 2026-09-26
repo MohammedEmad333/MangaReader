@@ -26,9 +26,16 @@ import kotlinx.coroutines.withContext
 internal fun LibraryRefreshSettingsSection() {
     val context = LocalContext.current
     var sourcePickerOpen by remember { mutableStateOf(false) }
+    var skipCompleted by remember {
+        mutableStateOf(LibraryRefreshPrefs.skipCompleted(context))
+    }
+    var minimumAge by remember {
+        mutableStateOf(LibraryRefreshPrefs.minimumAge(context))
+    }
 
     data class RefreshSettingsSnapshot(
         val entryCount: Int,
+        val eligibleCount: Int,
         val uncountedCount: Int,
         val sweepStartedAt: Long,
         val alreadyCounted: Int,
@@ -38,14 +45,22 @@ internal fun LibraryRefreshSettingsSection() {
         initialValue = null,
         LibraryRefresh.finishedAt,
         LibraryRefresh.running,
+        skipCompleted,
+        minimumAge,
     ) {
         val appContext = context.applicationContext
         value = withContext(Dispatchers.IO) {
             val entries = Library.list(appContext)
-            val known = SeriesIndex.all(appContext).keys
+            val counts = SeriesIndex.all(appContext)
+            val known = counts.keys
             val startedAt = RefreshCursor.startedAt(appContext)
             RefreshSettingsSnapshot(
                 entryCount = entries.size,
+                eligibleCount = LibraryRefreshPrefs.eligibleForFullRefresh(
+                    context = appContext,
+                    entries = entries,
+                    counts = counts,
+                ).size,
                 uncountedCount = entries.count { it.seriesId !in known },
                 sweepStartedAt = startedAt,
                 alreadyCounted = if (startedAt <= 0L) {
@@ -57,6 +72,7 @@ internal fun LibraryRefreshSettingsSection() {
         }
     }
     val entryCount = snapshot?.entryCount ?: 0
+    val eligibleCount = snapshot?.eligibleCount ?: entryCount
     val uncountedCount = snapshot?.uncountedCount ?: 0
 
     LaunchedEffect(Unit) {
@@ -64,6 +80,42 @@ internal fun LibraryRefreshSettingsSection() {
             LibraryRefresh.loadSummary(context.applicationContext)
         }
     }
+
+    SectionHeader("Refresh policy")
+
+    PrefSwitchRow(
+        title = "Skip completed series",
+        checked = skipCompleted,
+        summary = "Leave fully read series out of a full-library refresh.",
+        onChange = { value ->
+            skipCompleted = value
+            LibraryRefreshPrefs.setSkipCompleted(context, value)
+        },
+    )
+
+    ListItem(
+        headlineContent = { Text("Refresh again") },
+        supportingContent = {
+            Text(
+                if (minimumAge == LibraryRefreshAge.ALL) {
+                    "Every full refresh"
+                } else {
+                    "${minimumAge.label} since the last successful check"
+                }
+            )
+        },
+        modifier = Modifier.clickable {
+            val next = minimumAge.next()
+            minimumAge = next
+            LibraryRefreshPrefs.setMinimumAge(context, next)
+        },
+    )
+
+    PrefNote(
+        "These limits apply only to a full-library refresh. Refreshing a series " +
+            "directly, refreshing selected sources, and filling missing counts " +
+            "always follow your explicit request.",
+    )
 
     SectionHeader("Chapter counts")
     if (LibraryRefresh.running) {
@@ -143,7 +195,11 @@ internal fun LibraryRefreshSettingsSection() {
                                 ?.let { "$it covers fixed" },
                         ).joinToString(" • ")
 
-                        else -> "Fetch chapter lists for all $entryCount series"
+                        else -> if (eligibleCount == entryCount) {
+                            "Fetch chapter lists for all $entryCount series"
+                        } else {
+                            "Fetch $eligibleCount of $entryCount series under the current policy"
+                        }
                     },
                 )
             },
