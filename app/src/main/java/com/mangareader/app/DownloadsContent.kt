@@ -76,6 +76,9 @@ internal fun DownloadsTools(
     onSortModeChange: (DownloadsSortMode) -> Unit,
     descending: Boolean,
     onDescendingChange: (Boolean) -> Unit,
+    mediaFilter: DownloadsMediaFilter,
+    onMediaFilterChange: (DownloadsMediaFilter) -> Unit,
+    onClear: () -> Unit,
     shownCount: Int,
     totalCount: Int,
 ) {
@@ -100,6 +103,21 @@ internal fun DownloadsTools(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            DownloadsMediaFilter.entries.forEach { option ->
+                FilterChip(
+                    selected = mediaFilter == option,
+                    onClick = { onMediaFilterChange(option) },
+                    label = { Text(option.label) },
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             DownloadsSortMode.entries.forEach { option ->
                 FilterChip(
                     selected = sortMode == option,
@@ -110,8 +128,11 @@ internal fun DownloadsTools(
             TextButton(onClick = { onDescendingChange(!descending) }) {
                 Text(if (descending) "Descending ↓" else "Ascending ↑")
             }
+            TextButton(onClick = onClear) {
+                Text("Clear")
+            }
         }
-        if (query.isNotBlank()) {
+        if (query.isNotBlank() || mediaFilter != DownloadsMediaFilter.ALL) {
             Text(
                 "Showing $shownCount of $totalCount",
                 style = MaterialTheme.typography.bodySmall,
