@@ -86,8 +86,7 @@ internal fun ReaderPage(
         if (onTap == null) modifier
         else modifier.pointerInput(Unit) {
             detectTapGestures { offset ->
-                val width = size.width.coerceAtLeast(1)
-                onTap(offset.x / width.toFloat())
+                onTap(offset.x)
             }
         }
 
@@ -100,8 +99,7 @@ internal fun ReaderPage(
             contentScale = contentScale,
             // Its own, because a tap this consumes never reaches the pager.
             onClick = { offset ->
-                val width = viewportSize.width.coerceAtLeast(1f)
-                onTap?.invoke((offset.x / width).coerceIn(0f, 1f))
+                onTap?.invoke(offset.x)
             }
         )
         file != null -> AsyncImage(
