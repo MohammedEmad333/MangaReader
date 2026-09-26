@@ -56,12 +56,10 @@ import kotlin.math.roundToInt
  * is the content and anything permanent on it is in the way.
  *
  * **On the settings that aren't here.** The set below is the subset that this
- * reader can actually honour today. Crop borders, split/rotate wide pages, and
- * tap-zone layouts all need work in the page pipeline rather than a switch — the
- * first two need to inspect and cut the bitmap, and tap zones need a gesture
- * model this screen doesn't have. They were deliberately left out rather than
- * shipped as switches that do nothing, which is worse than an absent feature
- * because it costs a build cycle to discover.
+ * reader can actually honour today. Crop borders and split-wide-page support
+ * still need bitmap-pipeline work. Wide-page rotation is handled in paged mode
+ * by reading image bounds only, without decoding the full bitmap, and tap zones
+ * are implemented by the page gesture layer rather than as cosmetic toggles.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -286,6 +284,7 @@ internal fun ReaderScreen(
                         else -> showControls = !showControls
                     }
                 },
+                widePageMode = settings.widePageMode,
             )
         }
 
