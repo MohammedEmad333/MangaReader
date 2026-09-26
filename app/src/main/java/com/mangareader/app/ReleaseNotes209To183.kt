@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 213 down to 183, newest first. */
+/** Release-note chunk 214 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 214,
+            name = "0.214",
+            header = "Older downloads show up again",
+            body = "The Downloads tab now recovers older readable download folders " +
+                "that were created before chapter-id marker files existed. Yomu " +
+                "matches Source, Series and Chapter conservatively against the saved " +
+                "library and chapter cache, then writes the missing marker so the " +
+                "download stays recoverable on future launches.",
+        ),
         ReleaseNote(
             code = 213,
             name = "0.213",
