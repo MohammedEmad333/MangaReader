@@ -1,7 +1,19 @@
 package com.mangareader.app
 
-/** Release-note chunk 209 down to 183, newest first. */
+/** Release-note chunk 210 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 210,
+            name = "0.210",
+            header = "Downloads restored, Browse fixed, and faster reader controls",
+            body = "The Downloads tab can now recover existing downloaded series from " +
+                "the readable download-path index instead of incorrectly saying nothing " +
+                "is downloaded while storage still contains chapters. Browse → Sources " +
+                "now lays its media filters above the source list instead of overlapping " +
+                "the list and leaving the page looking blank. The reader also includes " +
+                "the new long-strip page gap, per-series reader settings, safer delete " +
+                "confirmation, theme-startup polish, and tap-zone page navigation.",
+        ),
         ReleaseNote(
             code = 209,
             name = "0.209",
