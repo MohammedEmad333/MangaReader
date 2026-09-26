@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import org.json.JSONArray
+import org.json.JSONObject
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,26 +36,34 @@ class VideoPlayerActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
 
-        val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         val referer = intent.getStringExtra(EXTRA_REFERER).orEmpty()
-        val resumeKey = intent.getStringExtra(EXTRA_RESUME_KEY).orEmpty()
-        val subtitles = intent.getStringArrayExtra(EXTRA_SUBTITLES)
-            ?.toList()
-            ?.chunked(2)
-            ?.mapNotNull { pair ->
-                pair.takeIf { it.size == 2 }?.let { VideoSubtitle(it[0], it[1]) }
-            }
+        val initialVideo = intent.getStringExtra(EXTRA_VIDEO_JSON)
+            ?.let(::decodeVideo)
+            ?: PlayableVideo(
+                url = intent.getStringExtra(EXTRA_URL).orEmpty(),
+                headers = intent.getStringArrayExtra(EXTRA_HEADERS)
+                    ?.toList()
+                    ?.chunked(2)
+                    ?.mapNotNull { pair ->
+                        pair.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+                    }
+                    ?.toMap()
+                    .orEmpty(),
+                resumeKey = intent.getStringExtra(EXTRA_RESUME_KEY).orEmpty(),
+                subtitles = intent.getStringArrayExtra(EXTRA_SUBTITLES)
+                    ?.toList()
+                    ?.chunked(2)
+                    ?.mapNotNull { pair ->
+                        pair.takeIf { it.size == 2 }?.let { VideoSubtitle(it[0], it[1]) }
+                    }
+                    .orEmpty(),
+            )
+        val streams = intent.getStringExtra(EXTRA_STREAMS_JSON)
+            ?.let(::decodeVideos)
             .orEmpty()
-        val headers = intent.getStringArrayExtra(EXTRA_HEADERS)
-            ?.toList()
-            ?.chunked(2)
-            ?.mapNotNull { pair ->
-                pair.takeIf { it.size == 2 }?.let { it[0] to it[1] }
-            }
-            ?.toMap()
-            .orEmpty()
+            .ifEmpty { listOf(initialVideo) }
 
-        if (url.isBlank()) {
+        if (initialVideo.url.isBlank()) {
             finish()
             return
         }
@@ -61,11 +71,9 @@ class VideoPlayerActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 VideoPlayerScreen(
-                    url = url,
+                    initialVideo = initialVideo,
+                    streams = streams,
                     referer = referer,
-                    headers = headers,
-                    resumeKey = resumeKey,
-                    subtitles = subtitles,
                     inPictureInPicture = inPictureInPicture,
                     onPlaybackActiveChanged = ::updatePictureInPictureState,
                     onClose = ::finish,
@@ -139,6 +147,23 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_HEADERS = "video_headers"
         private const val EXTRA_RESUME_KEY = "video_resume_key"
         private const val EXTRA_SUBTITLES = "video_subtitles"
+        private const val EXTRA_VIDEO_JSON = "video_json"
+        private const val EXTRA_STREAMS_JSON = "video_streams_json"
+
+        fun intent(
+            context: Context,
+            video: PlayableVideo,
+            streams: List<PlayableVideo>,
+            referer: String = "",
+        ): Intent =
+            Intent(context, VideoPlayerActivity::class.java).apply {
+                putExtra(EXTRA_REFERER, referer)
+                putExtra(EXTRA_VIDEO_JSON, encodeVideo(video).toString())
+                val options = (listOf(video) + streams)
+                    .distinctBy { it.url }
+                    .take(MAX_STREAM_OPTIONS)
+                putExtra(EXTRA_STREAMS_JSON, encodeVideos(options).toString())
+            }
 
         fun intent(
             context: Context,
@@ -148,7 +173,17 @@ class VideoPlayerActivity : ComponentActivity() {
             resumeKey: String = "",
             subtitles: List<VideoSubtitle> = emptyList(),
         ): Intent =
-            Intent(context, VideoPlayerActivity::class.java).apply {
+            intent(
+                context = context,
+                video = PlayableVideo(
+                    url = url,
+                    headers = headers,
+                    resumeKey = resumeKey,
+                    subtitles = subtitles,
+                ),
+                streams = emptyList(),
+                referer = referer,
+            ).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_REFERER, referer)
                 putExtra(
@@ -161,5 +196,73 @@ class VideoPlayerActivity : ComponentActivity() {
                     subtitles.flatMap { listOf(it.url, it.language) }.toTypedArray(),
                 )
             }
+
+        private const val MAX_STREAM_OPTIONS = 24
+
+        private fun encodeVideos(videos: List<PlayableVideo>): JSONArray =
+            JSONArray().apply {
+                videos.forEach { put(encodeVideo(it)) }
+            }
+
+        private fun encodeVideo(video: PlayableVideo): JSONObject =
+            JSONObject().apply {
+                put("url", video.url)
+                put("title", video.title)
+                put("resumeKey", video.resumeKey)
+                put("episodeTitle", video.episodeTitle)
+                put("headers", JSONObject(video.headers))
+                put(
+                    "subtitles",
+                    JSONArray().apply {
+                        video.subtitles.forEach { subtitle ->
+                            put(
+                                JSONObject().apply {
+                                    put("url", subtitle.url)
+                                    put("language", subtitle.language)
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+
+        private fun decodeVideos(raw: String): List<PlayableVideo> =
+            runCatching {
+                val array = JSONArray(raw)
+                buildList {
+                    for (index in 0 until array.length()) {
+                        decodeVideo(array.getJSONObject(index).toString())?.let(::add)
+                    }
+                }
+            }.getOrDefault(emptyList())
+
+        private fun decodeVideo(raw: String): PlayableVideo? =
+            runCatching {
+                val json = JSONObject(raw)
+                val headersJson = json.optJSONObject("headers") ?: JSONObject()
+                val headers = buildMap {
+                    headersJson.keys().forEach { key ->
+                        put(key, headersJson.optString(key))
+                    }
+                }
+                val subtitlesJson = json.optJSONArray("subtitles") ?: JSONArray()
+                val subtitles = buildList {
+                    for (index in 0 until subtitlesJson.length()) {
+                        val item = subtitlesJson.optJSONObject(index) ?: continue
+                        val url = item.optString("url")
+                        if (url.isNotBlank()) {
+                            add(VideoSubtitle(url, item.optString("language")))
+                        }
+                    }
+                }
+                PlayableVideo(
+                    url = json.optString("url"),
+                    title = json.optString("title"),
+                    headers = headers,
+                    resumeKey = json.optString("resumeKey"),
+                    subtitles = subtitles,
+                    episodeTitle = json.optString("episodeTitle"),
+                ).takeIf { it.url.isNotBlank() }
+            }.getOrNull()
     }
 }

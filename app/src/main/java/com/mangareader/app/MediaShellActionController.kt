@@ -63,13 +63,12 @@ internal class MediaShellActionController(
                 }
             }
 
+            val streams = mediaState.scan?.videos.orEmpty()
             context.startActivity(
                 VideoPlayerActivity.intent(
                     context = context,
-                    url = video.url,
-                    headers = video.headers,
-                    resumeKey = video.resumeKey,
-                    subtitles = video.subtitles,
+                    video = video,
+                    streams = streams,
                 ),
             )
         }.onFailure {

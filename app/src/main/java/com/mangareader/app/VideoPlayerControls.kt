@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.C
 import androidx.media3.common.Player
 
@@ -46,12 +47,19 @@ internal fun VideoPlayerQuickControls(
     player: Player,
     subtitles: List<VideoSubtitle>,
     speed: Float,
+    streams: List<PlayableVideo>,
+    selectedStream: PlayableVideo,
+    onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var speedMenu by remember { mutableStateOf(false) }
     var subtitleMenu by remember { mutableStateOf(false) }
-    var subtitleLabel by remember { mutableStateOf("Auto") }
+    var subtitleLabel by remember(player) { mutableStateOf("Auto") }
+    var streamMenu by remember { mutableStateOf(false) }
+    val streamOptions = remember(streams) {
+        streams.distinctBy { it.url }
+    }
 
     Surface(
         modifier = modifier,
@@ -78,6 +86,33 @@ internal fun VideoPlayerQuickControls(
                 },
             ) {
                 Text("+10s")
+            }
+
+            if (streamOptions.size > 1) {
+                TextButton(onClick = { streamMenu = true }) {
+                    Text(
+                        streamDisplayLabel(
+                            selectedStream,
+                            streamOptions.indexOfFirst { it.url == selectedStream.url },
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                DropdownMenu(
+                    expanded = streamMenu,
+                    onDismissRequest = { streamMenu = false },
+                ) {
+                    streamOptions.forEachIndexed { index, option ->
+                        DropdownMenuItem(
+                            text = { Text(streamDisplayLabel(option, index)) },
+                            onClick = {
+                                streamMenu = false
+                                onStreamChange(option)
+                            },
+                        )
+                    }
+                }
             }
 
             TextButton(onClick = { speedMenu = true }) {
@@ -166,3 +201,9 @@ internal fun seekForwardTarget(positionMs: Long, durationMs: Long): Long {
 
 internal fun formatPlaybackSpeed(speed: Float): String =
     if (speed % 1f == 0f) speed.toInt().toString() + "×" else speed.toString() + "×"
+
+internal fun streamDisplayLabel(video: PlayableVideo, index: Int): String {
+    val title = video.title.trim()
+    if (title.isNotBlank()) return title
+    return if (index >= 0) "Stream " + (index + 1) else "Quality"
+}
