@@ -29,20 +29,21 @@ internal fun BrowseSourcesPage(
     scroll: ScrollMemory,
     ordering: Any?,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        listOf("All", "Manga", "Anime").forEach { label ->
-            FilterChip(
-                selected = mediaFilter == label,
-                onClick = { onMediaFilterChange(label) },
-                label = { Text(label) },
-            )
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("All", "Manga", "Anime").forEach { label ->
+                FilterChip(
+                    selected = mediaFilter == label,
+                    onClick = { onMediaFilterChange(label) },
+                    label = { Text(label) },
+                )
+            }
         }
-    }
 
     val sourcesListState = rememberRestoredListState(
         scroll,
@@ -55,7 +56,11 @@ internal fun BrowseSourcesPage(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f),
+    ) {
         LazyColumn(
             state = sourcesListState,
             modifier = Modifier.fillMaxSize(),
@@ -164,5 +169,6 @@ internal fun BrowseSourcesPage(
             state = sourcesListState,
             modifier = Modifier.align(Alignment.CenterEnd),
         )
+    }
     }
 }

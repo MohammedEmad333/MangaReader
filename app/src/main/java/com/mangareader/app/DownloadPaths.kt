@@ -34,6 +34,14 @@ import java.io.File
  * itself, or a series whose title is corrected by a details fetch, must not
  * strand a folder full of pages under the old name.
  */
+internal data class RecoveredDownloadIdentity(
+    val chapterId: String,
+    val chapterName: String,
+    val sourceId: String,
+    val seriesId: String,
+    val seriesTitle: String,
+)
+
 internal object DownloadPaths {
 
     private const val FILE = "download_paths.json"
@@ -64,6 +72,46 @@ internal object DownloadPaths {
     fun knownChapterIds(context: Context): Set<String> {
         load(context)
         return chapters.keys.toSet()
+    }
+
+    /**
+     * Reconstructs source/series identity from the readable path index.
+     *
+     * This is specifically for installs that have complete chapter folders and
+     * download_paths.json but predate downloads_index.json. The path index
+     * already stores sourceId -> folder and sourceId|seriesId -> folder, so
+     * throwing that identity away and relying only on Library/ChapterCache made
+     * perfectly valid downloads disappear from the Downloads tab.
+     */
+    @Synchronized
+    fun recoverIdentity(context: Context, chapterId: String): RecoveredDownloadIdentity? {
+        load(context)
+        val path = chapters[chapterId] ?: return null
+        val parts = path.split('/')
+        if (parts.size < 3) return null
+        val sourceFolder = parts[0]
+        val seriesFolder = parts[1]
+        val chapterFolder = parts.drop(2).joinToString("/")
+
+        val sourceId = sources.entries
+            .firstOrNull { it.value == sourceFolder }
+            ?.key
+            ?: return null
+        val prefix = "$sourceId|"
+        val seriesId = series.entries
+            .firstOrNull { (key, folder) -> key.startsWith(prefix) && folder == seriesFolder }
+            ?.key
+            ?.removePrefix(prefix)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        return RecoveredDownloadIdentity(
+            chapterId = chapterId,
+            chapterName = chapterFolder,
+            sourceId = sourceId,
+            seriesId = seriesId,
+            seriesTitle = seriesFolder,
+        )
     }
 
     @Synchronized
