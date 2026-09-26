@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 217 down to 183, newest first. */
+/** Release-note chunk 218 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 218,
+            name = "0.218",
+            header = "Episode streams load much faster",
+            body = "Anime stream servers are now resolved in parallel instead of " +
+                "one after another, with a timeout for slow hosters and a short " +
+                "cache when reopening the same episode. You can also close the " +
+                "stream dialog while it is loading; the in-flight lookup is cancelled " +
+                "and cannot reopen the dialog afterward.",
+        ),
         ReleaseNote(
             code = 217,
             name = "0.217",
