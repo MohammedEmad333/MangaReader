@@ -86,6 +86,7 @@ internal fun ExtensionsScreen(
     var loadedOnce by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
+    var diagnosticsRunning by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
     var installedOnly by rememberSaveable { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
@@ -110,11 +111,19 @@ internal fun ExtensionsScreen(
         val pkg = pendingUninstall
         pendingUninstall = null
         refreshTick++
-        if (pkg != null && ExtensionManager.isInstalled(context, pkg)) {
-            report = "$pkg is still installed.\n\nThe uninstall was either " +
-                "cancelled, or refused by the system. If no dialog appeared at " +
-                "all, this build is missing the REQUEST_DELETE_PACKAGES " +
-                "permission, or the ROM blocks app-initiated uninstalls."
+        if (pkg != null) {
+            val appContext = context.applicationContext
+            scope.launch {
+                val stillInstalled = withContext(Dispatchers.IO) {
+                    ExtensionManager.isInstalled(appContext, pkg)
+                }
+                if (stillInstalled) {
+                    report = "$pkg is still installed.\n\nThe uninstall was either " +
+                        "cancelled, or refused by the system. If no dialog appeared at " +
+                        "all, this build is missing the REQUEST_DELETE_PACKAGES " +
+                        "permission, or the ROM blocks app-initiated uninstalls."
+                }
+            }
         }
     }
     val startUninstall: (String) -> Unit = { pkg ->
@@ -195,7 +204,22 @@ internal fun ExtensionsScreen(
         shownExtensions = shownExtensions,
         availableCount = available.size,
         scroll = scroll,
-        onDiagnose = { report = diagnoseExtensions(context) },
+        diagnosticsRunning = diagnosticsRunning,
+        onDiagnose = {
+            if (!diagnosticsRunning) {
+                diagnosticsRunning = true
+                scope.launch {
+                    val appContext = context.applicationContext
+                    report = withContext(Dispatchers.IO) {
+                        runCatching { diagnoseExtensions(appContext) }
+                            .getOrElse {
+                                "Diagnostics failed: ${it.message ?: it::class.java.simpleName}"
+                            }
+                    }
+                    diagnosticsRunning = false
+                }
+            }
+        },
         onInstall = { ext ->
             awaitingPackageChange = true
             scope.launch {
