@@ -250,7 +250,19 @@ internal fun ReaderScreen(
                 onNext = onNext,
                 colorFilter = filter,
                 textColor = onBackground,
-                onTap = { showControls = !showControls },
+                onTap = { fraction ->
+                    if (!settings.tapZones) {
+                        showControls = !showControls
+                    } else when {
+                        fraction < 1f / 3f -> {
+                            if (rtl) navigation.nextPage() else navigation.previousPage()
+                        }
+                        fraction > 2f / 3f -> {
+                            if (rtl) navigation.previousPage() else navigation.nextPage()
+                        }
+                        else -> showControls = !showControls
+                    }
+                },
             )
         }
 
