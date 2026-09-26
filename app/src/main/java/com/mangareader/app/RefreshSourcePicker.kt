@@ -110,23 +110,24 @@ internal fun RefreshSourcePicker(
                 else -> {
                     LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
                         items(rows!!) { (id, name, count) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    picked = if (id in picked) picked - id else picked + id
-                                }
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(checked = id in picked, onCheckedChange = null)
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "$name ($count)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        picked = if (id in picked) picked - id else picked + id
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(checked = id in picked, onCheckedChange = null)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "$name ($count)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
