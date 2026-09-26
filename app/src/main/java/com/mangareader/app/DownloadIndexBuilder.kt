@@ -12,6 +12,16 @@ internal object DownloadIndexBuilder {
 
         val recovered = mutableListOf<DownloadIndexRecord>()
 
+        // Older readable downloads can predate the per-chapter .chapterid marker.
+        // Repair those first while Library + ChapterCache still provide a safe,
+        // unambiguous identity, then the ordinary path-index recovery below sees
+        // them exactly like a modern download.
+        DownloadPaths.recoverUnmarkedFromLibrary(
+            context,
+            Downloads.downloadsRoot(context),
+        )
+        Downloads.invalidateCompletion()
+
         // First recover directly from download_paths.json. This path does not
         // require the series to still be in the library and covers downloads
         // created after readable paths existed but before downloads_index.json
