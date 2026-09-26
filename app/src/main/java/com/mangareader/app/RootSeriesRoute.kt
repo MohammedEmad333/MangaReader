@@ -37,6 +37,12 @@ internal fun RootSeriesRoute(
         onReadStateChanged = { appState.readTick++ },
         onLibraryChanged = { appState.libraryTick++ },
         onSearchTag = actions::searchSeriesTag,
+        onLibrarySearchTag = { tag ->
+            actions.backFromSeries()
+            root.ui.onLibrarySearchChange(tag)
+            root.ui.onLibrarySearchOpenChange(true)
+            appState.currentTab = 0
+        },
 
         onGlobalSearchTag = actions::searchGlobalTag,
 

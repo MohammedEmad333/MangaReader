@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 210 down to 183, newest first. */
+/** Release-note chunk 211 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 211,
+            name = "0.211",
+            header = "Search your library from any series tag",
+            body = "The tag menu on a series now includes Search library. Pick a genre " +
+                "or tag and Yomu jumps back to the Library tab, opens search, and fills " +
+                "that tag automatically, making it much faster to find matching titles " +
+                "you already saved.",
+        ),
         ReleaseNote(
             code = 210,
             name = "0.210",
