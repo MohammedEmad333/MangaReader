@@ -66,6 +66,8 @@ internal data class ReaderSettings(
     val sidePadding: Int = 0,
     /** Vertical spacing between items in long-strip mode, in dp. */
     val pageGap: Int = 0,
+    /** Outer thirds turn pages in paged modes; centre third toggles controls. */
+    val tapZones: Boolean = true,
     val showPageNumber: Boolean = true,
     val sliderPosition: ReaderSliderPosition = ReaderSliderPosition.HORIZONTAL,
     val fullscreen: Boolean = true,
@@ -84,6 +86,7 @@ internal object ReaderPrefs {
     private const val BACKGROUND = "reader_background"
     private const val SIDE_PADDING = "reader_side_padding"
     private const val PAGE_GAP = "reader_page_gap"
+    private const val TAP_ZONES = "reader_tap_zones"
     private const val PAGE_NUMBER = "reader_page_number"
     private const val SLIDER_POSITION = "reader_slider_position"
     private const val FULLSCREEN = "reader_fullscreen"
@@ -102,6 +105,7 @@ internal object ReaderPrefs {
             background = ReaderBackground.from(p.getString(BACKGROUND, null)),
             sidePadding = p.getInt(SIDE_PADDING, defaults.sidePadding),
             pageGap = p.getInt(PAGE_GAP, defaults.pageGap),
+            tapZones = p.getBoolean(TAP_ZONES, defaults.tapZones),
             showPageNumber = p.getBoolean(PAGE_NUMBER, defaults.showPageNumber),
             sliderPosition = ReaderSliderPosition.from(p.getString(SLIDER_POSITION, null)),
             fullscreen = p.getBoolean(FULLSCREEN, defaults.fullscreen),
@@ -125,6 +129,7 @@ internal object ReaderPrefs {
             .putString(BACKGROUND, settings.background.key)
             .putInt(SIDE_PADDING, settings.sidePadding)
             .putInt(PAGE_GAP, settings.pageGap)
+            .putBoolean(TAP_ZONES, settings.tapZones)
             .putBoolean(PAGE_NUMBER, settings.showPageNumber)
             .putString(SLIDER_POSITION, settings.sliderPosition.key)
             .putBoolean(FULLSCREEN, settings.fullscreen)
@@ -167,6 +172,7 @@ internal object ReaderSeriesPrefs {
                 ),
                 sidePadding = o.optInt("sidePadding", 0),
                 pageGap = o.optInt("pageGap", 0),
+                tapZones = o.optBoolean("tapZones", true),
                 showPageNumber = o.optBoolean("showPageNumber", true),
                 sliderPosition = ReaderSliderPosition.from(
                     o.optString("sliderPosition").takeIf { it.isNotBlank() }
@@ -194,6 +200,7 @@ internal object ReaderSeriesPrefs {
             .put("background", settings.background.key)
             .put("sidePadding", settings.sidePadding)
             .put("pageGap", settings.pageGap)
+            .put("tapZones", settings.tapZones)
             .put("showPageNumber", settings.showPageNumber)
             .put("sliderPosition", settings.sliderPosition.key)
             .put("fullscreen", settings.fullscreen)

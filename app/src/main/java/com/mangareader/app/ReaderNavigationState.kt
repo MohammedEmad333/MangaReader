@@ -21,6 +21,8 @@ internal data class ReaderNavigationState(
     val seekTargetState: MutableState<Float?>,
     val rtl: Boolean,
     val commitSeek: () -> Unit,
+    val previousPage: () -> Unit,
+    val nextPage: () -> Unit,
 )
 
 @Composable
@@ -223,6 +225,21 @@ internal fun rememberReaderNavigationState(
     // Committed on release, never during the drag: every intermediate value
     // would be a scroll request, a savePage write and a History.touch, because
     // onProgress fires on every page change.
+    fun previousPage() {
+        if (settings.mode == ReaderMode.LONG_STRIP || pages.isEmpty()) return
+        scope.launch {
+            pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+        }
+    }
+
+    fun nextPage() {
+        if (settings.mode == ReaderMode.LONG_STRIP || pages.isEmpty()) return
+        scope.launch {
+            val tail = pages.size + headRows
+            pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(tail))
+        }
+    }
+
     fun commitSeek() {
         val target = seekTarget?.roundToInt()?.coerceIn(0, lastPage)
         seekTarget = null
@@ -261,5 +278,7 @@ internal fun rememberReaderNavigationState(
         seekTargetState = seekTargetState,
         rtl = rtl,
         commitSeek = { commitSeek() },
+        previousPage = { previousPage() },
+        nextPage = { nextPage() },
     )
 }

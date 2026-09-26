@@ -77,14 +77,18 @@ internal fun ReaderPage(
     /** Pinch, double-tap and pan. Paged modes only — see the call site. */
     zoomable: Boolean = false,
     /** Non-null when this page is responsible for its own taps. */
-    onTap: (() -> Unit)? = null
+    onTap: ((Float) -> Unit)? = null
 ) {
     // A placeholder handles no gestures of its own, so where the page owns the
     // tap it has to be attached here too — otherwise tapping a page that hasn't
     // loaded would be the one dead spot on the screen.
     val placeholder =
         if (onTap == null) modifier
-        else modifier.pointerInput(Unit) { detectTapGestures { onTap() } }
+        else modifier.pointerInput(Unit) {
+            detectTapGestures { offset ->
+                onTap(offset.x)
+            }
+        }
 
     when {
         file != null && zoomable -> ZoomableAsyncImage(
@@ -94,7 +98,9 @@ internal fun ReaderPage(
             colorFilter = colorFilter,
             contentScale = contentScale,
             // Its own, because a tap this consumes never reaches the pager.
-            onClick = { onTap?.invoke() }
+            onClick = { offset ->
+                onTap?.invoke(offset.x)
+            }
         )
         file != null -> AsyncImage(
             model = file,

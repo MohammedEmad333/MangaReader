@@ -109,7 +109,7 @@ internal fun ReaderPagedPages(
     onNext: () -> Unit,
     colorFilter: ColorFilter?,
     textColor: Color,
-    onTap: () -> Unit,
+    onTap: (Float) -> Unit,
 ) {
     HorizontalPager(
         state = pagerState,

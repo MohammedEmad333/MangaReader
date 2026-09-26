@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -169,7 +170,11 @@ internal fun ReaderScreen(
     // The transition rows below are the visible half of that design; the other
     // half needs a reader that holds three chapters at once, which this one
     // does not. See §7 of the handoff.
-    val sidePadding = (LocalConfiguration.current.screenWidthDp * settings.sidePadding / 100).dp
+    val configuration = LocalConfiguration.current
+    val sidePadding = (configuration.screenWidthDp * settings.sidePadding / 100).dp
+    val pageWidthPx = with(LocalDensity.current) {
+        (configuration.screenWidthDp.dp - sidePadding * 2).toPx().coerceAtLeast(1f)
+    }
 
     // Half the screen, so the whole chapter is a comfortable thumb-sweep. A
     // fixed 240dp was a quarter of a tall phone and read as a stub.
@@ -250,7 +255,20 @@ internal fun ReaderScreen(
                 onNext = onNext,
                 colorFilter = filter,
                 textColor = onBackground,
-                onTap = { showControls = !showControls },
+                onTap = { x ->
+                    val fraction = (x / pageWidthPx).coerceIn(0f, 1f)
+                    if (!settings.tapZones) {
+                        showControls = !showControls
+                    } else when {
+                        fraction < 1f / 3f -> {
+                            if (rtl) navigation.nextPage() else navigation.previousPage()
+                        }
+                        fraction > 2f / 3f -> {
+                            if (rtl) navigation.previousPage() else navigation.nextPage()
+                        }
+                        else -> showControls = !showControls
+                    }
+                },
             )
         }
 
