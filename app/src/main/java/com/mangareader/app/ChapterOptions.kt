@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +23,9 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChapterOptionsSheet(
+    sourceId: String,
+    seriesId: String,
+    chapters: List<Chapter>,
     onDismiss: () -> Unit,
     onChanged: () -> Unit
 ) {
@@ -35,6 +39,17 @@ internal fun ChapterOptionsSheet(
     var fDownloaded by remember { mutableStateOf(ChapterPrefs.filterDownloaded(context)) }
     var fUnread by remember { mutableStateOf(ChapterPrefs.filterUnread(context)) }
     var fBookmarked by remember { mutableStateOf(ChapterPrefs.filterBookmarked(context)) }
+    val scanlatorOptions = remember(chapters) {
+        chapters.mapNotNull { it.scanlator?.trim()?.takeIf { value -> value.isNotEmpty() } }
+            .distinct()
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+    var selectedScanlators by remember(seriesId, scanlatorOptions) {
+        mutableStateOf(
+            ChapterPrefs.scanlators(context, sourceId, seriesId)
+                .intersect(scanlatorOptions.toSet())
+        )
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         TabRow(selectedTabIndex = tab) {
@@ -70,14 +85,56 @@ internal fun ChapterOptionsSheet(
                         ChapterPrefs.setFilterBookmarked(context, it)
                         onChanged()
                     }
-                    // Three rows where the reference has four, and saying why is
-                    // cheaper than being asked. A scanlator filter is a *per
-                    // series* set of names, which this global store is the wrong
-                    // shape to hold.
-                    SheetNote(
-                        "Filtering by scanlator needs a per-series setting rather " +
-                            "than this one, so it isn't here yet."
-                    )
+                    if (scanlatorOptions.isNotEmpty()) {
+                        Text(
+                            "Scanlator",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilterChip(
+                                selected = selectedScanlators.isEmpty(),
+                                onClick = {
+                                    selectedScanlators = emptySet()
+                                    ChapterPrefs.setScanlators(
+                                        context,
+                                        sourceId,
+                                        seriesId,
+                                        emptySet(),
+                                    )
+                                    onChanged()
+                                },
+                                label = { Text("All") },
+                            )
+                            scanlatorOptions.forEach { scanlator ->
+                                FilterChip(
+                                    selected = scanlator in selectedScanlators,
+                                    onClick = {
+                                        selectedScanlators =
+                                            if (scanlator in selectedScanlators) {
+                                                selectedScanlators - scanlator
+                                            } else {
+                                                selectedScanlators + scanlator
+                                            }
+                                        ChapterPrefs.setScanlators(
+                                            context,
+                                            sourceId,
+                                            seriesId,
+                                            selectedScanlators,
+                                        )
+                                        onChanged()
+                                    },
+                                    label = { Text(scanlator) },
+                                )
+                            }
+                        }
+                    }
                 }
                 1 -> {
                     ChapterSort.entries.forEach { option ->
