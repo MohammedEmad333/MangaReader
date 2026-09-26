@@ -148,6 +148,7 @@ internal fun SeriesAuxiliaryDialogs(
 
     if (showChapterOptions) {
         ChapterOptionsSheet(
+            sourceId = sourceId,
             seriesId = series.id,
             chapters = chapters,
             onDismiss = onDismissChapterOptions,
