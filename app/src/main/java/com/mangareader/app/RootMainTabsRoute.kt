@@ -44,7 +44,9 @@ internal fun RootMainTabsRoute(
         onDeleteHistory = actions::deleteHistory,
         onClearHistory = actions::clearHistory,
         onRefreshHistory = actions::refreshHistory,
+        historyScroll = root.ui.historyScroll,
         downloadTick = appState.downloadTick + DownloadQueue.tick,
+        downloadsScroll = root.ui.downloadsScroll,
         onOpenDownload = { actions.openFromDownloads(it) },
         onOpenDownloadQueue = actions::openDownloadQueue,
         onOpenSettings = actions::openSettings
