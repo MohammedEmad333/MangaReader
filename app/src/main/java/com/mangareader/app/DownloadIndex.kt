@@ -76,7 +76,6 @@ object DownloadIndex {
 
     // ---------- reading ----------
 
-    /** Downloaded series, largest first. Self-healing against what's on disk. */
     /**
      * The last result of [list].
      *
@@ -105,12 +104,42 @@ object DownloadIndex {
         cachedIds = null
     }
 
+    /**
+     * Downloaded series, largest first.
+     *
+     * Before trusting the persisted indexes, reconcile the readable download
+     * tree from its per-chapter `.chapterid` markers. A stale
+     * `download_paths.json` can otherwise make every `isComplete()` lookup
+     * miss even while gigabytes of complete chapters are still on disk.
+     *
+     * If the first rebuild still returns nothing but the disk scanner can see
+     * complete chapters, reopen the one-shot legacy recovery gate and retry.
+     * This handles installs where an earlier recovery pass completed before the
+     * current storage tree/library metadata was available.
+     */
     fun list(context: Context): List<DownloadedSeries> {
         cached?.let { return it }
-        return DownloadIndexBuilder.build(context).also {
-            cached = it
-            cachedIds = it.mapTo(mutableSetOf()) { series -> series.seriesId }
+
+        val appContext = context.applicationContext
+
+        // Clear negative completion/size answers that may have been memoised
+        // against an obsolete path mapping, then merge the self-describing tree
+        // back into DownloadPaths before the index asks where chapters live.
+        Downloads.invalidateCompletion()
+        DownloadPaths.rebuild(appContext, Downloads.downloadsRoot(appContext))
+
+        var result = DownloadIndexBuilder.build(appContext)
+
+        if (result.isEmpty() && Downloads.count(appContext) > 0) {
+            DownloadIndexBuilder.clearRecovery(appContext)
+            Downloads.invalidateCompletion()
+            DownloadPaths.rebuild(appContext, Downloads.downloadsRoot(appContext))
+            result = DownloadIndexBuilder.build(appContext)
         }
+
+        cached = result
+        cachedIds = result.mapTo(mutableSetOf()) { series -> series.seriesId }
+        return result
     }
 
     /**
@@ -182,6 +211,4 @@ object DownloadIndex {
         DownloadCovers.delete(context, series.seriesId)
         DownloadIndexStorage.write(context, DownloadIndexStorage.read(context).filterNot { it.chapterId in gone })
     }
-
-
 }
