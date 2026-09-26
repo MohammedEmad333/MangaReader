@@ -106,11 +106,19 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         val pkg = pendingUninstall
         pendingUninstall = null
         refreshTick++
-        if (pkg != null && ExtensionManager.isInstalled(context, pkg)) {
-            report = "$pkg is still installed.\n\nThe uninstall was either " +
-                "cancelled, or refused by the system. If no dialog appeared at " +
-                "all, this build is missing the REQUEST_DELETE_PACKAGES " +
-                "permission, or the ROM blocks app-initiated uninstalls."
+        if (pkg != null) {
+            val appContext = context.applicationContext
+            scope.launch {
+                val stillInstalled = withContext(Dispatchers.IO) {
+                    ExtensionManager.isInstalled(appContext, pkg)
+                }
+                if (stillInstalled) {
+                    report = "$pkg is still installed.\n\nThe uninstall was either " +
+                        "cancelled, or refused by the system. If no dialog appeared at " +
+                        "all, this build is missing the REQUEST_DELETE_PACKAGES " +
+                        "permission, or the ROM blocks app-initiated uninstalls."
+                }
+            }
         }
     }
     val startUninstall: (String) -> Unit = { pkg ->
