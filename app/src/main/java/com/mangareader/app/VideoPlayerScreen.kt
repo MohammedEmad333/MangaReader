@@ -57,8 +57,8 @@ internal fun VideoPlayerScreen(
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
 
-    val progressKey = remember(selectedVideo.url, selectedVideo.selectedVideo.resumeKey) {
-        selectedVideo.selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
+    val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
+        selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
     }
     val resumePosition = remember(progressKey, context) {
         VideoPlaybackProgress.position(context, progressKey)
@@ -277,7 +277,7 @@ internal fun VideoPlayerScreen(
 private fun persistPlaybackProgress(
     context: Context,
     progressKey: String,
-    selectedVideo.resumeKey: String,
+    resumeKey: String,
     player: Player,
 ) {
     val duration = player.duration
@@ -286,8 +286,8 @@ private fun persistPlaybackProgress(
     when {
         shouldMarkPlaybackCompleted(position, duration) -> {
             VideoPlaybackProgress.markCompleted(context, progressKey, duration)
-            if (selectedVideo.resumeKey.isNotBlank()) {
-                ReadState.setRead(context, selectedVideo.resumeKey, true)
+            if (resumeKey.isNotBlank()) {
+                ReadState.setRead(context, resumeKey, true)
             }
         }
 
