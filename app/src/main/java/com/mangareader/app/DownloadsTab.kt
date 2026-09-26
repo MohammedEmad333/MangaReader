@@ -60,20 +60,69 @@ internal enum class DownloadsSortMode(val label: String) {
     CHAPTERS("Chapters"),
 }
 
+internal enum class DownloadsMediaFilter(val label: String) {
+    ALL("All"),
+    MANGA("Manga"),
+    ANIME("Anime"),
+}
+
+internal data class DownloadsViewState(
+    val query: String = "",
+    val sortMode: DownloadsSortMode = DownloadsSortMode.SIZE,
+    val descending: Boolean = true,
+    val mediaFilter: DownloadsMediaFilter = DownloadsMediaFilter.ALL,
+)
+
+internal object DownloadsViewPrefs {
+    private const val PREFS = "downloads_view"
+    private const val QUERY = "query"
+    private const val SORT = "sort"
+    private const val DESCENDING = "descending"
+    private const val MEDIA = "media"
+
+    fun load(context: android.content.Context): DownloadsViewState {
+        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        return DownloadsViewState(
+            query = p.getString(QUERY, "").orEmpty(),
+            sortMode = runCatching {
+                DownloadsSortMode.valueOf(p.getString(SORT, null).orEmpty())
+            }.getOrDefault(DownloadsSortMode.SIZE),
+            descending = p.getBoolean(DESCENDING, true),
+            mediaFilter = runCatching {
+                DownloadsMediaFilter.valueOf(p.getString(MEDIA, null).orEmpty())
+            }.getOrDefault(DownloadsMediaFilter.ALL),
+        )
+    }
+
+    fun save(context: android.content.Context, state: DownloadsViewState) {
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putString(QUERY, state.query)
+            .putString(SORT, state.sortMode.name)
+            .putBoolean(DESCENDING, state.descending)
+            .putString(MEDIA, state.mediaFilter.name)
+            .apply()
+    }
+}
+
 internal fun filterAndSortDownloads(
     series: List<DownloadedSeries>,
     query: String,
     sortMode: DownloadsSortMode,
     descending: Boolean,
+    mediaFilter: DownloadsMediaFilter = DownloadsMediaFilter.ALL,
 ): List<DownloadedSeries> {
     val needle = query.trim()
-    val filtered = if (needle.isEmpty()) {
-        series
-    } else {
-        series.filter { entry ->
-            entry.title.contains(needle, ignoreCase = true) ||
-                entry.chapters.any { it.name.contains(needle, ignoreCase = true) }
+    val filtered = series.filter { entry ->
+        val matchesMedia = when (mediaFilter) {
+            DownloadsMediaFilter.ALL -> true
+            DownloadsMediaFilter.MANGA -> !entry.sourceId.isAnimeExtensionSourceId()
+            DownloadsMediaFilter.ANIME -> entry.sourceId.isAnimeExtensionSourceId()
         }
+        val matchesQuery = needle.isEmpty() ||
+            entry.title.contains(needle, ignoreCase = true) ||
+            entry.chapters.any { it.name.contains(needle, ignoreCase = true) }
+        matchesMedia && matchesQuery
     }
     val sorted = when (sortMode) {
         DownloadsSortMode.SIZE -> filtered.sortedBy { it.sizeBytes }
@@ -108,9 +157,11 @@ internal fun DownloadsTab(
     // back up to YomuApp for something no other screen cares about.
     var localTick by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
-    var sortModeName by rememberSaveable { mutableStateOf(DownloadsSortMode.SIZE.name) }
-    var sortDescending by rememberSaveable { mutableStateOf(true) }
+    val initialView = remember { DownloadsViewPrefs.load(context) }
+    var searchQuery by rememberSaveable { mutableStateOf(initialView.query) }
+    var sortModeName by rememberSaveable { mutableStateOf(initialView.sortMode.name) }
+    var sortDescending by rememberSaveable { mutableStateOf(initialView.descending) }
+    var mediaFilterName by rememberSaveable { mutableStateOf(initialView.mediaFilter.name) }
 
     // Cleared from an EFFECT, not from the gesture lambda.
     //
@@ -153,8 +204,18 @@ internal fun DownloadsTab(
     val series = loaded ?: emptyList()
     val sortMode = runCatching { DownloadsSortMode.valueOf(sortModeName) }
         .getOrDefault(DownloadsSortMode.SIZE)
-    val visibleSeries = remember(series, searchQuery, sortMode, sortDescending) {
-        filterAndSortDownloads(series, searchQuery, sortMode, sortDescending)
+    val mediaFilter = runCatching { DownloadsMediaFilter.valueOf(mediaFilterName) }
+        .getOrDefault(DownloadsMediaFilter.ALL)
+
+    LaunchedEffect(searchQuery, sortMode, sortDescending, mediaFilter) {
+        DownloadsViewPrefs.save(
+            context,
+            DownloadsViewState(searchQuery, sortMode, sortDescending, mediaFilter),
+        )
+    }
+
+    val visibleSeries = remember(series, searchQuery, sortMode, sortDescending, mediaFilter) {
+        filterAndSortDownloads(series, searchQuery, sortMode, sortDescending, mediaFilter)
     }
     val downloadsOrdering = remember(visibleSeries) { visibleSeries.map { it.seriesId } }
     scroll.sync(downloadsOrdering)
@@ -181,6 +242,14 @@ internal fun DownloadsTab(
                 onSortModeChange = { sortModeName = it.name },
                 descending = sortDescending,
                 onDescendingChange = { sortDescending = it },
+                mediaFilter = mediaFilter,
+                onMediaFilterChange = { mediaFilterName = it.name },
+                onClear = {
+                    searchQuery = ""
+                    sortModeName = DownloadsSortMode.SIZE.name
+                    sortDescending = true
+                    mediaFilterName = DownloadsMediaFilter.ALL.name
+                },
                 shownCount = visibleSeries.size,
                 totalCount = series.size,
             )
@@ -248,7 +317,7 @@ internal fun DownloadsTab(
             if (visibleSeries.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "No downloaded series match your search.",
+                        "No downloads match the current search or filter.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
