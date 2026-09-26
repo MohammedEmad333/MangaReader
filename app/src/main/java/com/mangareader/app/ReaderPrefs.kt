@@ -68,6 +68,8 @@ internal data class ReaderSettings(
     val pageGap: Int = 0,
     /** Outer thirds turn pages in paged modes; centre third toggles controls. */
     val tapZones: Boolean = true,
+    /** Seconds before reader chrome hides itself. 0 keeps controls visible. */
+    val controlsAutoHideSeconds: Int = 4,
     val showPageNumber: Boolean = true,
     val sliderPosition: ReaderSliderPosition = ReaderSliderPosition.HORIZONTAL,
     val fullscreen: Boolean = true,
@@ -87,6 +89,7 @@ internal object ReaderPrefs {
     private const val SIDE_PADDING = "reader_side_padding"
     private const val PAGE_GAP = "reader_page_gap"
     private const val TAP_ZONES = "reader_tap_zones"
+    private const val CONTROLS_AUTO_HIDE_SECONDS = "reader_controls_auto_hide_seconds"
     private const val PAGE_NUMBER = "reader_page_number"
     private const val SLIDER_POSITION = "reader_slider_position"
     private const val FULLSCREEN = "reader_fullscreen"
@@ -106,6 +109,10 @@ internal object ReaderPrefs {
             sidePadding = p.getInt(SIDE_PADDING, defaults.sidePadding),
             pageGap = p.getInt(PAGE_GAP, defaults.pageGap),
             tapZones = p.getBoolean(TAP_ZONES, defaults.tapZones),
+            controlsAutoHideSeconds = p.getInt(
+                CONTROLS_AUTO_HIDE_SECONDS,
+                defaults.controlsAutoHideSeconds,
+            ).coerceIn(0, 10),
             showPageNumber = p.getBoolean(PAGE_NUMBER, defaults.showPageNumber),
             sliderPosition = ReaderSliderPosition.from(p.getString(SLIDER_POSITION, null)),
             fullscreen = p.getBoolean(FULLSCREEN, defaults.fullscreen),
@@ -130,6 +137,7 @@ internal object ReaderPrefs {
             .putInt(SIDE_PADDING, settings.sidePadding)
             .putInt(PAGE_GAP, settings.pageGap)
             .putBoolean(TAP_ZONES, settings.tapZones)
+            .putInt(CONTROLS_AUTO_HIDE_SECONDS, settings.controlsAutoHideSeconds)
             .putBoolean(PAGE_NUMBER, settings.showPageNumber)
             .putString(SLIDER_POSITION, settings.sliderPosition.key)
             .putBoolean(FULLSCREEN, settings.fullscreen)
@@ -173,6 +181,8 @@ internal object ReaderSeriesPrefs {
                 sidePadding = o.optInt("sidePadding", 0),
                 pageGap = o.optInt("pageGap", 0),
                 tapZones = o.optBoolean("tapZones", true),
+                controlsAutoHideSeconds = o.optInt("controlsAutoHideSeconds", 4)
+                    .coerceIn(0, 10),
                 showPageNumber = o.optBoolean("showPageNumber", true),
                 sliderPosition = ReaderSliderPosition.from(
                     o.optString("sliderPosition").takeIf { it.isNotBlank() }
@@ -201,6 +211,7 @@ internal object ReaderSeriesPrefs {
             .put("sidePadding", settings.sidePadding)
             .put("pageGap", settings.pageGap)
             .put("tapZones", settings.tapZones)
+            .put("controlsAutoHideSeconds", settings.controlsAutoHideSeconds)
             .put("showPageNumber", settings.showPageNumber)
             .put("sliderPosition", settings.sliderPosition.key)
             .put("fullscreen", settings.fullscreen)

@@ -100,6 +100,20 @@ internal fun ReaderSettingsSheet(
                         steps = 4,
                         onChange = { onChange(settings.copy(sidePadding = it.toInt())) }
                     )
+                    ChipRow(
+                        label = "Hide controls after",
+                        options = listOf("Never", "2 sec", "4 sec", "6 sec", "10 sec"),
+                        selected = listOf(0, 2, 4, 6, 10)
+                            .indexOf(settings.controlsAutoHideSeconds)
+                            .coerceAtLeast(0),
+                        onSelect = {
+                            onChange(
+                                settings.copy(
+                                    controlsAutoHideSeconds = listOf(0, 2, 4, 6, 10)[it]
+                                )
+                            )
+                        }
+                    )
                     if (settings.mode != ReaderMode.LONG_STRIP) {
                         SwitchRow("Tap zones", settings.tapZones) {
                             onChange(settings.copy(tapZones = it))

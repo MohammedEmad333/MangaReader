@@ -101,9 +101,19 @@ internal fun ReaderScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
 
-    LaunchedEffect(showControls, showSettings, showChapters) {
-        if (showControls && !showSettings && !showChapters) {
-            delay(4_000)
+    LaunchedEffect(
+        showControls,
+        showSettings,
+        showChapters,
+        settings.controlsAutoHideSeconds,
+    ) {
+        if (
+            showControls &&
+            !showSettings &&
+            !showChapters &&
+            settings.controlsAutoHideSeconds > 0
+        ) {
+            delay(settings.controlsAutoHideSeconds * 1_000L)
             showControls = false
         }
     }
