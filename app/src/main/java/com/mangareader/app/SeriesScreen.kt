@@ -152,6 +152,8 @@ internal fun SeriesScreen(
     onLibraryChanged: () -> Unit,
     /** Runs [String] as a search of this series' own source. */
     onSearchTag: (String) -> Unit,
+    /** Opens the Library tab with [String] in its search field. */
+    onLibrarySearchTag: (String) -> Unit,
     /** Runs [String] across every searchable source. */
     onGlobalSearchTag: (String) -> Unit,
     /** Opens the target picker to move this (library) series to another source. */
@@ -290,6 +292,7 @@ internal fun SeriesScreen(
             descriptionExpanded = !descriptionExpanded
         },
         onSearchTag = onSearchTag,
+        onLibrarySearchTag = onLibrarySearchTag,
         onSolveChallenge = onSolveChallenge,
         onRefresh = onRefresh,
         onSetRead = onSetRead,
