@@ -4,7 +4,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +22,7 @@ internal fun ExtensionsContent(
     modifier: Modifier,
     reposEmpty: Boolean,
     loading: Boolean,
+    loadedOnce: Boolean,
     error: String?,
     filter: String,
     onFilterChange: (String) -> Unit,
@@ -32,6 +32,7 @@ internal fun ExtensionsContent(
     onMediaFilterChange: (String) -> Unit,
     shownExtensions: List<Extension>,
     availableCount: Int,
+    scroll: ScrollMemory,
     diagnosticsRunning: Boolean,
     onDiagnose: () -> Unit,
     onInstall: (Extension) -> Unit,
@@ -145,7 +146,20 @@ internal fun ExtensionsContent(
             )
         }
 
-        val listState = rememberLazyListState()
+        if (!loadedOnce) {
+            Spacer(modifier = Modifier.fillMaxSize())
+            return@Column
+        }
+
+        val extensionsOrdering = remember(shownExtensions) {
+            shownExtensions.map { Triple(it.pkgName, it.isInstalled, it.hasUpdate) }
+        }
+        scroll.sync(extensionsOrdering)
+        val listState = rememberRestoredListState(
+            scroll,
+            "extensions",
+            extensionsOrdering,
+        )
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
