@@ -190,7 +190,6 @@ internal fun BrowseSettings() {
 @Composable
 private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     // Snapshot once on open, but build it on IO: a restored library can contain
     // thousands of entries, and grouping it is not composition work.
@@ -249,10 +248,7 @@ private fun UnclassifiedSourcesDialog(onDismiss: () -> Unit) {
                                         checked = flags[id] ?: false,
                                         onCheckedChange = { value ->
                                             flags = flags + (id to value)
-                                            val appContext = context.applicationContext
-                                            scope.launch(Dispatchers.IO) {
-                                                SourceNsfw.record(appContext, mapOf(id to value))
-                                            }
+                                            SourceNsfw.record(context, mapOf(id to value))
                                         }
                                     )
                                 }
