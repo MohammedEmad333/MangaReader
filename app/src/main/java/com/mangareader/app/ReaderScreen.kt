@@ -101,6 +101,13 @@ internal fun ReaderScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
 
+    LaunchedEffect(showControls, showSettings, showChapters) {
+        if (showControls && !showSettings && !showChapters) {
+            delay(4_000)
+            showControls = false
+        }
+    }
+
     // Persist on every edit rather than on dismiss: the sheet can be swiped away
     // and the screen can be left by the system, and losing a setting because it
     // was closed the wrong way is the kind of bug nobody reports.
