@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
             ThemeMode.DARK -> true
             ThemeMode.LIGHT -> false
             ThemeMode.SYSTEM ->
-                resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                     Configuration.UI_MODE_NIGHT_YES
         }
         setTheme(if (darkWindow) R.style.Theme_Yomu else R.style.Theme_Yomu_Light)
