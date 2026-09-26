@@ -106,6 +106,10 @@ internal fun SeriesAuxiliaryDialogs(
     confirmDeleteSelection: Boolean,
     selectedChapters: List<Chapter>,
     downloadTick: Int,
+    confirmDeleteAllDownloads: Boolean,
+    downloadedCount: Int?,
+    onDismissDeleteAllDownloads: () -> Unit,
+    onDeleteAllDownloads: () -> Unit,
     onDismissDeleteSelection: () -> Unit,
     onDeleteSelection: () -> Unit,
     showCategories: Boolean,
@@ -128,6 +132,10 @@ internal fun SeriesAuxiliaryDialogs(
         downloadTick = downloadTick,
         onDismissSelection = onDismissDeleteSelection,
         onDeleteSelection = onDeleteSelection,
+        deleteAllOpen = confirmDeleteAllDownloads,
+        downloadedCount = downloadedCount,
+        onDismissDeleteAll = onDismissDeleteAllDownloads,
+        onDeleteAll = onDeleteAllDownloads,
     )
 
     if (showCategories) {
