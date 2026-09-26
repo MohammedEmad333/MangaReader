@@ -54,6 +54,7 @@ internal fun SeriesContent(
     descriptionExpanded: Boolean,
     onToggleDescriptionExpanded: () -> Unit,
     onSearchTag: (String) -> Unit,
+    onLibrarySearchTag: (String) -> Unit,
     onSolveChallenge: (() -> Unit)?,
     onRefresh: () -> Unit,
     onSetRead: (List<Chapter>, Boolean) -> Unit,
@@ -112,6 +113,7 @@ internal fun SeriesContent(
                         onToggleExpanded = onToggleDescriptionExpanded,
                         sourceName = sourceName,
                         onSearchTag = onSearchTag,
+                        onLibrarySearchTag = onLibrarySearchTag,
                         onGlobalSearchTag = onGlobalSearchTag,
                     )
                 }
