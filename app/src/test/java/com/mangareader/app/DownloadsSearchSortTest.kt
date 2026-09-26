@@ -76,8 +76,8 @@ class DownloadsSearchSortTest {
 
     @Test
     fun mediaFilter_separatesMangaAndAnime() {
-        val anime = beta.copy(sourceId = "anime:source")
-        val manga = alpha.copy(sourceId = "manga:source")
+        val anime = beta.copy(sourceId = "aniyomi:source")
+        val manga = alpha.copy(sourceId = "tachi:source")
         assertEquals(
             listOf("beta"),
             filterAndSortDownloads(
