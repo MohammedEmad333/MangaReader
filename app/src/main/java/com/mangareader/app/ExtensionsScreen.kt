@@ -81,6 +81,7 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
+    var diagnosticsRunning by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
     var installedOnly by rememberSaveable { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
@@ -186,7 +187,22 @@ internal fun ExtensionsScreen(modifier: Modifier = Modifier, onInstalled: () -> 
         onMediaFilterChange = { mediaFilter = it },
         shownExtensions = shownExtensions,
         availableCount = available.size,
-        onDiagnose = { report = diagnoseExtensions(context) },
+        diagnosticsRunning = diagnosticsRunning,
+        onDiagnose = {
+            if (!diagnosticsRunning) {
+                diagnosticsRunning = true
+                scope.launch {
+                    val appContext = context.applicationContext
+                    report = withContext(Dispatchers.IO) {
+                        runCatching { diagnoseExtensions(appContext) }
+                            .getOrElse {
+                                "Diagnostics failed: ${it.message ?: it::class.java.simpleName}"
+                            }
+                    }
+                    diagnosticsRunning = false
+                }
+            }
+        },
         onInstall = { ext ->
             awaitingPackageChange = true
             scope.launch {
