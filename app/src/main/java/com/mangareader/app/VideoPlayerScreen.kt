@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,10 +48,14 @@ internal fun VideoPlayerScreen(
     subtitles: List<VideoSubtitle>,
     inPictureInPicture: Boolean,
     onPlaybackActiveChanged: (Boolean) -> Unit,
+    onClose: () -> Unit,
 ) {
     var buffering by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    var playbackSpeed by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.speed(context))
+    }
 
     val progressKey = remember(url, resumeKey) {
         resumeKey.ifBlank { "url:$url" }
@@ -109,6 +116,7 @@ internal fun VideoPlayerScreen(
 
                 setMediaItem(mediaItem)
                 if (resumePosition > 0L) seekTo(resumePosition)
+                setPlaybackSpeed(playbackSpeed)
                 playWhenReady = true
                 prepare()
             }
@@ -188,6 +196,22 @@ internal fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        if (!inPictureInPicture) {
+            VideoPlayerQuickControls(
+                player = player,
+                subtitles = subtitles,
+                speed = playbackSpeed,
+                onSpeedChange = { next ->
+                    playbackSpeed = next
+                    VideoPlayerPrefs.setSpeed(context, next)
+                    player.setPlaybackSpeed(next)
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp),
+            )
+        }
+
         if (playbackError != null) {
             Column(
                 modifier = Modifier.align(Alignment.Center),
@@ -208,11 +232,26 @@ internal fun VideoPlayerScreen(
                 ) {
                     Text("Retry")
                 }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onClose) {
+                    Text("Close player")
+                }
             }
         } else if (buffering) {
-            CircularProgressIndicator(
+            Surface(
                 modifier = Modifier.align(Alignment.Center),
-            )
+                shape = MaterialTheme.shapes.large,
+                color = Color.Black.copy(alpha = 0.58f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(10.dp))
+                    Text("Buffering…", color = Color.White)
+                }
+            }
         }
     }
 }

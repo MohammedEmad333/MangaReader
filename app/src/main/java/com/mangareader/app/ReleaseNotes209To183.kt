@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 218 down to 183, newest first. */
+/** Release-note chunk 219 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 219,
+            name = "0.219",
+            header = "More control while watching",
+            body = "The built-in video player now has quick 10-second rewind and " +
+                "forward controls, playback speeds from 0.5× to 2× with your last " +
+                "speed remembered, subtitle Auto/language/Off controls when subtitles " +
+                "are available, a clearer buffering state, and a Close player action " +
+                "alongside Retry when playback fails.",
+        ),
         ReleaseNote(
             code = 218,
             name = "0.218",
