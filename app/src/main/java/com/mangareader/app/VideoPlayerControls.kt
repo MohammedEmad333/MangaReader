@@ -66,8 +66,7 @@ internal fun VideoPlayerQuickControls(
         ) {
             TextButton(
                 onClick = {
-                    val target = (player.currentPosition - 10_000L).coerceAtLeast(0L)
-                    player.seekTo(target)
+                    player.seekTo(seekBackTarget(player.currentPosition))
                 },
             ) {
                 Text("−10s")
@@ -75,9 +74,7 @@ internal fun VideoPlayerQuickControls(
 
             TextButton(
                 onClick = {
-                    val duration = player.duration.takeIf { it > 0L }
-                    val target = player.currentPosition + 10_000L
-                    player.seekTo(duration?.let { target.coerceAtMost(it) } ?: target)
+                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
                 },
             ) {
                 Text("+10s")
@@ -157,6 +154,14 @@ internal fun VideoPlayerQuickControls(
             }
         }
     }
+}
+
+internal fun seekBackTarget(positionMs: Long): Long =
+    (positionMs - 10_000L).coerceAtLeast(0L)
+
+internal fun seekForwardTarget(positionMs: Long, durationMs: Long): Long {
+    val target = positionMs + 10_000L
+    return if (durationMs > 0L) target.coerceAtMost(durationMs) else target
 }
 
 internal fun formatPlaybackSpeed(speed: Float): String =
