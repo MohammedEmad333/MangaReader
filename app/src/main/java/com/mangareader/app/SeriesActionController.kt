@@ -53,14 +53,22 @@ internal class SeriesActionController(
 
     fun findVideos(chapter: Chapter) {
         val source = browseState.source ?: return
-        mediaState.scan = null
-        mediaState.scanning = true
+        val requestId = mediaState.beginScan()
 
-        scope.launch {
-            mediaState.scan = withContext(Dispatchers.IO) {
-                scanChapterVideos(source, chapter)
+        mediaState.scanJob = scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    scanChapterVideos(source, chapter)
+                }
+                if (mediaState.isCurrentScan(requestId)) {
+                    mediaState.scan = result
+                }
+            } finally {
+                if (mediaState.isCurrentScan(requestId)) {
+                    mediaState.scanning = false
+                    mediaState.scanJob = null
+                }
             }
-            mediaState.scanning = false
         }
     }
 

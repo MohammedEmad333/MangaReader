@@ -6,8 +6,13 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 
@@ -23,6 +28,13 @@ class AniyomiSourceAdapter(
     override val iconPkg: String? = null,
     override val isNsfw: Boolean = false,
 ) : Source {
+
+    private data class CachedVideos(
+        val videos: List<Video>,
+        val expiresAtElapsedMs: Long,
+    )
+
+    private val videoCache = mutableMapOf<String, CachedVideos>()
 
     override val id: String = "aniyomi:${delegate.id}"
     override val name: String = delegate.name
@@ -162,16 +174,58 @@ class AniyomiSourceAdapter(
     }
 
     private suspend fun resolveVideos(episode: SEpisode): List<Video> {
-        val fromHosters = runCatching {
-            delegate.getHosterList(episode).flatMap { hoster ->
-                hoster.videoList ?: delegate.getVideoList(hoster)
+        val cacheKey = episode.url
+        val now = SystemClock.elapsedRealtime()
+        synchronized(videoCache) {
+            videoCache[cacheKey]
+                ?.takeIf { it.expiresAtElapsedMs > now }
+                ?.let { return it.videos }
+            videoCache.entries.removeAll { it.value.expiresAtElapsedMs <= now }
+        }
+
+        val hosters = runCatching { delegate.getHosterList(episode) }
+            .getOrNull()
+            .orEmpty()
+
+        // Hoster resolution is network-bound and independent. The old flatMap
+        // resolved one hoster after another, so three 4-second servers meant a
+        // 12-second loading dialog. Start them together and isolate failures so
+        // one broken server cannot hide streams returned by the others.
+        val fromHosters = supervisorScope {
+            hosters.map { hoster ->
+                async(Dispatchers.IO) {
+                    hoster.videoList ?: withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
+                        runCatching { delegate.getVideoList(hoster) }
+                            .getOrDefault(emptyList())
+                    }.orEmpty()
+                }
+            }.awaitAll().flatten()
+        }
+
+        val resolved = if (fromHosters.isNotEmpty()) {
+            fromHosters
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { delegate.getVideoList(episode) }.getOrDefault(emptyList())
+        }
+
+        // Stream URLs can be signed/short-lived, so this is intentionally a
+        // short process cache: it makes closing/reopening the same episode
+        // instant without keeping a stale URL around for a later session.
+        if (resolved.isNotEmpty()) {
+            synchronized(videoCache) {
+                videoCache[cacheKey] = CachedVideos(
+                    videos = resolved,
+                    expiresAtElapsedMs = SystemClock.elapsedRealtime() + STREAM_CACHE_TTL_MS,
+                )
             }
-        }.getOrNull().orEmpty()
+        }
+        return resolved
+    }
 
-        if (fromHosters.isNotEmpty()) return fromHosters
-
-        @Suppress("DEPRECATION")
-        return runCatching { delegate.getVideoList(episode) }.getOrDefault(emptyList())
+    private companion object {
+        const val HOSTER_TIMEOUT_MS = 10_000L
+        const val STREAM_CACHE_TTL_MS = 2 * 60_000L
     }
 
     override fun seriesUrl(series: Series): String? {

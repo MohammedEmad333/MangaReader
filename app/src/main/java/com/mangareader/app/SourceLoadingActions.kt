@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 
 internal suspend fun loadSourcePage(
     source: Source,
@@ -52,9 +53,11 @@ internal fun resolveSourceConfig(
 internal suspend fun scanChapterVideos(
     source: Source,
     chapter: Chapter
-): VideoScan = runCatching {
+): VideoScan = try {
     source.scanVideos(chapter)
-}.getOrElse { error ->
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (error: Throwable) {
     VideoScan(
         emptyList(),
         note = sourceFailureMessage(error, "The scan failed")
