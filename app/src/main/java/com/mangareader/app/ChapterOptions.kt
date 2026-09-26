@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChapterOptionsSheet(
+    sourceId: String,
     seriesId: String,
     chapters: List<Chapter>,
     onDismiss: () -> Unit,
@@ -45,7 +46,7 @@ internal fun ChapterOptionsSheet(
     }
     var selectedScanlators by remember(seriesId, scanlatorOptions) {
         mutableStateOf(
-            ChapterPrefs.scanlators(context, seriesId)
+            ChapterPrefs.scanlators(context, sourceId, seriesId)
                 .intersect(scanlatorOptions.toSet())
         )
     }
@@ -101,7 +102,12 @@ internal fun ChapterOptionsSheet(
                                 selected = selectedScanlators.isEmpty(),
                                 onClick = {
                                     selectedScanlators = emptySet()
-                                    ChapterPrefs.setScanlators(context, seriesId, emptySet())
+                                    ChapterPrefs.setScanlators(
+                                        context,
+                                        sourceId,
+                                        seriesId,
+                                        emptySet(),
+                                    )
                                     onChanged()
                                 },
                                 label = { Text("All") },
@@ -118,6 +124,7 @@ internal fun ChapterOptionsSheet(
                                             }
                                         ChapterPrefs.setScanlators(
                                             context,
+                                            sourceId,
                                             seriesId,
                                             selectedScanlators,
                                         )
