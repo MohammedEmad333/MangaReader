@@ -53,8 +53,12 @@ internal class LibraryRefreshSourceWorker(
 
                     ChapterCache.save(context, entry.seriesId, chapters)
 
-                    if (previous.isNotEmpty()) {
-                        val fresh = AutoDownloadPrefs.newChapters(previous, chapters)
+                    if (previous.isNotEmpty() && AutoDownloadPrefs.networkAllowed(context)) {
+                        val fresh = AutoDownloadPrefs.newChapters(
+                            context = context,
+                            previous = previous,
+                            fresh = chapters,
+                        )
                         if (fresh.isNotEmpty()) {
                             queueSeriesDownloads(
                                 context = context,
