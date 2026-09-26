@@ -18,6 +18,24 @@ class VideoPlayerControlsTest {
     }
 
     @Test
+    fun streamLabelsPreferProvidedQualityThenFallback() {
+        assertEquals(
+            "1080p",
+            streamDisplayLabel(
+                PlayableVideo(url = "https://example/1080", title = "1080p"),
+                0,
+            ),
+        )
+        assertEquals(
+            "Stream 2",
+            streamDisplayLabel(
+                PlayableVideo(url = "https://example/alt"),
+                1,
+            ),
+        )
+    }
+
+    @Test
     fun playbackSpeed_labelsAreCompact() {
         assertEquals("1×", formatPlaybackSpeed(1f))
         assertEquals("1.25×", formatPlaybackSpeed(1.25f))
