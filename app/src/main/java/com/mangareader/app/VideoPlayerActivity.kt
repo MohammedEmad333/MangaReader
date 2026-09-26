@@ -68,6 +68,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     subtitles = subtitles,
                     inPictureInPicture = inPictureInPicture,
                     onPlaybackActiveChanged = ::updatePictureInPictureState,
+                    onClose = ::finish,
                 )
             }
         }
