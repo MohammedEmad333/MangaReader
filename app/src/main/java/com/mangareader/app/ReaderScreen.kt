@@ -68,6 +68,7 @@ internal fun ReaderScreen(
     pages: List<File?>,
     stillLoading: Boolean,
     initialPage: Int,
+    seriesId: String,
     seriesTitle: String,
     chapterName: String,
     chapters: List<Chapter>,
@@ -84,7 +85,16 @@ internal fun ReaderScreen(
     val context = view.context
     val scope = rememberCoroutineScope()
 
-    var settings by remember { mutableStateOf(ReaderPrefs.load(context)) }
+    val globalSettings = remember(seriesId) { ReaderPrefs.load(context) }
+    val initialSeriesSettings = remember(seriesId) {
+        ReaderSeriesPrefs.load(context, seriesId)
+    }
+    var useGlobalDefaults by remember(seriesId) {
+        mutableStateOf(initialSeriesSettings == null)
+    }
+    var settings by remember(seriesId) {
+        mutableStateOf(initialSeriesSettings ?: globalSettings)
+    }
     var showControls by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
@@ -94,7 +104,23 @@ internal fun ReaderScreen(
     // was closed the wrong way is the kind of bug nobody reports.
     fun update(next: ReaderSettings) {
         settings = next
-        ReaderPrefs.save(context, next)
+        if (useGlobalDefaults || seriesId.isBlank()) {
+            ReaderPrefs.save(context, next)
+        } else {
+            ReaderSeriesPrefs.save(context, seriesId, next)
+        }
+    }
+
+    fun setUseGlobalDefaults(enabled: Boolean) {
+        useGlobalDefaults = enabled || seriesId.isBlank()
+        settings = if (useGlobalDefaults) {
+            ReaderSeriesPrefs.clear(context, seriesId)
+            ReaderPrefs.load(context)
+        } else {
+            val snapshot = settings
+            ReaderSeriesPrefs.save(context, seriesId, snapshot)
+            snapshot
+        }
     }
 
     BackHandler {
@@ -263,6 +289,9 @@ internal fun ReaderScreen(
         showSettings = showSettings,
         onDismissSettings = { showSettings = false },
         settings = settings,
+        useGlobalDefaults = useGlobalDefaults,
+        canOverrideSeries = seriesId.isNotBlank(),
+        onUseGlobalDefaultsChange = ::setUseGlobalDefaults,
         onSettingsChange = { update(it) },
     )
 
