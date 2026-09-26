@@ -81,6 +81,7 @@ internal fun HistoryScreen(
     /** Bumped when library state moves; refreshes the corner markers. */
     libraryTick: Int,
     onClearAll: () -> Unit,
+    scroll: ScrollMemory,
     /**
      * Re-reads the history file. Unlike the series screen's refresh this is a
      * disk read rather than a network call, so there is no honest "refreshing"
@@ -101,6 +102,13 @@ internal fun HistoryScreen(
             }
         }
     }
+
+    val historyOrdering = remember(shownHistory, mediaFilter) {
+        mediaFilter to shownHistory.map {
+            if (it.seriesId.isBlank()) it.chapterKey else it.seriesId
+        }
+    }
+    scroll.sync(historyOrdering)
 
     // Cleared from an EFFECT, not from the gesture lambda.
     //
@@ -158,7 +166,11 @@ internal fun HistoryScreen(
             //
             // totalItems is history.size: no headers, no spacer, so the list's
             // item count is the data count.
-            val listState = rememberLazyListState()
+            val listState = rememberRestoredListState(
+                scroll,
+                "history",
+                historyOrdering,
+            )
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
                     shownHistory,
