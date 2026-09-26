@@ -100,6 +100,16 @@ internal fun ReaderSettingsSheet(
                         steps = 4,
                         onChange = { onChange(settings.copy(sidePadding = it.toInt())) }
                     )
+                    if (settings.mode == ReaderMode.LONG_STRIP) {
+                        SliderRow(
+                            label = "Page gap",
+                            value = settings.pageGap.toFloat(),
+                            valueLabel = "${settings.pageGap} dp",
+                            range = 0f..24f,
+                            steps = 5,
+                            onChange = { onChange(settings.copy(pageGap = it.toInt())) }
+                        )
+                    }
                 }
                 1 -> {
                     ChipRow(
