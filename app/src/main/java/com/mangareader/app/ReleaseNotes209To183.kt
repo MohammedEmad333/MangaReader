@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 215 down to 183, newest first. */
+/** Release-note chunk 216 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 216,
+            name = "0.216",
+            header = "Find and sort downloads faster",
+            body = "Downloads now has its own search box that matches both series " +
+                "titles and downloaded chapter or episode names. You can also sort " +
+                "the list by storage size, title, or downloaded chapter count, and " +
+                "flip between ascending and descending order without rescanning disk.",
+        ),
         ReleaseNote(
             code = 215,
             name = "0.215",
