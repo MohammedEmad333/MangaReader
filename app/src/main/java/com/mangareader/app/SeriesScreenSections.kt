@@ -104,9 +104,13 @@ internal fun SeriesAuxiliaryDialogs(
     onDeleteChapter: (Chapter) -> Unit,
     confirmDeleteSelection: Boolean,
     selectedChapters: List<Chapter>,
+    confirmDeleteAllDownloads: Boolean,
+    downloadedCount: Int?,
     downloadTick: Int,
     onDismissDeleteSelection: () -> Unit,
     onDeleteSelection: () -> Unit,
+    onDismissDeleteAllDownloads: () -> Unit,
+    onDeleteAllDownloads: () -> Unit,
     showCategories: Boolean,
     onDismissCategories: () -> Unit,
     showAddToLibrary: Boolean,
@@ -124,9 +128,13 @@ internal fun SeriesAuxiliaryDialogs(
         onDeleteChapter = onDeleteChapter,
         selectionOpen = confirmDeleteSelection,
         selectedChapters = selectedChapters,
+        deleteAllOpen = confirmDeleteAllDownloads,
+        downloadedCount = downloadedCount,
         downloadTick = downloadTick,
         onDismissSelection = onDismissDeleteSelection,
         onDeleteSelection = onDeleteSelection,
+        onDismissDeleteAll = onDismissDeleteAllDownloads,
+        onDeleteAll = onDeleteAllDownloads,
     )
 
     if (showCategories) {
