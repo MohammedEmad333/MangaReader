@@ -57,9 +57,13 @@ internal fun SeriesDeleteDialogs(
     onDeleteChapter: (Chapter) -> Unit,
     selectionOpen: Boolean,
     selectedChapters: List<Chapter>,
+    deleteAllOpen: Boolean,
+    downloadedCount: Int?,
     downloadTick: Int,
     onDismissSelection: () -> Unit,
     onDeleteSelection: () -> Unit,
+    onDismissDeleteAll: () -> Unit,
+    onDeleteAll: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -83,6 +87,41 @@ internal fun SeriesDeleteDialogs(
             },
             dismissButton = {
                 TextButton(onClick = onDismissChapter) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (deleteAllOpen) {
+        AlertDialog(
+            onDismissRequest = onDismissDeleteAll,
+            title = {
+                Text(
+                    when (downloadedCount) {
+                        1 -> "Delete 1 downloaded chapter?"
+                        null -> "Delete downloaded chapters?"
+                        else -> "Delete $downloadedCount downloaded chapters?"
+                    },
+                )
+            },
+            text = {
+                Text(
+                    "All downloaded chapters for this series are removed from storage. " +
+                        "The chapters stay in the list and can be downloaded again, and " +
+                        "your read marks and saved positions are untouched.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = (downloadedCount ?: 0) > 0,
+                    onClick = onDeleteAll,
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissDeleteAll) {
                     Text("Cancel")
                 }
             },
