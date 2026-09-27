@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 237 down to 183, newest first. */
+/** Release-note chunk 238 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 238,
+            name = "0.238",
+            header = "Downloads shows what is actually taking space",
+            body = "The Downloads header now shows series count, total downloaded " +
+                "items, and total storage size together. When search or Manga/Anime " +
+                "filters are active, Yomu also shows how many downloads and how much " +
+                "storage the visible results use, so filters double as a quick storage audit.",
+        ),
         ReleaseNote(
             code = 237,
             name = "0.237",
