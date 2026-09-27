@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 224 down to 183, newest first. */
+/** Release-note chunk 225 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 225,
+            name = "0.225",
+            header = "Choose seek distance and control timeout",
+            body = "Video seeking is no longer fixed at 10 seconds. Pick 5, 10, 15, " +
+                "or 30 seconds and Yomu uses that distance for both the quick buttons " +
+                "and double-tap gestures. You can also choose whether player controls " +
+                "hide after 2, 4, 6, or 10 seconds, or keep them visible, and both " +
+                "choices are remembered.",
+        ),
         ReleaseNote(
             code = 224,
             name = "0.224",
