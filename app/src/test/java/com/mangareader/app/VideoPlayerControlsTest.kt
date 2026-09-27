@@ -111,4 +111,22 @@ class VideoPlayerControlsTest {
         assertEquals("1080p", normalizeStreamPreference(" 1080P "))
     }
 
+    @Test
+    fun horizontalScrub_clampsAndFormatsTargets() {
+        assertEquals(
+            90_000L,
+            scrubTargetPosition(60_000L, 100_000L, 1f),
+        )
+        assertEquals(
+            30_000L,
+            scrubTargetPosition(60_000L, 100_000L, -1f),
+        )
+        assertEquals(
+            0L,
+            scrubTargetPosition(10_000L, 100_000L, -1f),
+        )
+        assertEquals("1:05", formatVideoTime(65_000L))
+        assertEquals("1:01:01", formatVideoTime(3_661_000L))
+    }
+
 }
