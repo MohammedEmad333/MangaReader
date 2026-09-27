@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 222 down to 183, newest first. */
+/** Release-note chunk 223 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 223,
+            name = "0.223",
+            header = "Fit, fill, zoom and loop in the video player",
+            body = "The built-in player now lets you choose Fit, Fill, or Zoom for " +
+                "the video frame and remembers that choice. You can loop the current " +
+                "episode without restarting it manually, the quick-control row scrolls " +
+                "horizontally on smaller screens, and double-tap seeking now shows " +
+                "clear −10s / +10s feedback.",
+        ),
         ReleaseNote(
             code = 222,
             name = "0.222",
