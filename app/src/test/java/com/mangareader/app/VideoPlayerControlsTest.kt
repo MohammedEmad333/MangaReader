@@ -151,4 +151,13 @@ class VideoPlayerControlsTest {
         assertEquals("Play", playPauseLabel(false))
     }
 
+    @Test
+    fun sleepCountdown_formatsRemainingTime() {
+        assertEquals("Sleep", sleepTimerCountdownLabel(null, null))
+        assertEquals("Sleep", sleepTimerCountdownLabel(15, null))
+        assertEquals("Sleep 15:00", sleepTimerCountdownLabel(15, 900_000L))
+        assertEquals("Sleep 0:01", sleepTimerCountdownLabel(15, 1L))
+        assertEquals("Sleep 0:00", sleepTimerCountdownLabel(15, 0L))
+    }
+
 }
