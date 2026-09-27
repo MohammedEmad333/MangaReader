@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 231 down to 183, newest first. */
+/** Release-note chunk 232 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 232,
+            name = "0.232",
+            header = "Sleep timer now shows a live countdown",
+            body = "When a sleep timer is active, the video toolbar now shows the " +
+                "actual time remaining and updates it every second instead of only " +
+                "showing the original duration. When the countdown reaches zero, " +
+                "playback pauses and the timer clears as before.",
+        ),
         ReleaseNote(
             code = 231,
             name = "0.231",
