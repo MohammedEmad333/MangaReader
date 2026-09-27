@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 239 down to 183, newest first. */
+/** Release-note chunk 240 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 240,
+            name = "0.240",
+            header = "Library remembers Manga and Anime filters",
+            body = "The Library now remembers your All, Manga, or Anime media filter " +
+                "across app restarts. Returning to the Library restores the same media " +
+                "view instead of always resetting to All, while search, categories, " +
+                "sorting, and the rest of the Library options keep working as before.",
+        ),
         ReleaseNote(
             code = 239,
             name = "0.239",

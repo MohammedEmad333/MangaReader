@@ -78,8 +78,25 @@ enum class FilterState(val stored: Int) {
     }
 }
 
+enum class LibraryMediaFilter(val key: String, val label: String) {
+    ALL("all", "All"),
+    MANGA("manga", "Manga"),
+    ANIME("anime", "Anime");
+
+    companion object {
+        fun from(key: String?): LibraryMediaFilter =
+            entries.firstOrNull { it.key == key } ?: ALL
+    }
+}
+
 object LibraryPrefs {
     private fun p(c: Context) = c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+
+    fun mediaFilter(c: Context): LibraryMediaFilter =
+        LibraryMediaFilter.from(p(c).getString("lib_media_filter", null))
+
+    fun setMediaFilter(c: Context, filter: LibraryMediaFilter) =
+        p(c).edit().putString("lib_media_filter", filter.key).apply()
 
     // ---- sort ----
 
