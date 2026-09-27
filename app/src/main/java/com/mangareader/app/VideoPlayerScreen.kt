@@ -95,6 +95,7 @@ internal fun VideoPlayerScreen(
     }
     var sleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
     var sleepTimerDeadline by remember { mutableStateOf<Long?>(null) }
+    var sleepTimerRemainingMs by remember { mutableStateOf<Long?>(null) }
     var seekSeconds by remember(context) {
         mutableStateOf(VideoPlayerPrefs.seekSeconds(context))
     }
@@ -264,12 +265,20 @@ internal fun VideoPlayerScreen(
     }
 
     LaunchedEffect(sleepTimerDeadline, player) {
-        val deadline = sleepTimerDeadline ?: return@LaunchedEffect
-        val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-        delay(remaining)
+        val deadline = sleepTimerDeadline ?: run {
+            sleepTimerRemainingMs = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+            sleepTimerRemainingMs = remaining
+            if (remaining <= 0L) break
+            delay(minOf(1_000L, remaining))
+        }
         player.pause()
         sleepTimerDeadline = null
         sleepTimerMinutes = null
+        sleepTimerRemainingMs = null
         controlsVisible = true
         gestureOverlay = "Sleep timer ended"
     }
@@ -323,6 +332,7 @@ internal fun VideoPlayerScreen(
                 resizeMode = videoResizeMode,
                 loopEnabled = loopEnabled,
                 sleepTimerMinutes = sleepTimerMinutes,
+                sleepTimerRemainingMs = sleepTimerRemainingMs,
                 landscapeLocked = landscapeLocked,
                 seekSeconds = seekSeconds,
                 controlsTimeoutSeconds = controlsTimeoutSeconds,
@@ -369,6 +379,7 @@ internal fun VideoPlayerScreen(
                     sleepTimerDeadline = minutes?.let {
                         SystemClock.elapsedRealtime() + sleepTimerDurationMs(it)
                     }
+                    sleepTimerRemainingMs = minutes?.let(::sleepTimerDurationMs)
                     gestureOverlay = minutes?.let { "Sleep timer " + it + "m" } ?: "Sleep timer off"
                 },
                 onPictureInPicture = onEnterPictureInPicture,

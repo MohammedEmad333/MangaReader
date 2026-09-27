@@ -178,6 +178,7 @@ internal fun VideoPlayerQuickControls(
     resizeMode: VideoResizeMode,
     loopEnabled: Boolean,
     sleepTimerMinutes: Int?,
+    sleepTimerRemainingMs: Long?,
     landscapeLocked: Boolean,
     seekSeconds: Int,
     controlsTimeoutSeconds: Int,
@@ -334,7 +335,7 @@ internal fun VideoPlayerQuickControls(
             }
 
             TextButton(onClick = { sleepMenu = true }) {
-                Text(sleepTimerLabel(sleepTimerMinutes))
+                Text(sleepTimerCountdownLabel(sleepTimerMinutes, sleepTimerRemainingMs))
             }
             DropdownMenu(
                 expanded = sleepMenu,
@@ -715,3 +716,12 @@ internal fun levelEdge(value: Float): VideoGestureEdge? =
 
 internal fun playPauseLabel(playing: Boolean): String =
     if (playing) "Pause" else "Play"
+
+
+internal fun sleepTimerCountdownLabel(minutes: Int?, remainingMs: Long?): String {
+    if (minutes == null || remainingMs == null) return "Sleep"
+    val totalSeconds = (remainingMs.coerceAtLeast(0L) + 999L) / 1_000L
+    val mins = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "Sleep " + mins + ":" + seconds.toString().padStart(2, '0')
+}
