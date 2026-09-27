@@ -15,7 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -459,6 +459,9 @@ internal fun VideoPlayerGestureLayer(
     onVerticalStart: (Boolean) -> Unit,
     onVerticalProgress: (Float) -> Unit,
     onVerticalEnd: () -> Unit,
+    onHorizontalStart: () -> Unit,
+    onHorizontalProgress: (Float) -> Unit,
+    onHorizontalEnd: () -> Unit,
     onHoldStart: () -> Unit,
     onHoldEnd: () -> Unit,
     modifier: Modifier = Modifier,
@@ -501,29 +504,62 @@ internal fun VideoPlayerGestureLayer(
             }
             .pointerInput(locked) {
                 var dragFromLeft = true
-                var accumulated = 0f
-                detectVerticalDragGestures(
+                var accumulatedX = 0f
+                var accumulatedY = 0f
+                var horizontal: Boolean? = null
+                detectDragGestures(
                     onDragStart = { offset ->
                         if (!locked) {
                             dragFromLeft = offset.x < size.width / 2f
-                            accumulated = 0f
-                            onVerticalStart(dragFromLeft)
+                            accumulatedX = 0f
+                            accumulatedY = 0f
+                            horizontal = null
                         }
                     },
-                    onVerticalDrag = { change, dragAmount ->
+                    onDrag = { change, dragAmount ->
                         if (!locked) {
-                            accumulated += dragAmount
-                            change.consume()
-                            val progress = (-accumulated / size.height)
-                                .coerceIn(-1f, 1f)
-                            onVerticalProgress(progress)
+                            accumulatedX += dragAmount.x
+                            accumulatedY += dragAmount.y
+                            if (horizontal == null) {
+                                val absX = kotlin.math.abs(accumulatedX)
+                                val absY = kotlin.math.abs(accumulatedY)
+                                if (absX > 12f || absY > 12f) {
+                                    horizontal = absX > absY
+                                    if (horizontal == true) {
+                                        onHorizontalStart()
+                                    } else {
+                                        onVerticalStart(dragFromLeft)
+                                    }
+                                }
+                            }
+                            when (horizontal) {
+                                true -> {
+                                    change.consume()
+                                    onHorizontalProgress(
+                                        (accumulatedX / size.width).coerceIn(-1f, 1f),
+                                    )
+                                }
+                                false -> {
+                                    change.consume()
+                                    onVerticalProgress(
+                                        (-accumulatedY / size.height).coerceIn(-1f, 1f),
+                                    )
+                                }
+                                null -> Unit
+                            }
                         }
                     },
                     onDragEnd = {
-                        if (!locked) onVerticalEnd()
+                        if (!locked) {
+                            if (horizontal == true) onHorizontalEnd()
+                            else if (horizontal == false) onVerticalEnd()
+                        }
                     },
                     onDragCancel = {
-                        if (!locked) onVerticalEnd()
+                        if (!locked) {
+                            if (horizontal == true) onHorizontalEnd()
+                            else if (horizontal == false) onVerticalEnd()
+                        }
                     },
                 )
             },
@@ -593,4 +629,37 @@ internal fun preferredStream(
     return streams.firstOrNull {
         normalizeStreamPreference(it.title) == normalized
     } ?: initial
+}
+
+
+internal fun scrubTargetPosition(
+    startPositionMs: Long,
+    durationMs: Long,
+    progress: Float,
+): Long {
+    val spanMs = if (durationMs > 0L) {
+        (durationMs / 4L).coerceAtMost(300_000L).coerceAtLeast(30_000L)
+    } else {
+        120_000L
+    }
+    val target = startPositionMs + (spanMs * progress.coerceIn(-1f, 1f)).toLong()
+    return if (durationMs > 0L) {
+        target.coerceIn(0L, durationMs)
+    } else {
+        target.coerceAtLeast(0L)
+    }
+}
+
+internal fun formatVideoTime(positionMs: Long): String {
+    val totalSeconds = positionMs.coerceAtLeast(0L) / 1_000L
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        hours.toString() + ":" +
+            minutes.toString().padStart(2, '0') + ":" +
+            seconds.toString().padStart(2, '0')
+    } else {
+        minutes.toString() + ":" + seconds.toString().padStart(2, '0')
+    }
 }
