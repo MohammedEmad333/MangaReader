@@ -93,14 +93,9 @@ internal fun HistoryScreen(
     val context = LocalContext.current
     var refreshing by remember { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf("All") }
-    val shownHistory = remember(history, mediaFilter) {
-        history.filter {
-            when (mediaFilter) {
-                "Anime" -> it.mediaType == "anime"
-                "Manga" -> it.mediaType != "anime"
-                else -> true
-            }
-        }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val shownHistory = remember(history, mediaFilter, searchQuery) {
+        filterHistory(history, mediaFilter, searchQuery)
     }
 
     val historyOrdering = remember(shownHistory, mediaFilter) {
@@ -139,6 +134,8 @@ internal fun HistoryScreen(
             error = error,
             mediaFilter = mediaFilter,
             onMediaFilterChange = { mediaFilter = it },
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
             onClearAll = { confirmClearAll = true },
         )
 
@@ -146,7 +143,7 @@ internal fun HistoryScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     if (history.isEmpty()) "Nothing read or watched yet."
-                    else "Nothing in this history filter.",
+                    else "Nothing matches the current history search or filter.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -217,4 +214,24 @@ internal fun HistoryScreen(
         },
     )
 
+}
+
+
+internal fun filterHistory(
+    history: List<HistoryEntry>,
+    mediaFilter: String,
+    query: String,
+): List<HistoryEntry> {
+    val needle = query.trim()
+    return history.filter { entry ->
+        val matchesMedia = when (mediaFilter) {
+            "Anime" -> entry.mediaType == "anime"
+            "Manga" -> entry.mediaType != "anime"
+            else -> true
+        }
+        val matchesQuery = needle.isEmpty() ||
+            entry.title.contains(needle, ignoreCase = true) ||
+            entry.detail.contains(needle, ignoreCase = true)
+        matchesMedia && matchesQuery
+    }
 }

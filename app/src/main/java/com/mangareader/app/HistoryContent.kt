@@ -20,6 +20,8 @@ internal fun HistoryHeader(
     error: String?,
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     onClearAll: () -> Unit,
 ) {
     Row(
@@ -34,6 +36,17 @@ internal fun HistoryHeader(
             TextButton(onClick = onClearAll) { Text("Clear all") }
         }
     }
+
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onSearchQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        singleLine = true,
+        label = { Text("Search history") },
+        placeholder = { Text("Series, chapter or episode") },
+    )
 
     if (loading) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

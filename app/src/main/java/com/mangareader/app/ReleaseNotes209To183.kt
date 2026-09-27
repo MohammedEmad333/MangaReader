@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 238 down to 183, newest first. */
+/** Release-note chunk 239 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 239,
+            name = "0.239",
+            header = "Search reading and watch history",
+            body = "History now has a search box that works together with the " +
+                "All, Manga, and Anime filters. Search matches series titles plus " +
+                "chapter or episode details, making it much faster to jump back to " +
+                "something you read or watched recently.",
+        ),
         ReleaseNote(
             code = 238,
             name = "0.238",
