@@ -83,4 +83,13 @@ class VideoPlayerControlsTest {
         assertEquals("Never hide controls", controlsTimeoutMenuLabel(0))
     }
 
+    @Test
+    fun languageButtons_showCurrentPreference() {
+        assertEquals("CC", subtitleButtonLabel(VIDEO_LANGUAGE_AUTO))
+        assertEquals("CC off", subtitleButtonLabel(VIDEO_LANGUAGE_OFF))
+        assertEquals("CC ar", subtitleButtonLabel("ar"))
+        assertEquals("Audio", audioButtonLabel(VIDEO_LANGUAGE_AUTO))
+        assertEquals("Audio ja", audioButtonLabel("ja"))
+    }
+
 }
