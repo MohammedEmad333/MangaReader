@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 230 down to 183, newest first. */
+/** Release-note chunk 231 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 231,
+            name = "0.231",
+            header = "Quick Play and Pause in the custom controls",
+            body = "The custom video toolbar now includes a clear Play/Pause action " +
+                "that follows Media3's real playback state, so it stays accurate when " +
+                "playback changes for any reason. Tapping it pauses or resumes immediately " +
+                "and shows a short status overlay without relying on the stock controller.",
+        ),
         ReleaseNote(
             code = 230,
             name = "0.230",
