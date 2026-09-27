@@ -70,7 +70,7 @@ internal fun VideoPlayerScreen(
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
-    var resizeMode by remember(context) {
+    var videoResizeMode by remember(context) {
         mutableStateOf(VideoPlayerPrefs.resizeMode(context))
     }
     var loopEnabled by remember(context) {
@@ -224,14 +224,14 @@ internal fun VideoPlayerScreen(
                     useController = !inPictureInPicture && !controlsLocked
                     controllerAutoShow = false
                     this.player = player
-                    resizeMode = resizeMode.playerViewMode
+                    resizeMode = videoResizeMode.playerViewMode
                     keepScreenOn = true
                     if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
             },
             update = { view ->
                 view.player = player
-                view.resizeMode = resizeMode.playerViewMode
+                view.resizeMode = videoResizeMode.playerViewMode
                 view.useController = !inPictureInPicture && !controlsLocked
                 view.controllerAutoShow = false
                 if (controlsVisible && !controlsLocked && !inPictureInPicture) {
@@ -250,7 +250,7 @@ internal fun VideoPlayerScreen(
                 speed = playbackSpeed,
                 streams = streams,
                 selectedStream = selectedVideo,
-                resizeMode = resizeMode,
+                resizeMode = videoResizeMode,
                 loopEnabled = loopEnabled,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
@@ -272,7 +272,7 @@ internal fun VideoPlayerScreen(
                     player.setPlaybackSpeed(next)
                 },
                 onResizeModeChange = { next ->
-                    resizeMode = next
+                    videoResizeMode = next
                     VideoPlayerPrefs.setResizeMode(context, next)
                 },
                 onLoopChange = { enabled ->
