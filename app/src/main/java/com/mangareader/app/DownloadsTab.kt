@@ -219,7 +219,8 @@ internal fun DownloadsTab(
     }
     val downloadsOrdering = remember(visibleSeries) { visibleSeries.map { it.seriesId } }
     scroll.sync(downloadsOrdering)
-    val totalSize = remember(series) { series.sumOf { it.sizeBytes } }
+    val totalSummary = remember(series) { summarizeDownloads(series) }
+    val visibleSummary = remember(visibleSeries) { summarizeDownloads(visibleSeries) }
     var confirmDelete by remember { mutableStateOf<DownloadedSeries?>(null) }
 
     val queued = DownloadQueue.items.size
@@ -227,8 +228,9 @@ internal fun DownloadsTab(
 
     Column(modifier = Modifier.fillMaxSize()) {
         DownloadsHeader(
-            seriesCount = series.size,
-            totalSize = totalSize,
+            seriesCount = totalSummary.seriesCount,
+            downloadCount = totalSummary.downloadCount,
+            totalSize = totalSummary.sizeBytes,
             queued = queued,
             failedCount = failedCount,
             onOpenQueue = onOpenQueue,
@@ -252,6 +254,8 @@ internal fun DownloadsTab(
                 },
                 shownCount = visibleSeries.size,
                 totalCount = series.size,
+                shownDownloadCount = visibleSummary.downloadCount,
+                shownSize = visibleSummary.sizeBytes,
             )
         }
 
@@ -356,3 +360,17 @@ internal fun DownloadsTab(
     )
 
 }
+
+
+internal data class DownloadsSummary(
+    val seriesCount: Int,
+    val downloadCount: Int,
+    val sizeBytes: Long,
+)
+
+internal fun summarizeDownloads(series: List<DownloadedSeries>): DownloadsSummary =
+    DownloadsSummary(
+        seriesCount = series.size,
+        downloadCount = series.sumOf { it.chapters.size },
+        sizeBytes = series.sumOf { it.sizeBytes },
+    )
