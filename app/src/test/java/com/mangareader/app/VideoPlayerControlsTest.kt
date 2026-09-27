@@ -68,4 +68,19 @@ class VideoPlayerControlsTest {
         assertEquals(60_000L, sleepTimerDurationMs(0))
     }
 
+    @Test
+    fun customSeek_usesSelectedInterval() {
+        assertEquals(10_000L, seekBackTarget(25_000L, 15))
+        assertEquals(30_000L, seekForwardTarget(25_000L, 30_000L, 15))
+        assertEquals(55_000L, seekForwardTarget(25_000L, 0L, 30))
+    }
+
+    @Test
+    fun controlsTimeout_labelsAreReadable() {
+        assertEquals("Hide 4s", controlsTimeoutLabel(4))
+        assertEquals("Controls always", controlsTimeoutLabel(0))
+        assertEquals("Hide after 10 seconds", controlsTimeoutMenuLabel(10))
+        assertEquals("Never hide controls", controlsTimeoutMenuLabel(0))
+    }
+
 }
