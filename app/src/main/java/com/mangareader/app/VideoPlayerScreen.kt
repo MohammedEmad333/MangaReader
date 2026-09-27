@@ -189,7 +189,6 @@ internal fun VideoPlayerScreen(
                 trackSelectionParameters = languageTrackParameters(
                     base = trackSelectionParameters,
                     subtitleLanguage = subtitleLanguage,
-                subtitleSize = subtitleSize,
                     audioLanguage = audioLanguage,
                 )
                 playWhenReady = true
@@ -357,6 +356,7 @@ internal fun VideoPlayerScreen(
                 seekSeconds = seekSeconds,
                 controlsTimeoutSeconds = controlsTimeoutSeconds,
                 subtitleLanguage = subtitleLanguage,
+                subtitleSize = subtitleSize,
                 audioLanguages = audioLanguages,
                 audioLanguage = audioLanguage,
                 muted = muted,
