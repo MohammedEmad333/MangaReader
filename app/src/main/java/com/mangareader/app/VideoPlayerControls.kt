@@ -43,6 +43,7 @@ internal object VideoPlayerPrefs {
     private const val SUBTITLE_LANGUAGE = "subtitle_language"
     private const val AUDIO_LANGUAGE = "audio_language"
     private const val PREFERRED_STREAM_TITLE = "preferred_stream_title"
+    private const val SUBTITLE_SIZE = "subtitle_size"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -148,12 +149,34 @@ internal object VideoPlayerPrefs {
             .apply()
     }
 
+    fun subtitleSize(context: Context): VideoSubtitleSize =
+        runCatching {
+            VideoSubtitleSize.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(SUBTITLE_SIZE, null)
+                    .orEmpty(),
+            )
+        }.getOrDefault(VideoSubtitleSize.MEDIUM)
+
+    fun setSubtitleSize(context: Context, size: VideoSubtitleSize) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(SUBTITLE_SIZE, size.name)
+            .apply()
+    }
+
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .clear()
             .apply()
     }
+}
+
+internal enum class VideoSubtitleSize(val label: String, val sp: Float) {
+    SMALL("Sub size: Small", 16f),
+    MEDIUM("Sub size: Medium", 20f),
+    LARGE("Sub size: Large", 26f),
 }
 
 internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) {
@@ -183,6 +206,7 @@ internal fun VideoPlayerQuickControls(
     seekSeconds: Int,
     controlsTimeoutSeconds: Int,
     subtitleLanguage: String,
+    subtitleSize: VideoSubtitleSize,
     audioLanguages: List<String>,
     audioLanguage: String,
     muted: Boolean,
@@ -199,6 +223,7 @@ internal fun VideoPlayerQuickControls(
     onSeekSecondsChange: (Int) -> Unit,
     onControlsTimeoutChange: (Int) -> Unit,
     onSubtitleLanguageChange: (String) -> Unit,
+    onSubtitleSizeChange: (VideoSubtitleSize) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
     onMuteToggle: () -> Unit,
     onResetSettings: () -> Unit,
@@ -214,6 +239,7 @@ internal fun VideoPlayerQuickControls(
     var seekMenu by remember { mutableStateOf(false) }
     var timeoutMenu by remember { mutableStateOf(false) }
     var audioMenu by remember { mutableStateOf(false) }
+    var subtitleSizeMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -437,6 +463,24 @@ internal fun VideoPlayerQuickControls(
                                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                                     .build()
                             onSubtitleLanguageChange(VIDEO_LANGUAGE_OFF)
+                        },
+                    )
+                }
+            }
+
+            TextButton(onClick = { subtitleSizeMenu = true }) {
+                Text(subtitleSize.label)
+            }
+            DropdownMenu(
+                expanded = subtitleSizeMenu,
+                onDismissRequest = { subtitleSizeMenu = false },
+            ) {
+                VideoSubtitleSize.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            subtitleSizeMenu = false
+                            onSubtitleSizeChange(option)
                         },
                     )
                 }

@@ -174,4 +174,14 @@ class VideoPlayerControlsTest {
         assertEquals(VideoDoubleTapZone.CENTER, doubleTapZone(0f, 0f))
     }
 
+    @Test
+    fun subtitleSizes_haveExpectedLabelsAndScale() {
+        assertEquals("Sub size: Small", VideoSubtitleSize.SMALL.label)
+        assertEquals(16f, VideoSubtitleSize.SMALL.sp)
+        assertEquals("Sub size: Medium", VideoSubtitleSize.MEDIUM.label)
+        assertEquals(20f, VideoSubtitleSize.MEDIUM.sp)
+        assertEquals("Sub size: Large", VideoSubtitleSize.LARGE.label)
+        assertEquals(26f, VideoSubtitleSize.LARGE.sp)
+    }
+
 }
