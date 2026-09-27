@@ -112,6 +112,7 @@ internal fun VideoPlayerScreen(
     var scrubTargetPositionMs by remember { mutableStateOf<Long?>(null) }
     var muted by remember { mutableStateOf(false) }
     var volumeBeforeMute by remember { mutableStateOf(1f) }
+    var playing by remember { mutableStateOf(false) }
     var lastScrubEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
     var lastLevelEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
 
@@ -221,6 +222,7 @@ internal fun VideoPlayerScreen(
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
                 onPlaybackActiveChanged(isPlaying)
                 if (!isPlaying && player.playbackState != Player.STATE_ENDED) {
                     persistPlaybackProgress(context, progressKey, selectedVideo.resumeKey, player)
@@ -328,6 +330,7 @@ internal fun VideoPlayerScreen(
                 audioLanguages = audioLanguages,
                 audioLanguage = audioLanguage,
                 muted = muted,
+                playing = playing,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -427,6 +430,15 @@ internal fun VideoPlayerScreen(
                         audioLanguage = VIDEO_LANGUAGE_AUTO,
                     )
                     gestureOverlay = "Player settings reset"
+                },
+                onPlayPause = {
+                    if (player.isPlaying) {
+                        player.pause()
+                        gestureOverlay = "Paused"
+                    } else {
+                        player.play()
+                        gestureOverlay = "Playing"
+                    }
                 },
                 onLock = {
                     controlsLocked = true

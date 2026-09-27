@@ -185,6 +185,7 @@ internal fun VideoPlayerQuickControls(
     audioLanguages: List<String>,
     audioLanguage: String,
     muted: Boolean,
+    playing: Boolean,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -198,6 +199,7 @@ internal fun VideoPlayerQuickControls(
     onAudioLanguageChange: (String) -> Unit,
     onMuteToggle: () -> Unit,
     onResetSettings: () -> Unit,
+    onPlayPause: () -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -226,6 +228,10 @@ internal fun VideoPlayerQuickControls(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            TextButton(onClick = onPlayPause) {
+                Text(playPauseLabel(playing))
+            }
+
             TextButton(
                 onClick = {
                     player.seekTo(seekBackTarget(player.currentPosition, seekSeconds))
@@ -705,3 +711,7 @@ internal fun levelEdge(value: Float): VideoGestureEdge? =
         value >= 1f -> VideoGestureEdge.END
         else -> null
     }
+
+
+internal fun playPauseLabel(playing: Boolean): String =
+    if (playing) "Pause" else "Play"

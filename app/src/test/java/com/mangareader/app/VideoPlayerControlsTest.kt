@@ -145,4 +145,10 @@ class VideoPlayerControlsTest {
         assertEquals(null, levelEdge(0.5f))
     }
 
+    @Test
+    fun playPauseLabels_followPlaybackState() {
+        assertEquals("Pause", playPauseLabel(true))
+        assertEquals("Play", playPauseLabel(false))
+    }
+
 }
