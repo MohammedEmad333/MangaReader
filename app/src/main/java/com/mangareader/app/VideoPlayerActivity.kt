@@ -80,7 +80,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     landscapeLocked = landscapeLocked,
                     onPlaybackActiveChanged = ::updatePictureInPictureState,
                     onEnterPictureInPicture = ::enterPictureInPictureNow,
-                    onLandscapeLockChange = ::setLandscapeLocked,
+                    onLandscapeLockChange = ::applyLandscapeLock,
                     onClose = ::finish,
                 )
             }
@@ -121,7 +121,7 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun setLandscapeLocked(locked: Boolean) {
+    private fun applyLandscapeLock(locked: Boolean) {
         landscapeLocked = locked
         requestedOrientation = if (locked) {
             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
