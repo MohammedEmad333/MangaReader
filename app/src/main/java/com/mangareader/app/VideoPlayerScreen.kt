@@ -45,6 +45,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -108,6 +109,9 @@ internal fun VideoPlayerScreen(
     }
     var subtitleSize by remember(context) {
         mutableStateOf(VideoPlayerPrefs.subtitleSize(context))
+    }
+    var subtitleBackground by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.subtitleBackground(context))
     }
     var audioLanguage by remember(context) {
         mutableStateOf(VideoPlayerPrefs.audioLanguage(context))
@@ -318,7 +322,10 @@ internal fun VideoPlayerScreen(
                     controllerAutoShow = false
                     this.player = player
                     resizeMode = videoResizeMode.playerViewMode
-                    subtitleView?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.sp)
+                    subtitleView?.apply {
+                        setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.sp)
+                        setStyle(subtitleCaptionStyle(subtitleBackground))
+                    }
                     keepScreenOn = true
                     if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
@@ -326,10 +333,13 @@ internal fun VideoPlayerScreen(
             update = { view ->
                 view.player = player
                 view.resizeMode = videoResizeMode.playerViewMode
-                view.subtitleView?.setFixedTextSize(
-                    TypedValue.COMPLEX_UNIT_SP,
-                    subtitleSize.sp,
-                )
+                view.subtitleView?.apply {
+                    setFixedTextSize(
+                        TypedValue.COMPLEX_UNIT_SP,
+                        subtitleSize.sp,
+                    )
+                    setStyle(subtitleCaptionStyle(subtitleBackground))
+                }
                 view.useController = !inPictureInPicture && !controlsLocked
                 view.controllerAutoShow = false
                 if (controlsVisible && !controlsLocked && !inPictureInPicture) {
@@ -357,6 +367,7 @@ internal fun VideoPlayerScreen(
                 controlsTimeoutSeconds = controlsTimeoutSeconds,
                 subtitleLanguage = subtitleLanguage,
                 subtitleSize = subtitleSize,
+                subtitleBackground = subtitleBackground,
                 audioLanguages = audioLanguages,
                 audioLanguage = audioLanguage,
                 muted = muted,
@@ -427,6 +438,11 @@ internal fun VideoPlayerScreen(
                     VideoPlayerPrefs.setSubtitleSize(context, size)
                     gestureOverlay = size.label
                 },
+                onSubtitleBackgroundChange = { background ->
+                    subtitleBackground = background
+                    VideoPlayerPrefs.setSubtitleBackground(context, background)
+                    gestureOverlay = background.label
+                },
                 onAudioLanguageChange = { language ->
                     audioLanguage = language
                     VideoPlayerPrefs.setAudioLanguage(context, language)
@@ -460,6 +476,7 @@ internal fun VideoPlayerScreen(
                     controlsTimeoutSeconds = 4
                     subtitleLanguage = VIDEO_LANGUAGE_AUTO
                     subtitleSize = VideoSubtitleSize.MEDIUM
+                    subtitleBackground = VideoSubtitleBackground.SEMI
                     audioLanguage = VIDEO_LANGUAGE_AUTO
                     player.setPlaybackSpeed(1f)
                     player.repeatMode = Player.REPEAT_MODE_OFF
@@ -787,3 +804,14 @@ internal fun languageTrackParameters(
             audioLanguage.takeUnless { it == VIDEO_LANGUAGE_AUTO },
         )
         .build()
+
+
+internal fun subtitleCaptionStyle(background: VideoSubtitleBackground): CaptionStyleCompat =
+    CaptionStyleCompat(
+        android.graphics.Color.WHITE,
+        background.backgroundColor,
+        android.graphics.Color.TRANSPARENT,
+        CaptionStyleCompat.EDGE_TYPE_NONE,
+        android.graphics.Color.TRANSPARENT,
+        null,
+    )

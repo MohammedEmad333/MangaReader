@@ -184,4 +184,14 @@ class VideoPlayerControlsTest {
         assertEquals(26f, VideoSubtitleSize.LARGE.sp)
     }
 
+    @Test
+    fun subtitleBackgroundOptions_haveExpectedLabelsAndColors() {
+        assertEquals("Sub bg: Off", VideoSubtitleBackground.OFF.label)
+        assertEquals(android.graphics.Color.TRANSPARENT, VideoSubtitleBackground.OFF.backgroundColor)
+        assertEquals("Sub bg: Semi", VideoSubtitleBackground.SEMI.label)
+        assertEquals(0x99000000.toInt(), VideoSubtitleBackground.SEMI.backgroundColor)
+        assertEquals("Sub bg: Solid", VideoSubtitleBackground.SOLID.label)
+        assertEquals(android.graphics.Color.BLACK, VideoSubtitleBackground.SOLID.backgroundColor)
+    }
+
 }

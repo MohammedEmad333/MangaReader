@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 235 down to 183, newest first. */
+/** Release-note chunk 236 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 236,
+            name = "0.236",
+            header = "Choose subtitle background style",
+            body = "Subtitle appearance now includes Off, Semi, and Solid background " +
+                "options. The selected style applies immediately inside Media3, is " +
+                "remembered for future videos, and Reset restores the default Semi " +
+                "background without changing subtitle size or language.",
+        ),
         ReleaseNote(
             code = 235,
             name = "0.235",
