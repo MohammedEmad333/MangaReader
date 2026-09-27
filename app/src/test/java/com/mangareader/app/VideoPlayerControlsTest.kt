@@ -114,11 +114,11 @@ class VideoPlayerControlsTest {
     @Test
     fun horizontalScrub_clampsAndFormatsTargets() {
         assertEquals(
-            85_000L,
+            90_000L,
             scrubTargetPosition(60_000L, 100_000L, 1f),
         )
         assertEquals(
-            35_000L,
+            30_000L,
             scrubTargetPosition(60_000L, 100_000L, -1f),
         )
         assertEquals(
