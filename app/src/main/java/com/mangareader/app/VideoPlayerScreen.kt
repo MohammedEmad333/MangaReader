@@ -82,6 +82,12 @@ internal fun VideoPlayerScreen(
     }
     var sleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
     var sleepTimerDeadline by remember { mutableStateOf<Long?>(null) }
+    var seekSeconds by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.seekSeconds(context))
+    }
+    var controlsTimeoutSeconds by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.controlsTimeoutSeconds(context))
+    }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -203,9 +209,19 @@ internal fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, controlsLocked, inPictureInPicture) {
-        if (controlsVisible && !controlsLocked && !inPictureInPicture) {
-            delay(4_000L)
+    LaunchedEffect(
+        controlsVisible,
+        controlsLocked,
+        inPictureInPicture,
+        controlsTimeoutSeconds,
+    ) {
+        if (
+            controlsVisible &&
+            !controlsLocked &&
+            !inPictureInPicture &&
+            controlsTimeoutSeconds > 0
+        ) {
+            delay(controlsTimeoutSeconds * 1_000L)
             controlsVisible = false
         }
     }
@@ -271,6 +287,8 @@ internal fun VideoPlayerScreen(
                 loopEnabled = loopEnabled,
                 sleepTimerMinutes = sleepTimerMinutes,
                 landscapeLocked = landscapeLocked,
+                seekSeconds = seekSeconds,
+                controlsTimeoutSeconds = controlsTimeoutSeconds,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -310,6 +328,18 @@ internal fun VideoPlayerScreen(
                 },
                 onPictureInPicture = onEnterPictureInPicture,
                 onLandscapeLockChange = onLandscapeLockChange,
+                onSeekSecondsChange = { seconds ->
+                    seekSeconds = seconds
+                    VideoPlayerPrefs.setSeekSeconds(context, seconds)
+                    gestureOverlay = "Seek " + seconds + "s"
+                },
+                onControlsTimeoutChange = { seconds ->
+                    controlsTimeoutSeconds = seconds
+                    VideoPlayerPrefs.setControlsTimeoutSeconds(context, seconds)
+                    gestureOverlay =
+                        if (seconds == 0) "Controls stay visible"
+                        else "Controls hide after " + seconds + "s"
+                },
                 onLock = {
                     controlsLocked = true
                     controlsVisible = false
@@ -325,12 +355,12 @@ internal fun VideoPlayerScreen(
                 locked = controlsLocked,
                 onSingleTap = { controlsVisible = true },
                 onDoubleTapLeft = {
-                    player.seekTo(seekBackTarget(player.currentPosition))
-                    gestureOverlay = "−10s"
+                    player.seekTo(seekBackTarget(player.currentPosition, seekSeconds))
+                    gestureOverlay = "−" + seekSeconds + "s"
                 },
                 onDoubleTapRight = {
-                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
-                    gestureOverlay = "+10s"
+                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration, seekSeconds))
+                    gestureOverlay = "+" + seekSeconds + "s"
                 },
                 onVerticalStart = { fromLeft ->
                     gestureKind = if (fromLeft) {
