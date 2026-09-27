@@ -38,6 +38,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -88,6 +89,13 @@ internal fun VideoPlayerScreen(
     var controlsTimeoutSeconds by remember(context) {
         mutableStateOf(VideoPlayerPrefs.controlsTimeoutSeconds(context))
     }
+    var subtitleLanguage by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.subtitleLanguage(context))
+    }
+    var audioLanguage by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.audioLanguage(context))
+    }
+    var audioLanguages by remember { mutableStateOf(emptyList<String>()) }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -152,6 +160,11 @@ internal fun VideoPlayerScreen(
                 if (startPosition > 0L) seekTo(startPosition)
                 setPlaybackSpeed(playbackSpeed)
                 repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                trackSelectionParameters = languageTrackParameters(
+                    base = trackSelectionParameters,
+                    subtitleLanguage = subtitleLanguage,
+                    audioLanguage = audioLanguage,
+                )
                 playWhenReady = true
                 prepare()
             }
@@ -177,6 +190,10 @@ internal fun VideoPlayerScreen(
                         ReadState.setRead(context, selectedVideo.resumeKey, true)
                     }
                 }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                audioLanguages = availableAudioLanguages(tracks)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -289,6 +306,9 @@ internal fun VideoPlayerScreen(
                 landscapeLocked = landscapeLocked,
                 seekSeconds = seekSeconds,
                 controlsTimeoutSeconds = controlsTimeoutSeconds,
+                subtitleLanguage = subtitleLanguage,
+                audioLanguages = audioLanguages,
+                audioLanguage = audioLanguage,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -339,6 +359,22 @@ internal fun VideoPlayerScreen(
                     gestureOverlay =
                         if (seconds == 0) "Controls stay visible"
                         else "Controls hide after " + seconds + "s"
+                },
+                onSubtitleLanguageChange = { language ->
+                    subtitleLanguage = language
+                    VideoPlayerPrefs.setSubtitleLanguage(context, language)
+                },
+                onAudioLanguageChange = { language ->
+                    audioLanguage = language
+                    VideoPlayerPrefs.setAudioLanguage(context, language)
+                    player.trackSelectionParameters = languageTrackParameters(
+                        base = player.trackSelectionParameters,
+                        subtitleLanguage = subtitleLanguage,
+                        audioLanguage = language,
+                    )
+                    gestureOverlay =
+                        if (language == VIDEO_LANGUAGE_AUTO) "Audio auto"
+                        else "Audio " + language
                 },
                 onLock = {
                     controlsLocked = true
@@ -571,3 +607,31 @@ private fun setScreenBrightnessFraction(activity: Activity?, fraction: Float) {
         screenBrightness = fraction.coerceIn(0.01f, 1f)
     }
 }
+
+
+internal fun availableAudioLanguages(tracks: Tracks): List<String> =
+    tracks.groups
+        .filter { it.type == C.TRACK_TYPE_AUDIO }
+        .flatMap { group ->
+            (0 until group.length).mapNotNull { index ->
+                group.getTrackFormat(index).language?.trim()?.takeIf { it.isNotBlank() }
+            }
+        }
+        .distinct()
+
+internal fun languageTrackParameters(
+    base: androidx.media3.common.TrackSelectionParameters,
+    subtitleLanguage: String,
+    audioLanguage: String,
+): androidx.media3.common.TrackSelectionParameters =
+    base.buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == VIDEO_LANGUAGE_OFF)
+        .setPreferredTextLanguage(
+            subtitleLanguage.takeUnless {
+                it == VIDEO_LANGUAGE_AUTO || it == VIDEO_LANGUAGE_OFF
+            },
+        )
+        .setPreferredAudioLanguage(
+            audioLanguage.takeUnless { it == VIDEO_LANGUAGE_AUTO },
+        )
+        .build()

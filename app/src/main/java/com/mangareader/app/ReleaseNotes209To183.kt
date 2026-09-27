@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 225 down to 183, newest first. */
+/** Release-note chunk 226 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 226,
+            name = "0.226",
+            header = "Subtitle and audio language preferences",
+            body = "The video player now remembers your subtitle choice — Auto, a " +
+                "specific language, or Off — and reapplies it when you switch streams " +
+                "or open another episode. When a video exposes multiple audio languages, " +
+                "an Audio selector appears too, and that preferred language is remembered.",
+        ),
         ReleaseNote(
             code = 225,
             name = "0.225",

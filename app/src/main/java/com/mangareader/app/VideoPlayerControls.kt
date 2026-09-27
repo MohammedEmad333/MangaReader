@@ -40,6 +40,8 @@ internal object VideoPlayerPrefs {
     private const val LOOP = "loop"
     private const val SEEK_SECONDS = "seek_seconds"
     private const val CONTROLS_TIMEOUT_SECONDS = "controls_timeout_seconds"
+    private const val SUBTITLE_LANGUAGE = "subtitle_language"
+    private const val AUDIO_LANGUAGE = "audio_language"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -106,6 +108,30 @@ internal object VideoPlayerPrefs {
             .putInt(CONTROLS_TIMEOUT_SECONDS, seconds)
             .apply()
     }
+
+    fun subtitleLanguage(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(SUBTITLE_LANGUAGE, VIDEO_LANGUAGE_AUTO)
+            ?: VIDEO_LANGUAGE_AUTO
+
+    fun setSubtitleLanguage(context: Context, language: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(SUBTITLE_LANGUAGE, language)
+            .apply()
+    }
+
+    fun audioLanguage(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(AUDIO_LANGUAGE, VIDEO_LANGUAGE_AUTO)
+            ?: VIDEO_LANGUAGE_AUTO
+
+    fun setAudioLanguage(context: Context, language: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(AUDIO_LANGUAGE, language)
+            .apply()
+    }
 }
 
 internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) {
@@ -117,6 +143,8 @@ internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) 
 internal val VIDEO_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 internal val VIDEO_SEEK_SECONDS = listOf(5, 10, 15, 30)
 internal val VIDEO_CONTROL_TIMEOUT_SECONDS = listOf(2, 4, 6, 10, 0)
+internal const val VIDEO_LANGUAGE_AUTO = "__auto__"
+internal const val VIDEO_LANGUAGE_OFF = "__off__"
 
 @Composable
 internal fun VideoPlayerQuickControls(
@@ -131,6 +159,9 @@ internal fun VideoPlayerQuickControls(
     landscapeLocked: Boolean,
     seekSeconds: Int,
     controlsTimeoutSeconds: Int,
+    subtitleLanguage: String,
+    audioLanguages: List<String>,
+    audioLanguage: String,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -140,17 +171,19 @@ internal fun VideoPlayerQuickControls(
     onLandscapeLockChange: (Boolean) -> Unit,
     onSeekSecondsChange: (Int) -> Unit,
     onControlsTimeoutChange: (Int) -> Unit,
+    onSubtitleLanguageChange: (String) -> Unit,
+    onAudioLanguageChange: (String) -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var speedMenu by remember { mutableStateOf(false) }
     var subtitleMenu by remember { mutableStateOf(false) }
-    var subtitleLabel by remember(player) { mutableStateOf("Auto") }
     var streamMenu by remember { mutableStateOf(false) }
     var resizeMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
     var seekMenu by remember { mutableStateOf(false) }
     var timeoutMenu by remember { mutableStateOf(false) }
+    var audioMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -315,7 +348,7 @@ internal fun VideoPlayerQuickControls(
 
             if (subtitles.isNotEmpty()) {
                 TextButton(onClick = { subtitleMenu = true }) {
-                    Text(if (subtitleLabel == "Off") "CC off" else "CC")
+                    Text(subtitleButtonLabel(subtitleLanguage))
                 }
                 DropdownMenu(
                     expanded = subtitleMenu,
@@ -325,13 +358,13 @@ internal fun VideoPlayerQuickControls(
                         text = { Text("Subtitles: Auto") },
                         onClick = {
                             subtitleMenu = false
-                            subtitleLabel = "Auto"
                             player.trackSelectionParameters =
                                 player.trackSelectionParameters
                                     .buildUpon()
                                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                                     .setPreferredTextLanguage(null)
                                     .build()
+                            onSubtitleLanguageChange(VIDEO_LANGUAGE_AUTO)
                         },
                     )
                     subtitles
@@ -343,13 +376,13 @@ internal fun VideoPlayerQuickControls(
                                 text = { Text(language) },
                                 onClick = {
                                     subtitleMenu = false
-                                    subtitleLabel = language
                                     player.trackSelectionParameters =
                                         player.trackSelectionParameters
                                             .buildUpon()
                                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                                             .setPreferredTextLanguage(language)
                                             .build()
+                                    onSubtitleLanguageChange(language)
                                 },
                             )
                         }
@@ -357,14 +390,41 @@ internal fun VideoPlayerQuickControls(
                         text = { Text("Subtitles: Off") },
                         onClick = {
                             subtitleMenu = false
-                            subtitleLabel = "Off"
                             player.trackSelectionParameters =
                                 player.trackSelectionParameters
                                     .buildUpon()
                                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                                     .build()
+                            onSubtitleLanguageChange(VIDEO_LANGUAGE_OFF)
                         },
                     )
+                }
+            }
+
+            if (audioLanguages.isNotEmpty()) {
+                TextButton(onClick = { audioMenu = true }) {
+                    Text(audioButtonLabel(audioLanguage))
+                }
+                DropdownMenu(
+                    expanded = audioMenu,
+                    onDismissRequest = { audioMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Audio: Auto") },
+                        onClick = {
+                            audioMenu = false
+                            onAudioLanguageChange(VIDEO_LANGUAGE_AUTO)
+                        },
+                    )
+                    audioLanguages.forEach { language ->
+                        DropdownMenuItem(
+                            text = { Text(language) },
+                            onClick = {
+                                audioMenu = false
+                                onAudioLanguageChange(language)
+                            },
+                        )
+                    }
                 }
             }
 
@@ -492,3 +552,14 @@ internal fun controlsTimeoutLabel(seconds: Int): String =
 
 internal fun controlsTimeoutMenuLabel(seconds: Int): String =
     if (seconds == 0) "Never hide controls" else "Hide after " + seconds + " seconds"
+
+
+internal fun subtitleButtonLabel(language: String): String =
+    when (language) {
+        VIDEO_LANGUAGE_OFF -> "CC off"
+        VIDEO_LANGUAGE_AUTO -> "CC"
+        else -> "CC " + language
+    }
+
+internal fun audioButtonLabel(language: String): String =
+    if (language == VIDEO_LANGUAGE_AUTO) "Audio" else "Audio " + language
