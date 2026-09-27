@@ -182,7 +182,7 @@ internal fun LibraryTab(
         categories = categories,
         grouping = grouping,
         search = arrangedSearch,
-        mediaFilter = mediaFilter,
+        mediaFilter = mediaFilter.label,
         sort = sort,
         ascending = ascending,
         randomSeed = randomSeed,
