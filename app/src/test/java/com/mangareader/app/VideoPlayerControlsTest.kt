@@ -129,4 +129,10 @@ class VideoPlayerControlsTest {
         assertEquals("1:01:01", formatVideoTime(3_661_000L))
     }
 
+    @Test
+    fun muteLabels_areClear() {
+        assertEquals("Mute", muteButtonLabel(false))
+        assertEquals("Unmute", muteButtonLabel(true))
+    }
+
 }

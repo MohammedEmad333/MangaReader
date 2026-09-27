@@ -1,7 +1,17 @@
 package com.mangareader.app
 
-/** Release-note chunk 228 down to 183, newest first. */
+/** Release-note chunk 229 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 229,
+            name = "0.229",
+            header = "Quick mute and reset player settings",
+            body = "The video player now has a quick Mute control that remembers the " +
+                "previous player volume and restores it when you unmute. A new Reset " +
+                "action also restores saved player preferences such as speed, resize " +
+                "mode, loop, seek distance, control timeout, preferred stream, and " +
+                "subtitle/audio language back to their defaults.",
+        ),
         ReleaseNote(
             code = 228,
             name = "0.228",

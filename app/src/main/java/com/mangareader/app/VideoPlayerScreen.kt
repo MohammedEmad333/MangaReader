@@ -107,6 +107,8 @@ internal fun VideoPlayerScreen(
     var audioLanguages by remember { mutableStateOf(emptyList<String>()) }
     var scrubStartPositionMs by remember { mutableStateOf(0L) }
     var scrubTargetPositionMs by remember { mutableStateOf<Long?>(null) }
+    var muted by remember { mutableStateOf(false) }
+    var volumeBeforeMute by remember { mutableStateOf(1f) }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -320,6 +322,7 @@ internal fun VideoPlayerScreen(
                 subtitleLanguage = subtitleLanguage,
                 audioLanguages = audioLanguages,
                 audioLanguage = audioLanguage,
+                muted = muted,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -389,6 +392,36 @@ internal fun VideoPlayerScreen(
                     gestureOverlay =
                         if (language == VIDEO_LANGUAGE_AUTO) "Audio auto"
                         else "Audio " + language
+                },
+                onMuteToggle = {
+                    if (muted) {
+                        player.volume = volumeBeforeMute.coerceIn(0.01f, 1f)
+                        muted = false
+                        gestureOverlay = "Sound on"
+                    } else {
+                        volumeBeforeMute = player.volume.takeIf { it > 0f } ?: 1f
+                        player.volume = 0f
+                        muted = true
+                        gestureOverlay = "Muted"
+                    }
+                },
+                onResetSettings = {
+                    VideoPlayerPrefs.reset(context)
+                    playbackSpeed = 1f
+                    videoResizeMode = VideoResizeMode.FIT
+                    loopEnabled = false
+                    seekSeconds = 10
+                    controlsTimeoutSeconds = 4
+                    subtitleLanguage = VIDEO_LANGUAGE_AUTO
+                    audioLanguage = VIDEO_LANGUAGE_AUTO
+                    player.setPlaybackSpeed(1f)
+                    player.repeatMode = Player.REPEAT_MODE_OFF
+                    player.trackSelectionParameters = languageTrackParameters(
+                        base = player.trackSelectionParameters,
+                        subtitleLanguage = VIDEO_LANGUAGE_AUTO,
+                        audioLanguage = VIDEO_LANGUAGE_AUTO,
+                    )
+                    gestureOverlay = "Player settings reset"
                 },
                 onLock = {
                     controlsLocked = true
