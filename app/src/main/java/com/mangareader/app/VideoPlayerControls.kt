@@ -45,6 +45,7 @@ internal object VideoPlayerPrefs {
     private const val PREFERRED_STREAM_TITLE = "preferred_stream_title"
     private const val SUBTITLE_SIZE = "subtitle_size"
     private const val SUBTITLE_BACKGROUND = "subtitle_background"
+    private const val SUBTITLE_POSITION = "subtitle_position"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -182,12 +183,34 @@ internal object VideoPlayerPrefs {
             .apply()
     }
 
+    fun subtitlePosition(context: Context): VideoSubtitlePosition =
+        runCatching {
+            VideoSubtitlePosition.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(SUBTITLE_POSITION, null)
+                    .orEmpty(),
+            )
+        }.getOrDefault(VideoSubtitlePosition.BOTTOM)
+
+    fun setSubtitlePosition(context: Context, position: VideoSubtitlePosition) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(SUBTITLE_POSITION, position.name)
+            .apply()
+    }
+
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .clear()
             .apply()
     }
+}
+
+internal enum class VideoSubtitlePosition(val label: String, val bottomPaddingFraction: Float) {
+    BOTTOM("Sub pos: Bottom", 0.08f),
+    MIDDLE("Sub pos: Middle", 0.45f),
+    TOP("Sub pos: Top", 0.82f),
 }
 
 internal enum class VideoSubtitleBackground(val label: String, val backgroundColor: Int) {
@@ -231,6 +254,7 @@ internal fun VideoPlayerQuickControls(
     subtitleLanguage: String,
     subtitleSize: VideoSubtitleSize,
     subtitleBackground: VideoSubtitleBackground,
+    subtitlePosition: VideoSubtitlePosition,
     audioLanguages: List<String>,
     audioLanguage: String,
     muted: Boolean,
@@ -249,6 +273,7 @@ internal fun VideoPlayerQuickControls(
     onSubtitleLanguageChange: (String) -> Unit,
     onSubtitleSizeChange: (VideoSubtitleSize) -> Unit,
     onSubtitleBackgroundChange: (VideoSubtitleBackground) -> Unit,
+    onSubtitlePositionChange: (VideoSubtitlePosition) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
     onMuteToggle: () -> Unit,
     onResetSettings: () -> Unit,
@@ -266,6 +291,7 @@ internal fun VideoPlayerQuickControls(
     var audioMenu by remember { mutableStateOf(false) }
     var subtitleSizeMenu by remember { mutableStateOf(false) }
     var subtitleBackgroundMenu by remember { mutableStateOf(false) }
+    var subtitlePositionMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -525,6 +551,24 @@ internal fun VideoPlayerQuickControls(
                         onClick = {
                             subtitleBackgroundMenu = false
                             onSubtitleBackgroundChange(option)
+                        },
+                    )
+                }
+            }
+
+            TextButton(onClick = { subtitlePositionMenu = true }) {
+                Text(subtitlePosition.label)
+            }
+            DropdownMenu(
+                expanded = subtitlePositionMenu,
+                onDismissRequest = { subtitlePositionMenu = false },
+            ) {
+                VideoSubtitlePosition.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            subtitlePositionMenu = false
+                            onSubtitlePositionChange(option)
                         },
                     )
                 }
