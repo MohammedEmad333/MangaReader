@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -30,6 +31,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 class VideoPlayerActivity : ComponentActivity() {
     private var inPictureInPicture by mutableStateOf(false)
     private var playbackActive = false
+    private var landscapeLocked by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,7 +77,10 @@ class VideoPlayerActivity : ComponentActivity() {
                     streams = streams,
                     referer = referer,
                     inPictureInPicture = inPictureInPicture,
+                    landscapeLocked = landscapeLocked,
                     onPlaybackActiveChanged = ::updatePictureInPictureState,
+                    onEnterPictureInPicture = ::enterPictureInPictureNow,
+                    onLandscapeLockChange = ::setLandscapeLocked,
                     onClose = ::finish,
                 )
             }
@@ -107,6 +112,21 @@ class VideoPlayerActivity : ComponentActivity() {
             enterPictureInPictureMode(
                 buildPictureInPictureParams(autoEnter = false),
             )
+        }
+    }
+
+    private fun enterPictureInPictureNow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+            enterPictureInPictureMode(buildPictureInPictureParams(autoEnter = false))
+        }
+    }
+
+    private fun setLandscapeLocked(locked: Boolean) {
+        landscapeLocked = locked
+        requestedOrientation = if (locked) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 
