@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
+import android.util.TypedValue
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -105,6 +106,9 @@ internal fun VideoPlayerScreen(
     var subtitleLanguage by remember(context) {
         mutableStateOf(VideoPlayerPrefs.subtitleLanguage(context))
     }
+    var subtitleSize by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.subtitleSize(context))
+    }
     var audioLanguage by remember(context) {
         mutableStateOf(VideoPlayerPrefs.audioLanguage(context))
     }
@@ -185,6 +189,7 @@ internal fun VideoPlayerScreen(
                 trackSelectionParameters = languageTrackParameters(
                     base = trackSelectionParameters,
                     subtitleLanguage = subtitleLanguage,
+                subtitleSize = subtitleSize,
                     audioLanguage = audioLanguage,
                 )
                 playWhenReady = true
@@ -314,6 +319,7 @@ internal fun VideoPlayerScreen(
                     controllerAutoShow = false
                     this.player = player
                     resizeMode = videoResizeMode.playerViewMode
+                    subtitleView?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.sp)
                     keepScreenOn = true
                     if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
@@ -321,6 +327,10 @@ internal fun VideoPlayerScreen(
             update = { view ->
                 view.player = player
                 view.resizeMode = videoResizeMode.playerViewMode
+                view.subtitleView?.setFixedTextSize(
+                    TypedValue.COMPLEX_UNIT_SP,
+                    subtitleSize.sp,
+                )
                 view.useController = !inPictureInPicture && !controlsLocked
                 view.controllerAutoShow = false
                 if (controlsVisible && !controlsLocked && !inPictureInPicture) {
@@ -412,6 +422,11 @@ internal fun VideoPlayerScreen(
                     subtitleLanguage = language
                     VideoPlayerPrefs.setSubtitleLanguage(context, language)
                 },
+                onSubtitleSizeChange = { size ->
+                    subtitleSize = size
+                    VideoPlayerPrefs.setSubtitleSize(context, size)
+                    gestureOverlay = size.label
+                },
                 onAudioLanguageChange = { language ->
                     audioLanguage = language
                     VideoPlayerPrefs.setAudioLanguage(context, language)
@@ -444,6 +459,7 @@ internal fun VideoPlayerScreen(
                     seekSeconds = 10
                     controlsTimeoutSeconds = 4
                     subtitleLanguage = VIDEO_LANGUAGE_AUTO
+                    subtitleSize = VideoSubtitleSize.MEDIUM
                     audioLanguage = VIDEO_LANGUAGE_AUTO
                     player.setPlaybackSpeed(1f)
                     player.repeatMode = Player.REPEAT_MODE_OFF
