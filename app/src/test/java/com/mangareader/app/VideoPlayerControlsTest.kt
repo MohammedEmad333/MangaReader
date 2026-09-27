@@ -46,6 +46,13 @@ class VideoPlayerControlsTest {
     }
 
     @Test
+    fun resizeModes_exposeStableLabels() {
+        assertEquals("Fit", VideoResizeMode.FIT.label)
+        assertEquals("Fill", VideoResizeMode.FILL.label)
+        assertEquals("Zoom", VideoResizeMode.ZOOM.label)
+    }
+
+    @Test
     fun playbackSpeed_labelsAreCompact() {
         assertEquals("1×", formatPlaybackSpeed(1f))
         assertEquals("1.25×", formatPlaybackSpeed(1.25f))
