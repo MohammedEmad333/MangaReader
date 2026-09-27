@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 227 down to 183, newest first. */
+/** Release-note chunk 228 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 228,
+            name = "0.228",
+            header = "Swipe horizontally to seek",
+            body = "While the player controls are hidden, swipe left or right across " +
+                "the video to scrub backward or forward. Yomu shows both the seek " +
+                "delta and the target timestamp while you drag, then jumps once when " +
+                "you release. Vertical swipes still control brightness and volume.",
+        ),
         ReleaseNote(
             code = 227,
             name = "0.227",
