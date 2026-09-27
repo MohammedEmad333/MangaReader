@@ -187,6 +187,8 @@ internal fun VideoPlayerQuickControls(
     audioLanguage: String,
     muted: Boolean,
     playing: Boolean,
+    currentPositionMs: Long,
+    durationMs: Long,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -232,6 +234,13 @@ internal fun VideoPlayerQuickControls(
             TextButton(onClick = onPlayPause) {
                 Text(playPauseLabel(playing))
             }
+
+            Text(
+                text = playbackTimeLabel(currentPositionMs, durationMs),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
 
             TextButton(
                 onClick = {
@@ -724,4 +733,11 @@ internal fun sleepTimerCountdownLabel(minutes: Int?, remainingMs: Long?): String
     val mins = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return "Sleep " + mins + ":" + seconds.toString().padStart(2, '0')
+}
+
+
+internal fun playbackTimeLabel(positionMs: Long, durationMs: Long): String {
+    val position = formatVideoTime(positionMs)
+    val duration = if (durationMs > 0L) formatVideoTime(durationMs) else "--:--"
+    return position + " / " + duration
 }
