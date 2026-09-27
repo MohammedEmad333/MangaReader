@@ -685,3 +685,23 @@ internal fun formatVideoTime(positionMs: Long): String {
 
 internal fun muteButtonLabel(muted: Boolean): String =
     if (muted) "Unmute" else "Mute"
+
+
+internal enum class VideoGestureEdge {
+    START,
+    END,
+}
+
+internal fun scrubEdge(targetMs: Long, durationMs: Long): VideoGestureEdge? =
+    when {
+        targetMs <= 0L -> VideoGestureEdge.START
+        durationMs > 0L && targetMs >= durationMs -> VideoGestureEdge.END
+        else -> null
+    }
+
+internal fun levelEdge(value: Float): VideoGestureEdge? =
+    when {
+        value <= 0f -> VideoGestureEdge.START
+        value >= 1f -> VideoGestureEdge.END
+        else -> null
+    }
