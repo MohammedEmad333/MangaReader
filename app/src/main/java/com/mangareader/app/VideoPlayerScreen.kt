@@ -114,6 +114,8 @@ internal fun VideoPlayerScreen(
     var muted by remember { mutableStateOf(false) }
     var volumeBeforeMute by remember { mutableStateOf(1f) }
     var playing by remember { mutableStateOf(false) }
+    var currentPositionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(0L) }
     var lastScrubEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
     var lastLevelEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
 
@@ -285,6 +287,14 @@ internal fun VideoPlayerScreen(
 
     LaunchedEffect(player, progressKey) {
         while (true) {
+            currentPositionMs = player.currentPosition.coerceAtLeast(0L)
+            durationMs = player.duration.takeIf { it > 0L } ?: 0L
+            delay(1_000L)
+        }
+    }
+
+    LaunchedEffect(player, progressKey, Unit) {
+        while (true) {
             delay(10_000L)
             if (player.playbackState != Player.STATE_ENDED) {
                 persistPlaybackProgress(context, progressKey, selectedVideo.resumeKey, player)
@@ -341,6 +351,8 @@ internal fun VideoPlayerScreen(
                 audioLanguage = audioLanguage,
                 muted = muted,
                 playing = playing,
+                currentPositionMs = currentPositionMs,
+                durationMs = durationMs,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
