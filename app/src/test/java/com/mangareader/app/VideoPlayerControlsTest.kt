@@ -160,4 +160,10 @@ class VideoPlayerControlsTest {
         assertEquals("Sleep 0:00", sleepTimerCountdownLabel(15, 0L))
     }
 
+    @Test
+    fun playbackTimeLabel_formatsKnownAndUnknownDuration() {
+        assertEquals("1:05 / 2:10", playbackTimeLabel(65_000L, 130_000L))
+        assertEquals("0:05 / --:--", playbackTimeLabel(5_000L, 0L))
+    }
+
 }

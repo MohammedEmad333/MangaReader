@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 232 down to 183, newest first. */
+/** Release-note chunk 233 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 233,
+            name = "0.233",
+            header = "Live playback time in the custom toolbar",
+            body = "The custom video controls now show the current playback position " +
+                "and total episode duration, updating every second while you watch. " +
+                "Until Media3 knows the stream duration, Yomu shows a clear placeholder " +
+                "instead of a misleading zero-length video.",
+        ),
         ReleaseNote(
             code = 232,
             name = "0.232",
