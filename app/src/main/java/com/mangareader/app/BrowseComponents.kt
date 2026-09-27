@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 
 internal const val KEY_BROWSE_VIEW = "browse_view"
 
+internal fun browseViewPreferenceKey(sourceId: String): String =
+    if (sourceId.isBlank()) KEY_BROWSE_VIEW else KEY_BROWSE_VIEW + ":" + sourceId
+
 internal enum class BrowseView(val key: String, val label: String) {
     COMFORTABLE("comfortable", "Comfortable grid"),
     COMPACT("compact", "Compact grid"),

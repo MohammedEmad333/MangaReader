@@ -87,6 +87,7 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LibraryScreen(
+    sourceId: String,
     title: String,
     series: List<Series>?,
     loading: Boolean,
@@ -128,8 +129,13 @@ internal fun LibraryScreen(
     // Opens itself when a search is already running, so returning to a screen
     // showing results doesn't hide the field that produced them.
     var searchOpen by remember(title) { mutableStateOf(query.isNotBlank()) }
-    var view by remember {
-        mutableStateOf(BrowseView.from(prefs(context).getString(KEY_BROWSE_VIEW, null)))
+    val viewPreferenceKey = remember(sourceId) { browseViewPreferenceKey(sourceId) }
+    var view by remember(sourceId) {
+        val stored = prefs(context).getString(
+            viewPreferenceKey,
+            prefs(context).getString(KEY_BROWSE_VIEW, null),
+        )
+        mutableStateOf(BrowseView.from(stored))
     }
     val coverMinDp = when (prefs(context).getString("cover_size", "medium")) {
         "small" -> 88.dp
@@ -185,7 +191,7 @@ internal fun LibraryScreen(
             onViewChange = { option ->
                 view = option
                 prefs(context).edit()
-                    .putString(KEY_BROWSE_VIEW, option.key)
+                    .putString(viewPreferenceKey, option.key)
                     .apply()
             },
             onRescan = onRescan,

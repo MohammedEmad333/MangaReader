@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 240 down to 183, newest first. */
+/** Release-note chunk 241 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 241,
+            name = "0.241",
+            header = "Browse view is remembered per source",
+            body = "Each source can now keep its own Comfortable grid, Compact grid, " +
+                "or List layout. Switching one source no longer changes every other " +
+                "source, and existing users keep their old global Browse view as the " +
+                "fallback until they choose a layout for a specific source.",
+        ),
         ReleaseNote(
             code = 240,
             name = "0.240",

@@ -26,6 +26,7 @@ internal fun SourceBrowseRoute(
     onSolveChallenge: (() -> Unit)?
 ) {
     LibraryScreen(
+        sourceId = sourceId.orEmpty(),
         title = source.name,
         series = series,
         loading = loading,
