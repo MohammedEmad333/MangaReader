@@ -481,6 +481,15 @@ internal fun VideoPlayerScreen(
                     player.seekTo(seekBackTarget(player.currentPosition, seekSeconds))
                     gestureOverlay = "−" + seekSeconds + "s"
                 },
+                onDoubleTapCenter = {
+                    if (player.isPlaying) {
+                        player.pause()
+                        gestureOverlay = "Paused"
+                    } else {
+                        player.play()
+                        gestureOverlay = "Playing"
+                    }
+                },
                 onDoubleTapRight = {
                     player.seekTo(seekForwardTarget(player.currentPosition, player.duration, seekSeconds))
                     gestureOverlay = "+" + seekSeconds + "s"
