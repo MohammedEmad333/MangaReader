@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -29,10 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.ui.AspectRatioFrameLayout
 
 internal object VideoPlayerPrefs {
     private const val PREFS = "video_player"
     private const val SPEED = "speed"
+    private const val RESIZE_MODE = "resize_mode"
+    private const val LOOP = "loop"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -46,6 +51,39 @@ internal object VideoPlayerPrefs {
             .putFloat(SPEED, speed)
             .apply()
     }
+
+    fun resizeMode(context: Context): VideoResizeMode =
+        runCatching {
+            VideoResizeMode.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(RESIZE_MODE, null)
+                    .orEmpty(),
+            )
+        }.getOrDefault(VideoResizeMode.FIT)
+
+    fun setResizeMode(context: Context, mode: VideoResizeMode) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(RESIZE_MODE, mode.name)
+            .apply()
+    }
+
+    fun loop(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(LOOP, false)
+
+    fun setLoop(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(LOOP, enabled)
+            .apply()
+    }
+}
+
+internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) {
+    FIT("Fit", AspectRatioFrameLayout.RESIZE_MODE_FIT),
+    FILL("Fill", AspectRatioFrameLayout.RESIZE_MODE_FILL),
+    ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
 internal val VIDEO_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
@@ -57,8 +95,12 @@ internal fun VideoPlayerQuickControls(
     speed: Float,
     streams: List<PlayableVideo>,
     selectedStream: PlayableVideo,
+    resizeMode: VideoResizeMode,
+    loopEnabled: Boolean,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onResizeModeChange: (VideoResizeMode) -> Unit,
+    onLoopChange: (Boolean) -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -66,6 +108,7 @@ internal fun VideoPlayerQuickControls(
     var subtitleMenu by remember { mutableStateOf(false) }
     var subtitleLabel by remember(player) { mutableStateOf("Auto") }
     var streamMenu by remember { mutableStateOf(false) }
+    var resizeMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -77,7 +120,9 @@ internal fun VideoPlayerQuickControls(
         tonalElevation = 2.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -122,6 +167,28 @@ internal fun VideoPlayerQuickControls(
                         )
                     }
                 }
+            }
+
+            TextButton(onClick = { resizeMenu = true }) {
+                Text(resizeMode.label)
+            }
+            DropdownMenu(
+                expanded = resizeMenu,
+                onDismissRequest = { resizeMenu = false },
+            ) {
+                VideoResizeMode.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            resizeMenu = false
+                            onResizeModeChange(option)
+                        },
+                    )
+                }
+            }
+
+            TextButton(onClick = { onLoopChange(!loopEnabled) }) {
+                Text(if (loopEnabled) "Loop ✓" else "Loop")
             }
 
             TextButton(onClick = { speedMenu = true }) {

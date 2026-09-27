@@ -70,6 +70,12 @@ internal fun VideoPlayerScreen(
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
+    var videoResizeMode by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.resizeMode(context))
+    }
+    var loopEnabled by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.loop(context))
+    }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -133,6 +139,7 @@ internal fun VideoPlayerScreen(
                 val startPosition = switchPositionMs ?: resumePosition
                 if (startPosition > 0L) seekTo(startPosition)
                 setPlaybackSpeed(playbackSpeed)
+                repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                 playWhenReady = true
                 prepare()
             }
@@ -217,12 +224,14 @@ internal fun VideoPlayerScreen(
                     useController = !inPictureInPicture && !controlsLocked
                     controllerAutoShow = false
                     this.player = player
+                    resizeMode = videoResizeMode.playerViewMode
                     keepScreenOn = true
                     if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
             },
             update = { view ->
                 view.player = player
+                view.resizeMode = videoResizeMode.playerViewMode
                 view.useController = !inPictureInPicture && !controlsLocked
                 view.controllerAutoShow = false
                 if (controlsVisible && !controlsLocked && !inPictureInPicture) {
@@ -241,6 +250,8 @@ internal fun VideoPlayerScreen(
                 speed = playbackSpeed,
                 streams = streams,
                 selectedStream = selectedVideo,
+                resizeMode = videoResizeMode,
+                loopEnabled = loopEnabled,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -260,6 +271,17 @@ internal fun VideoPlayerScreen(
                     VideoPlayerPrefs.setSpeed(context, next)
                     player.setPlaybackSpeed(next)
                 },
+                onResizeModeChange = { next ->
+                    videoResizeMode = next
+                    VideoPlayerPrefs.setResizeMode(context, next)
+                },
+                onLoopChange = { enabled ->
+                    loopEnabled = enabled
+                    VideoPlayerPrefs.setLoop(context, enabled)
+                    player.repeatMode =
+                        if (enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                    gestureOverlay = if (enabled) "Loop on" else "Loop off"
+                },
                 onLock = {
                     controlsLocked = true
                     controlsVisible = false
@@ -276,9 +298,11 @@ internal fun VideoPlayerScreen(
                 onSingleTap = { controlsVisible = true },
                 onDoubleTapLeft = {
                     player.seekTo(seekBackTarget(player.currentPosition))
+                    gestureOverlay = "−10s"
                 },
                 onDoubleTapRight = {
                     player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
+                    gestureOverlay = "+10s"
                 },
                 onVerticalStart = { fromLeft ->
                     gestureKind = if (fromLeft) {
