@@ -38,6 +38,8 @@ internal object VideoPlayerPrefs {
     private const val SPEED = "speed"
     private const val RESIZE_MODE = "resize_mode"
     private const val LOOP = "loop"
+    private const val SEEK_SECONDS = "seek_seconds"
+    private const val CONTROLS_TIMEOUT_SECONDS = "controls_timeout_seconds"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -78,6 +80,32 @@ internal object VideoPlayerPrefs {
             .putBoolean(LOOP, enabled)
             .apply()
     }
+
+    fun seekSeconds(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(SEEK_SECONDS, 10)
+            .takeIf { it in VIDEO_SEEK_SECONDS }
+            ?: 10
+
+    fun setSeekSeconds(context: Context, seconds: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(SEEK_SECONDS, seconds.coerceIn(5, 30))
+            .apply()
+    }
+
+    fun controlsTimeoutSeconds(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(CONTROLS_TIMEOUT_SECONDS, 4)
+            .takeIf { it in VIDEO_CONTROL_TIMEOUT_SECONDS }
+            ?: 4
+
+    fun setControlsTimeoutSeconds(context: Context, seconds: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(CONTROLS_TIMEOUT_SECONDS, seconds)
+            .apply()
+    }
 }
 
 internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) {
@@ -87,6 +115,8 @@ internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) 
 }
 
 internal val VIDEO_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+internal val VIDEO_SEEK_SECONDS = listOf(5, 10, 15, 30)
+internal val VIDEO_CONTROL_TIMEOUT_SECONDS = listOf(2, 4, 6, 10, 0)
 
 @Composable
 internal fun VideoPlayerQuickControls(
@@ -99,6 +129,8 @@ internal fun VideoPlayerQuickControls(
     loopEnabled: Boolean,
     sleepTimerMinutes: Int?,
     landscapeLocked: Boolean,
+    seekSeconds: Int,
+    controlsTimeoutSeconds: Int,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -106,6 +138,8 @@ internal fun VideoPlayerQuickControls(
     onSleepTimerChange: (Int?) -> Unit,
     onPictureInPicture: () -> Unit,
     onLandscapeLockChange: (Boolean) -> Unit,
+    onSeekSecondsChange: (Int) -> Unit,
+    onControlsTimeoutChange: (Int) -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -115,6 +149,8 @@ internal fun VideoPlayerQuickControls(
     var streamMenu by remember { mutableStateOf(false) }
     var resizeMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
+    var seekMenu by remember { mutableStateOf(false) }
+    var timeoutMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -134,18 +170,54 @@ internal fun VideoPlayerQuickControls(
         ) {
             TextButton(
                 onClick = {
-                    player.seekTo(seekBackTarget(player.currentPosition))
+                    player.seekTo(seekBackTarget(player.currentPosition, seekSeconds))
                 },
             ) {
-                Text("−10s")
+                Text("−" + seekSeconds + "s")
             }
 
             TextButton(
                 onClick = {
-                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
+                    player.seekTo(seekForwardTarget(player.currentPosition, player.duration, seekSeconds))
                 },
             ) {
-                Text("+10s")
+                Text("+" + seekSeconds + "s")
+            }
+
+            TextButton(onClick = { seekMenu = true }) {
+                Text("Seek " + seekSeconds + "s")
+            }
+            DropdownMenu(
+                expanded = seekMenu,
+                onDismissRequest = { seekMenu = false },
+            ) {
+                VIDEO_SEEK_SECONDS.forEach { seconds ->
+                    DropdownMenuItem(
+                        text = { Text(seconds.toString() + " seconds") },
+                        onClick = {
+                            seekMenu = false
+                            onSeekSecondsChange(seconds)
+                        },
+                    )
+                }
+            }
+
+            TextButton(onClick = { timeoutMenu = true }) {
+                Text(controlsTimeoutLabel(controlsTimeoutSeconds))
+            }
+            DropdownMenu(
+                expanded = timeoutMenu,
+                onDismissRequest = { timeoutMenu = false },
+            ) {
+                VIDEO_CONTROL_TIMEOUT_SECONDS.forEach { seconds ->
+                    DropdownMenuItem(
+                        text = { Text(controlsTimeoutMenuLabel(seconds)) },
+                        onClick = {
+                            timeoutMenu = false
+                            onControlsTimeoutChange(seconds)
+                        },
+                    )
+                }
             }
 
             if (streamOptions.size > 1) {
@@ -383,11 +455,15 @@ internal fun VideoPlayerGestureLayer(
     )
 }
 
-internal fun seekBackTarget(positionMs: Long): Long =
-    (positionMs - 10_000L).coerceAtLeast(0L)
+internal fun seekBackTarget(positionMs: Long, seconds: Int = 10): Long =
+    (positionMs - seconds.coerceAtLeast(1) * 1_000L).coerceAtLeast(0L)
 
-internal fun seekForwardTarget(positionMs: Long, durationMs: Long): Long {
-    val target = positionMs + 10_000L
+internal fun seekForwardTarget(
+    positionMs: Long,
+    durationMs: Long,
+    seconds: Int = 10,
+): Long {
+    val target = positionMs + seconds.coerceAtLeast(1) * 1_000L
     return if (durationMs > 0L) target.coerceAtMost(durationMs) else target
 }
 
@@ -409,3 +485,10 @@ internal fun sleepTimerMenuLabel(minutes: Int?): String =
 
 internal fun sleepTimerDurationMs(minutes: Int): Long =
     minutes.coerceAtLeast(1).toLong() * 60_000L
+
+
+internal fun controlsTimeoutLabel(seconds: Int): String =
+    if (seconds == 0) "Controls always" else "Hide " + seconds + "s"
+
+internal fun controlsTimeoutMenuLabel(seconds: Int): String =
+    if (seconds == 0) "Never hide controls" else "Hide after " + seconds + " seconds"
