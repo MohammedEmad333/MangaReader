@@ -78,7 +78,7 @@ enum class FilterState(val stored: Int) {
     }
 }
 
-internal enum class LibraryMediaFilter(val key: String, val label: String) {
+enum class LibraryMediaFilter(val key: String, val label: String) {
     ALL("all", "All"),
     MANGA("manga", "Manga"),
     ANIME("anime", "Anime");
