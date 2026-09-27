@@ -97,10 +97,15 @@ internal fun VideoPlayerQuickControls(
     selectedStream: PlayableVideo,
     resizeMode: VideoResizeMode,
     loopEnabled: Boolean,
+    sleepTimerMinutes: Int?,
+    landscapeLocked: Boolean,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
     onLoopChange: (Boolean) -> Unit,
+    onSleepTimerChange: (Int?) -> Unit,
+    onPictureInPicture: () -> Unit,
+    onLandscapeLockChange: (Boolean) -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -109,6 +114,7 @@ internal fun VideoPlayerQuickControls(
     var subtitleLabel by remember(player) { mutableStateOf("Auto") }
     var streamMenu by remember { mutableStateOf(false) }
     var resizeMenu by remember { mutableStateOf(false) }
+    var sleepMenu by remember { mutableStateOf(false) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
@@ -189,6 +195,32 @@ internal fun VideoPlayerQuickControls(
 
             TextButton(onClick = { onLoopChange(!loopEnabled) }) {
                 Text(if (loopEnabled) "Loop ✓" else "Loop")
+            }
+
+            TextButton(onClick = { sleepMenu = true }) {
+                Text(sleepTimerLabel(sleepTimerMinutes))
+            }
+            DropdownMenu(
+                expanded = sleepMenu,
+                onDismissRequest = { sleepMenu = false },
+            ) {
+                listOf<Int?>(15, 30, 45, 60, null).forEach { minutes ->
+                    DropdownMenuItem(
+                        text = { Text(sleepTimerMenuLabel(minutes)) },
+                        onClick = {
+                            sleepMenu = false
+                            onSleepTimerChange(minutes)
+                        },
+                    )
+                }
+            }
+
+            TextButton(onClick = onPictureInPicture) {
+                Text("PiP")
+            }
+
+            TextButton(onClick = { onLandscapeLockChange(!landscapeLocked) }) {
+                Text(if (landscapeLocked) "Landscape ✓" else "Landscape")
             }
 
             TextButton(onClick = { speedMenu = true }) {
@@ -367,3 +399,13 @@ internal fun streamDisplayLabel(video: PlayableVideo, index: Int): String {
     if (title.isNotBlank()) return title
     return if (index >= 0) "Stream " + (index + 1) else "Quality"
 }
+
+
+internal fun sleepTimerLabel(minutes: Int?): String =
+    minutes?.let { "Sleep " + it + "m" } ?: "Sleep"
+
+internal fun sleepTimerMenuLabel(minutes: Int?): String =
+    minutes?.let { "Stop after " + it + " min" } ?: "Sleep timer off"
+
+internal fun sleepTimerDurationMs(minutes: Int): Long =
+    minutes.coerceAtLeast(1).toLong() * 60_000L

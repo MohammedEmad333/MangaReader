@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 223 down to 183, newest first. */
+/** Release-note chunk 224 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 224,
+            name = "0.224",
+            header = "PiP, sleep timer and landscape lock",
+            body = "The built-in video player now has a manual PiP button, a sleep " +
+                "timer with 15, 30, 45, and 60 minute choices that pauses playback " +
+                "when time is up, and a Landscape toggle that can keep video in " +
+                "landscape until you switch back to automatic rotation.",
+        ),
         ReleaseNote(
             code = 223,
             name = "0.223",
