@@ -105,6 +105,8 @@ internal fun VideoPlayerScreen(
         mutableStateOf(VideoPlayerPrefs.audioLanguage(context))
     }
     var audioLanguages by remember { mutableStateOf(emptyList<String>()) }
+    var scrubStartPositionMs by remember { mutableStateOf(0L) }
+    var scrubTargetPositionMs by remember { mutableStateOf<Long?>(null) }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -440,6 +442,30 @@ internal fun VideoPlayerScreen(
                 },
                 onVerticalEnd = {
                     gestureKind = VideoVerticalGesture.NONE
+                },
+                onHorizontalStart = {
+                    scrubStartPositionMs = player.currentPosition.coerceAtLeast(0L)
+                    scrubTargetPositionMs = scrubStartPositionMs
+                },
+                onHorizontalProgress = { progress ->
+                    val target = scrubTargetPosition(
+                        startPositionMs = scrubStartPositionMs,
+                        durationMs = player.duration,
+                        progress = progress,
+                    )
+                    scrubTargetPositionMs = target
+                    val direction = when {
+                        target > scrubStartPositionMs -> "+"
+                        target < scrubStartPositionMs -> "−"
+                        else -> ""
+                    }
+                    val delta = kotlin.math.abs(target - scrubStartPositionMs)
+                    gestureOverlay =
+                        direction + formatVideoTime(delta) + "  •  " + formatVideoTime(target)
+                },
+                onHorizontalEnd = {
+                    scrubTargetPositionMs?.let(player::seekTo)
+                    scrubTargetPositionMs = null
                 },
                 onHoldStart = {
                     player.setPlaybackSpeed(2f)
