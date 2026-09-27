@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 226 down to 183, newest first. */
+/** Release-note chunk 227 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 227,
+            name = "0.227",
+            header = "Remember your preferred video stream",
+            body = "When you switch to a named stream such as 1080p or a specific " +
+                "server, Yomu now remembers that choice. The next time the player opens, " +
+                "it automatically picks the same stream when it is available, and safely " +
+                "falls back to the original stream when it is not.",
+        ),
         ReleaseNote(
             code = 226,
             name = "0.226",
