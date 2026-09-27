@@ -122,7 +122,11 @@ internal fun LibraryTab(
     }
 
     val allEntries = base.entries
-    var mediaFilter by rememberSaveable { mutableStateOf("All") }
+    var mediaFilterName by rememberSaveable {
+        mutableStateOf(LibraryPrefs.mediaFilter(context).name)
+    }
+    val mediaFilter = runCatching { LibraryMediaFilter.valueOf(mediaFilterName) }
+        .getOrDefault(LibraryMediaFilter.ALL)
 
     // Keep the text field immediate while avoiding a full multi-thousand-entry
     // filter/sort for every intermediate key event. The old synchronous path
@@ -139,9 +143,9 @@ internal fun LibraryTab(
             val anime = entry.sourceId.startsWith("aniyomi:") ||
                 entry.seriesId.startsWith("anime:")
             when (mediaFilter) {
-                "Anime" -> anime
-                "Manga" -> !anime
-                else -> true
+                LibraryMediaFilter.ANIME -> anime
+                LibraryMediaFilter.MANGA -> !anime
+                LibraryMediaFilter.ALL -> true
             }
         }
     }
@@ -270,7 +274,7 @@ internal fun LibraryTab(
             visibleIds = visibleIds,
             search = search,
             searchOpen = searchOpen,
-            mediaFilter = mediaFilter,
+            mediaFilter = mediaFilter.label,
             groups = groups,
             currentPage = currentPage,
             showTabs = showTabs,
@@ -298,8 +302,11 @@ internal fun LibraryTab(
             onSearchChange = onSearchChange,
             onSearchOpenChange = onSearchOpenChange,
             onOpenOptions = { optionsOpen = true },
-            onMediaFilterChange = {
-                mediaFilter = it
+            onMediaFilterChange = { label ->
+                val next = LibraryMediaFilter.entries.firstOrNull { it.label == label }
+                    ?: LibraryMediaFilter.ALL
+                mediaFilterName = next.name
+                LibraryPrefs.setMediaFilter(context, next)
                 selected = emptySet()
             },
             onTabSelected = { index ->
