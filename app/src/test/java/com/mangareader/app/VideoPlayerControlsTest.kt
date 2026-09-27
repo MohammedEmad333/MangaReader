@@ -135,4 +135,14 @@ class VideoPlayerControlsTest {
         assertEquals("Unmute", muteButtonLabel(true))
     }
 
+    @Test
+    fun gestureEdges_detectOnlyRealBoundaries() {
+        assertEquals(VideoGestureEdge.START, scrubEdge(0L, 100_000L))
+        assertEquals(VideoGestureEdge.END, scrubEdge(100_000L, 100_000L))
+        assertEquals(null, scrubEdge(50_000L, 100_000L))
+        assertEquals(VideoGestureEdge.START, levelEdge(0f))
+        assertEquals(VideoGestureEdge.END, levelEdge(1f))
+        assertEquals(null, levelEdge(0.5f))
+    }
+
 }

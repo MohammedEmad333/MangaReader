@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 229 down to 183, newest first. */
+/** Release-note chunk 230 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 230,
+            name = "0.230",
+            header = "Haptic feedback for player gestures",
+            body = "Video gestures now give a light haptic cue when scrubbing starts " +
+                "or when a volume/brightness swipe begins. Yomu also gives one extra " +
+                "cue when you hit the start or end of the video, or 0%/100% for " +
+                "volume and brightness, without repeatedly vibrating while held there.",
+        ),
         ReleaseNote(
             code = 229,
             name = "0.229",

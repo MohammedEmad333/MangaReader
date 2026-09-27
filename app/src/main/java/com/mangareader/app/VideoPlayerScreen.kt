@@ -29,8 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -61,6 +63,7 @@ internal fun VideoPlayerScreen(
     var buffering by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val activity = LocalView.current.context as? Activity
     val audioManager = remember(context) {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -109,6 +112,8 @@ internal fun VideoPlayerScreen(
     var scrubTargetPositionMs by remember { mutableStateOf<Long?>(null) }
     var muted by remember { mutableStateOf(false) }
     var volumeBeforeMute by remember { mutableStateOf(1f) }
+    var lastScrubEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
+    var lastLevelEdge by remember { mutableStateOf<VideoGestureEdge?>(null) }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -446,6 +451,8 @@ internal fun VideoPlayerScreen(
                     gestureOverlay = "+" + seekSeconds + "s"
                 },
                 onVerticalStart = { fromLeft ->
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    lastLevelEdge = null
                     gestureKind = if (fromLeft) {
                         VideoVerticalGesture.BRIGHTNESS
                     } else {
@@ -461,6 +468,11 @@ internal fun VideoPlayerScreen(
                 },
                 onVerticalProgress = { progress ->
                     val target = adjustedGestureFraction(gestureStartFraction, progress)
+                    val edge = levelEdge(target)
+                    if (edge != null && edge != lastLevelEdge) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    lastLevelEdge = edge
                     when (gestureKind) {
                         VideoVerticalGesture.BRIGHTNESS -> {
                             setScreenBrightnessFraction(activity, target)
@@ -475,8 +487,11 @@ internal fun VideoPlayerScreen(
                 },
                 onVerticalEnd = {
                     gestureKind = VideoVerticalGesture.NONE
+                    lastLevelEdge = null
                 },
                 onHorizontalStart = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    lastScrubEdge = null
                     scrubStartPositionMs = player.currentPosition.coerceAtLeast(0L)
                     scrubTargetPositionMs = scrubStartPositionMs
                 },
@@ -487,6 +502,11 @@ internal fun VideoPlayerScreen(
                         progress = progress,
                     )
                     scrubTargetPositionMs = target
+                    val edge = scrubEdge(target, player.duration)
+                    if (edge != null && edge != lastScrubEdge) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    lastScrubEdge = edge
                     val direction = when {
                         target > scrubStartPositionMs -> "+"
                         target < scrubStartPositionMs -> "−"
@@ -499,6 +519,7 @@ internal fun VideoPlayerScreen(
                 onHorizontalEnd = {
                     scrubTargetPositionMs?.let(player::seekTo)
                     scrubTargetPositionMs = null
+                    lastScrubEdge = null
                 },
                 onHoldStart = {
                     player.setPlaybackSpeed(2f)
