@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 234 down to 183, newest first. */
+/** Release-note chunk 235 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 235,
+            name = "0.235",
+            header = "Choose subtitle text size",
+            body = "The video player now lets you choose Small, Medium, or Large " +
+                "subtitle text. The choice applies immediately inside Media3, is " +
+                "remembered for future videos, and Reset returns it to Medium without " +
+                "changing your selected subtitle language.",
+        ),
         ReleaseNote(
             code = 234,
             name = "0.234",
