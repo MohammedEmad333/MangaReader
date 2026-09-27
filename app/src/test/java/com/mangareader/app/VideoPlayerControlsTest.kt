@@ -58,4 +58,14 @@ class VideoPlayerControlsTest {
         assertEquals("1.25×", formatPlaybackSpeed(1.25f))
         assertEquals("2×", formatPlaybackSpeed(2f))
     }
+    @Test
+    fun sleepTimer_labelsAndDuration_areStable() {
+        assertEquals("Sleep", sleepTimerLabel(null))
+        assertEquals("Sleep 30m", sleepTimerLabel(30))
+        assertEquals("Sleep timer off", sleepTimerMenuLabel(null))
+        assertEquals("Stop after 45 min", sleepTimerMenuLabel(45))
+        assertEquals(900_000L, sleepTimerDurationMs(15))
+        assertEquals(60_000L, sleepTimerDurationMs(0))
+    }
+
 }
