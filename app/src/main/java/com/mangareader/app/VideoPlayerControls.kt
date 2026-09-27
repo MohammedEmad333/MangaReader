@@ -147,6 +147,13 @@ internal object VideoPlayerPrefs {
             .putString(PREFERRED_STREAM_TITLE, normalized)
             .apply()
     }
+
+    fun reset(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
+    }
 }
 
 internal enum class VideoResizeMode(val label: String, val playerViewMode: Int) {
@@ -177,6 +184,7 @@ internal fun VideoPlayerQuickControls(
     subtitleLanguage: String,
     audioLanguages: List<String>,
     audioLanguage: String,
+    muted: Boolean,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -188,6 +196,8 @@ internal fun VideoPlayerQuickControls(
     onControlsTimeoutChange: (Int) -> Unit,
     onSubtitleLanguageChange: (String) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
+    onMuteToggle: () -> Unit,
+    onResetSettings: () -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -443,6 +453,14 @@ internal fun VideoPlayerQuickControls(
                 }
             }
 
+            TextButton(onClick = onMuteToggle) {
+                Text(if (muted) "Unmute" else "Mute")
+            }
+
+            TextButton(onClick = onResetSettings) {
+                Text("Reset")
+            }
+
             TextButton(onClick = onLock) {
                 Text("Lock")
             }
@@ -663,3 +681,7 @@ internal fun formatVideoTime(positionMs: Long): String {
         minutes.toString() + ":" + seconds.toString().padStart(2, '0')
     }
 }
+
+
+internal fun muteButtonLabel(muted: Boolean): String =
+    if (muted) "Unmute" else "Mute"
