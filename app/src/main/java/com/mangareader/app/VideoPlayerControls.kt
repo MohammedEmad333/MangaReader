@@ -13,6 +13,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.C
@@ -206,6 +210,11 @@ internal fun VideoPlayerGestureLayer(
     onSingleTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
     onDoubleTapRight: () -> Unit,
+    onVerticalStart: (Boolean) -> Unit,
+    onVerticalProgress: (Float) -> Unit,
+    onVerticalEnd: () -> Unit,
+    onHoldStart: () -> Unit,
+    onHoldEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -213,6 +222,23 @@ internal fun VideoPlayerGestureLayer(
             .fillMaxSize()
             .pointerInput(locked) {
                 detectTapGestures(
+                    onPress = {
+                        if (!locked) {
+                            coroutineScope {
+                                var boosted = false
+                                val holdJob = launch {
+                                    delay(450L)
+                                    boosted = true
+                                    onHoldStart()
+                                }
+                                val released = tryAwaitRelease()
+                                holdJob.cancel()
+                                if (boosted) {
+                                    onHoldEnd()
+                                }
+                            }
+                        }
+                    },
                     onTap = {
                         if (!locked) onSingleTap()
                     },
@@ -224,6 +250,34 @@ internal fun VideoPlayerGestureLayer(
                                 onDoubleTapRight()
                             }
                         }
+                    },
+                )
+            }
+            .pointerInput(locked) {
+                var dragFromLeft = true
+                var accumulated = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { offset ->
+                        if (!locked) {
+                            dragFromLeft = offset.x < size.width / 2f
+                            accumulated = 0f
+                            onVerticalStart(dragFromLeft)
+                        }
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        if (!locked) {
+                            accumulated += dragAmount
+                            change.consume()
+                            val progress = (-accumulated / size.height)
+                                .coerceIn(-1f, 1f)
+                            onVerticalProgress(progress)
+                        }
+                    },
+                    onDragEnd = {
+                        if (!locked) onVerticalEnd()
+                    },
+                    onDragCancel = {
+                        if (!locked) onVerticalEnd()
                     },
                 )
             },

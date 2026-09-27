@@ -1,7 +1,10 @@
 package com.mangareader.app
 
+import android.app.Activity
 import android.content.Context
+import android.media.AudioManager
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.AudioAttributes
@@ -38,6 +42,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 internal fun VideoPlayerScreen(
@@ -51,10 +56,17 @@ internal fun VideoPlayerScreen(
     var buffering by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val activity = LocalView.current.context as? Activity
+    val audioManager = remember(context) {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
     var selectedVideo by remember(initialVideo.url) { mutableStateOf(initialVideo) }
     var switchPositionMs by remember { mutableStateOf<Long?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsLocked by remember { mutableStateOf(false) }
+    var gestureKind by remember { mutableStateOf(VideoVerticalGesture.NONE) }
+    var gestureStartFraction by remember { mutableStateOf(0f) }
+    var gestureOverlay by remember { mutableStateOf<String?>(null) }
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
@@ -171,6 +183,13 @@ internal fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(gestureOverlay) {
+        if (gestureOverlay != null) {
+            delay(850L)
+            gestureOverlay = null
+        }
+    }
+
     LaunchedEffect(controlsVisible, controlsLocked, inPictureInPicture) {
         if (controlsVisible && !controlsLocked && !inPictureInPicture) {
             delay(4_000L)
@@ -261,7 +280,62 @@ internal fun VideoPlayerScreen(
                 onDoubleTapRight = {
                     player.seekTo(seekForwardTarget(player.currentPosition, player.duration))
                 },
+                onVerticalStart = { fromLeft ->
+                    gestureKind = if (fromLeft) {
+                        VideoVerticalGesture.BRIGHTNESS
+                    } else {
+                        VideoVerticalGesture.VOLUME
+                    }
+                    gestureStartFraction = when (gestureKind) {
+                        VideoVerticalGesture.BRIGHTNESS ->
+                            currentScreenBrightnessFraction(activity, context)
+                        VideoVerticalGesture.VOLUME ->
+                            currentVolumeFraction(audioManager)
+                        VideoVerticalGesture.NONE -> 0f
+                    }
+                },
+                onVerticalProgress = { progress ->
+                    val target = adjustedGestureFraction(gestureStartFraction, progress)
+                    when (gestureKind) {
+                        VideoVerticalGesture.BRIGHTNESS -> {
+                            setScreenBrightnessFraction(activity, target)
+                            gestureOverlay = "Brightness " + gesturePercent(target)
+                        }
+                        VideoVerticalGesture.VOLUME -> {
+                            setVolumeFraction(audioManager, target)
+                            gestureOverlay = "Volume " + gesturePercent(target)
+                        }
+                        VideoVerticalGesture.NONE -> Unit
+                    }
+                },
+                onVerticalEnd = {
+                    gestureKind = VideoVerticalGesture.NONE
+                },
+                onHoldStart = {
+                    player.setPlaybackSpeed(2f)
+                    gestureOverlay = "2×"
+                },
+                onHoldEnd = {
+                    playbackSpeed = 1f
+                    VideoPlayerPrefs.setSpeed(context, 1f)
+                    player.setPlaybackSpeed(1f)
+                    gestureOverlay = "1×"
+                },
             )
+        }
+
+        if (!inPictureInPicture && gestureOverlay != null) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                shape = MaterialTheme.shapes.large,
+                color = Color.Black.copy(alpha = 0.62f),
+            ) {
+                Text(
+                    text = gestureOverlay.orEmpty(),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    color = Color.White,
+                )
+            }
         }
 
         if (!inPictureInPicture && controlsLocked) {
@@ -358,5 +432,60 @@ private fun subtitleMimeType(url: String): String? {
         path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA
         path.endsWith(".ttml") || path.endsWith(".xml") -> MimeTypes.APPLICATION_TTML
         else -> null
+    }
+}
+
+
+internal enum class VideoVerticalGesture {
+    NONE,
+    BRIGHTNESS,
+    VOLUME,
+}
+
+internal fun adjustedGestureFraction(start: Float, progress: Float): Float =
+    (start + progress).coerceIn(0f, 1f)
+
+internal fun gesturePercent(value: Float): String =
+    ((value.coerceIn(0f, 1f) * 100f).roundToInt()).toString() + "%"
+
+private fun currentVolumeFraction(audioManager: AudioManager): Float {
+    val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        .coerceAtLeast(1)
+    return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        .toFloat()
+        .div(max.toFloat())
+        .coerceIn(0f, 1f)
+}
+
+private fun setVolumeFraction(audioManager: AudioManager, fraction: Float) {
+    val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        .coerceAtLeast(1)
+    val volume = (fraction.coerceIn(0f, 1f) * max).roundToInt()
+    audioManager.setStreamVolume(
+        AudioManager.STREAM_MUSIC,
+        volume,
+        0,
+    )
+}
+
+private fun currentScreenBrightnessFraction(
+    activity: Activity?,
+    context: Context,
+): Float {
+    val windowValue = activity?.window?.attributes?.screenBrightness ?: -1f
+    if (windowValue >= 0f) return windowValue.coerceIn(0f, 1f)
+
+    val system = Settings.System.getInt(
+        context.contentResolver,
+        Settings.System.SCREEN_BRIGHTNESS,
+        128,
+    )
+    return (system / 255f).coerceIn(0f, 1f)
+}
+
+private fun setScreenBrightnessFraction(activity: Activity?, fraction: Float) {
+    val window = activity?.window ?: return
+    window.attributes = window.attributes.apply {
+        screenBrightness = fraction.coerceIn(0.01f, 1f)
     }
 }
