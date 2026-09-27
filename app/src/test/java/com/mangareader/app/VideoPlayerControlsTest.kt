@@ -194,4 +194,14 @@ class VideoPlayerControlsTest {
         assertEquals(android.graphics.Color.BLACK, VideoSubtitleBackground.SOLID.backgroundColor)
     }
 
+    @Test
+    fun subtitlePositions_haveExpectedLabelsAndOffsets() {
+        assertEquals("Sub pos: Bottom", VideoSubtitlePosition.BOTTOM.label)
+        assertEquals(0.08f, VideoSubtitlePosition.BOTTOM.bottomPaddingFraction)
+        assertEquals("Sub pos: Middle", VideoSubtitlePosition.MIDDLE.label)
+        assertEquals(0.45f, VideoSubtitlePosition.MIDDLE.bottomPaddingFraction)
+        assertEquals("Sub pos: Top", VideoSubtitlePosition.TOP.label)
+        assertEquals(0.82f, VideoSubtitlePosition.TOP.bottomPaddingFraction)
+    }
+
 }
