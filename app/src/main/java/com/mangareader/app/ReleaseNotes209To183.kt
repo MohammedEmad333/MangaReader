@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 236 down to 183, newest first. */
+/** Release-note chunk 237 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 237,
+            name = "0.237",
+            header = "Move subtitles higher or lower",
+            body = "Subtitle appearance now includes Bottom, Middle, and Top position " +
+                "options. The selected position applies immediately inside Media3, is " +
+                "remembered for future videos, and Reset returns subtitles to Bottom " +
+                "without changing subtitle size, background, or language.",
+        ),
         ReleaseNote(
             code = 236,
             name = "0.236",

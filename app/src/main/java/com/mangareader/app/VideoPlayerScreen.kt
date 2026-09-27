@@ -113,6 +113,9 @@ internal fun VideoPlayerScreen(
     var subtitleBackground by remember(context) {
         mutableStateOf(VideoPlayerPrefs.subtitleBackground(context))
     }
+    var subtitlePosition by remember(context) {
+        mutableStateOf(VideoPlayerPrefs.subtitlePosition(context))
+    }
     var audioLanguage by remember(context) {
         mutableStateOf(VideoPlayerPrefs.audioLanguage(context))
     }
@@ -325,6 +328,8 @@ internal fun VideoPlayerScreen(
                     subtitleView?.apply {
                         setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.sp)
                         setStyle(subtitleCaptionStyle(subtitleBackground))
+                    setBottomPaddingFraction(subtitlePosition.bottomPaddingFraction)
+                        setBottomPaddingFraction(subtitlePosition.bottomPaddingFraction)
                     }
                     keepScreenOn = true
                     if (controlsVisible && !controlsLocked) showController() else hideController()
@@ -368,6 +373,7 @@ internal fun VideoPlayerScreen(
                 subtitleLanguage = subtitleLanguage,
                 subtitleSize = subtitleSize,
                 subtitleBackground = subtitleBackground,
+                subtitlePosition = subtitlePosition,
                 audioLanguages = audioLanguages,
                 audioLanguage = audioLanguage,
                 muted = muted,
@@ -443,6 +449,11 @@ internal fun VideoPlayerScreen(
                     VideoPlayerPrefs.setSubtitleBackground(context, background)
                     gestureOverlay = background.label
                 },
+                onSubtitlePositionChange = { position ->
+                    subtitlePosition = position
+                    VideoPlayerPrefs.setSubtitlePosition(context, position)
+                    gestureOverlay = position.label
+                },
                 onAudioLanguageChange = { language ->
                     audioLanguage = language
                     VideoPlayerPrefs.setAudioLanguage(context, language)
@@ -477,6 +488,7 @@ internal fun VideoPlayerScreen(
                     subtitleLanguage = VIDEO_LANGUAGE_AUTO
                     subtitleSize = VideoSubtitleSize.MEDIUM
                     subtitleBackground = VideoSubtitleBackground.SEMI
+                    subtitlePosition = VideoSubtitlePosition.BOTTOM
                     audioLanguage = VIDEO_LANGUAGE_AUTO
                     player.setPlaybackSpeed(1f)
                     player.repeatMode = Player.REPEAT_MODE_OFF
