@@ -166,4 +166,12 @@ class VideoPlayerControlsTest {
         assertEquals("0:05 / --:--", playbackTimeLabel(5_000L, 0L))
     }
 
+    @Test
+    fun doubleTapZones_splitScreenIntoThirds() {
+        assertEquals(VideoDoubleTapZone.LEFT, doubleTapZone(10f, 300f))
+        assertEquals(VideoDoubleTapZone.CENTER, doubleTapZone(150f, 300f))
+        assertEquals(VideoDoubleTapZone.RIGHT, doubleTapZone(290f, 300f))
+        assertEquals(VideoDoubleTapZone.CENTER, doubleTapZone(0f, 0f))
+    }
+
 }

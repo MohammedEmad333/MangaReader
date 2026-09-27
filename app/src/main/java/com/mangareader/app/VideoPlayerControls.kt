@@ -489,6 +489,7 @@ internal fun VideoPlayerGestureLayer(
     locked: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
+    onDoubleTapCenter: () -> Unit,
     onDoubleTapRight: () -> Unit,
     onVerticalStart: (Boolean) -> Unit,
     onVerticalProgress: (Float) -> Unit,
@@ -527,10 +528,10 @@ internal fun VideoPlayerGestureLayer(
                     },
                     onDoubleTap = { offset ->
                         if (!locked) {
-                            if (offset.x < size.width / 2f) {
-                                onDoubleTapLeft()
-                            } else {
-                                onDoubleTapRight()
+                            when (doubleTapZone(offset.x, size.width.toFloat())) {
+                                VideoDoubleTapZone.LEFT -> onDoubleTapLeft()
+                                VideoDoubleTapZone.CENTER -> onDoubleTapCenter()
+                                VideoDoubleTapZone.RIGHT -> onDoubleTapRight()
                             }
                         }
                     },
@@ -740,4 +741,21 @@ internal fun playbackTimeLabel(positionMs: Long, durationMs: Long): String {
     val position = formatVideoTime(positionMs)
     val duration = if (durationMs > 0L) formatVideoTime(durationMs) else "--:--"
     return position + " / " + duration
+}
+
+
+internal enum class VideoDoubleTapZone {
+    LEFT,
+    CENTER,
+    RIGHT,
+}
+
+internal fun doubleTapZone(x: Float, width: Float): VideoDoubleTapZone {
+    if (width <= 0f) return VideoDoubleTapZone.CENTER
+    val fraction = (x / width).coerceIn(0f, 1f)
+    return when {
+        fraction < 1f / 3f -> VideoDoubleTapZone.LEFT
+        fraction > 2f / 3f -> VideoDoubleTapZone.RIGHT
+        else -> VideoDoubleTapZone.CENTER
+    }
 }

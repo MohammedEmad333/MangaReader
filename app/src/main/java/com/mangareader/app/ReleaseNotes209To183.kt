@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 233 down to 183, newest first. */
+/** Release-note chunk 234 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 234,
+            name = "0.234",
+            header = "Double-tap the center to play or pause",
+            body = "Double-tap gestures now use three clear zones: the left third " +
+                "rewinds by your selected seek interval, the center toggles Play/Pause, " +
+                "and the right third skips forward. The existing gesture feedback " +
+                "stays in place so each action is immediately visible.",
+        ),
         ReleaseNote(
             code = 233,
             name = "0.233",
