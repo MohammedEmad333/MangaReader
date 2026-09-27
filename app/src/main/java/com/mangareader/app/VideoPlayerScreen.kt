@@ -65,7 +65,16 @@ internal fun VideoPlayerScreen(
     val audioManager = remember(context) {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
-    var selectedVideo by remember(initialVideo.url) { mutableStateOf(initialVideo) }
+    val initialPreferredVideo = remember(initialVideo, streams, context) {
+        preferredStream(
+            initial = initialVideo,
+            streams = streams,
+            preferredTitle = VideoPlayerPrefs.preferredStreamTitle(context),
+        )
+    }
+    var selectedVideo by remember(initialVideo.url, streams) {
+        mutableStateOf(initialPreferredVideo)
+    }
     var switchPositionMs by remember { mutableStateOf<Long?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsLocked by remember { mutableStateOf(false) }
@@ -319,6 +328,9 @@ internal fun VideoPlayerScreen(
                             player,
                         )
                         selectedVideo = next
+                        if (next.title.isNotBlank()) {
+                            VideoPlayerPrefs.setPreferredStreamTitle(context, next.title)
+                        }
                         buffering = true
                         playbackError = null
                     }

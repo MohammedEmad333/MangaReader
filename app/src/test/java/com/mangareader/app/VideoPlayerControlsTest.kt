@@ -92,4 +92,23 @@ class VideoPlayerControlsTest {
         assertEquals("Audio ja", audioButtonLabel("ja"))
     }
 
+    @Test
+    fun preferredStream_matchesNormalizedTitleOrFallsBack() {
+        val initial = PlayableVideo(url = "https://example/720", title = "720p")
+        val streams = listOf(
+            initial,
+            PlayableVideo(url = "https://example/1080", title = " 1080P "),
+        )
+
+        assertEquals(
+            "https://example/1080",
+            preferredStream(initial, streams, "1080p").url,
+        )
+        assertEquals(
+            initial.url,
+            preferredStream(initial, streams, "4k").url,
+        )
+        assertEquals("1080p", normalizeStreamPreference(" 1080P "))
+    }
+
 }
