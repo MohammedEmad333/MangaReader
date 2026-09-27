@@ -42,6 +42,7 @@ internal object VideoPlayerPrefs {
     private const val CONTROLS_TIMEOUT_SECONDS = "controls_timeout_seconds"
     private const val SUBTITLE_LANGUAGE = "subtitle_language"
     private const val AUDIO_LANGUAGE = "audio_language"
+    private const val PREFERRED_STREAM_TITLE = "preferred_stream_title"
 
     fun speed(context: Context): Float =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -130,6 +131,20 @@ internal object VideoPlayerPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(AUDIO_LANGUAGE, language)
+            .apply()
+    }
+
+    fun preferredStreamTitle(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(PREFERRED_STREAM_TITLE, "")
+            .orEmpty()
+
+    fun setPreferredStreamTitle(context: Context, title: String) {
+        val normalized = normalizeStreamPreference(title)
+        if (normalized.isBlank()) return
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREFERRED_STREAM_TITLE, normalized)
             .apply()
     }
 }
@@ -563,3 +578,19 @@ internal fun subtitleButtonLabel(language: String): String =
 
 internal fun audioButtonLabel(language: String): String =
     if (language == VIDEO_LANGUAGE_AUTO) "Audio" else "Audio " + language
+
+
+internal fun normalizeStreamPreference(title: String): String =
+    title.trim().lowercase()
+
+internal fun preferredStream(
+    initial: PlayableVideo,
+    streams: List<PlayableVideo>,
+    preferredTitle: String,
+): PlayableVideo {
+    val normalized = normalizeStreamPreference(preferredTitle)
+    if (normalized.isBlank()) return initial
+    return streams.firstOrNull {
+        normalizeStreamPreference(it.title) == normalized
+    } ?: initial
+}
