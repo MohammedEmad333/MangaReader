@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,7 +51,10 @@ internal fun VideoPlayerScreen(
     streams: List<PlayableVideo>,
     referer: String,
     inPictureInPicture: Boolean,
+    landscapeLocked: Boolean,
     onPlaybackActiveChanged: (Boolean) -> Unit,
+    onEnterPictureInPicture: () -> Unit,
+    onLandscapeLockChange: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     var buffering by remember { mutableStateOf(true) }
@@ -76,6 +80,8 @@ internal fun VideoPlayerScreen(
     var loopEnabled by remember(context) {
         mutableStateOf(VideoPlayerPrefs.loop(context))
     }
+    var sleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
+    var sleepTimerDeadline by remember { mutableStateOf<Long?>(null) }
 
     val progressKey = remember(selectedVideo.url, selectedVideo.resumeKey) {
         selectedVideo.resumeKey.ifBlank { "url:" + selectedVideo.url }
@@ -204,6 +210,17 @@ internal fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(sleepTimerDeadline, player) {
+        val deadline = sleepTimerDeadline ?: return@LaunchedEffect
+        val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        delay(remaining)
+        player.pause()
+        sleepTimerDeadline = null
+        sleepTimerMinutes = null
+        controlsVisible = true
+        gestureOverlay = "Sleep timer ended"
+    }
+
     LaunchedEffect(player, progressKey) {
         while (true) {
             delay(10_000L)
@@ -252,6 +269,8 @@ internal fun VideoPlayerScreen(
                 selectedStream = selectedVideo,
                 resizeMode = videoResizeMode,
                 loopEnabled = loopEnabled,
+                sleepTimerMinutes = sleepTimerMinutes,
+                landscapeLocked = landscapeLocked,
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -282,6 +301,15 @@ internal fun VideoPlayerScreen(
                         if (enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                     gestureOverlay = if (enabled) "Loop on" else "Loop off"
                 },
+                onSleepTimerChange = { minutes ->
+                    sleepTimerMinutes = minutes
+                    sleepTimerDeadline = minutes?.let {
+                        SystemClock.elapsedRealtime() + sleepTimerDurationMs(it)
+                    }
+                    gestureOverlay = minutes?.let { "Sleep timer " + it + "m" } ?: "Sleep timer off"
+                },
+                onPictureInPicture = onEnterPictureInPicture,
+                onLandscapeLockChange = onLandscapeLockChange,
                 onLock = {
                     controlsLocked = true
                     controlsVisible = false
