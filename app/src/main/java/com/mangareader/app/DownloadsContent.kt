@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun DownloadsHeader(
     seriesCount: Int,
+    downloadCount: Int,
     totalSize: Long,
     queued: Int,
     failedCount: Int,
@@ -48,7 +49,7 @@ internal fun DownloadsHeader(
             Text("Downloads", style = MaterialTheme.typography.titleLarge)
             if (seriesCount > 0) {
                 Text(
-                    "${seriesCount} series · ${formatBytes(totalSize)}",
+                    "${seriesCount} series · ${downloadCount} downloads · ${formatBytes(totalSize)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -81,6 +82,8 @@ internal fun DownloadsTools(
     onClear: () -> Unit,
     shownCount: Int,
     totalCount: Int,
+    shownDownloadCount: Int,
+    shownSize: Long,
 ) {
     Column(
         modifier = Modifier
@@ -134,7 +137,7 @@ internal fun DownloadsTools(
         }
         if (query.isNotBlank() || mediaFilter != DownloadsMediaFilter.ALL) {
             Text(
-                "Showing $shownCount of $totalCount",
+                "Showing $shownCount of $totalCount · $shownDownloadCount downloads · ${formatBytes(shownSize)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
