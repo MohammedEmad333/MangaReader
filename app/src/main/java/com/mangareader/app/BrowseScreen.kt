@@ -68,6 +68,9 @@ import java.io.File
 
 // ---------- prefs: the same store every other object in this package uses ----------
 
+internal fun normalizeSourcesMediaFilter(value: String?): String =
+    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowseTab(
@@ -99,7 +102,7 @@ internal fun BrowseTab(
     val lastUsedId = remember { SourcePrefs.lastUsed(context) }
     var settingsFor by remember { mutableStateOf<Source?>(null) }
     var showSourceFilter by remember { mutableStateOf(false) }
-    var mediaFilter by rememberSaveable { mutableStateOf("All") }
+    var mediaFilter by rememberSaveable { mutableStateOf(SourcePrefs.sourcesMediaFilter(context)) }
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
@@ -240,7 +243,10 @@ internal fun BrowseTab(
             if (page == 0) {
                 BrowseSourcesPage(
                     mediaFilter = mediaFilter,
-                    onMediaFilterChange = { mediaFilter = it },
+                    onMediaFilterChange = {
+                        mediaFilter = normalizeSourcesMediaFilter(it)
+                        SourcePrefs.setSourcesMediaFilter(context, mediaFilter)
+                    },
                     lastUsedRow = lastUsedRow,
                     pinnedRows = pinnedRows,
                     groups = groups,
