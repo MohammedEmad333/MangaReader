@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -55,11 +56,13 @@ import kotlinx.coroutines.withContext
  */
 internal suspend fun probeSource(context: Context, source: Source): String =
     withContext(Dispatchers.IO) {
-        val http = (source as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource
-            ?: return@withContext "${source.name} isn't an HTTP source, so there's " +
-                "nothing to probe — local folders don't make requests."
+        val mangaHttp = (source as? TachiyomiSourceAdapter)?.catalogueSource as? HttpSource
+        val animeHttp = (source as? AniyomiSourceAdapter)?.catalogueSource as? AnimeHttpSource
+        if (mangaHttp == null && animeHttp == null) {
+            return@withContext "${source.name} doesn't expose an HTTP client for diagnostics."
+        }
 
-        val url = http.baseUrl
+        val url = mangaHttp?.baseUrl ?: animeHttp!!.baseUrl
         val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
         val out = StringBuilder()
 
@@ -74,7 +77,9 @@ internal suspend fun probeSource(context: Context, source: Source): String =
         out.appendLine()
 
         val result = runCatching {
-            http.client.newCall(GET(url, http.headers)).execute().use { response ->
+            val client = mangaHttp?.client ?: animeHttp!!.client
+            val headers = mangaHttp?.headers ?: animeHttp!!.headers
+            client.newCall(GET(url, headers)).execute().use { response ->
                 // response.request, not the request built above: interceptors
                 // rewrite headers on the way out, and the UA that actually left
                 // the phone is the only one worth reporting.
