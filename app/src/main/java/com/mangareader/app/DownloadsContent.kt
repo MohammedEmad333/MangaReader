@@ -131,8 +131,10 @@ internal fun DownloadsTools(
             TextButton(onClick = { onDescendingChange(!descending) }) {
                 Text(if (descending) "Descending ↓" else "Ascending ↑")
             }
-            TextButton(onClick = onClear) {
-                Text("Clear")
+            if (downloadsViewIsActive(query, sortMode, descending, mediaFilter)) {
+                TextButton(onClick = onClear) {
+                    Text("Clear")
+                }
             }
         }
         if (query.isNotBlank() || mediaFilter != DownloadsMediaFilter.ALL) {
@@ -239,3 +241,15 @@ internal fun DownloadsDeleteDialog(
         },
     )
 }
+
+
+internal fun downloadsViewIsActive(
+    query: String,
+    sortMode: DownloadsSortMode,
+    descending: Boolean,
+    mediaFilter: DownloadsMediaFilter,
+): Boolean =
+    query.isNotBlank() ||
+        sortMode != DownloadsSortMode.SIZE ||
+        !descending ||
+        mediaFilter != DownloadsMediaFilter.ALL
