@@ -75,6 +75,15 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: gradle assembleRelease --build-cache
 
+      - name: Upload Cima4u extension artifact
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: serieshub-cima4u-extension
+          path: extensions/cima4u/build/outputs/apk/debug/cima4u-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         # Non-fatal: this is a convenience copy for pulling a specific commit's
@@ -140,7 +149,10 @@ jobs:
           debug_asset="Yomu-${version}-debug.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$debug_asset"
 
-          assets=("$debug_asset")
+          extension_asset="serieshub-cima4u-v17.1.apk"
+          cp extensions/cima4u/build/outputs/apk/debug/cima4u-debug.apk "$extension_asset"
+
+          assets=("$debug_asset" "$extension_asset")
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             release_asset="Yomu-${version}-release.apk"
             cp app/build/outputs/apk/release/app-release.apk "$release_asset"
