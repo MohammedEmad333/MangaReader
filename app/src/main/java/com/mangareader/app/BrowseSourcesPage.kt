@@ -19,6 +19,7 @@ internal fun BrowseSourcesPage(
     onPinnedOnlyChange: (Boolean) -> Unit,
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
+    onClearView: () -> Unit,
     visibleCount: Int,
     totalCount: Int,
     lastUsedRow: BrowseRow?,
@@ -70,6 +71,11 @@ internal fun BrowseSourcesPage(
                     onClick = { onMediaFilterChange(label) },
                     label = { Text(label) },
                 )
+            }
+            if (sourcesViewIsActive(query, pinnedOnly, mediaFilter)) {
+                TextButton(onClick = onClearView) {
+                    Text("Clear view")
+                }
             }
             Text(
                 sourceVisibilitySummaryLabel(visibleCount, totalCount),
@@ -210,3 +216,13 @@ internal fun BrowseSourcesPage(
 internal fun sourceVisibilitySummaryLabel(visibleCount: Int, totalCount: Int): String =
     visibleCount.coerceAtLeast(0).toString() + " of " +
         totalCount.coerceAtLeast(0).toString() + " sources"
+
+
+internal fun sourcesViewIsActive(
+    query: String,
+    pinnedOnly: Boolean,
+    mediaFilter: String,
+): Boolean =
+    query.isNotBlank() ||
+        pinnedOnly ||
+        normalizeSourcesMediaFilter(mediaFilter) != "All"

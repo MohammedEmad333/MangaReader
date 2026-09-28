@@ -284,6 +284,14 @@ internal fun BrowseTab(
                         mediaFilter = normalizeSourcesMediaFilter(it)
                         SourcePrefs.setSourcesMediaFilter(context, mediaFilter)
                     },
+                    onClearView = {
+                        sourceQuery = ""
+                        pinnedOnly = false
+                        mediaFilter = "All"
+                        SourcePrefs.setSourcesQuery(context, sourceQuery)
+                        SourcePrefs.setSourcesPinnedOnly(context, pinnedOnly)
+                        SourcePrefs.setSourcesMediaFilter(context, mediaFilter)
+                    },
                     visibleCount = visibleRows.size,
                     totalCount = rows.size,
                     lastUsedRow = lastUsedRow,

@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 256 down to 183, newest first. */
+/** Release-note chunk 257 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 257,
+            name = "0.257",
+            header = "Reset the Sources view in one tap",
+            body = "Browse → Sources now shows a contextual Clear view action whenever " +
+                "the source search, Pinned only, or Manga/Anime filter differs from default. " +
+                "It resets only the current view and keeps your pinned sources, hidden-source " +
+                "choices, and language settings unchanged.",
+        ),
         ReleaseNote(
             code = 256,
             name = "0.256",
