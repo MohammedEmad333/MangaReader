@@ -1,5 +1,7 @@
 package com.mangareader.app
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,7 +59,9 @@ internal fun BrowseSourcesPage(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilterChip(
@@ -74,11 +78,12 @@ internal fun BrowseSourcesPage(
             }
             if (sourcesViewIsActive(query, pinnedOnly, mediaFilter)) {
                 TextButton(onClick = onClearView) {
-                    Text("Clear view")
+                    Text("Clear view", maxLines = 1)
                 }
             }
             Text(
                 sourceVisibilitySummaryLabel(visibleCount, totalCount),
+                maxLines = 1,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

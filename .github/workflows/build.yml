@@ -167,13 +167,13 @@ jobs:
           debug_asset="Yomu-${version}-debug.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$debug_asset"
 
-          extension_asset="serieshub-cima4u-v17.5.apk"
+          extension_asset="serieshub-cima4u-v17.6.apk"
           cp extensions/cima4u/build/outputs/apk/debug/cima4u-debug.apk "$extension_asset"
 
           dramacafe_asset="serieshub-dramacafe-v17.4.apk"
           cp extensions/dramacafe/build/outputs/apk/debug/dramacafe-debug.apk "$dramacafe_asset"
 
-          watanflix_asset="serieshub-watanflix-v17.4.apk"
+          watanflix_asset="serieshub-watanflix-v17.5.apk"
           cp extensions/watanflix/build/outputs/apk/debug/watanflix-debug.apk "$watanflix_asset"
 
           assets=("$debug_asset" "$extension_asset" "$dramacafe_asset" "$watanflix_asset")
