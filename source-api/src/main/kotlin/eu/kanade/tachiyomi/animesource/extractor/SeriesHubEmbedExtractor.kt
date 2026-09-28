@@ -26,6 +26,9 @@ class SeriesHubEmbedExtractor(
             host.contains("streamtape") -> streamTape(url)
             host.contains("dood") -> dood(url)
             host.contains("vidmoly") -> vidMoly(url)
+            host == "ok.ru" || host.endsWith(".ok.ru") -> okRu(url)
+            isStreamWishHost(host) -> streamWish(url)
+            host.contains("mixdrop") -> mixDrop(url)
             isVoeHost(host) -> voe(url)
             else -> generic(url, referer)
         }
@@ -139,6 +142,112 @@ class SeriesHubEmbedExtractor(
         }
     }.getOrDefault(emptyList())
 
+
+    private fun okRu(url: String): List<Video> = runCatching {
+        val html = request(url)
+        val doc = Jsoup.parse(html, url)
+        val data = doc.selectFirst("div[data-options]")
+            ?.attr("data-options")
+            ?: return emptyList()
+
+        val unescaped = data
+            .replace("\\u0026", "&")
+            .replace("\\/", "/")
+            .replace("\\\"", "\"")
+
+        val direct = linkedMapOf<String, String>()
+        Regex(""""name"\s*:\s*"([^"]+)"[^{}]*?"url"\s*:\s*"([^"]+)"""")
+            .findAll(unescaped)
+            .forEach { match ->
+                val quality = okRuQuality(match.groupValues[1])
+                val media = match.groupValues[2]
+                if (media.startsWith("http")) direct[media] = "OK.ru $quality"
+            }
+
+        if (direct.isNotEmpty()) {
+            return direct.map { (media, title) -> video(media, title, url) }
+        }
+
+        val manifest = listOf("ondemandHls", "ondemandDash")
+            .firstNotNullOfOrNull { key ->
+                Regex(""""$key"\s*:\s*"([^"]+)"""")
+                    .find(unescaped)
+                    ?.groupValues
+                    ?.getOrNull(1)
+            }
+            ?: return emptyList()
+
+        listOf(
+            video(
+                manifest,
+                if (manifest.contains(".mpd", true)) "OK.ru DASH" else "OK.ru HLS",
+                url,
+            ),
+        )
+    }.getOrDefault(emptyList())
+
+    private fun streamWish(url: String): List<Video> = runCatching {
+        val html = request(url)
+        val doc = Jsoup.parse(html, url)
+        val scripts = doc.select("script").joinToString("\n") { it.data() }
+
+        val media = Regex("""https?[^"'\\\s]+\.m3u8[^"'\\\s]*""", RegexOption.IGNORE_CASE)
+            .find(scripts)
+            ?.value
+            ?.replace("\\/", "/")
+            ?: return emptyList()
+
+        listOf(video(media, "StreamWish HLS", url))
+    }.getOrDefault(emptyList())
+
+    private fun mixDrop(url: String): List<Video> = runCatching {
+        val headers = Headers.Builder()
+            .add("User-Agent", userAgent)
+            .add("Referer", "https://mixdrop.co/")
+            .build()
+        val html = request(url, headers)
+
+        val media = sequenceOf(
+            Regex("""(?:MDCore|Core)\.wurl\s*=\s*["']([^"']+)["']"""),
+            Regex("""wurl\s*:\s*["']([^"']+)["']"""),
+            Regex("""https?:\\?/\\?/[^"'\\s<>]+?\.mp4(?:\?[^"'\\s<>]*)?""", RegexOption.IGNORE_CASE),
+        ).mapNotNull { regex ->
+            regex.find(html)?.let { match ->
+                when {
+                    match.groupValues.size > 1 -> match.groupValues[1]
+                    else -> match.value
+                }
+            }
+        }.firstOrNull() ?: return emptyList()
+
+        val normalized = when {
+            media.startsWith("//") -> "https:$media"
+            media.startsWith("http") -> media
+            else -> "https:$media"
+        }.replace("\\/", "/")
+
+        listOf(
+            Video(
+                videoUrl = normalized,
+                videoTitle = "MixDrop",
+                headers = headers,
+                initialized = true,
+            ),
+        )
+    }.getOrDefault(emptyList())
+
+    private fun okRuQuality(value: String): String = when (value.lowercase()) {
+        "ultra" -> "2160p"
+        "quad" -> "1440p"
+        "full" -> "1080p"
+        "hd" -> "720p"
+        "sd" -> "480p"
+        "low" -> "360p"
+        "lowest" -> "240p"
+        "mobile" -> "144p"
+        else -> value
+    }
+
     private fun generic(url: String, referer: String?): List<Video> = runCatching {
         val html = request(
             url,
@@ -212,6 +321,11 @@ class SeriesHubEmbedExtractor(
         host == "voe.sx" || host.startsWith("voe.") ||
             host.contains("voe") || host.contains("tubeless") ||
             host.contains("simpulum") || host.contains("urochs")
+
+    private fun isStreamWishHost(host: String): Boolean =
+        host.contains("streamwish") ||
+            host.contains("niramirus") ||
+            host.contains("medixiru")
 
     private companion object {
         val PATTERNS = listOf("@$", "^^", "~@", "%?", "*~", "!!", "#&")
