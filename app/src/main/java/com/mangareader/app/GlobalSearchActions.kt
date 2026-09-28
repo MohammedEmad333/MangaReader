@@ -9,7 +9,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-internal fun globalSearchMediaIsAnime(filter: String): Boolean? = when (filter) {
+internal fun normalizeGlobalSearchMediaFilter(value: String?): String =
+    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
+
+internal fun globalSearchMediaIsAnime(filter: String): Boolean? = when (normalizeGlobalSearchMediaFilter(filter)) {
     "Anime" -> true
     "Manga" -> false
     else -> null
@@ -73,6 +76,7 @@ internal suspend fun searchGlobalBatch(
 
 internal class GlobalSearchState(
     initialPinnedOnly: Boolean,
+    initialMediaFilter: String,
     initialRecents: List<String>,
 ) {
     var open by androidx.compose.runtime.mutableStateOf(false)
@@ -83,7 +87,7 @@ internal class GlobalSearchState(
     var total by androidx.compose.runtime.mutableIntStateOf(0)
     var pinnedOnly by androidx.compose.runtime.mutableStateOf(initialPinnedOnly)
     var hasResultsOnly by androidx.compose.runtime.mutableStateOf(true)
-    var mediaFilter by androidx.compose.runtime.mutableStateOf("All")
+    var mediaFilter by androidx.compose.runtime.mutableStateOf(normalizeGlobalSearchMediaFilter(initialMediaFilter))
     var recents by androidx.compose.runtime.mutableStateOf(initialRecents)
     // Null = all media. During migration this is pinned to the source media type
     // so a manga cannot be migrated into an anime source (or vice versa).
@@ -104,7 +108,8 @@ internal class GlobalSearchState(
         extensions: List<Source>,
         value: String
     ) {
-        mediaFilter = value
+        mediaFilter = normalizeGlobalSearchMediaFilter(value)
+        SourcePrefs.setGlobalSearchMediaFilter(context, mediaFilter)
         if (query.isNotBlank()) {
             search(context, scope, configs, extensions, query)
         }
