@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 263,
+        name = "0.263",
+        header = "Host-specific video extractors",
+        body = "SeriesHub sources now detect common video hosts and use dedicated extraction paths for StreamTape, DoodStream, VidMoly, and VOE before falling back to generic iframe/media parsing. This follows the extractor-first architecture used by mature Aniyomi repositories.",
+    ),
+    ReleaseNote(
         code = 262,
         name = "0.262",
         header = "Anime source diagnostics and cleaner episodes",
