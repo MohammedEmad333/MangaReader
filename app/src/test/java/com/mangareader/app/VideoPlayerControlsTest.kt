@@ -204,4 +204,17 @@ class VideoPlayerControlsTest {
         assertEquals(0.82f, VideoSubtitlePosition.TOP.bottomPaddingFraction)
     }
 
+
+    @Test
+    fun seekSlider_convertsBetweenPositionAndFractionSafely() {
+        assertEquals(0f, seekFraction(10_000L, 0L))
+        assertEquals(0f, seekFraction(-5_000L, 100_000L))
+        assertEquals(0.5f, seekFraction(50_000L, 100_000L))
+        assertEquals(1f, seekFraction(150_000L, 100_000L))
+
+        assertEquals(0L, seekPositionForFraction(0.5f, 0L))
+        assertEquals(0L, seekPositionForFraction(-1f, 100_000L))
+        assertEquals(50_000L, seekPositionForFraction(0.5f, 100_000L))
+        assertEquals(100_000L, seekPositionForFraction(2f, 100_000L))
+    }
 }

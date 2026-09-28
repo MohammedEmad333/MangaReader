@@ -3,8 +3,10 @@ package com.mangareader.app
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +14,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -292,9 +295,14 @@ internal fun VideoPlayerQuickControls(
     var subtitleSizeMenu by remember { mutableStateOf(false) }
     var subtitleBackgroundMenu by remember { mutableStateOf(false) }
     var subtitlePositionMenu by remember { mutableStateOf(false) }
+    var seekDragFraction by remember { mutableStateOf<Float?>(null) }
     val streamOptions = remember(streams) {
         streams.distinctBy { it.url }
     }
+
+    val sliderFraction = seekDragFraction ?: seekFraction(currentPositionMs, durationMs)
+    val previewPositionMs =
+        seekDragFraction?.let { seekPositionForFraction(it, durationMs) } ?: currentPositionMs
 
     Surface(
         modifier = modifier,
@@ -302,19 +310,35 @@ internal fun VideoPlayerQuickControls(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
         tonalElevation = 2.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Slider(
+                value = sliderFraction,
+                onValueChange = { seekDragFraction = it },
+                onValueChangeFinished = {
+                    val fraction = seekDragFraction
+                    if (fraction != null && durationMs > 0L) {
+                        player.seekTo(seekPositionForFraction(fraction, durationMs))
+                    }
+                    seekDragFraction = null
+                },
+                enabled = durationMs > 0L,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             TextButton(onClick = onPlayPause) {
                 Text(playPauseLabel(playing))
             }
 
             Text(
-                text = playbackTimeLabel(currentPositionMs, durationMs),
+                text = playbackTimeLabel(previewPositionMs, durationMs),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 6.dp),
@@ -612,9 +636,18 @@ internal fun VideoPlayerQuickControls(
             TextButton(onClick = onLock) {
                 Text("Lock")
             }
+            }
         }
     }
 }
+
+internal fun seekFraction(positionMs: Long, durationMs: Long): Float =
+    if (durationMs <= 0L) 0f
+    else (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+
+internal fun seekPositionForFraction(fraction: Float, durationMs: Long): Long =
+    if (durationMs <= 0L) 0L
+    else (fraction.coerceIn(0f, 1f) * durationMs.toFloat()).toLong()
 
 @Composable
 internal fun VideoPlayerGestureLayer(
