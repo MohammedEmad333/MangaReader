@@ -90,6 +90,7 @@ internal fun EmbedWebViewScreen(
     var fullscreenExit by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     // The live WebView, kept so the DOM can be interrogated.
     var webView by remember { mutableStateOf<WebView?>(null) }
+    val interceptedMedia = remember { linkedSetOf<String>() }
 
     // Back leaves fullscreen first, then the screen. Without the first step the
     // only way out of a fullscreen video is to leave the player entirely.
@@ -105,6 +106,10 @@ internal fun EmbedWebViewScreen(
     // WebView that leaves the tree stops playing — the video would die at the
     // moment it went fullscreen. So the page stays mounted underneath and the
     // handed-over view is drawn on top of it.
+    // Network interception above is the fast path: as soon as the page requests
+    // a media manifest/file we can hand it to the player. DOM polling remains a
+    // fallback for players that hide the final URL behind page-side state.
+    //
     // Plays it muted, then watches for the url. Both are needed and in this
     // order: the element sits PAUSED at t=0 until told otherwise, and neither
     // currentSrc nor the resource timeline exists before playback starts.
@@ -177,6 +182,12 @@ internal fun EmbedWebViewScreen(
             onWebViewReady = { webView = it },
             onProgress = { progress = it },
             onTitle = { pageTitle = it },
+            onMediaRequest = { mediaUrl ->
+                if (interceptedMedia.add(mediaUrl)) {
+                    searched = true
+                    onMediaFound(interceptedMedia.toList())
+                }
+            },
             onShowFullscreen = { view, callback ->
                 fullscreenExit = callback
                 fullscreenView = view
