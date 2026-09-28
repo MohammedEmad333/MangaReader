@@ -74,6 +74,9 @@ internal fun normalizeSourcesMediaFilter(value: String?): String =
 internal fun normalizeBrowseTab(value: Int): Int =
     value.coerceIn(0, 1)
 
+internal fun normalizeSourcesQuery(value: String?): String =
+    value.orEmpty().take(200)
+
 internal fun sourceMatchesQuery(row: BrowseRow, query: String): Boolean {
     val needle = query.trim()
     return needle.isEmpty() ||
@@ -123,8 +126,8 @@ internal fun BrowseTab(
     var settingsFor by remember { mutableStateOf<Source?>(null) }
     var showSourceFilter by remember { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf(SourcePrefs.sourcesMediaFilter(context)) }
-    var sourceQuery by rememberSaveable { mutableStateOf("") }
-    var pinnedOnly by rememberSaveable { mutableStateOf(false) }
+    var sourceQuery by rememberSaveable { mutableStateOf(SourcePrefs.sourcesQuery(context)) }
+    var pinnedOnly by rememberSaveable { mutableStateOf(SourcePrefs.sourcesPinnedOnly(context)) }
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
@@ -267,9 +270,15 @@ internal fun BrowseTab(
             if (page == 0) {
                 BrowseSourcesPage(
                     query = sourceQuery,
-                    onQueryChange = { sourceQuery = it },
+                    onQueryChange = {
+                        sourceQuery = normalizeSourcesQuery(it)
+                        SourcePrefs.setSourcesQuery(context, sourceQuery)
+                    },
                     pinnedOnly = pinnedOnly,
-                    onPinnedOnlyChange = { pinnedOnly = it },
+                    onPinnedOnlyChange = {
+                        pinnedOnly = it
+                        SourcePrefs.setSourcesPinnedOnly(context, pinnedOnly)
+                    },
                     mediaFilter = mediaFilter,
                     onMediaFilterChange = {
                         mediaFilter = normalizeSourcesMediaFilter(it)
