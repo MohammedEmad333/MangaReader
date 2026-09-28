@@ -23,6 +23,7 @@ object SourcePrefs {
     private const val KEY_ENABLED_LANGS = "enabled_langs"
     private const val KEY_SHOW_NSFW = "show_nsfw"
     private const val KEY_RECENT_SEARCHES = "global_search_recents"
+    private const val KEY_GLOBAL_SEARCH_MEDIA = "global_search_media_filter"
 
     /** How many past global-search queries are remembered. */
     private const val RECENT_SEARCHES_MAX = 12
@@ -76,6 +77,17 @@ object SourcePrefs {
 
     fun setPinnedOnlySearch(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_PINNED_ONLY_SEARCH, value).apply()
+    }
+
+    fun globalSearchMediaFilter(context: Context): String =
+        normalizeGlobalSearchMediaFilter(
+            prefs(context).getString(KEY_GLOBAL_SEARCH_MEDIA, null),
+        )
+
+    fun setGlobalSearchMediaFilter(context: Context, value: String) {
+        prefs(context).edit()
+            .putString(KEY_GLOBAL_SEARCH_MEDIA, normalizeGlobalSearchMediaFilter(value))
+            .apply()
     }
 
     // ---- visibility ----

@@ -16,4 +16,14 @@ class GlobalSearchMediaFilterTest {
     fun unknownFilterFallsBackToAllMedia() {
         assertNull(globalSearchMediaIsAnime("unexpected"))
     }
+
+    @Test
+    fun normalizeGlobalSearchMediaFilter_acceptsKnownValuesAndFallsBack() {
+        assertEquals("All", normalizeGlobalSearchMediaFilter("All"))
+        assertEquals("Manga", normalizeGlobalSearchMediaFilter("Manga"))
+        assertEquals("Anime", normalizeGlobalSearchMediaFilter("Anime"))
+        assertEquals("All", normalizeGlobalSearchMediaFilter(null))
+        assertEquals("All", normalizeGlobalSearchMediaFilter(""))
+        assertEquals("All", normalizeGlobalSearchMediaFilter("Unknown"))
+    }
 }

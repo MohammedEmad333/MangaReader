@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 244 down to 183, newest first. */
+/** Release-note chunk 245 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 245,
+            name = "0.245",
+            header = "Global search remembers Manga and Anime",
+            body = "Global Search now remembers the Both, Manga, or Anime media " +
+                "filter across app restarts. The saved value is restored during the " +
+                "startup snapshot on the IO path, so the preference comes back without " +
+                "adding a SharedPreferences read to the UI thread.",
+        ),
         ReleaseNote(
             code = 244,
             name = "0.244",
