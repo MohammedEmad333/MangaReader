@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 246 down to 183, newest first. */
+/** Release-note chunk 247 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 247,
+            name = "0.247",
+            header = "Downloads only shows Clear when there is something to reset",
+            body = "The Downloads Clear action now appears only when search, sort mode, " +
+                "sort direction, or the Manga/Anime filter differs from the default " +
+                "view. The reset behavior is unchanged and never removes downloaded files.",
+        ),
         ReleaseNote(
             code = 246,
             name = "0.246",
