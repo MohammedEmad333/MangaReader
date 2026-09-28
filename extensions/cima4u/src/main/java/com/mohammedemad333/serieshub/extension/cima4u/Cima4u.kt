@@ -187,13 +187,16 @@ class Cima4u : AnimeCatalogueSource {
             if (!sameSite(href)) return@forEach
 
             val title = mediaTitle(anchor)
+            val thumbnail = imageUrl(anchor, url)
             if (!looksLikeMedia(title)) return@forEach
+            if (!looksLikeMediaUrl(href)) return@forEach
+            if (thumbnail.isNullOrBlank()) return@forEach
             if (!seen.add(href)) return@forEach
 
             items += SAnime.create().apply {
                 this.url = href
                 this.title = title
-                this.thumbnail_url = imageUrl(anchor, url)
+                this.thumbnail_url = thumbnail
                 this.initialized = false
             }
         }
@@ -384,7 +387,14 @@ class Cima4u : AnimeCatalogueSource {
 
     private fun looksLikeMedia(title: String): Boolean {
         if (title.length < 4) return false
+        if (NAVIGATION_TITLES.any { it.equals(title, ignoreCase = true) }) return false
         return MEDIA_TITLE_PATTERN.containsMatchIn(title)
+    }
+
+    private fun looksLikeMediaUrl(url: String): Boolean {
+        val path = runCatching { URI(url).path.orEmpty().lowercase() }.getOrDefault("")
+        if (path.isBlank() || path == "/") return false
+        return NAVIGATION_PATHS.none { marker -> path.startsWith(marker) }
     }
 
     private fun episodeNumber(text: String, url: String): Int? {
@@ -492,6 +502,34 @@ class Cima4u : AnimeCatalogueSource {
             "data-link",
             "data-embed",
             "data-server",
+        )
+
+        val NAVIGATION_TITLES = setOf(
+            "افلام",
+            "افلام اجنبي",
+            "افلام اسيوي",
+            "افلام انمي",
+            "مسلسلات",
+            "مسلسلات اجنبي",
+            "مسلسلات اسيوية",
+            "مسلسلات انمي",
+            "الأكثر مشاهدة",
+            "الاكثر مشاهدة",
+            "الأعلى تقييما",
+            "الاعلى تقييما",
+        )
+
+        val NAVIGATION_PATHS = listOf(
+            "/category/",
+            "/genre/",
+            "/quality/",
+            "/year/",
+            "/tag/",
+            "/actor/",
+            "/director/",
+            "/country/",
+            "/language/",
+            "/page/",
         )
 
         val MEDIA_TITLE_PATTERN = Regex(
