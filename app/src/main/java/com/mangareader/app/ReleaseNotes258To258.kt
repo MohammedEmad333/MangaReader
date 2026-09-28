@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 259,
+        name = "0.259",
+        header = "Cima4u catalogue now shows real titles",
+        body = "Cima4u now filters out navigation and category links from Popular/Latest and only keeps real media cards with artwork, fixing the category tiles and blank covers seen in 0.258.",
+    ),
+    ReleaseNote(
         code = 258,
         name = "0.258",
         header = "First SeriesHub video extension",
