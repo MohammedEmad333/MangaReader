@@ -280,6 +280,8 @@ internal fun LibraryTab(
             showTabs = showTabs,
             showCount = showCount,
             filterActive = LibraryPrefs.anyFilterActive(context),
+            visibleCount = visibleIds.size,
+            totalCount = allEntries.size,
             onClearSelection = { selected = emptySet() },
             onSelectAll = { selected = it.toSet() },
             onAssignCategories = { assignOpen = true },
