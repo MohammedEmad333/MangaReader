@@ -1,6 +1,5 @@
 package com.mohammedemad333.serieshub.extension.cima4u
 
-import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimeRelation
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -9,6 +8,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,14 +18,15 @@ import org.jsoup.nodes.Element
 import rx.Observable
 import java.net.URI
 
-class Cima4u : AnimeCatalogueSource {
+class Cima4u : AnimeHttpSource() {
 
     override val id: Long = 0x43494D4134550001L
     override val name: String = "Cima4u"
     override val lang: String = "ar"
     override val supportsLatest: Boolean = true
+    override val baseUrl: String = "https://c4u.top"
 
-    private val client = OkHttpClient.Builder()
+    override val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -481,7 +482,6 @@ class Cima4u : AnimeCatalogueSource {
     private fun String.clean(): String = replace(Regex("""\s+"""), " ").trim()
 
     private companion object {
-        const val baseUrl = "https://c4u.top"
         const val MAX_SERVERS = 10
         const val MAX_NESTED_SERVERS = 5
         const val USER_AGENT =
