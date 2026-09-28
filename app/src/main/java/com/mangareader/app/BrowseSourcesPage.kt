@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun BrowseSourcesPage(
+    query: String,
+    onQueryChange: (String) -> Unit,
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
     visibleCount: Int,
@@ -32,6 +34,23 @@ internal fun BrowseSourcesPage(
     ordering: Any?,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            label = { Text("Search sources") },
+            placeholder = { Text("Source name or language") },
+            trailingIcon = {
+                if (query.isNotBlank()) {
+                    TextButton(onClick = { onQueryChange("") }) {
+                        Text("Clear")
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
