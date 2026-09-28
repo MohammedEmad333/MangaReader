@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 252 down to 183, newest first. */
+/** Release-note chunk 253 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 253,
+            name = "0.253",
+            header = "Video player gets a real seek slider",
+            body = "The video player now includes a visible progress slider in the controls. " +
+                "Dragging previews the target time, and seeking happens once when you release " +
+                "the slider, keeping playback responsive while still making precise jumps easy.",
+        ),
         ReleaseNote(
             code = 252,
             name = "0.252",
