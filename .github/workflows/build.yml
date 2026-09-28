@@ -93,6 +93,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload WatanFlix extension artifact
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: serieshub-watanflix-extension
+          path: extensions/watanflix/build/outputs/apk/debug/watanflix-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         # Non-fatal: this is a convenience copy for pulling a specific commit's
@@ -164,7 +173,10 @@ jobs:
           dramacafe_asset="serieshub-dramacafe-v17.1.apk"
           cp extensions/dramacafe/build/outputs/apk/debug/dramacafe-debug.apk "$dramacafe_asset"
 
-          assets=("$debug_asset" "$extension_asset" "$dramacafe_asset")
+          watanflix_asset="serieshub-watanflix-v17.1.apk"
+          cp extensions/watanflix/build/outputs/apk/debug/watanflix-debug.apk "$watanflix_asset"
+
+          assets=("$debug_asset" "$extension_asset" "$dramacafe_asset" "$watanflix_asset")
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             release_asset="Yomu-${version}-release.apk"
             cp app/build/outputs/apk/release/app-release.apk "$release_asset"
