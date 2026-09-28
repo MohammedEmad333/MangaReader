@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 internal fun BrowseSourcesPage(
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
+    visibleCount: Int,
+    totalCount: Int,
     lastUsedRow: BrowseRow?,
     pinnedRows: List<BrowseRow>,
     groups: List<Pair<String, List<BrowseRow>>>,
@@ -43,6 +45,11 @@ internal fun BrowseSourcesPage(
                     label = { Text(label) },
                 )
             }
+            Text(
+                sourceVisibilitySummaryLabel(visibleCount, totalCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
     val sourcesListState = rememberRestoredListState(
@@ -172,3 +179,8 @@ internal fun BrowseSourcesPage(
     }
     }
 }
+
+
+internal fun sourceVisibilitySummaryLabel(visibleCount: Int, totalCount: Int): String =
+    visibleCount.coerceAtLeast(0).toString() + " of " +
+        totalCount.coerceAtLeast(0).toString() + " sources"
