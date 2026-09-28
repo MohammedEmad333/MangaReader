@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 247 down to 183, newest first. */
+/** Release-note chunk 248 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 248,
+            name = "0.248",
+            header = "Extensions remembers your current view",
+            body = "The Extensions screen now remembers your search text, Installed only " +
+                "switch, and All/Manga/Anime filter across app restarts. Reopening Yomu " +
+                "returns to the same extension catalogue view instead of resetting those " +
+                "controls every time.",
+        ),
         ReleaseNote(
             code = 247,
             name = "0.247",
