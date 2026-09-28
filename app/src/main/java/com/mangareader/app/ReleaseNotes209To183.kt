@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 250 down to 183, newest first. */
+/** Release-note chunk 251 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 251,
+            name = "0.251",
+            header = "Sources shows how many sources are visible",
+            body = "The Sources page now shows a live X of Y sources summary beside " +
+                "the media filters. The visible count updates with All/Manga/Anime, " +
+                "hidden sources, enabled languages, and the 18+ visibility setting, " +
+                "so it is clear how much of the source catalogue is currently shown.",
+        ),
         ReleaseNote(
             code = 250,
             name = "0.250",
