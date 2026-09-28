@@ -34,6 +34,8 @@ internal fun LibraryTopControls(
     showTabs: Boolean,
     showCount: Boolean,
     filterActive: Boolean,
+    visibleCount: Int,
+    totalCount: Int,
     onClearSelection: () -> Unit,
     onSelectAll: (List<String>) -> Unit,
     onAssignCategories: () -> Unit,
@@ -163,6 +165,15 @@ internal fun LibraryTopControls(
         }
     }
 
+    if (!selecting) {
+        Text(
+            text = libraryVisibleSummaryLabel(visibleCount, totalCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        )
+    }
+
     if (groups.size > 1 && showTabs) {
         ScrollableTabRow(
             selectedTabIndex = currentPage.coerceIn(0, groups.size - 1),
@@ -184,3 +195,7 @@ internal fun LibraryTopControls(
         }
     }
 }
+
+
+internal fun libraryVisibleSummaryLabel(visibleCount: Int, totalCount: Int): String =
+    "Showing " + visibleCount.coerceAtLeast(0) + " of " + totalCount.coerceAtLeast(0)
