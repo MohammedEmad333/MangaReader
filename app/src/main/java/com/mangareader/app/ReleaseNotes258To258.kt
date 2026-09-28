@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 265,
+        name = "0.265",
+        header = "Faster streams and catalog fixes",
+        body = "WatanFlix and Cima4u catalog parsing now matches their current page structure. Anime stream loading returns direct streams immediately and caps slow mirror/fallback waits so the stream chooser no longer hangs for tens of seconds.",
+    ),
+    ReleaseNote(
         code = 264,
         name = "0.264",
         header = "More SeriesHub host extractors",
