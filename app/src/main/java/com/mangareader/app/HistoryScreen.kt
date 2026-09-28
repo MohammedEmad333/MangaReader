@@ -174,6 +174,10 @@ internal fun HistoryScreen(
             onMediaFilterChange = { mediaFilter = it },
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
+            onClearView = {
+                mediaFilter = "All"
+                searchQuery = ""
+            },
             onClearAll = { confirmClearAll = true },
         )
 

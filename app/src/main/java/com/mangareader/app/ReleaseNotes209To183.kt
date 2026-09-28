@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 243 down to 183, newest first. */
+/** Release-note chunk 244 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 244,
+            name = "0.244",
+            header = "Reset History search and filters in one tap",
+            body = "History now shows a Clear action whenever a search or Manga/Anime " +
+                "filter is active. One tap clears the search and returns the media " +
+                "filter to All, and the reset view is saved immediately for the next " +
+                "time you open the app.",
+        ),
         ReleaseNote(
             code = 243,
             name = "0.243",
