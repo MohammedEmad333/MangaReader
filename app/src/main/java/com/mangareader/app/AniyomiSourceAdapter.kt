@@ -24,7 +24,7 @@ import java.io.IOException
  * player instead of entering the page reader.
  */
 class AniyomiSourceAdapter(
-    private val delegate: AnimeCatalogueSource,
+    internal val catalogueSource: AnimeCatalogueSource,
     override val iconPkg: String? = null,
     override val isNsfw: Boolean = false,
 ) : Source {
@@ -36,14 +36,14 @@ class AniyomiSourceAdapter(
 
     private val videoCache = mutableMapOf<String, CachedVideos>()
 
-    override val id: String = "aniyomi:${delegate.id}"
-    override val name: String = delegate.name
-    override val lang: String = langLabel(delegate.lang)
+    override val id: String = "aniyomi:${catalogueSource.id}"
+    override val name: String = catalogueSource.name
+    override val lang: String = langLabel(catalogueSource.lang)
     override val isAnime: Boolean = true
     override val supportsSearch: Boolean = true
     override val supportsPaging: Boolean = true
     override val supportsLatest: Boolean =
-        runCatching { delegate.supportsLatest }.getOrDefault(false)
+        runCatching { catalogueSource.supportsLatest }.getOrDefault(false)
 
     private suspend fun <T> onSourceThread(block: suspend () -> T): T =
         withContext(Dispatchers.IO) {
@@ -61,19 +61,19 @@ class AniyomiSourceAdapter(
     override suspend fun listSeries(): List<Series> = browseSeries(1).series
 
     override suspend fun browseSeries(page: Int): SeriesPage = onSourceThread {
-        delegate.getPopularAnime(page).let {
+        catalogueSource.getPopularAnime(page).let {
             SeriesPage(it.animes.map(::toSeries), it.hasNextPage)
         }
     }
 
     override suspend fun latestSeries(page: Int): SeriesPage = onSourceThread {
-        delegate.getLatestUpdates(page).let {
+        catalogueSource.getLatestUpdates(page).let {
             SeriesPage(it.animes.map(::toSeries), it.hasNextPage)
         }
     }
 
     override suspend fun searchSeries(query: String, page: Int): SeriesPage = onSourceThread {
-        delegate.getSearchAnime(page, query, AnimeFilterList()).let {
+        catalogueSource.getSearchAnime(page, query, AnimeFilterList()).let {
             SeriesPage(it.animes.map(::toSeries), it.hasNextPage)
         }
     }
@@ -92,7 +92,7 @@ class AniyomiSourceAdapter(
 
     override suspend fun loadDetails(series: Series): Series = onSourceThread {
         val anime = series.handle as? SAnime ?: return@onSourceThread series
-        val full = delegate.getAnimeEpisodeUpdate(
+        val full = catalogueSource.getAnimeEpisodeUpdate(
             anime = anime,
             episodes = emptyList(),
             fetchDetails = true,
@@ -114,7 +114,7 @@ class AniyomiSourceAdapter(
     override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
         val anime = series.handle as? SAnime ?: return@onSourceThread emptyList()
         val episodes = runCatching {
-            delegate.getAnimeEpisodeUpdate(
+            catalogueSource.getAnimeEpisodeUpdate(
                 anime = anime,
                 episodes = emptyList(),
                 fetchDetails = false,
@@ -122,7 +122,7 @@ class AniyomiSourceAdapter(
             ).episodes
         }.getOrElse {
             @Suppress("DEPRECATION")
-            delegate.getEpisodeList(anime)
+            catalogueSource.getEpisodeList(anime)
         }
 
         episodes.asReversed().map { episode ->
@@ -183,7 +183,7 @@ class AniyomiSourceAdapter(
             videoCache.entries.removeAll { it.value.expiresAtElapsedMs <= now }
         }
 
-        val hosters = runCatching { delegate.getHosterList(episode) }
+        val hosters = runCatching { catalogueSource.getHosterList(episode) }
             .getOrNull()
             .orEmpty()
 
@@ -195,7 +195,7 @@ class AniyomiSourceAdapter(
             hosters.map { hoster ->
                 async(Dispatchers.IO) {
                     hoster.videoList ?: withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
-                        runCatching { delegate.getVideoList(hoster) }
+                        runCatching { catalogueSource.getVideoList(hoster) }
                             .getOrDefault(emptyList())
                     }.orEmpty()
                 }
@@ -206,7 +206,7 @@ class AniyomiSourceAdapter(
             fromHosters
         } else {
             @Suppress("DEPRECATION")
-            runCatching { delegate.getVideoList(episode) }.getOrDefault(emptyList())
+            runCatching { catalogueSource.getVideoList(episode) }.getOrDefault(emptyList())
         }
 
         // Stream URLs can be signed/short-lived, so this is intentionally a
@@ -230,7 +230,7 @@ class AniyomiSourceAdapter(
 
     override fun seriesUrl(series: Series): String? {
         val anime = series.handle as? SAnime ?: return null
-        val http = delegate as? AnimeHttpSource ?: return null
+        val http = catalogueSource as? AnimeHttpSource ?: return null
         return runCatching { http.getAnimeUrl(anime) }.getOrNull()
             ?.takeIf { it.isNotBlank() }
     }
@@ -256,13 +256,13 @@ class AniyomiSourceAdapter(
     )
 
     private fun seriesId(anime: SAnime): String =
-        "anime:${delegate.id}:${anime.url}"
+        "anime:${catalogueSource.id}:${anime.url}"
 
     private fun episodeId(episode: SEpisode): String =
-        "episode:${delegate.id}:${episode.url}"
+        "episode:${catalogueSource.id}:${episode.url}"
 
     private fun urlFromId(id: String): String? {
-        val prefix = "anime:${delegate.id}:"
+        val prefix = "anime:${catalogueSource.id}:"
         return id.takeIf { it.startsWith(prefix) }?.removePrefix(prefix)
     }
 }

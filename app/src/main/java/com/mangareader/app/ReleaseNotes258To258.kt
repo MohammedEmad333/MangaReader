@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 262,
+        name = "0.262",
+        header = "Anime source diagnostics and cleaner episodes",
+        body = "Connection probe now works with Aniyomi HTTP sources such as Cima4u, DramaCafe, and WatanFlix. DramaCafe also stops treating unrelated watch links as episodes, and movies now open as one playable item.",
+    ),
+    ReleaseNote(
         code = 261,
         name = "0.261",
         header = "WatanFlix joins SeriesHub sources",
