@@ -254,6 +254,8 @@ internal fun BrowseTab(
                         mediaFilter = normalizeSourcesMediaFilter(it)
                         SourcePrefs.setSourcesMediaFilter(context, mediaFilter)
                     },
+                    visibleCount = visibleRows.size,
+                    totalCount = rows.size,
                     lastUsedRow = lastUsedRow,
                     pinnedRows = pinnedRows,
                     groups = groups,
