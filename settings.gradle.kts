@@ -18,3 +18,4 @@ rootProject.name = "MangaReader"
 include(":app")
 include(":source-api")
 include(":extensions:cima4u")
+include(":extensions:dramacafe")
