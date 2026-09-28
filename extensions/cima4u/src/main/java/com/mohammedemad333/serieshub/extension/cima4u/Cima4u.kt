@@ -202,9 +202,9 @@ class Cima4u : AnimeHttpSource() {
 
             val title = mediaTitle(anchor)
             val thumbnail = imageUrl(anchor, url)
+                ?: anchor.parent()?.let { imageUrl(it, url) }
             if (!looksLikeMedia(title)) return@forEach
             if (!looksLikeMediaUrl(href)) return@forEach
-            if (thumbnail.isNullOrBlank()) return@forEach
             if (!seen.add(href)) return@forEach
 
             items += SAnime.create().apply {
