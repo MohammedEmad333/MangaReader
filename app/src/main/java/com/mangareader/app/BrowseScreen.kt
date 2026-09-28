@@ -74,6 +74,13 @@ internal fun normalizeSourcesMediaFilter(value: String?): String =
 internal fun normalizeBrowseTab(value: Int): Int =
     value.coerceIn(0, 1)
 
+internal fun sourceMatchesQuery(row: BrowseRow, query: String): Boolean {
+    val needle = query.trim()
+    return needle.isEmpty() ||
+        row.name.contains(needle, ignoreCase = true) ||
+        row.lang.contains(needle, ignoreCase = true)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowseTab(
@@ -110,6 +117,7 @@ internal fun BrowseTab(
     var settingsFor by remember { mutableStateOf<Source?>(null) }
     var showSourceFilter by remember { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf(SourcePrefs.sourcesMediaFilter(context)) }
+    var sourceQuery by rememberSaveable { mutableStateOf("") }
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
@@ -156,7 +164,7 @@ internal fun BrowseTab(
             "Anime" -> it.isAnime
             "Manga" -> !it.isAnime
             else -> true
-        }
+        } && sourceMatchesQuery(it, sourceQuery)
     }
 
     val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
@@ -199,7 +207,7 @@ internal fun BrowseTab(
     // row moving between the Last used section and its language group, which is
     // a stale anchor, not the wholesale reorder a position genuinely can't
     // survive.
-    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs)
+    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs, mediaFilter, sourceQuery)
     scroll.sync(sourcesOrdering)
 
     if (showSourceFilter) {
@@ -249,6 +257,8 @@ internal fun BrowseTab(
         ) { page ->
             if (page == 0) {
                 BrowseSourcesPage(
+                    query = sourceQuery,
+                    onQueryChange = { sourceQuery = it },
                     mediaFilter = mediaFilter,
                     onMediaFilterChange = {
                         mediaFilter = normalizeSourcesMediaFilter(it)
