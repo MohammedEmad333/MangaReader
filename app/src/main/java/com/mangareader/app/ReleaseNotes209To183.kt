@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 242 down to 183, newest first. */
+/** Release-note chunk 243 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 243,
+            name = "0.243",
+            header = "Library shows how much your filters hide",
+            body = "The Library now shows a live Showing X of Y summary for the " +
+                "current tab. The visible count updates with search, Manga/Anime " +
+                "selection, categories, and Library filters, so you can immediately " +
+                "see how much of your collection matches the current view.",
+        ),
         ReleaseNote(
             code = 242,
             name = "0.242",
