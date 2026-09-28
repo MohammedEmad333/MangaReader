@@ -149,7 +149,7 @@ jobs:
           debug_asset="Yomu-${version}-debug.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$debug_asset"
 
-          extension_asset="serieshub-cima4u-v17.1.apk"
+          extension_asset="serieshub-cima4u-v17.2.apk"
           cp extensions/cima4u/build/outputs/apk/debug/cima4u-debug.apk "$extension_asset"
 
           assets=("$debug_asset" "$extension_asset")
