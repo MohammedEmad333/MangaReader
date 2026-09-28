@@ -435,7 +435,7 @@ class DramaCafe : AnimeCatalogueSource {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                error("Cima4u returned HTTP ${response.code} for $url")
+                error("DramaCafe returned HTTP ${response.code} for $url")
             }
             return response.body.string()
         }
