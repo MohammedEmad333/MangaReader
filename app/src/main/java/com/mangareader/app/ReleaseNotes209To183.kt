@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 253 down to 183, newest first. */
+/** Release-note chunk 254 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 254,
+            name = "0.254",
+            header = "Search the Sources list directly",
+            body = "Browse → Sources now has its own search field for quickly finding a " +
+                "source by name or language. The search works together with the existing " +
+                "All/Manga/Anime and visibility filters, and the visible-source count updates live.",
+        ),
         ReleaseNote(
             code = 253,
             name = "0.253",
