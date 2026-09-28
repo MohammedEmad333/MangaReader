@@ -105,6 +105,7 @@ internal class RootNavigationActionController(
 
     fun setSearchHasResultsOnly(value: Boolean) {
         globalSearch.hasResultsOnly = value
+        SourcePrefs.setGlobalSearchHasResultsOnly(context, value)
     }
 
     fun removeRecentSearch(query: String) {
