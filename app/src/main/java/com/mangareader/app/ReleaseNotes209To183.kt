@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 249 down to 183, newest first. */
+/** Release-note chunk 250 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 250,
+            name = "0.250",
+            header = "Browse remembers Sources or Extensions",
+            body = "Browse now remembers whether you last used the Sources or Extensions " +
+                "tab. Returning to Browse restores that tab instead of always starting " +
+                "on Sources, which makes extension management less repetitive.",
+        ),
         ReleaseNote(
             code = 249,
             name = "0.249",

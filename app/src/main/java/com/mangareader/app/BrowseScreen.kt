@@ -71,6 +71,9 @@ import java.io.File
 internal fun normalizeSourcesMediaFilter(value: String?): String =
     value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
 
+internal fun normalizeBrowseTab(value: Int): Int =
+    value.coerceIn(0, 1)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowseTab(
@@ -93,8 +96,12 @@ internal fun BrowseTab(
     // see §5, "Two things driving one position will fight". Tabs only ask it to
     // animate; `tab` is read out of it. There is no outward report to make here,
     // so there is no second driver to introduce.
-    val pagerState = rememberPagerState(initialPage = 0) { 2 }
+    val pagerState = rememberPagerState(initialPage = SourcePrefs.browseTab(context)) { 2 }
     val tab = pagerState.currentPage
+
+    LaunchedEffect(pagerState.settledPage) {
+        SourcePrefs.setBrowseTab(context, pagerState.settledPage)
+    }
 
     // Both re-read from prefs whenever this tab re-enters the composition, which
     // a bottom-nav switch or backing out of a source always causes.
