@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 245 down to 183, newest first. */
+/** Release-note chunk 246 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 246,
+            name = "0.246",
+            header = "Global search shows how many titles it found",
+            body = "The global-search progress summary now includes the total number " +
+                "of matching titles returned across all searched sources, alongside " +
+                "the number of sources checked and the number that actually produced " +
+                "results. This makes broad searches much easier to judge at a glance.",
+        ),
         ReleaseNote(
             code = 245,
             name = "0.245",

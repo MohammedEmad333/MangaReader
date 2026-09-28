@@ -114,6 +114,7 @@ internal fun GlobalSearchScreen(
     val hasPinned = remember { SourcePrefs.pinned(context).isNotEmpty() }
 
     val withHits = results.count { it.series.isNotEmpty() }
+    val titleMatches = results.sumOf { it.series.size }
     val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
     val ordering = remember(query, shown, pinnedOnly, hasResultsOnly, mediaFilter, migrating) {
         buildList {
@@ -145,6 +146,7 @@ internal fun GlobalSearchScreen(
             done = done,
             total = total,
             withHits = withHits,
+            titleMatches = titleMatches,
             onBack = onBack,
         )
 

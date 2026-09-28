@@ -38,6 +38,7 @@ internal fun GlobalSearchControls(
     done: Int,
     total: Int,
     withHits: Int,
+    titleMatches: Int,
     onBack: () -> Unit,
 ) {
     TopAppBar(
@@ -126,7 +127,7 @@ internal fun GlobalSearchControls(
     }
     if (total > 0) {
         Text(
-            "Searched $done of $total sources · $withHits with results",
+            globalSearchSummaryLabel(done, total, withHits, titleMatches),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -311,3 +312,14 @@ internal fun GlobalSearchResultRow(
     }
     HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
 }
+
+
+internal fun globalSearchSummaryLabel(
+    done: Int,
+    total: Int,
+    withHits: Int,
+    titleMatches: Int,
+): String =
+    "Searched " + done.coerceAtLeast(0) + " of " + total.coerceAtLeast(0) +
+        " sources · " + withHits.coerceAtLeast(0) + " with results · " +
+        titleMatches.coerceAtLeast(0) + " titles"
