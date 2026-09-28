@@ -1,6 +1,5 @@
 package com.mohammedemad333.serieshub.extension.dramacafe
 
-import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimeRelation
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -9,6 +8,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,14 +18,15 @@ import org.jsoup.nodes.Element
 import rx.Observable
 import java.net.URI
 
-class DramaCafe : AnimeCatalogueSource {
+class DramaCafe : AnimeHttpSource() {
 
     override val id: Long = 0x4452414D41434146L
     override val name: String = "DramaCafe"
     override val lang: String = "ar"
     override val supportsLatest: Boolean = true
+    override val baseUrl: String = "https://www.dramacafe.co"
 
-    private val client = OkHttpClient.Builder()
+    override val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -247,6 +248,20 @@ class DramaCafe : AnimeCatalogueSource {
         val document = Jsoup.parse(html, pageUrl)
         val result = mutableListOf<SEpisode>()
         val seen = mutableSetOf<String>()
+        val heading = firstText(document, "h1", ".title", ".post-title")
+
+        if (heading.contains("فيلم", ignoreCase = true) ||
+            anime.title.contains("فيلم", ignoreCase = true)
+        ) {
+            return listOf(
+                SEpisode.create().apply {
+                    url = pageUrl
+                    name = heading.ifBlank { anime.title }
+                    episode_number = 1f
+                    preview_url = imageUrl(document, pageUrl)
+                },
+            )
+        }
 
         document.select("a[href]").forEach { anchor ->
             val target = anchor.absUrl("href").ifBlank {
@@ -259,8 +274,8 @@ class DramaCafe : AnimeCatalogueSource {
                     ?: anchor.text()
                 ).clean()
             val number = episodeNumber(text, target) ?: return@forEach
-            if (!text.contains("الحلقة") &&
-                !Regex("""/(episode|watch|view)/""", RegexOption.IGNORE_CASE)
+            if (!text.contains("الحلقة", ignoreCase = true) &&
+                !Regex("""/(episode|view)/""", RegexOption.IGNORE_CASE)
                     .containsMatchIn(target)
             ) {
                 return@forEach
@@ -279,7 +294,6 @@ class DramaCafe : AnimeCatalogueSource {
             return result.sortedByDescending { it.episode_number }
         }
 
-        val heading = firstText(document, "h1", ".title", ".post-title")
         val number = episodeNumber(heading, pageUrl) ?: 1
         return listOf(
             SEpisode.create().apply {
@@ -477,7 +491,6 @@ class DramaCafe : AnimeCatalogueSource {
     private fun String.clean(): String = replace(Regex("""\s+"""), " ").trim()
 
     private companion object {
-        const val baseUrl = "https://www.dramacafe.co"
         const val MAX_SERVERS = 10
         const val MAX_NESTED_SERVERS = 5
         const val USER_AGENT =
