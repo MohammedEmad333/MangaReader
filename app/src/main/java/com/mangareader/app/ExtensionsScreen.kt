@@ -66,6 +66,40 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+internal data class ExtensionsViewState(
+    val filter: String = "",
+    val installedOnly: Boolean = false,
+    val mediaFilter: String = "All",
+)
+
+internal object ExtensionsViewPrefs {
+    private const val PREFS = "extensions_view"
+    private const val FILTER = "filter"
+    private const val INSTALLED_ONLY = "installed_only"
+    private const val MEDIA = "media"
+
+    fun load(context: Context): ExtensionsViewState {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return ExtensionsViewState(
+            filter = prefs.getString(FILTER, "").orEmpty(),
+            installedOnly = prefs.getBoolean(INSTALLED_ONLY, false),
+            mediaFilter = normalizeExtensionsMediaFilter(prefs.getString(MEDIA, null)),
+        )
+    }
+
+    fun save(context: Context, state: ExtensionsViewState) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(FILTER, state.filter)
+            .putBoolean(INSTALLED_ONLY, state.installedOnly)
+            .putString(MEDIA, normalizeExtensionsMediaFilter(state.mediaFilter))
+            .apply()
+    }
+}
+
+internal fun normalizeExtensionsMediaFilter(value: String?): String =
+    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ExtensionsScreen(
@@ -89,9 +123,21 @@ internal fun ExtensionsScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
     var diagnosticsRunning by remember { mutableStateOf(false) }
-    var filter by rememberSaveable { mutableStateOf("") }
-    var installedOnly by rememberSaveable { mutableStateOf(false) }
-    var mediaFilter by rememberSaveable { mutableStateOf("All") }
+    val initialView = remember(context) { ExtensionsViewPrefs.load(context) }
+    var filter by rememberSaveable { mutableStateOf(initialView.filter) }
+    var installedOnly by rememberSaveable { mutableStateOf(initialView.installedOnly) }
+    var mediaFilter by rememberSaveable { mutableStateOf(initialView.mediaFilter) }
+
+    LaunchedEffect(filter, installedOnly, mediaFilter) {
+        ExtensionsViewPrefs.save(
+            context,
+            ExtensionsViewState(
+                filter = filter,
+                installedOnly = installedOnly,
+                mediaFilter = mediaFilter,
+            ),
+        )
+    }
 
     // Installing and uninstalling both finish in the system's UI, in another
     // process, so this screen can't be told when they're done — the only signal
