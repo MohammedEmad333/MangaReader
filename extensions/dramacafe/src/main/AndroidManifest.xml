@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="tachiyomi.animeextension" android:required="false" />
+    <application
+        android:allowBackup="false"
+        android:label="SeriesHub: DramaCafe"
+        android:supportsRtl="true">
+        <meta-data android:name="tachiyomi.animeextension.class" android:value=".DramaCafe" />
+        <meta-data android:name="tachiyomi.animeextension.nsfw" android:value="0" />
+        <meta-data android:name="aniyomix.extensionLib" android:value="17" />
+        <meta-data android:name="aniyomix.contentWarning" android:value="0" />
+    </application>
+</manifest>
