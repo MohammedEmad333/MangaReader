@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 251 down to 183, newest first. */
+/** Release-note chunk 252 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 252,
+            name = "0.252",
+            header = "Reset the Extensions view in one tap",
+            body = "Extensions now shows a contextual Clear view action whenever the " +
+                "search text, Installed only switch, or Manga/Anime filter differs " +
+                "from the default. One tap resets all three controls without changing " +
+                "which extensions are installed.",
+        ),
         ReleaseNote(
             code = 251,
             name = "0.251",
