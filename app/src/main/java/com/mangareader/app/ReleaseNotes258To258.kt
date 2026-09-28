@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 264,
+        name = "0.264",
+        header = "More SeriesHub host extractors",
+        body = "SeriesHub now recognizes OK.ru, StreamWish-family hosts, and MixDrop in addition to StreamTape, DoodStream, VidMoly, and VOE. Known hosts are resolved before generic iframe/media fallback.",
+    ),
+    ReleaseNote(
         code = 263,
         name = "0.263",
         header = "Host-specific video extractors",
