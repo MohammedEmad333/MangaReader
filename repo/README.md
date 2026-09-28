@@ -20,4 +20,4 @@ Legacy descriptor URL:
 - DramaCafe 17.2
 - WatanFlix 17.2
 
-Each entry points to the matching APK asset on the latest MangaReader/Yomu GitHub release.
+Each entry points to the matching APK asset on the rolling `latest` prerelease tag.
