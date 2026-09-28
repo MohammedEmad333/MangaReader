@@ -1,7 +1,16 @@
 package com.mangareader.app
 
-/** Release-note chunk 241 down to 183, newest first. */
+/** Release-note chunk 242 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 242,
+            name = "0.242",
+            header = "History remembers your current view",
+            body = "History now remembers both your search text and the All, Manga, " +
+                "or Anime filter across app restarts. Reopening Yomu takes you back to " +
+                "the same recent-activity view instead of clearing your History search " +
+                "and resetting the filter every time.",
+        ),
         ReleaseNote(
             code = 241,
             name = "0.241",

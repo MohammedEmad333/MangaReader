@@ -70,6 +70,36 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+internal data class HistoryViewState(
+    val mediaFilter: String = "All",
+    val query: String = "",
+)
+
+internal object HistoryViewPrefs {
+    private const val PREFS = "history_view"
+    private const val MEDIA = "media_filter"
+    private const val QUERY = "query"
+
+    fun load(context: Context): HistoryViewState {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return HistoryViewState(
+            mediaFilter = normalizeHistoryMediaFilter(prefs.getString(MEDIA, null)),
+            query = prefs.getString(QUERY, "").orEmpty(),
+        )
+    }
+
+    fun save(context: Context, state: HistoryViewState) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(MEDIA, normalizeHistoryMediaFilter(state.mediaFilter))
+            .putString(QUERY, state.query)
+            .apply()
+    }
+}
+
+internal fun normalizeHistoryMediaFilter(value: String?): String =
+    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HistoryScreen(
@@ -92,8 +122,16 @@ internal fun HistoryScreen(
 ) {
     val context = LocalContext.current
     var refreshing by remember { mutableStateOf(false) }
-    var mediaFilter by rememberSaveable { mutableStateOf("All") }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val initialView = remember(context) { HistoryViewPrefs.load(context) }
+    var mediaFilter by rememberSaveable { mutableStateOf(initialView.mediaFilter) }
+    var searchQuery by rememberSaveable { mutableStateOf(initialView.query) }
+
+    LaunchedEffect(mediaFilter, searchQuery) {
+        HistoryViewPrefs.save(
+            context,
+            HistoryViewState(mediaFilter = mediaFilter, query = searchQuery),
+        )
+    }
     val shownHistory = remember(history, mediaFilter, searchQuery) {
         filterHistory(history, mediaFilter, searchQuery)
     }
