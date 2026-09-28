@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 255 down to 183, newest first. */
+/** Release-note chunk 256 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 256,
+            name = "0.256",
+            header = "Sources remembers search and Pinned only",
+            body = "Browse → Sources now remembers the source search text and Pinned only " +
+                "filter across app restarts, alongside the existing Manga/Anime setting. " +
+                "Reopening Yomu returns to the same narrowed source view.",
+        ),
         ReleaseNote(
             code = 255,
             name = "0.255",
