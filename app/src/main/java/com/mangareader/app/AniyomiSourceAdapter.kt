@@ -183,30 +183,43 @@ class AniyomiSourceAdapter(
             videoCache.entries.removeAll { it.value.expiresAtElapsedMs <= now }
         }
 
-        val hosters = runCatching { catalogueSource.getHosterList(episode) }
-            .getOrNull()
-            .orEmpty()
+        val hosters = withTimeoutOrNull(HOSTER_LIST_TIMEOUT_MS) {
+            runCatching { catalogueSource.getHosterList(episode) }
+                .getOrNull()
+                .orEmpty()
+        }.orEmpty()
 
-        // Hoster resolution is network-bound and independent. The old flatMap
-        // resolved one hoster after another, so three 4-second servers meant a
-        // 12-second loading dialog. Start them together and isolate failures so
-        // one broken server cannot hide streams returned by the others.
-        val fromHosters = supervisorScope {
-            hosters.map { hoster ->
-                async(Dispatchers.IO) {
-                    hoster.videoList ?: withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
-                        runCatching { catalogueSource.getVideoList(hoster) }
-                            .getOrDefault(emptyList())
-                    }.orEmpty()
-                }
-            }.awaitAll().flatten()
+        // If the source already attached playable videos to a hoster, return
+        // them immediately. This avoids waiting on every lazy mirror when the
+        // page itself already exposed a direct stream.
+        val eagerVideos = hosters.flatMap { it.videoList.orEmpty() }
+
+        val fromHosters = if (eagerVideos.isNotEmpty()) {
+            eagerVideos
+        } else {
+            // Lazy hosters are independent, so resolve them concurrently with
+            // a short per-hoster budget. Slow/dead mirrors no longer hold the
+            // stream chooser open for tens of seconds.
+            supervisorScope {
+                hosters.map { hoster ->
+                    async(Dispatchers.IO) {
+                        withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
+                            runCatching { catalogueSource.getVideoList(hoster) }
+                                .getOrDefault(emptyList())
+                        }.orEmpty()
+                    }
+                }.awaitAll().flatten()
+            }
         }
 
         val resolved = if (fromHosters.isNotEmpty()) {
             fromHosters
         } else {
             @Suppress("DEPRECATION")
-            runCatching { catalogueSource.getVideoList(episode) }.getOrDefault(emptyList())
+            withTimeoutOrNull(EPISODE_FALLBACK_TIMEOUT_MS) {
+                runCatching { catalogueSource.getVideoList(episode) }
+                    .getOrDefault(emptyList())
+            }.orEmpty()
         }
 
         // Stream URLs can be signed/short-lived, so this is intentionally a
@@ -224,7 +237,9 @@ class AniyomiSourceAdapter(
     }
 
     private companion object {
-        const val HOSTER_TIMEOUT_MS = 10_000L
+        const val HOSTER_LIST_TIMEOUT_MS = 4_000L
+        const val HOSTER_TIMEOUT_MS = 4_000L
+        const val EPISODE_FALLBACK_TIMEOUT_MS = 4_000L
         const val STREAM_CACHE_TTL_MS = 2 * 60_000L
     }
 
