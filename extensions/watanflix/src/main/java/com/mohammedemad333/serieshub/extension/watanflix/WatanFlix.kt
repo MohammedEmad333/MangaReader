@@ -198,9 +198,10 @@ class WatanFlix : AnimeHttpSource() {
 
             val title = mediaTitle(anchor)
             val thumbnail = imageUrl(anchor, url)
-            if (!looksLikeMedia(title)) return@forEach
+                ?: anchor.parent()?.let { imageUrl(it, url) }
             if (!looksLikeMediaUrl(href)) return@forEach
-            if (thumbnail.isNullOrBlank()) return@forEach
+            if (title.length < 2) return@forEach
+            if (NAVIGATION_TITLES.any { it.equals(title, ignoreCase = true) }) return@forEach
             if (!seen.add(href)) return@forEach
 
             items += SAnime.create().apply {
