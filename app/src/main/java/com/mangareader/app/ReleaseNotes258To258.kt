@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 261,
+        name = "0.261",
+        header = "WatanFlix joins SeriesHub sources",
+        body = "Adds WatanFlix as an installable SeriesHub video extension with catalogue, search, series details, episode discovery, hoster discovery, and stream handoff.",
+    ),
+    ReleaseNote(
         code = 260,
         name = "0.260",
         header = "DramaCafe joins SeriesHub sources",
