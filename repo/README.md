@@ -16,8 +16,8 @@ Legacy descriptor URL:
 
 ## Current extensions
 
-- Cima4u 17.3
-- DramaCafe 17.2
-- WatanFlix 17.2
+- Cima4u 17.4
+- DramaCafe 17.3
+- WatanFlix 17.3
 
 Each entry points to the matching APK asset on the rolling `latest` prerelease tag.
