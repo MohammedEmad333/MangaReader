@@ -22,6 +22,7 @@ internal fun HistoryHeader(
     onMediaFilterChange: (String) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    onClearView: () -> Unit,
     onClearAll: () -> Unit,
 ) {
     Row(
@@ -65,6 +66,11 @@ internal fun HistoryHeader(
                 onClick = { onMediaFilterChange(label) },
                 label = { Text(label) },
             )
+        }
+        if (historyViewIsActive(mediaFilter, searchQuery)) {
+            TextButton(onClick = onClearView) {
+                Text("Clear")
+            }
         }
     }
     HorizontalDivider()
@@ -222,3 +228,7 @@ internal fun HistoryDialogs(
         )
     }
 }
+
+
+internal fun historyViewIsActive(mediaFilter: String, searchQuery: String): Boolean =
+    normalizeHistoryMediaFilter(mediaFilter) != "All" || searchQuery.isNotBlank()
