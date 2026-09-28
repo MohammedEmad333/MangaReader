@@ -250,6 +250,11 @@ internal fun ExtensionsScreen(
         onToggleInstalledOnly = { installedOnly = !installedOnly },
         mediaFilter = mediaFilter,
         onMediaFilterChange = { mediaFilter = it },
+        onClearView = {
+            filter = ""
+            installedOnly = false
+            mediaFilter = "All"
+        },
         shownExtensions = shownExtensions,
         availableCount = available.size,
         scroll = scroll,
