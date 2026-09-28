@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 internal fun BrowseSourcesPage(
     query: String,
     onQueryChange: (String) -> Unit,
+    pinnedOnly: Boolean,
+    onPinnedOnlyChange: (Boolean) -> Unit,
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
     visibleCount: Int,
@@ -57,6 +59,11 @@ internal fun BrowseSourcesPage(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            FilterChip(
+                selected = pinnedOnly,
+                onClick = { onPinnedOnlyChange(!pinnedOnly) },
+                label = { Text("Pinned only") },
+            )
             listOf("All", "Manga", "Anime").forEach { label ->
                 FilterChip(
                     selected = mediaFilter == label,

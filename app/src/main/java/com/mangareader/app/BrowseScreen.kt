@@ -81,6 +81,12 @@ internal fun sourceMatchesQuery(row: BrowseRow, query: String): Boolean {
         row.lang.contains(needle, ignoreCase = true)
 }
 
+internal fun sourcePassesPinnedFilter(
+    sourceId: String,
+    pinnedOnly: Boolean,
+    pinnedIds: Set<String>,
+): Boolean = !pinnedOnly || sourceId in pinnedIds
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowseTab(
@@ -118,6 +124,7 @@ internal fun BrowseTab(
     var showSourceFilter by remember { mutableStateOf(false) }
     var mediaFilter by rememberSaveable { mutableStateOf(SourcePrefs.sourcesMediaFilter(context)) }
     var sourceQuery by rememberSaveable { mutableStateOf("") }
+    var pinnedOnly by rememberSaveable { mutableStateOf(false) }
     // Re-read on every entry into the composition, same as the pin set: the
     // filter screen is the only thing that changes them and it lives here.
     var hiddenIds by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
@@ -164,7 +171,8 @@ internal fun BrowseTab(
             "Anime" -> it.isAnime
             "Manga" -> !it.isAnime
             else -> true
-        } && sourceMatchesQuery(it, sourceQuery)
+        } && sourceMatchesQuery(it, sourceQuery) &&
+            sourcePassesPinnedFilter(it.id, pinnedOnly, pinnedIds)
     }
 
     val lastUsedRow = visibleRows.firstOrNull { it.id == lastUsedId }
@@ -207,7 +215,8 @@ internal fun BrowseTab(
     // row moving between the Last used section and its language group, which is
     // a stale anchor, not the wholesale reorder a position genuinely can't
     // survive.
-    val sourcesOrdering = listOf(rows.size, pinnedIds, hiddenIds, enabledLangs, mediaFilter, sourceQuery)
+    val sourcesOrdering =
+        listOf(rows.size, pinnedIds, hiddenIds, enabledLangs, mediaFilter, sourceQuery, pinnedOnly)
     scroll.sync(sourcesOrdering)
 
     if (showSourceFilter) {
@@ -259,6 +268,8 @@ internal fun BrowseTab(
                 BrowseSourcesPage(
                     query = sourceQuery,
                     onQueryChange = { sourceQuery = it },
+                    pinnedOnly = pinnedOnly,
+                    onPinnedOnlyChange = { pinnedOnly = it },
                     mediaFilter = mediaFilter,
                     onMediaFilterChange = {
                         mediaFilter = normalizeSourcesMediaFilter(it)

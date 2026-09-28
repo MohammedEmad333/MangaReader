@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 254 down to 183, newest first. */
+/** Release-note chunk 255 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 255,
+            name = "0.255",
+            header = "Filter Sources down to pinned only",
+            body = "Browse → Sources now has a Pinned only chip. It works together " +
+                "with source search, All/Manga/Anime, language visibility, and hidden-source " +
+                "settings, so the list can be narrowed to exactly the pinned sources you need.",
+        ),
         ReleaseNote(
             code = 254,
             name = "0.254",
