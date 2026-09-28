@@ -76,6 +76,7 @@ internal suspend fun searchGlobalBatch(
 
 internal class GlobalSearchState(
     initialPinnedOnly: Boolean,
+    initialHasResultsOnly: Boolean,
     initialMediaFilter: String,
     initialRecents: List<String>,
 ) {
@@ -86,7 +87,7 @@ internal class GlobalSearchState(
     var done by androidx.compose.runtime.mutableIntStateOf(0)
     var total by androidx.compose.runtime.mutableIntStateOf(0)
     var pinnedOnly by androidx.compose.runtime.mutableStateOf(initialPinnedOnly)
-    var hasResultsOnly by androidx.compose.runtime.mutableStateOf(true)
+    var hasResultsOnly by androidx.compose.runtime.mutableStateOf(initialHasResultsOnly)
     var mediaFilter by androidx.compose.runtime.mutableStateOf(normalizeGlobalSearchMediaFilter(initialMediaFilter))
     var recents by androidx.compose.runtime.mutableStateOf(initialRecents)
     // Null = all media. During migration this is pinned to the source media type
