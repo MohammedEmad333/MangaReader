@@ -25,6 +25,7 @@ object SourcePrefs {
     private const val KEY_RECENT_SEARCHES = "global_search_recents"
     private const val KEY_GLOBAL_SEARCH_MEDIA = "global_search_media_filter"
     private const val KEY_SOURCES_MEDIA = "sources_media_filter"
+    private const val KEY_BROWSE_TAB = "browse_tab"
 
     /** How many past global-search queries are remembered. */
     private const val RECENT_SEARCHES_MAX = 12
@@ -100,6 +101,13 @@ object SourcePrefs {
         prefs(context).edit()
             .putString(KEY_SOURCES_MEDIA, normalizeSourcesMediaFilter(value))
             .apply()
+    }
+
+    fun browseTab(context: Context): Int =
+        normalizeBrowseTab(prefs(context).getInt(KEY_BROWSE_TAB, 0))
+
+    fun setBrowseTab(context: Context, value: Int) {
+        prefs(context).edit().putInt(KEY_BROWSE_TAB, normalizeBrowseTab(value)).apply()
     }
 
     // ---- visibility ----
