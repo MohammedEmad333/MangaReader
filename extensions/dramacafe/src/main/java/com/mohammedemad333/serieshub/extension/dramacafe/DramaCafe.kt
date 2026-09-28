@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.animesource.extractor.SeriesHubEmbedExtractor
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,6 +31,10 @@ class DramaCafe : AnimeHttpSource() {
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
+
+    private val embedExtractor by lazy {
+        SeriesHubEmbedExtractor(client, USER_AGENT)
+    }
 
     override suspend fun getPopularAnime(page: Int): AnimesPage =
         loadCatalog(if (page <= 1) baseUrl else "$baseUrl/page/$page/")
@@ -149,6 +154,9 @@ class DramaCafe : AnimeHttpSource() {
         val url = hoster.hosterUrl
         if (url.isBlank()) return emptyList()
 
+        val hostSpecific = embedExtractor.videosFromUrl(url, baseUrl)
+        if (hostSpecific.isNotEmpty()) return hostSpecific
+
         val firstHtml = fetch(url, referer = baseUrl)
         val firstDocument = Jsoup.parse(firstHtml, url)
         val direct = extractVideos(firstHtml, firstDocument, url)
@@ -161,9 +169,14 @@ class DramaCafe : AnimeHttpSource() {
         val result = mutableListOf<Video>()
         for (nestedUrl in nested) {
             runCatching {
-                val html = fetch(nestedUrl, referer = url)
-                val document = Jsoup.parse(html, nestedUrl)
-                result += extractVideos(html, document, nestedUrl)
+                val extracted = embedExtractor.videosFromUrl(nestedUrl, url)
+                if (extracted.isNotEmpty()) {
+                    result += extracted
+                } else {
+                    val html = fetch(nestedUrl, referer = url)
+                    val document = Jsoup.parse(html, nestedUrl)
+                    result += extractVideos(html, document, nestedUrl)
+                }
             }
         }
         return result.distinctBy { it.videoUrl }
