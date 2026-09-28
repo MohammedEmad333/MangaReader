@@ -30,6 +30,7 @@ internal fun ExtensionsContent(
     onToggleInstalledOnly: () -> Unit,
     mediaFilter: String,
     onMediaFilterChange: (String) -> Unit,
+    onClearView: () -> Unit,
     shownExtensions: List<Extension>,
     availableCount: Int,
     scroll: ScrollMemory,
@@ -109,6 +110,11 @@ internal fun ExtensionsContent(
                     onClick = { onMediaFilterChange(label) },
                     label = { Text(label) },
                 )
+            }
+            if (extensionsViewIsActive(filter, installedOnly, mediaFilter)) {
+                TextButton(onClick = onClearView) {
+                    Text("Clear view")
+                }
             }
             Text(
                 "${shownExtensions.size} of $availableCount",
@@ -257,3 +263,13 @@ internal fun ExtensionDiagnosticsDialog(
         },
     )
 }
+
+
+internal fun extensionsViewIsActive(
+    filter: String,
+    installedOnly: Boolean,
+    mediaFilter: String,
+): Boolean =
+    filter.isNotBlank() ||
+        installedOnly ||
+        normalizeExtensionsMediaFilter(mediaFilter) != "All"
