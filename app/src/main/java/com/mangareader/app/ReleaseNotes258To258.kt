@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 266,
+        name = "0.266",
+        header = "Faster embedded-player detection",
+        body = "Embedded players now expose media requests directly from WebView network interception as soon as an MP4, WebM, HLS, or DASH request appears. DOM polling remains as a fallback, so compatible players can hand off streams much sooner instead of waiting through the full scan window.",
+    ),
+    ReleaseNote(
         code = 265,
         name = "0.265",
         header = "Faster streams and catalog fixes",
