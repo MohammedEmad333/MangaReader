@@ -1,7 +1,15 @@
 package com.mangareader.app
 
-/** Release-note chunk 257 down to 183, newest first. */
+/** Release-note chunk 258 down to 183, newest first. */
 internal val releaseNotes209To183: List<ReleaseNote> = listOf(
+        ReleaseNote(
+            code = 258,
+            name = "0.258",
+            header = "Global Search remembers Has results only",
+            body = "Global Search now remembers the Has results only filter across app " +
+                "restarts, alongside Pinned only and the Manga/Anime media filter. " +
+                "Reopening Yomu returns to the same search-results view.",
+        ),
         ReleaseNote(
             code = 257,
             name = "0.257",
