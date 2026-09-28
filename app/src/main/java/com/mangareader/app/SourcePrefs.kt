@@ -26,6 +26,8 @@ object SourcePrefs {
     private const val KEY_GLOBAL_SEARCH_MEDIA = "global_search_media_filter"
     private const val KEY_SOURCES_MEDIA = "sources_media_filter"
     private const val KEY_BROWSE_TAB = "browse_tab"
+    private const val KEY_SOURCES_QUERY = "sources_query"
+    private const val KEY_SOURCES_PINNED_ONLY = "sources_pinned_only"
 
     /** How many past global-search queries are remembered. */
     private const val RECENT_SEARCHES_MAX = 12
@@ -108,6 +110,22 @@ object SourcePrefs {
 
     fun setBrowseTab(context: Context, value: Int) {
         prefs(context).edit().putInt(KEY_BROWSE_TAB, normalizeBrowseTab(value)).apply()
+    }
+
+    fun sourcesQuery(context: Context): String =
+        normalizeSourcesQuery(prefs(context).getString(KEY_SOURCES_QUERY, null))
+
+    fun setSourcesQuery(context: Context, value: String) {
+        prefs(context).edit()
+            .putString(KEY_SOURCES_QUERY, normalizeSourcesQuery(value))
+            .apply()
+    }
+
+    fun sourcesPinnedOnly(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SOURCES_PINNED_ONLY, false)
+
+    fun setSourcesPinnedOnly(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SOURCES_PINNED_ONLY, value).apply()
     }
 
     // ---- visibility ----
