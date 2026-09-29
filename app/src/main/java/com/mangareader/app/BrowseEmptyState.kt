@@ -21,6 +21,7 @@ internal fun BrowseEmptyState(
     query: String,
     isLocalSource: Boolean,
     onDiagnose: () -> Unit,
+    onOpenWebView: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -58,13 +59,18 @@ internal fun BrowseEmptyState(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "The request succeeded but no titles could be read from the page. " +
-                        "The site has most likely changed and the extension needs updating. " +
-                        "Run the connection probe to check the site is reachable.",
+                        "The site may have changed, or it may have returned a browser/Cloudflare " +
+                        "challenge with HTTP 200. You can open the source in WebView first, then retry.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(12.dp))
+                if (onOpenWebView != null) {
+                    TextButton(onClick = onOpenWebView) {
+                        Text("Open source in WebView")
+                    }
+                }
                 TextButton(onClick = onDiagnose) {
                     Text("Connection probe")
                 }
