@@ -124,6 +124,7 @@ internal fun ColumnScope.BrowseScreenBody(
             query = query,
             isLocalSource = isLocalSource,
             onDiagnose = onDiagnose,
+            onOpenWebView = onSolveChallenge,
             modifier = Modifier
                 .fillMaxSize()
                 .weight(1f),
