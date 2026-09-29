@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 267,
+        name = "0.267",
+        header = "WebView recovery for empty sources",
+        body = "Remote anime sources that return an empty catalog now offer Open source in WebView. This covers managed/browser challenges that can return HTTP 200 instead of an obvious 403, including sources like Cimaleek. After the challenge is completed, Yomu automatically retries the source with the shared cookies and matching User-Agent.",
+    ),
+    ReleaseNote(
         code = 266,
         name = "0.266",
         header = "Faster embedded-player detection",
