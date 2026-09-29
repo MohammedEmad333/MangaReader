@@ -28,6 +28,7 @@ internal fun ColumnScope.EmbeddedPlayerWebView(
     onWebViewReady: (WebView) -> Unit,
     onProgress: (Int) -> Unit,
     onTitle: (String?) -> Unit,
+    onMediaRequest: (String) -> Unit,
     onShowFullscreen: (View?, WebChromeClient.CustomViewCallback?) -> Unit,
     onHideFullscreen: () -> Unit,
 ) {
@@ -48,6 +49,17 @@ internal fun ColumnScope.EmbeddedPlayerWebView(
 
                 val allowedHost = runCatching { Uri.parse(url).host }.getOrNull()
                 webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                    ): android.webkit.WebResourceResponse? {
+                        val mediaUrl = request?.url?.toString().orEmpty()
+                        if (MEDIA_REQUEST_PATTERN.containsMatchIn(mediaUrl)) {
+                            onMediaRequest(mediaUrl)
+                        }
+                        return super.shouldInterceptRequest(view, request)
+                    }
+
                     override fun shouldOverrideUrlLoading(
                         view: WebView?,
                         request: WebResourceRequest?,
@@ -144,3 +156,9 @@ internal fun ColumnScope.EmbeddedPlayerStatus(
         }
     }
 }
+
+
+private val MEDIA_REQUEST_PATTERN = Regex(
+    """\.(m3u8|mpd|mp4|webm)(?:$|[?#])""",
+    RegexOption.IGNORE_CASE,
+)
