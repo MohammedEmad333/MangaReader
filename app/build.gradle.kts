@@ -208,7 +208,7 @@ dependencies {
     // no Configuration.Provider or manifest entry to add - the only reason it's
     // here rather than a check on app start is that a schedule which only fires
     // when the app is opened isn't a schedule.
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     // :source-api has this as `implementation`, so it isn't on this module's
     // compile classpath. Needed here to build the PreferenceScreen that
     // ConfigurableSource.setupPreferenceScreen() populates.
