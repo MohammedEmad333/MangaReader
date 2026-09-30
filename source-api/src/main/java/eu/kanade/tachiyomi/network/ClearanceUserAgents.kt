@@ -57,6 +57,15 @@ object ClearanceUserAgents {
             .apply()
     }
 
+    /** Forgets the recorded UA for [host] after Cloudflare rejects its clearance. */
+    fun remove(context: Context, host: String) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(host.removePrefix("www."))
+            .apply()
+    }
+
     /** Forgets every recorded UA. For a settings screen, if one ever wants it. */
     fun clear(context: Context) {
         context.applicationContext
