@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 268,
+        name = "0.268",
+        header = "Search memory and build compatibility",
+        body = "Global Search now remembers the Has results only filter across restarts. The Android build stack and compatible AndroidX dependencies were also updated so newer WorkManager and platform libraries build cleanly on CI.",
+    ),
+    ReleaseNote(
         code = 267,
         name = "0.267",
         header = "WebView recovery for empty sources",
