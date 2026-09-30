@@ -135,7 +135,19 @@ class CloudflareInterceptor(
         // which unwinds through it. Anything added here should keep that
         // property rather than reintroduce a release that can be missed.
         return synchronized(locks.getOrPut(origin.host) { Any() }) {
-            if (hasClearance(origin)) true else runChallenge(request, origin)
+            // If Cloudflare challenged a request that already carried
+            // cf_clearance, that clearance is stale/rejected. Treating its
+            // mere presence as success is what caused the verification loop:
+            // we retried the same rejected cookie/UA pair without ever giving
+            // WebView a chance to earn a fresh one.
+            if (hasClearance(origin)) {
+                runCatching {
+                    cookieJar.remove(origin, listOf(CLEARANCE_COOKIE), maxAge = 0)
+                    CookieManager.getInstance().flush()
+                    ClearanceUserAgents.remove(context, origin.host)
+                }
+            }
+            runChallenge(request, origin)
         }
     }
 
