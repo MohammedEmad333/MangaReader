@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application") version "8.5.2" apply false
+    id("com.android.application") version "8.13.2" apply false
     // 2.2.21, not 2.0.20, and it is OkHttp that forced it. OkHttp 5.2.0 is the
     // first release carrying okhttp3.CompressionInterceptor, which current
     // extensions construct, and every OkHttp from 5.2.0 on is built with Kotlin
