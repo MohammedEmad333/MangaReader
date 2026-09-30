@@ -190,6 +190,8 @@ class DramaCafe : AnimeHttpSource() {
         val items = mutableListOf<SAnime>()
         val seen = mutableSetOf<String>()
 
+        val seriesTokens = seriesIdentityTokens(heading.ifBlank { anime.title })
+
         document.select("a[href]").forEach { anchor ->
             val href = anchor.absUrl("href").ifBlank {
                 resolve(url, anchor.attr("href"))
@@ -293,6 +295,7 @@ class DramaCafe : AnimeHttpSource() {
             ) {
                 return@forEach
             }
+            if (!matchesSeriesIdentity(text, seriesTokens)) return@forEach
             if (!seen.add(target)) return@forEach
 
             result += SEpisode.create().apply {
@@ -403,8 +406,8 @@ class DramaCafe : AnimeHttpSource() {
     }
 
     private fun mediaTitle(anchor: Element): String = (
-        anchor.attr("title").takeIf { it.isNotBlank() }
-            ?: anchor.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+        anchor.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+            ?: anchor.attr("title").takeIf { it.isNotBlank() }
             ?: anchor.text()
         ).clean()
 
@@ -419,6 +422,30 @@ class DramaCafe : AnimeHttpSource() {
         if (path.isBlank() || path == "/") return false
         return path.startsWith("/watch/") && NAVIGATION_PATHS.none { marker -> path.startsWith(marker) }
     }
+
+    private fun seriesIdentityTokens(title: String): Set<String> =
+        normalizeIdentity(title)
+            .split(" ")
+            .filter { token ->
+                token.length >= 2 &&
+                    token !in SERIES_NOISE_TOKENS &&
+                    token.toIntOrNull() == null
+            }
+            .toSet()
+
+    private fun matchesSeriesIdentity(text: String, tokens: Set<String>): Boolean {
+        if (tokens.isEmpty()) return true
+        val normalized = normalizeIdentity(text)
+        val matched = tokens.count { token -> normalized.contains(token) }
+        return matched >= minOf(2, tokens.size)
+    }
+
+    private fun normalizeIdentity(value: String): String =
+        value
+            .lowercase()
+            .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
 
     private fun episodeNumber(text: String, url: String): Int? {
         EPISODE_TEXT_PATTERN.find(text)?.groupValues?.getOrNull(1)
@@ -438,14 +465,34 @@ class DramaCafe : AnimeHttpSource() {
     }
 
     private fun imageUrl(scope: Element, base: String): String? {
-        val image = scope.selectFirst("img[data-src], img[data-lazy-src], img[src]")
+        val image = scope.selectFirst(
+            "img[data-src], img[data-lazy-src], img[data-original], " +
+                "img[data-srcset], img[srcset], img[src]",
+        )
+
+        val raw = image?.attr("data-src")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-lazy-src")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-original")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-srcset")?.takeIf { it.isNotBlank() }?.srcsetFirst()
+            ?: image?.attr("srcset")?.takeIf { it.isNotBlank() }?.srcsetFirst()
+            ?: image?.attr("src")?.takeIf { it.isNotBlank() }
+            ?: STYLE_IMAGE_PATTERN.find(scope.attr("style"))
+                ?.groupValues
+                ?.getOrNull(1)
+            ?: scope.selectFirst("[style*=background-image]")
+                ?.attr("style")
+                ?.let { STYLE_IMAGE_PATTERN.find(it)?.groupValues?.getOrNull(1) }
             ?: return null
-        val raw = image.attr("data-src").takeIf { it.isNotBlank() }
-            ?: image.attr("data-lazy-src").takeIf { it.isNotBlank() }
-            ?: image.attr("src").takeIf { it.isNotBlank() }
-            ?: return null
-        return resolve(base, raw)
+
+        return resolve(base, raw.replace("&amp;", "&"))
     }
+
+    private fun String.srcsetFirst(): String =
+        split(",")
+            .firstOrNull()
+            ?.trim()
+            ?.substringBefore(" ")
+            .orEmpty()
 
     private fun fetch(url: String, referer: String? = null): String {
         val request = Request.Builder()
@@ -550,6 +597,11 @@ class DramaCafe : AnimeHttpSource() {
             """(فيلم|مسلسل|الحلقة|مشاهدة|movie|film|series|episode)""",
             RegexOption.IGNORE_CASE,
         )
+        val SERIES_NOISE_TOKENS = setOf(
+            "مشاهدة", "مسلسل", "مسلسلات", "فيلم", "الحلقة", "الموسم",
+            "الجزء", "مدبلج", "مدبلجة", "مترجم", "مترجمة", "اون", "لاين",
+            "online", "watch", "series", "episode", "season", "fhd", "hd",
+        )
         val EPISODE_TEXT_PATTERN = Regex(
             """(?:الحلقة|episode|ep)\s*[-:#]?\s*(\d+)""",
             RegexOption.IGNORE_CASE,
@@ -568,6 +620,10 @@ class DramaCafe : AnimeHttpSource() {
         )
         val HTTP_URL_PATTERN = Regex(
             """https?:\\?/\\?/[^"'\s<>]+""",
+            RegexOption.IGNORE_CASE,
+        )
+        val STYLE_IMAGE_PATTERN = Regex(
+            """background-image\s*:\s*url\(['"]?([^'")]+)""",
             RegexOption.IGNORE_CASE,
         )
         val STATIC_ASSET_PATTERN = Regex(
