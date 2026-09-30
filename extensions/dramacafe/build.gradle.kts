@@ -14,8 +14,8 @@ android {
         applicationId = "com.mohammedemad333.serieshub.extension.dramacafe"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "17.4"
+        versionCode = 5
+        versionName = "17.5"
     }
 
     signingConfigs {
