@@ -14,8 +14,8 @@ android {
         applicationId = "com.mohammedemad333.serieshub.extension.cima4u"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "17.6"
+        versionCode = 7
+        versionName = "17.7"
     }
 
     signingConfigs {

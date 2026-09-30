@@ -14,8 +14,8 @@ android {
         applicationId = "com.mohammedemad333.serieshub.extension.watanflix"
         minSdk = 24
         targetSdk = 34
-        versionCode = 5
-        versionName = "17.5"
+        versionCode = 6
+        versionName = "17.6"
     }
 
     signingConfigs {

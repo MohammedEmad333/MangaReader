@@ -391,8 +391,8 @@ class WatanFlix : AnimeHttpSource() {
     }
 
     private fun mediaTitle(anchor: Element): String = (
-        anchor.attr("title").takeIf { it.isNotBlank() }
-            ?: anchor.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+        anchor.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+            ?: anchor.attr("title").takeIf { it.isNotBlank() }
             ?: anchor.text()
         ).clean()
 
@@ -427,14 +427,34 @@ class WatanFlix : AnimeHttpSource() {
     }
 
     private fun imageUrl(scope: Element, base: String): String? {
-        val image = scope.selectFirst("img[data-src], img[data-lazy-src], img[src]")
+        val image = scope.selectFirst(
+            "img[data-src], img[data-lazy-src], img[data-original], " +
+                "img[data-srcset], img[srcset], img[src]",
+        )
+
+        val raw = image?.attr("data-src")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-lazy-src")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-original")?.takeIf { it.isNotBlank() }
+            ?: image?.attr("data-srcset")?.takeIf { it.isNotBlank() }?.srcsetFirst()
+            ?: image?.attr("srcset")?.takeIf { it.isNotBlank() }?.srcsetFirst()
+            ?: image?.attr("src")?.takeIf { it.isNotBlank() }
+            ?: STYLE_IMAGE_PATTERN.find(scope.attr("style"))
+                ?.groupValues
+                ?.getOrNull(1)
+            ?: scope.selectFirst("[style*=background-image]")
+                ?.attr("style")
+                ?.let { STYLE_IMAGE_PATTERN.find(it)?.groupValues?.getOrNull(1) }
             ?: return null
-        val raw = image.attr("data-src").takeIf { it.isNotBlank() }
-            ?: image.attr("data-lazy-src").takeIf { it.isNotBlank() }
-            ?: image.attr("src").takeIf { it.isNotBlank() }
-            ?: return null
-        return resolve(base, raw)
+
+        return resolve(base, raw.replace("&amp;", "&"))
     }
+
+    private fun String.srcsetFirst(): String =
+        split(",")
+            .firstOrNull()
+            ?.trim()
+            ?.substringBefore(" ")
+            .orEmpty()
 
     private fun fetch(url: String, referer: String? = null): String {
         val request = Request.Builder()
@@ -559,6 +579,10 @@ class WatanFlix : AnimeHttpSource() {
         )
         val HTTP_URL_PATTERN = Regex(
             """https?:\\?/\\?/[^"'\s<>]+""",
+            RegexOption.IGNORE_CASE,
+        )
+        val STYLE_IMAGE_PATTERN = Regex(
+            """background-image\s*:\s*url\(['"]?([^'")]+)""",
             RegexOption.IGNORE_CASE,
         )
         val STATIC_ASSET_PATTERN = Regex(
