@@ -190,8 +190,6 @@ class DramaCafe : AnimeHttpSource() {
         val items = mutableListOf<SAnime>()
         val seen = mutableSetOf<String>()
 
-        val seriesTokens = seriesIdentityTokens(heading.ifBlank { anime.title })
-
         document.select("a[href]").forEach { anchor ->
             val href = anchor.absUrl("href").ifBlank {
                 resolve(url, anchor.attr("href"))
@@ -264,6 +262,7 @@ class DramaCafe : AnimeHttpSource() {
         val result = mutableListOf<SEpisode>()
         val seen = mutableSetOf<String>()
         val heading = firstText(document, "h1", ".title", ".post-title")
+        val seriesTokens = seriesIdentityTokens(heading.ifBlank { anime.title })
 
         if (heading.contains("فيلم", ignoreCase = true) ||
             anime.title.contains("فيلم", ignoreCase = true)
