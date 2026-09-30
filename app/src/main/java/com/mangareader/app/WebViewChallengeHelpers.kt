@@ -95,6 +95,22 @@ internal fun hasClearanceCookie(url: String): Boolean =
             ?.any { it.substringBefore("=").trim() == CLEARANCE_COOKIE } == true
     }.getOrDefault(false)
 
+/**
+ * Drops a clearance cookie that Cloudflare has already rejected.
+ *
+ * ChallengeWebViewScreen is only opened after the source request was challenged,
+ * so an existing cf_clearance at that point is stale. Keeping it causes
+ * Cloudflare to keep evaluating the same rejected session forever.
+ */
+internal fun clearClearanceCookie(url: String) {
+    runCatching {
+        CookieManager.getInstance().apply {
+            setCookie(url, "$CLEARANCE_COOKIE=; Max-Age=0; Path=/")
+            flush()
+        }
+    }
+}
+
 /** Host part of a URL for the title bar, falling back to the whole string. */
 internal fun hostOf(url: String): String =
     runCatching { android.net.Uri.parse(url).host ?: url }.getOrDefault(url)
