@@ -97,17 +97,20 @@ internal fun ChallengeWebViewScreen(
     // would close the app.
     var rendererDied by remember(url) { mutableStateOf(false) }
 
-    // Whether clearance existed *before* the user got here. If it did, its
-    // presence proves nothing — the request 403'd while holding it, so it was
-    // stale or rejected — and auto-finishing on it would bounce straight back to
-    // the same error. In that case the screen waits for the Done button instead.
-    val hadClearance = remember(url) { hasClearanceCookie(url) }
-
     // The UA this WebView presents. Read rather than set — see the note above —
     // and held so it can be recorded against the host once a challenge passes.
     var nativeUserAgent by remember(url) { mutableStateOf<String?>(null) }
 
     val webView = remember(url) {
+        // This screen is entered only after the source request was challenged.
+        // If cf_clearance is still present, Cloudflare has already rejected that
+        // session. Drop it (and its bound UA) before loading the challenge so a
+        // fresh verification can actually be issued.
+        if (hasClearanceCookie(url)) {
+            clearClearanceCookie(url)
+            ClearanceUserAgents.remove(context, hostOf(url))
+        }
+
         val view = WebView(context)
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = true
@@ -154,8 +157,7 @@ internal fun ChallengeWebViewScreen(
     // Polling, not onPageFinished: a challenge runs through several navigations
     // and the only event that means anything is the cookie turning up. Same
     // reasoning as the interceptor, which learned it the hard way.
-    LaunchedEffect(url, hadClearance) {
-        if (hadClearance) return@LaunchedEffect
+    LaunchedEffect(url) {
         // A dead renderer will never write the cookie, so the poll has to end
         // rather than spin for as long as the screen is open.
         while (!rendererDied && !hasClearanceCookie(url)) {
