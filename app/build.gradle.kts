@@ -30,8 +30,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 267
-        versionName = "0.267"
+        versionCode = 268
+        versionName = "0.268"
     }
 
     signingConfigs {
@@ -185,7 +185,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.2")
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
@@ -208,7 +208,7 @@ dependencies {
     // no Configuration.Provider or manifest entry to add - the only reason it's
     // here rather than a check on app start is that a schedule which only fires
     // when the app is opened isn't a schedule.
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     // :source-api has this as `implementation`, so it isn't on this module's
     // compile classpath. Needed here to build the PreferenceScreen that
     // ConfigurableSource.setupPreferenceScreen() populates.

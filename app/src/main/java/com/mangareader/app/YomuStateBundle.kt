@@ -12,6 +12,7 @@ internal class YomuStateBundle(
     val reader = ReaderSessionState()
     val search = GlobalSearchState(
         initialPinnedOnly = startup.searchPinnedOnly,
+        initialHasResultsOnly = startup.searchHasResultsOnly,
         initialMediaFilter = startup.searchMediaFilter,
         initialRecents = startup.recentSearches,
     )

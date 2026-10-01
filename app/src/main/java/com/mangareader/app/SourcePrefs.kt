@@ -24,6 +24,7 @@ object SourcePrefs {
     private const val KEY_SHOW_NSFW = "show_nsfw"
     private const val KEY_RECENT_SEARCHES = "global_search_recents"
     private const val KEY_GLOBAL_SEARCH_MEDIA = "global_search_media_filter"
+    private const val KEY_GLOBAL_SEARCH_HAS_RESULTS = "global_search_has_results_only"
     private const val KEY_SOURCES_MEDIA = "sources_media_filter"
     private const val KEY_BROWSE_TAB = "browse_tab"
     private const val KEY_SOURCES_QUERY = "sources_query"
@@ -92,6 +93,13 @@ object SourcePrefs {
         prefs(context).edit()
             .putString(KEY_GLOBAL_SEARCH_MEDIA, normalizeGlobalSearchMediaFilter(value))
             .apply()
+    }
+
+    fun globalSearchHasResultsOnly(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_GLOBAL_SEARCH_HAS_RESULTS, true)
+
+    fun setGlobalSearchHasResultsOnly(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_GLOBAL_SEARCH_HAS_RESULTS, value).apply()
     }
 
     fun sourcesMediaFilter(context: Context): String =

@@ -36,7 +36,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.13"
           # Explicit: write the cache from main so later runs can read it.
           cache-read-only: false
 
