@@ -56,6 +56,10 @@ internal object DownloadQueueStore {
                 (0 until arr.length())
                     .map { DownloadItem.fromJson(arr.getJSONObject(it)) }
                     .filterNot { Downloads.isComplete(context, it.chapterId) }
+                    // Older/corrupted snapshots may contain the same chapter
+                    // more than once. The queue UI keys rows by chapterId, so
+                    // normalize persisted state before it reaches Compose.
+                    .distinctBy { it.chapterId }
             }
             .orEmpty()
 
@@ -74,6 +78,10 @@ internal object DownloadQueueStore {
                 (0 until arr.length())
                     .map { FailedDownload.fromJson(arr.getJSONObject(it)) }
                     .filterNot { Downloads.isComplete(context, it.item.chapterId) }
+                    // Failed rows use the same chapter identity for their lazy
+                    // key. Keep the newest stored occurrence and do not allow a
+                    // malformed snapshot to crash the failure section either.
+                    .distinctBy { it.item.chapterId }
             }
             .orEmpty()
 
