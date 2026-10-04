@@ -1,10 +1,15 @@
 package com.mangareader.app
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Environment
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.CancellationException
@@ -34,14 +39,14 @@ internal class AnimeHlsDownloadWorker(
 
         var episodeDir: File? = null
         try {
-            setProgress(progressData(title, quality, "Preparing", 0))
+            reportProgress(title, quality, "Preparing", 0)
             val client = OkHttpClient.Builder()
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build()
             episodeDir = createEpisodeDirectory(applicationContext, title)
 
-            setProgress(progressData(title, quality, "Reading playlist", 1))
+            reportProgress(title, quality, "Reading playlist", 1)
             val rootText = fetchText(client, url, headers)
             requireHlsPlaylist(rootText)
             val (mediaUrl, mediaText) = if (isMasterPlaylist(rootText)) {
@@ -79,7 +84,7 @@ internal class AnimeHlsDownloadWorker(
                     downloadedAt = System.currentTimeMillis(),
                 ),
             )
-            setProgress(progressData(title, quality, "Complete", 100))
+            reportProgress(title, quality, "Complete", 100)
             Result.success(workDataOf(KEY_OUTPUT_PATH to localPlaylist.absolutePath))
         } catch (cancelled: CancellationException) {
             episodeDir?.deleteRecursively()
@@ -139,11 +144,53 @@ internal class AnimeHlsDownloadWorker(
                     rewritten += ensureDownloaded(line.trim(), "seg")
                     completed++
                     val percent = ((completed * 98f) / total).toInt().coerceIn(2, 99)
-                    setProgress(progressData(title, quality, "Downloading segments", percent))
+                    reportProgress(title, quality, "Downloading segments", percent)
                 }
             }
         }
         return rewritten.joinToString("\n")
+    }
+
+    private suspend fun reportProgress(title: String, quality: String, stage: String, percent: Int) {
+        setProgress(progressData(title, quality, stage, percent))
+        setForeground(foregroundInfo(title, quality, stage, percent))
+    }
+
+    private fun foregroundInfo(title: String, quality: String, stage: String, percent: Int): ForegroundInfo {
+        ensureNotificationChannel()
+        val detail = buildString {
+            append(stage)
+            if (quality.isNotBlank()) append(" • ").append(quality)
+        }
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(title)
+            .setContentText(detail)
+            .setOnlyAlertOnce(true)
+            .setOngoing(percent < 100)
+            .setProgress(100, percent.coerceIn(0, 100), percent <= 1)
+            .build()
+        return ForegroundInfo(
+            NOTIFICATION_ID_BASE + (id.hashCode() and 0x0FFF),
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+        )
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                "Anime downloads",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Progress for offline anime downloads"
+                setShowBadge(false)
+            },
+        )
     }
 
     private suspend fun rewriteUriAttribute(
@@ -272,6 +319,8 @@ internal class AnimeHlsDownloadWorker(
         const val KEY_STAGE = "stage"
         const val KEY_PERCENT = "percent"
         private const val LOCAL_PLAYLIST = "offline.m3u8"
+        private const val CHANNEL_ID = "anime_hls_downloads"
+        private const val NOTIFICATION_ID_BASE = 4700
         private val URI_ATTRIBUTE = Regex("URI=\\\"([^\\\"]+)\\\"")
 
         fun input(video: PlayableVideo): Data = workDataOf(
