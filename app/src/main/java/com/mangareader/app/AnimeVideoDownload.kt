@@ -6,7 +6,9 @@ import android.net.Uri
 import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.io.File
@@ -32,8 +34,12 @@ internal object AnimeVideoDownload {
         }
 
         if (looksLikeHlsUrl(video.url)) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
             val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
                 .setInputData(AnimeHlsDownloadWorker.input(video))
+                .setConstraints(constraints)
                 .addTag(AnimeHlsDownloadWorker.TAG)
                 .build()
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
