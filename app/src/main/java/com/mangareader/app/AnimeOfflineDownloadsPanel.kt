@@ -52,11 +52,11 @@ private data class ActiveAnimeDownload(
 
 private data class ActiveDirectAnimeDownload(
     val id: Long,
+    val path: String,
     val title: String,
     val quality: String,
     val stage: String,
     val percent: Int,
-    val failed: Boolean,
 )
 
 private data class DirectDownloadsSnapshot(
@@ -189,12 +189,7 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                     onCancel = {
                         systemDownloadManager.remove(item.id)
                         AnimeDirectDownloadIndex.remove(context, item.id)
-                        File(
-                            AnimeDirectDownloadIndex.list(context)
-                                .firstOrNull { it.id == item.id }
-                                ?.path
-                                .orEmpty(),
-                        ).takeIf { it.path.isNotBlank() }?.delete()
+                        File(item.path).delete()
                     },
                 )
             }
@@ -381,45 +376,45 @@ private fun pollDirectDownloads(
                     } else {
                         active += ActiveDirectAnimeDownload(
                             id = item.id,
+                            path = item.path,
                             title = item.title,
                             quality = item.quality,
                             stage = "Finishing",
                             percent = 100,
-                            failed = false,
                         )
                     }
                 }
                 DownloadManager.STATUS_FAILED -> active += ActiveDirectAnimeDownload(
                     id = item.id,
+                    path = item.path,
                     title = item.title,
                     quality = item.quality,
                     stage = "Failed",
                     percent = percent,
-                    failed = true,
                 )
                 DownloadManager.STATUS_PAUSED -> active += ActiveDirectAnimeDownload(
                     id = item.id,
+                    path = item.path,
                     title = item.title,
                     quality = item.quality,
                     stage = "Paused",
                     percent = percent,
-                    failed = false,
                 )
                 DownloadManager.STATUS_RUNNING -> active += ActiveDirectAnimeDownload(
                     id = item.id,
+                    path = item.path,
                     title = item.title,
                     quality = item.quality,
                     stage = "Downloading file",
                     percent = percent,
-                    failed = false,
                 )
                 else -> active += ActiveDirectAnimeDownload(
                     id = item.id,
+                    path = item.path,
                     title = item.title,
                     quality = item.quality,
                     stage = "Queued",
                     percent = percent,
-                    failed = false,
                 )
             }
         }
