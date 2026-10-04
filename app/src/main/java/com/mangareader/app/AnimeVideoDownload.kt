@@ -6,8 +6,10 @@ import android.net.Uri
 import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 
-/** Queues the currently selected anime stream in Android's system downloader. */
+/** Queues the currently selected anime stream for offline download. */
 internal object AnimeVideoDownload {
     fun enqueue(context: Context, video: PlayableVideo): Long? {
         val uri = runCatching { Uri.parse(video.url) }.getOrNull()
@@ -17,11 +19,14 @@ internal object AnimeVideoDownload {
         }
 
         if (looksLikeHls(video.url)) {
-            Toast.makeText(
-                context,
-                "HLS streams cannot be saved as a single file yet. Choose another quality/source when available.",
-                Toast.LENGTH_LONG,
-            ).show()
+            val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
+                .setInputData(AnimeHlsDownloadWorker.input(video))
+                .addTag("anime-hls-download")
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueue(work)
+            Toast.makeText(context, "HLS download started", Toast.LENGTH_SHORT).show()
+            // DownloadManager ids are Long; WorkManager uses UUIDs. Returning null here
+            // keeps the old API compatible while the request is still successfully queued.
             return null
         }
 
