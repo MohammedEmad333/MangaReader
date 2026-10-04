@@ -63,7 +63,13 @@ object Library {
         return try {
             StartupTimings.once("Library parse") {
                 val arr = JSONArray(raw)
-                (0 until arr.length()).map { LibraryEntry.fromJson(arr.getJSONObject(it)) }
+                (0 until arr.length())
+                    .map { LibraryEntry.fromJson(arr.getJSONObject(it)) }
+                    // Old backups and earlier imports could persist duplicate
+                    // series ids. LibraryGrid uses seriesId as its Compose lazy
+                    // key, so normalize on read as well as on write to make
+                    // existing data safe immediately after upgrading.
+                    .distinctBy { it.seriesId }
                     .also {
                         listCache = it
                         listRaw = raw
@@ -75,13 +81,14 @@ object Library {
     }
 
     private fun save(context: Context, items: List<LibraryEntry>) {
+        val uniqueItems = items.distinctBy { it.seriesId }
         val arr = JSONArray()
-        items.forEach { arr.put(it.toJson()) }
+        uniqueItems.forEach { arr.put(it.toJson()) }
         val text = arr.toString()
         prefs(context).edit().putString(KEY, text).apply()
         // Seeded rather than cleared: the caller usually reads straight back,
         // and this saves re-parsing what it just serialised.
-        listCache = items
+        listCache = uniqueItems
         listRaw = text
     }
 
@@ -105,9 +112,10 @@ object Library {
      */
     fun mergeAll(context: Context, entries: List<LibraryEntry>) {
         if (entries.isEmpty()) return
-        val incoming = entries.map { it.seriesId }.toHashSet()
+        val uniqueEntries = entries.distinctBy { it.seriesId }
+        val incoming = uniqueEntries.map { it.seriesId }.toHashSet()
         val kept = list(context).filterNot { it.seriesId in incoming }
-        save(context, entries + kept)
+        save(context, uniqueEntries + kept)
     }
 
     /**
