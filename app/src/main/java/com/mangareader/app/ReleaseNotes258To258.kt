@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 269,
+        name = "0.269",
+        header = "Duplicate-result crash fixes",
+        body = "Yomu now safely removes duplicate extension packages and duplicate series returned by sources before rendering lazy lists and grids. This fixes Compose key crashes seen in Extensions, Browse, and Global Search when a repository or source returns the same item more than once.",
+    ),
+    ReleaseNote(
         code = 268,
         name = "0.268",
         header = "Search memory and build compatibility",
