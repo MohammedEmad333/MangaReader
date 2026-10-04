@@ -148,7 +148,7 @@ internal fun VideoPlayerScreen(
         context,
     ) {
         val requestHeaders = selectedVideo.headers.toMutableMap().apply {
-            if (referer.isNotBlank() && "Referer" !in this) {
+            if (referer.isNotBlank() && keys.none { it.equals("Referer", ignoreCase = true) }) {
                 put("Referer", referer)
             }
         }
@@ -321,22 +321,20 @@ internal fun VideoPlayerScreen(
         AndroidView(
             factory = { context ->
                 PlayerView(context).apply {
-                    useController = !inPictureInPicture && !controlsLocked
-                    controllerAutoShow = false
+                    useController = false
                     this.player = player
                     resizeMode = videoResizeMode.playerViewMode
                     subtitleView?.apply {
                         setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.sp)
                         setStyle(subtitleCaptionStyle(subtitleBackground))
-                    setBottomPaddingFraction(subtitlePosition.bottomPaddingFraction)
                         setBottomPaddingFraction(subtitlePosition.bottomPaddingFraction)
                     }
                     keepScreenOn = true
-                    if (controlsVisible && !controlsLocked) showController() else hideController()
                 }
             },
             update = { view ->
                 view.player = player
+                view.useController = false
                 view.resizeMode = videoResizeMode.playerViewMode
                 view.subtitleView?.apply {
                     setFixedTextSize(
@@ -344,13 +342,7 @@ internal fun VideoPlayerScreen(
                         subtitleSize.sp,
                     )
                     setStyle(subtitleCaptionStyle(subtitleBackground))
-                }
-                view.useController = !inPictureInPicture && !controlsLocked
-                view.controllerAutoShow = false
-                if (controlsVisible && !controlsLocked && !inPictureInPicture) {
-                    view.showController()
-                } else {
-                    view.hideController()
+                    setBottomPaddingFraction(subtitlePosition.bottomPaddingFraction)
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -380,6 +372,14 @@ internal fun VideoPlayerScreen(
                 playing = playing,
                 currentPositionMs = currentPositionMs,
                 durationMs = durationMs,
+                onDownload = { video ->
+                    val headers = video.headers.toMutableMap().apply {
+                        if (referer.isNotBlank() && keys.none { it.equals("Referer", ignoreCase = true) }) {
+                            put("Referer", referer)
+                        }
+                    }
+                    AnimeVideoDownload.enqueue(context, video.copy(headers = headers))
+                },
                 onStreamChange = { next ->
                     if (next.url != selectedVideo.url) {
                         switchPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -513,8 +513,8 @@ internal fun VideoPlayerScreen(
                     controlsVisible = false
                 },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 12.dp),
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp),
             )
         }
 
