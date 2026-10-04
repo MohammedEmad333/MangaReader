@@ -31,7 +31,7 @@ internal object AnimeVideoDownload {
             return null
         }
 
-        if (looksLikeHls(video.url)) {
+        if (looksLikeHlsUrl(video.url)) {
             val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
                 .setInputData(AnimeHlsDownloadWorker.input(video))
                 .addTag(AnimeHlsDownloadWorker.TAG)
@@ -131,9 +131,6 @@ internal object AnimeVideoDownload {
             .take(12)
             .joinToString("") { "%02x".format(it) }
 
-    private fun looksLikeHls(url: String): Boolean =
-        url.substringBefore('?').lowercase().endsWith(".m3u8")
-
     private fun extensionFor(url: String): String {
         val path = Uri.parse(url).lastPathSegment.orEmpty().substringBefore('?')
         val ext = MimeTypeMap.getFileExtensionFromUrl(path).lowercase()
@@ -146,4 +143,21 @@ internal object AnimeVideoDownload {
             .replace(Regex("\\s+"), " ")
             .take(96)
             .ifBlank { "Yomu episode" }
+}
+
+/** Conservative URL-only HLS detection for normal and signed manifest URLs. */
+internal fun looksLikeHlsUrl(url: String): Boolean {
+    val normalized = url.trim().lowercase()
+    if (normalized.substringBefore('?').substringBefore('#').endsWith(".m3u8")) return true
+
+    val query = normalized.substringAfter('?', "").substringBefore('#')
+    if (query.isBlank()) return false
+    if (query.contains(".m3u8")) return true
+
+    return query.split('&').any { part ->
+        val key = part.substringBefore('=').trim()
+        val value = part.substringAfter('=', "").trim()
+        key in setOf("format", "type", "stream", "manifest", "playlist") &&
+            value in setOf("hls", "m3u8", "application/vnd.apple.mpegurl", "application/x-mpegurl")
+    }
 }

@@ -43,10 +43,13 @@ internal class AnimeHlsDownloadWorker(
 
             setProgress(progressData(title, quality, "Reading playlist", 1))
             val rootText = fetchText(client, url, headers)
+            requireHlsPlaylist(rootText)
             val (mediaUrl, mediaText) = if (isMasterPlaylist(rootText)) {
                 val variant = chooseVariant(url, rootText, quality)
                     ?: error("HLS master playlist has no playable variants")
-                variant to fetchText(client, variant, headers)
+                val variantText = fetchText(client, variant, headers)
+                requireHlsPlaylist(variantText)
+                variant to variantText
             } else {
                 url to rootText
             }
@@ -98,7 +101,8 @@ internal class AnimeHlsDownloadWorker(
     ): String {
         val lines = playlist.lines()
         val mediaUris = lines.filter { it.isNotBlank() && !it.startsWith("#") }
-        val total = mediaUris.size.coerceAtLeast(1)
+        check(mediaUris.isNotEmpty()) { "HLS playlist has no media segments" }
+        val total = mediaUris.size
         var completed = 0
         val localNames = linkedMapOf<String, String>()
 
@@ -181,6 +185,8 @@ internal class AnimeHlsDownloadWorker(
     private fun fetchText(client: OkHttpClient, url: String, headers: Map<String, String>): String {
         client.newCall(request(url, headers)).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} while fetching playlist")
+            val contentType = response.header("Content-Type").orEmpty().lowercase()
+            if (contentType.contains("text/html")) error("Server returned HTML instead of an HLS playlist")
             return response.body.string()
         }
     }
@@ -208,6 +214,11 @@ internal class AnimeHlsDownloadWorker(
                 if (name.isNotBlank() && value.isNotBlank()) header(name, value)
             }
         }.build()
+
+    private fun requireHlsPlaylist(text: String) {
+        val normalized = text.trimStart { it == '\uFEFF' || it.isWhitespace() }
+        check(normalized.startsWith("#EXTM3U")) { "Server did not return a valid HLS playlist" }
+    }
 
     private fun isMasterPlaylist(text: String): Boolean = text.contains("#EXT-X-STREAM-INF:")
 
