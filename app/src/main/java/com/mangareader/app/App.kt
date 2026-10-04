@@ -1,8 +1,13 @@
 package com.mangareader.app
 
 import android.app.Application
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
+import androidx.core.content.ContextCompat
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
@@ -15,6 +20,7 @@ import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
+import kotlin.concurrent.thread
 
 /**
  * Registers the dependencies Tachiyomi extensions look up via Injekt.
@@ -24,6 +30,16 @@ import uy.kohesive.injekt.api.get
  * first real call fails — so this must run before ExtensionLoader.loadAll().
  */
 class App : Application(), ImageLoaderFactory {
+
+    private val animeDownloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            thread(name = "anime-download-complete", isDaemon = true) {
+                AnimeDirectDownloadReconciler.reconcileId(context.applicationContext, id)
+            }
+        }
+    }
 
     /**
      * The earliest hook this app has.
@@ -46,6 +62,16 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Injekt.importModule(AppModule(this))
+
+        ContextCompat.registerReceiver(
+            this,
+            animeDownloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        thread(name = "anime-download-reconcile", isDaemon = true) {
+            AnimeDirectDownloadReconciler.reconcileAll(this)
+        }
     }
 
     /**
