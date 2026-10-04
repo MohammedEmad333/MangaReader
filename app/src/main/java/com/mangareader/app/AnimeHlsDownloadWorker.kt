@@ -1,0 +1,251 @@
+package com.mangareader.app
+
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
+
+/** Downloads an HLS episode as a real offline package (playlist + segments + keys/maps). */
+internal class AnimeHlsDownloadWorker(
+    appContext: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val url = inputData.getString(KEY_URL).orEmpty()
+        val title = inputData.getString(KEY_TITLE).orEmpty().ifBlank { "Yomu episode" }
+        val quality = inputData.getString(KEY_QUALITY).orEmpty()
+        val headers = decodeHeaders(inputData.getString(KEY_HEADERS).orEmpty())
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return@withContext Result.failure()
+
+        runCatching {
+            val client = OkHttpClient.Builder()
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+            val episodeDir = createEpisodeDirectory(applicationContext, title)
+            val rootText = fetchText(client, url, headers)
+            val (mediaUrl, mediaText) = if (isMasterPlaylist(rootText)) {
+                val variant = chooseVariant(url, rootText, quality)
+                    ?: error("HLS master playlist has no playable variants")
+                variant to fetchText(client, variant, headers)
+            } else {
+                url to rootText
+            }
+
+            val rewritten = downloadMediaPlaylist(
+                client = client,
+                playlistUrl = mediaUrl,
+                playlist = mediaText,
+                headers = headers,
+                outputDir = episodeDir,
+            )
+            val localPlaylist = File(episodeDir, LOCAL_PLAYLIST)
+            localPlaylist.writeText(rewritten)
+            File(episodeDir, ".yomu-title").writeText(title)
+            File(episodeDir, ".yomu-source").writeText(url)
+            AnimeOfflineIndex.record(
+                applicationContext,
+                AnimeOfflineItem(
+                    title = title,
+                    path = localPlaylist.absolutePath,
+                    sourceUrl = url,
+                    quality = quality,
+                    downloadedAt = System.currentTimeMillis(),
+                ),
+            )
+            setProgress(workDataOf("stage" to "done", "percent" to 100))
+            localPlaylist.absolutePath
+        }.fold(
+            onSuccess = { outputPath -> Result.success(workDataOf(KEY_OUTPUT_PATH to outputPath)) },
+            onFailure = { Result.failure(workDataOf(KEY_ERROR to (it.message ?: "HLS download failed"))) },
+        )
+    }
+
+    private suspend fun downloadMediaPlaylist(
+        client: OkHttpClient,
+        playlistUrl: String,
+        playlist: String,
+        headers: Map<String, String>,
+        outputDir: File,
+    ): String {
+        val lines = playlist.lines()
+        val mediaUris = lines.filter { it.isNotBlank() && !it.startsWith("#") }
+        val total = mediaUris.size.coerceAtLeast(1)
+        var completed = 0
+        val localNames = linkedMapOf<String, String>()
+
+        fun localName(remote: String, hint: String): String = localNames.getOrPut(remote) {
+            val path = runCatching { URI(remote).path }.getOrNull().orEmpty()
+            val ext = path.substringAfterLast('.', "").takeIf { it.length in 1..5 }?.let { ".$it" }.orEmpty()
+            hint + "-" + sha1(remote).take(12) + ext
+        }
+
+        suspend fun ensureDownloaded(rawUri: String, hint: String): String {
+            val absolute = resolveUrl(playlistUrl, rawUri)
+            val name = localName(absolute, hint)
+            val file = File(outputDir, name)
+            if (!file.exists() || file.length() == 0L) {
+                fetchBytes(client, absolute, headers, file)
+            }
+            return name
+        }
+
+        val rewritten = mutableListOf<String>()
+        for (line in lines) {
+            when {
+                line.isBlank() -> rewritten += line
+                line.startsWith("#EXT-X-KEY:") -> {
+                    rewritten += rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "key") }
+                }
+                line.startsWith("#EXT-X-MAP:") -> {
+                    rewritten += rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "init") }
+                }
+                line.startsWith("#") -> rewritten += line
+                else -> {
+                    rewritten += ensureDownloaded(line.trim(), "seg")
+                    completed++
+                    val percent = ((completed * 100f) / total).toInt().coerceIn(0, 99)
+                    setProgress(workDataOf("stage" to "segments", "percent" to percent))
+                }
+            }
+        }
+        return rewritten.joinToString("\n")
+    }
+
+    private suspend fun rewriteUriAttribute(
+        line: String,
+        download: suspend (String) -> String,
+    ): String {
+        val match = URI_ATTRIBUTE.find(line) ?: return line
+        val local = download(match.groupValues[1])
+        return line.replaceRange(match.range, "URI=\"$local\"")
+    }
+
+    private fun chooseVariant(masterUrl: String, playlist: String, quality: String): String? {
+        val wantedHeight = Regex("(\\d{3,4})p?", RegexOption.IGNORE_CASE)
+            .find(quality)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val lines = playlist.lines()
+        val variants = mutableListOf<Variant>()
+        var info: String? = null
+        for (line in lines) {
+            if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                info = line
+            } else if (info != null && line.isNotBlank() && !line.startsWith("#")) {
+                val streamInfo = info ?: continue
+                val height = Regex("RESOLUTION=\\d+x(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(streamInfo)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val bandwidth = Regex("BANDWIDTH=(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(streamInfo)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                variants += Variant(resolveUrl(masterUrl, line.trim()), height, bandwidth)
+                info = null
+            }
+        }
+        if (variants.isEmpty()) return null
+        return if (wantedHeight != null) {
+            variants.minByOrNull { kotlin.math.abs((it.height ?: wantedHeight) - wantedHeight) }?.url
+        } else {
+            variants.maxByOrNull { it.bandwidth }?.url
+        }
+    }
+
+    private fun fetchText(client: OkHttpClient, url: String, headers: Map<String, String>): String {
+        client.newCall(request(url, headers)).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code} while fetching playlist")
+            return response.body.string()
+        }
+    }
+
+    private fun fetchBytes(
+        client: OkHttpClient,
+        url: String,
+        headers: Map<String, String>,
+        destination: File,
+    ) {
+        client.newCall(request(url, headers)).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code} while downloading segment")
+            val temp = File(destination.parentFile, destination.name + ".part")
+            temp.outputStream().use { output -> response.body.byteStream().copyTo(output) }
+            if (!temp.renameTo(destination)) {
+                temp.copyTo(destination, overwrite = true)
+                temp.delete()
+            }
+        }
+    }
+
+    private fun request(url: String, headers: Map<String, String>): Request =
+        Request.Builder().url(url).apply {
+            headers.forEach { (name, value) ->
+                if (name.isNotBlank() && value.isNotBlank()) header(name, value)
+            }
+        }.build()
+
+    private fun isMasterPlaylist(text: String): Boolean = text.contains("#EXT-X-STREAM-INF:")
+
+    private fun resolveUrl(base: String, child: String): String = URI(base).resolve(child).toString()
+
+    private fun createEpisodeDirectory(context: Context, title: String): File {
+        val publicRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val canWritePublic = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        val root = if (canWritePublic) {
+            File(publicRoot, "Yomu/Anime")
+        } else {
+            File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Yomu/Anime")
+        }
+        val safe = title.trim()
+            .replace(Regex("[\\/:*?\"<>|]+"), "_")
+            .replace(Regex("\\s+"), " ")
+            .take(96)
+            .ifBlank { "Yomu episode" }
+        var dir = File(root, safe)
+        var suffix = 2
+        while (dir.exists() && File(dir, LOCAL_PLAYLIST).exists()) {
+            dir = File(root, "$safe ($suffix)")
+            suffix++
+        }
+        check(dir.mkdirs() || dir.isDirectory) { "Could not create anime download folder" }
+        return dir
+    }
+
+    private fun sha1(value: String): String = MessageDigest.getInstance("SHA-1")
+        .digest(value.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
+    private data class Variant(val url: String, val height: Int?, val bandwidth: Long)
+
+    companion object {
+        const val KEY_URL = "url"
+        const val KEY_TITLE = "title"
+        const val KEY_QUALITY = "quality"
+        const val KEY_HEADERS = "headers"
+        const val KEY_OUTPUT_PATH = "output_path"
+        const val KEY_ERROR = "error"
+        private const val LOCAL_PLAYLIST = "offline.m3u8"
+        private val URI_ATTRIBUTE = Regex("URI=\\\"([^\\\"]+)\\\"")
+
+        fun input(video: PlayableVideo): Data = workDataOf(
+            KEY_URL to video.url,
+            KEY_TITLE to video.episodeTitle.ifBlank { video.title.ifBlank { "Yomu episode" } },
+            KEY_QUALITY to video.title,
+            KEY_HEADERS to JSONObject(video.headers).toString(),
+        )
+
+        private fun decodeHeaders(raw: String): Map<String, String> = runCatching {
+            val json = JSONObject(raw)
+            buildMap {
+                json.keys().forEach { key -> put(key, json.optString(key)) }
+            }
+        }.getOrDefault(emptyMap())
+    }
+}
