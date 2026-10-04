@@ -7,7 +7,10 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,12 +32,16 @@ internal class AnimeHlsDownloadWorker(
         val headers = decodeHeaders(inputData.getString(KEY_HEADERS).orEmpty())
         if (!url.startsWith("http://") && !url.startsWith("https://")) return@withContext Result.failure()
 
-        runCatching {
+        var episodeDir: File? = null
+        try {
+            setProgress(workDataOf(KEY_STAGE to "Preparing", KEY_PERCENT to 0))
             val client = OkHttpClient.Builder()
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build()
-            val episodeDir = createEpisodeDirectory(applicationContext, title)
+            episodeDir = createEpisodeDirectory(applicationContext, title)
+
+            setProgress(workDataOf(KEY_STAGE to "Reading playlist", KEY_PERCENT to 1))
             val rootText = fetchText(client, url, headers)
             val (mediaUrl, mediaText) = if (isMasterPlaylist(rootText)) {
                 val variant = chooseVariant(url, rootText, quality)
@@ -51,6 +58,8 @@ internal class AnimeHlsDownloadWorker(
                 headers = headers,
                 outputDir = episodeDir,
             )
+            currentCoroutineContext().ensureActive()
+
             val localPlaylist = File(episodeDir, LOCAL_PLAYLIST)
             localPlaylist.writeText(rewritten)
             File(episodeDir, ".yomu-title").writeText(title)
@@ -65,12 +74,15 @@ internal class AnimeHlsDownloadWorker(
                     downloadedAt = System.currentTimeMillis(),
                 ),
             )
-            setProgress(workDataOf("stage" to "done", "percent" to 100))
-            localPlaylist.absolutePath
-        }.fold(
-            onSuccess = { outputPath -> Result.success(workDataOf(KEY_OUTPUT_PATH to outputPath)) },
-            onFailure = { Result.failure(workDataOf(KEY_ERROR to (it.message ?: "HLS download failed"))) },
-        )
+            setProgress(workDataOf(KEY_STAGE to "Complete", KEY_PERCENT to 100))
+            Result.success(workDataOf(KEY_OUTPUT_PATH to localPlaylist.absolutePath))
+        } catch (cancelled: CancellationException) {
+            episodeDir?.deleteRecursively()
+            throw cancelled
+        } catch (error: Throwable) {
+            episodeDir?.deleteRecursively()
+            Result.failure(workDataOf(KEY_ERROR to (error.message ?: "HLS download failed")))
+        }
     }
 
     private suspend fun downloadMediaPlaylist(
@@ -93,6 +105,7 @@ internal class AnimeHlsDownloadWorker(
         }
 
         suspend fun ensureDownloaded(rawUri: String, hint: String): String {
+            currentCoroutineContext().ensureActive()
             val absolute = resolveUrl(playlistUrl, rawUri)
             val name = localName(absolute, hint)
             val file = File(outputDir, name)
@@ -104,6 +117,7 @@ internal class AnimeHlsDownloadWorker(
 
         val rewritten = mutableListOf<String>()
         for (line in lines) {
+            currentCoroutineContext().ensureActive()
             when {
                 line.isBlank() -> rewritten += line
                 line.startsWith("#EXT-X-KEY:") -> {
@@ -116,8 +130,8 @@ internal class AnimeHlsDownloadWorker(
                 else -> {
                     rewritten += ensureDownloaded(line.trim(), "seg")
                     completed++
-                    val percent = ((completed * 100f) / total).toInt().coerceIn(0, 99)
-                    setProgress(workDataOf("stage" to "segments", "percent" to percent))
+                    val percent = ((completed * 98f) / total).toInt().coerceIn(2, 99)
+                    setProgress(workDataOf(KEY_STAGE to "Downloading segments", KEY_PERCENT to percent))
                 }
             }
         }
@@ -225,12 +239,15 @@ internal class AnimeHlsDownloadWorker(
     private data class Variant(val url: String, val height: Int?, val bandwidth: Long)
 
     companion object {
+        const val TAG = "anime-hls-download"
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
         const val KEY_QUALITY = "quality"
         const val KEY_HEADERS = "headers"
         const val KEY_OUTPUT_PATH = "output_path"
         const val KEY_ERROR = "error"
+        const val KEY_STAGE = "stage"
+        const val KEY_PERCENT = "percent"
         private const val LOCAL_PLAYLIST = "offline.m3u8"
         private val URI_ATTRIBUTE = Regex("URI=\\\"([^\\\"]+)\\\"")
 
