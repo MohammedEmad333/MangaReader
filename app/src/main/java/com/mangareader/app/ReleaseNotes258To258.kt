@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 270,
+        name = "0.270",
+        header = "More duplicate-data crash guards",
+        body = "Yomu now deduplicates chapters returned by extensions before rendering and normalizes duplicate library entries from imports or older backups. This prevents another class of Compose lazy-list key crashes on series and library screens.",
+    ),
+    ReleaseNote(
         code = 269,
         name = "0.269",
         header = "Duplicate-result crash fixes",
