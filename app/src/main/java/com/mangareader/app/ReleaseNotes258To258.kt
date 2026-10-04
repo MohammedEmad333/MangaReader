@@ -2,6 +2,12 @@ package com.mangareader.app
 
 internal val releaseNotes258To258 = listOf(
     ReleaseNote(
+        code = 271,
+        name = "0.271",
+        header = "Popular browse diagnostics",
+        body = "Connection probe now tests the real Madara Popular archive path in addition to the source homepage. It reports the requested and final URLs, HTTP and Cloudflare details, archive-selector match counts, an HTML preview, and the number of titles returned by the source parser so HTTP-200/zero-result failures can be diagnosed directly.",
+    ),
+    ReleaseNote(
         code = 270,
         name = "0.270",
         header = "More duplicate-data crash guards",
