@@ -131,16 +131,22 @@ internal fun visibleChapters(
     sourceId: String,
     seriesId: String,
 ): List<Chapter> {
+    // Third-party extensions occasionally return the same chapter URL more than
+    // once. Chapter.id is also the Compose LazyColumn key, so letting duplicates
+    // reach the UI throws "Key ... was already used" on the main thread. Keep
+    // the first source-provided entry and run every filter/sort on the unique set.
+    val uniqueChapters = chapters.distinctBy { it.id }
+
     val fDownloaded = ChapterPrefs.filterDownloaded(context)
     val fUnread = ChapterPrefs.filterUnread(context)
     val fBookmarked = ChapterPrefs.filterBookmarked(context)
     val selectedScanlators = ChapterPrefs.scanlators(context, sourceId, seriesId)
-    val availableScanlators = chapters.mapNotNull {
+    val availableScanlators = uniqueChapters.mapNotNull {
         it.scanlator?.takeIf { value -> value.isNotBlank() }
     }.toSet()
     val activeScanlators = selectedScanlators.intersect(availableScanlators)
 
-    val filtered = chapters.filter { ch ->
+    val filtered = uniqueChapters.filter { ch ->
         val downloadedOk = when (fDownloaded) {
             FilterState.OFF -> true
             FilterState.INCLUDE -> Downloads.isComplete(context, ch.id)
