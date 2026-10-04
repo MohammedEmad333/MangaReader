@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
@@ -204,9 +203,8 @@ internal const val VIDEO_LANGUAGE_AUTO = "__auto__"
 internal const val VIDEO_LANGUAGE_OFF = "__off__"
 
 /**
- * Compact companion strip for Media3's native playback controls.
- * Secondary settings live in one overflow menu instead of a long horizontal
- * list, which keeps landscape playback readable on phones.
+ * Compact custom playback strip. Media3's built-in controller is disabled so
+ * there is only one seek bar and one set of controls on screen.
  */
 @Composable
 internal fun VideoPlayerQuickControls(
@@ -232,6 +230,7 @@ internal fun VideoPlayerQuickControls(
     playing: Boolean,
     currentPositionMs: Long,
     durationMs: Long,
+    onDownload: (PlayableVideo) -> Unit,
     onStreamChange: (PlayableVideo) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onResizeModeChange: (VideoResizeMode) -> Unit,
@@ -252,7 +251,6 @@ internal fun VideoPlayerQuickControls(
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     var streamMenu by remember { mutableStateOf(false) }
     var speedMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
@@ -373,7 +371,7 @@ internal fun VideoPlayerQuickControls(
                     }) { Text(subtitleButtonLabel(subtitleLanguage)) }
                 }
 
-                TextButton(onClick = { AnimeVideoDownload.enqueue(context, selectedStream) }) {
+                TextButton(onClick = { onDownload(selectedStream) }) {
                     Text("Download")
                 }
 
@@ -400,7 +398,8 @@ internal fun VideoPlayerQuickControls(
                             onClick = {
                                 moreMenu = false
                                 val options = listOf<Int?>(15, 30, 45, 60, null)
-                                val next = options[(options.indexOf(sleepTimerMinutes).takeIf { it >= 0 } ?: 4 + 1) % options.size]
+                                val current = options.indexOf(sleepTimerMinutes)
+                                val next = options[((if (current >= 0) current else options.lastIndex) + 1) % options.size]
                                 onSleepTimerChange(next)
                             },
                         )
