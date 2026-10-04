@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 internal data class AnimeOfflineItem(
     val title: String,
@@ -12,7 +13,7 @@ internal data class AnimeOfflineItem(
     val downloadedAt: Long,
 )
 
-/** Small persistent index for HLS packages downloaded by Yomu itself. */
+/** Small persistent index for anime episodes downloaded by Yomu itself. */
 internal object AnimeOfflineIndex {
     private const val PREFS = "anime_offline_downloads"
     private const val KEY_ITEMS = "items"
@@ -38,7 +39,9 @@ internal object AnimeOfflineIndex {
                         ),
                     )
                 }
-            }.distinctBy { it.path }
+            }
+                .distinctBy { it.path }
+                .sortedByDescending { it.downloadedAt }
         }.getOrDefault(emptyList())
     }
 
@@ -46,30 +49,42 @@ internal object AnimeOfflineIndex {
     fun record(context: Context, item: AnimeOfflineItem) {
         val next = (list(context).filterNot { it.path == item.path } + item)
             .sortedByDescending { it.downloadedAt }
-        val json = JSONArray().apply {
-            next.forEach { entry ->
-                put(
-                    JSONObject().apply {
-                        put("title", entry.title)
-                        put("path", entry.path)
-                        put("sourceUrl", entry.sourceUrl)
-                        put("quality", entry.quality)
-                        put("downloadedAt", entry.downloadedAt)
-                    },
-                )
-            }
-        }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_ITEMS, json.toString())
-            .apply()
+        write(context, next)
     }
 
     @Synchronized
     fun remove(context: Context, path: String) {
-        val next = list(context).filterNot { it.path == path }
+        write(context, list(context).filterNot { it.path == path })
+    }
+
+    /**
+     * Removes the actual downloaded data and its index row.
+     * HLS downloads are whole package directories; direct videos are one file.
+     */
+    @Synchronized
+    fun deleteFiles(context: Context, item: AnimeOfflineItem): Boolean {
+        val file = File(item.path)
+        val deleted = runCatching {
+            when {
+                !file.exists() -> true
+                file.name.equals("offline.m3u8", ignoreCase = true) -> {
+                    val parent = file.parentFile
+                    parent?.deleteRecursively() ?: file.delete()
+                }
+                file.isDirectory -> file.deleteRecursively()
+                else -> file.delete()
+            }
+        }.getOrDefault(false)
+
+        if (deleted || !file.exists()) {
+            remove(context, item.path)
+        }
+        return deleted
+    }
+
+    private fun write(context: Context, items: List<AnimeOfflineItem>) {
         val json = JSONArray().apply {
-            next.forEach { entry ->
+            items.forEach { entry ->
                 put(
                     JSONObject().apply {
                         put("title", entry.title)
