@@ -22,7 +22,7 @@ internal object AnimeVideoDownload {
         if (looksLikeHls(video.url)) {
             val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
                 .setInputData(AnimeHlsDownloadWorker.input(video))
-                .addTag("anime-hls-download")
+                .addTag(AnimeHlsDownloadWorker.TAG)
                 .build()
             WorkManager.getInstance(context.applicationContext).enqueue(work)
             Toast.makeText(context, "HLS download started", Toast.LENGTH_SHORT).show()
