@@ -78,10 +78,10 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                     .map { info ->
                         ActiveAnimeDownload(
                             id = info.id,
-                            title = info.inputData.getString(AnimeHlsDownloadWorker.KEY_TITLE)
+                            title = info.progress.getString(AnimeHlsDownloadWorker.KEY_TITLE)
                                 .orEmpty()
-                                .ifBlank { "Yomu episode" },
-                            quality = info.inputData.getString(AnimeHlsDownloadWorker.KEY_QUALITY).orEmpty(),
+                                .ifBlank { "Queued anime download" },
+                            quality = info.progress.getString(AnimeHlsDownloadWorker.KEY_QUALITY).orEmpty(),
                             stage = info.progress.getString(AnimeHlsDownloadWorker.KEY_STAGE)
                                 .orEmpty()
                                 .ifBlank {
