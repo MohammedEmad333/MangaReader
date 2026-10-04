@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -225,6 +226,13 @@ internal fun GlobalSearchResultRow(
     onOpenSource: (Source) -> Unit,
     onOpenSeries: (Source, Series) -> Unit,
 ) {
+    // Third-party sources occasionally emit the same manga/anime more than
+    // once. Series.id is stable sourceId:url identity, so rendering duplicate
+    // ids in this LazyRow violates Compose's unique-key contract and crashes
+    // during prefetch/measurement. Keep the first copy and treat duplicates as
+    // the same logical search result.
+    val uniqueSeries = remember(result.series) { result.series.distinctBy { it.id } }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -246,14 +254,14 @@ internal fun GlobalSearchResultRow(
                 modifier = Modifier.padding(horizontal = 6.dp),
             )
         }
-        if (result.series.isNotEmpty() && !migrating) {
+        if (uniqueSeries.isNotEmpty() && !migrating) {
             TextButton(onClick = { onOpenSource(result.source) }) {
                 Text("See all")
             }
         }
     }
 
-    if (result.series.isEmpty()) {
+    if (uniqueSeries.isEmpty()) {
         Text(
             "No results",
             style = MaterialTheme.typography.bodySmall,
@@ -267,7 +275,7 @@ internal fun GlobalSearchResultRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(
-            result.series,
+            uniqueSeries,
             key = { it.id },
             contentType = { "series" },
         ) { series ->
