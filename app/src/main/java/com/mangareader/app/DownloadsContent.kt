@@ -144,6 +144,9 @@ internal fun DownloadsTools(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (mediaFilter == DownloadsMediaFilter.ANIME) {
+            AnimeOfflineDownloadsPanel(query = query)
+        }
     }
     HorizontalDivider()
 }
