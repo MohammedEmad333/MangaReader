@@ -16,14 +16,7 @@ import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 
-/**
- * Downloads an HLS episode as an offline package (playlist + segments + keys/maps).
- *
- * This deliberately does not save the remote .m3u8 file by itself: doing that
- * looks successful but leaves a useless playlist as soon as the network is gone.
- * Relative segment/key/map URIs are downloaded and the local playlist is rewritten
- * to point at the local files.
- */
+/** Downloads an HLS episode as a real offline package (playlist + segments + keys/maps). */
 internal class AnimeHlsDownloadWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -58,22 +51,24 @@ internal class AnimeHlsDownloadWorker(
                 headers = headers,
                 outputDir = episodeDir,
             )
-            File(episodeDir, LOCAL_PLAYLIST).writeText(rewritten)
+            val localPlaylist = File(episodeDir, LOCAL_PLAYLIST)
+            localPlaylist.writeText(rewritten)
             File(episodeDir, ".yomu-title").writeText(title)
             File(episodeDir, ".yomu-source").writeText(url)
             AnimeOfflineIndex.record(
                 applicationContext,
                 AnimeOfflineItem(
                     title = title,
-                    path = File(episodeDir, LOCAL_PLAYLIST).absolutePath,
+                    path = localPlaylist.absolutePath,
                     sourceUrl = url,
                     quality = quality,
                     downloadedAt = System.currentTimeMillis(),
                 ),
             )
             setProgress(workDataOf("stage" to "done", "percent" to 100))
+            localPlaylist.absolutePath
         }.fold(
-            onSuccess = { Result.success(workDataOf(KEY_OUTPUT_PATH to it.toString())) },
+            onSuccess = { outputPath -> Result.success(workDataOf(KEY_OUTPUT_PATH to outputPath)) },
             onFailure = { Result.failure(workDataOf(KEY_ERROR to (it.message ?: "HLS download failed"))) },
         )
     }
@@ -107,23 +102,22 @@ internal class AnimeHlsDownloadWorker(
             return name
         }
 
-        val rewritten = buildList {
-            for (line in lines) {
-                when {
-                    line.isBlank() -> add(line)
-                    line.startsWith("#EXT-X-KEY:") -> {
-                        add(rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "key") })
-                    }
-                    line.startsWith("#EXT-X-MAP:") -> {
-                        add(rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "init") })
-                    }
-                    line.startsWith("#") -> add(line)
-                    else -> {
-                        add(ensureDownloaded(line.trim(), "seg"))
-                        completed++
-                        val percent = ((completed * 100f) / total).toInt().coerceIn(0, 99)
-                        setProgress(workDataOf("stage" to "segments", "percent" to percent))
-                    }
+        val rewritten = mutableListOf<String>()
+        for (line in lines) {
+            when {
+                line.isBlank() -> rewritten += line
+                line.startsWith("#EXT-X-KEY:") -> {
+                    rewritten += rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "key") }
+                }
+                line.startsWith("#EXT-X-MAP:") -> {
+                    rewritten += rewriteUriAttribute(line) { raw -> ensureDownloaded(raw, "init") }
+                }
+                line.startsWith("#") -> rewritten += line
+                else -> {
+                    rewritten += ensureDownloaded(line.trim(), "seg")
+                    completed++
+                    val percent = ((completed * 100f) / total).toInt().coerceIn(0, 99)
+                    setProgress(workDataOf("stage" to "segments", "percent" to percent))
                 }
             }
         }
@@ -143,19 +137,19 @@ internal class AnimeHlsDownloadWorker(
         val wantedHeight = Regex("(\\d{3,4})p?", RegexOption.IGNORE_CASE)
             .find(quality)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val lines = playlist.lines()
-        val variants = buildList {
-            var info: String? = null
-            for (line in lines) {
-                if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                    info = line
-                } else if (info != null && line.isNotBlank() && !line.startsWith("#")) {
-                    val height = Regex("RESOLUTION=\\d+x(\\d+)", RegexOption.IGNORE_CASE)
-                        .find(info!!)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    val bandwidth = Regex("BANDWIDTH=(\\d+)", RegexOption.IGNORE_CASE)
-                        .find(info!!)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
-                    add(Variant(resolveUrl(masterUrl, line.trim()), height, bandwidth))
-                    info = null
-                }
+        val variants = mutableListOf<Variant>()
+        var info: String? = null
+        for (line in lines) {
+            if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                info = line
+            } else if (info != null && line.isNotBlank() && !line.startsWith("#")) {
+                val streamInfo = info ?: continue
+                val height = Regex("RESOLUTION=\\d+x(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(streamInfo)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val bandwidth = Regex("BANDWIDTH=(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(streamInfo)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                variants += Variant(resolveUrl(masterUrl, line.trim()), height, bandwidth)
+                info = null
             }
         }
         if (variants.isEmpty()) return null
@@ -167,8 +161,7 @@ internal class AnimeHlsDownloadWorker(
     }
 
     private fun fetchText(client: OkHttpClient, url: String, headers: Map<String, String>): String {
-        val request = request(url, headers)
-        client.newCall(request).execute().use { response ->
+        client.newCall(request(url, headers)).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} while fetching playlist")
             return response.body.string()
         }
@@ -180,12 +173,10 @@ internal class AnimeHlsDownloadWorker(
         headers: Map<String, String>,
         destination: File,
     ) {
-        val request = request(url, headers)
-        client.newCall(request).execute().use { response ->
+        client.newCall(request(url, headers)).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} while downloading segment")
-            val body = response.body
             val temp = File(destination.parentFile, destination.name + ".part")
-            temp.outputStream().use { output -> body.byteStream().copyTo(output) }
+            temp.outputStream().use { output -> response.body.byteStream().copyTo(output) }
             if (!temp.renameTo(destination)) {
                 temp.copyTo(destination, overwrite = true)
                 temp.delete()
