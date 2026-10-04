@@ -138,15 +138,19 @@ internal fun ExtensionsContent(
             }
         }
 
-        val (updatable, installed, available) = remember(shownExtensions) {
+        val uniqueExtensions = remember(shownExtensions) {
+            shownExtensions.distinctBy { it.pkgName }
+        }
+
+        val (updatable, installed, available) = remember(uniqueExtensions) {
             Triple(
-                shownExtensions
+                uniqueExtensions
                     .filter { it.hasUpdate }
                     .sortedBy { it.name.lowercase() },
-                shownExtensions
+                uniqueExtensions
                     .filter { it.isInstalled && !it.hasUpdate }
                     .sortedBy { it.name.lowercase() },
-                shownExtensions
+                uniqueExtensions
                     .filterNot { it.isInstalled }
                     .sortedBy { it.name.lowercase() },
             )
@@ -157,8 +161,8 @@ internal fun ExtensionsContent(
             return@Column
         }
 
-        val extensionsOrdering = remember(shownExtensions) {
-            shownExtensions.map { Triple(it.pkgName, it.isInstalled, it.hasUpdate) }
+        val extensionsOrdering = remember(uniqueExtensions) {
+            uniqueExtensions.map { Triple(it.pkgName, it.isInstalled, it.hasUpdate) }
         }
         scroll.sync(extensionsOrdering)
         val listState = rememberRestoredListState(
@@ -263,7 +267,6 @@ internal fun ExtensionDiagnosticsDialog(
         },
     )
 }
-
 
 internal fun extensionsViewIsActive(
     filter: String,
