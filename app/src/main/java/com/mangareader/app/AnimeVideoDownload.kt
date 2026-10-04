@@ -6,9 +6,11 @@ import android.net.Uri
 import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.io.File
+import java.security.MessageDigest
 
 /** Queues the currently selected anime stream for offline download. */
 internal object AnimeVideoDownload {
@@ -19,29 +21,41 @@ internal object AnimeVideoDownload {
             return null
         }
 
+        if (alreadyOffline(context, video.url)) {
+            Toast.makeText(context, "Episode already downloaded", Toast.LENGTH_SHORT).show()
+            return null
+        }
+
+        if (AnimeDirectDownloadIndex.list(context).any { it.sourceUrl == video.url }) {
+            Toast.makeText(context, "Download already in progress", Toast.LENGTH_SHORT).show()
+            return null
+        }
+
         if (looksLikeHls(video.url)) {
             val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
                 .setInputData(AnimeHlsDownloadWorker.input(video))
                 .addTag(AnimeHlsDownloadWorker.TAG)
                 .build()
-            WorkManager.getInstance(context.applicationContext).enqueue(work)
-            Toast.makeText(context, "HLS download started", Toast.LENGTH_SHORT).show()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+                uniqueHlsWorkName(video.url),
+                ExistingWorkPolicy.KEEP,
+                work,
+            )
+            Toast.makeText(context, "HLS download queued", Toast.LENGTH_SHORT).show()
             return null
         }
 
         val title = video.episodeTitle.ifBlank { video.title.ifBlank { "Yomu episode" } }
-        val fileName = safeFileName(title) + "." + extensionFor(video.url)
-        val destination = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "Yomu/Anime/$fileName",
-        )
+        val extension = extensionFor(video.url)
+        val destination = uniqueDirectDestination(context, title, video.title, extension)
+        val relativePath = "Yomu/Anime/${destination.name}"
         val request = DownloadManager.Request(uri)
             .setTitle(title)
             .setDescription("Downloading anime episode")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(false)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Yomu/Anime/$fileName")
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, relativePath)
 
         video.headers.forEach { (name, value) ->
             if (name.isNotBlank() && value.isNotBlank()) request.addRequestHeader(name, value)
@@ -68,6 +82,54 @@ internal object AnimeVideoDownload {
             }
             .getOrNull()
     }
+
+    private fun alreadyOffline(context: Context, sourceUrl: String): Boolean =
+        AnimeOfflineIndex.list(context).any { item ->
+            item.sourceUrl == sourceUrl && File(item.path).exists()
+        }
+
+    private fun uniqueDirectDestination(
+        context: Context,
+        title: String,
+        quality: String,
+        extension: String,
+    ): File {
+        val root = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "Yomu/Anime",
+        )
+        val reserved = buildSet {
+            AnimeOfflineIndex.list(context).forEach { add(it.path) }
+            AnimeDirectDownloadIndex.list(context).forEach { add(it.path) }
+        }
+        val base = safeFileName(title)
+        val qualitySuffix = quality.trim()
+            .takeIf { it.isNotBlank() && !title.contains(it, ignoreCase = true) }
+            ?.let(::safeFileName)
+            .orEmpty()
+
+        fun candidate(stem: String) = File(root, "$stem.$extension")
+        var file = candidate(base)
+        if (!file.exists() && file.absolutePath !in reserved) return file
+
+        if (qualitySuffix.isNotBlank()) {
+            file = candidate("$base - $qualitySuffix")
+            if (!file.exists() && file.absolutePath !in reserved) return file
+        }
+
+        var suffix = 2
+        while (file.exists() || file.absolutePath in reserved) {
+            file = candidate("$base ($suffix)")
+            suffix++
+        }
+        return file
+    }
+
+    private fun uniqueHlsWorkName(url: String): String =
+        "anime-hls-" + MessageDigest.getInstance("SHA-256")
+            .digest(url.toByteArray())
+            .take(12)
+            .joinToString("") { "%02x".format(it) }
 
     private fun looksLikeHls(url: String): Boolean =
         url.substringBefore('?').lowercase().endsWith(".m3u8")
