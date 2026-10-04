@@ -49,15 +49,16 @@ internal object AnimeVideoDownload {
 
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         return runCatching { manager.enqueue(request) }
-            .onSuccess {
-                AnimeOfflineIndex.record(
+            .onSuccess { id ->
+                AnimeDirectDownloadIndex.record(
                     context,
-                    AnimeOfflineItem(
+                    PendingDirectAnimeDownload(
+                        id = id,
                         title = title,
                         path = destination.absolutePath,
                         sourceUrl = video.url,
                         quality = video.title,
-                        downloadedAt = System.currentTimeMillis(),
+                        startedAt = System.currentTimeMillis(),
                     ),
                 )
                 Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
