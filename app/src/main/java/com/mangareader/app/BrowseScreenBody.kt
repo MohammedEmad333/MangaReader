@@ -117,7 +117,15 @@ internal fun ColumnScope.BrowseScreenBody(
         onAction = if (challengeable) onSolveChallenge else null
     )
 
-    if (shown.isEmpty()) {
+    // Extension-backed sources are third-party code. A malformed catalogue can
+    // legitimately return the same URL more than once (and paging can append an
+    // item already present on page one). Series.id is sourceId:url, so duplicate
+    // ids become duplicate Compose lazy keys and crash during measurement.
+    // Keep the first copy: it is the same logical title and the UI must never
+    // trust a remote list to satisfy LazyLayout's uniqueness contract.
+    val uniqueShown = remember(shown) { shown.distinctBy { it.id } }
+
+    if (uniqueShown.isEmpty()) {
         BrowseEmptyState(
             loading = loading,
             error = error,
@@ -179,7 +187,7 @@ internal fun ColumnScope.BrowseScreenBody(
             contentPadding = PaddingValues(6.dp)
         ) {
             items(
-                shown,
+                uniqueShown,
                 key = { it.id },
                 contentType = { view },
             ) { s ->
@@ -222,8 +230,8 @@ internal fun ColumnScope.BrowseScreenBody(
         // and reverting it changed nothing, because the arithmetic was
         // always the cause.
         //
-        // shown.size + 1 when there is a next page, because "Load more" is
-        // a lazy item and scrollToItem counts it. It spans the full width,
+        // uniqueShown.size + 1 when there is a next page, because "Load more"
+        // is a lazy item and scrollToItem counts it. It spans the full width,
         // so it is its own row and the row arithmetic handles it.
         GridScrollHandle(
             state = gridState,
