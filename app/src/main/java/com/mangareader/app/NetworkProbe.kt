@@ -25,34 +25,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.online.HttpSource
-import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import org.jsoup.Jsoup
 
 /**
  * One request to a source, reported in full.
  *
- * **Why this exists.** Every network failure in this app arrives as a formatted
- * string — `HTTP error 403` — and everything else the server said is thrown
- * away. Twice now that has cost real time: the covers that turned out to be
- * pointed at `127.0.0.1` after two speculative rounds, and the manhwatoon 400s
- * in §0, still open after four partial fixes, every one of them inferred from
- * failure *rates* while the response body sat unread. §5's rule is to spend the
- * cycle making the symptom specific rather than on a candidate fix. This is that
- * cycle, made reusable.
- *
- * It requests [HttpSource.baseUrl] through [HttpSource.client] — the extension's
- * own client, with its own headers, its cookie jar and the Cloudflare
- * interceptor. That matters: the point is to reproduce what the extension does,
- * not to make a request that happens to succeed.
- *
- * The single most useful thing it settles is whether a site the visible WebView
- * loads happily also refuses OkHttp on the *same URL*. If it does, the block
- * isn't a challenge and isn't path-scoped — it's the client itself being
- * recognised, which no amount of solving fixes.
+ * The probe intentionally keeps the original base-URL request, but manga sources
+ * now get a second, browse-specific diagnostic too. That matters for sources such
+ * as MadaraNoAjax: the homepage can return a clean HTTP 200 while Popular actually
+ * loads /<manga path>/?m_orderby=views and the parser sees zero archive cards.
  */
 internal suspend fun probeSource(context: Context, source: Source): String =
     withContext(Dispatchers.IO) {
@@ -64,6 +54,8 @@ internal suspend fun probeSource(context: Context, source: Source): String =
 
         val url = mangaHttp?.baseUrl ?: animeHttp!!.baseUrl
         val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
+        val client = mangaHttp?.client ?: animeHttp!!.client
+        val headers = mangaHttp?.headers ?: animeHttp!!.headers
         val out = StringBuilder()
 
         out.appendLine("SOURCE")
@@ -76,54 +68,182 @@ internal suspend fun probeSource(context: Context, source: Source): String =
         out.appendLine("  recorded UA:  ${ClearanceUserAgents.get(context, host) ?: "none"}")
         out.appendLine()
 
-        val result = runCatching {
-            val client = mangaHttp?.client ?: animeHttp!!.client
-            val headers = mangaHttp?.headers ?: animeHttp!!.headers
-            client.newCall(GET(url, headers)).execute().use { response ->
-                // response.request, not the request built above: interceptors
-                // rewrite headers on the way out, and the UA that actually left
-                // the phone is the only one worth reporting.
-                val sent = response.request.header("User-Agent")
-                val body = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
-
-                buildString {
-                    appendLine("RESPONSE")
-                    appendLine("  status:       ${response.code} ${response.message}")
-                    appendLine("  protocol:     ${response.protocol}")
-                    appendLine("  UA sent:      ${sent ?: "none"}")
-                    appendLine()
-                    appendLine("CLOUDFLARE")
-                    // cf-mitigated is the header that names the reason outright:
-                    // "challenge" means solvable, anything else generally isn't.
-                    appendLine("  cf-mitigated: ${response.header("cf-mitigated") ?: "absent"}")
-                    appendLine("  cf-ray:       ${response.header("cf-ray") ?: "absent"}")
-                    appendLine("  server:       ${response.header("server") ?: "absent"}")
-                    appendLine("  set-cookie:   ${cookieNames(response.headers.values("set-cookie"))}")
-                    appendLine()
-                    appendLine("BODY (first ${BODY_CHARS} chars)")
-                    appendLine("  ${bodyPreview(body)}")
-                }
-            }
-        }
-
         out.append(
-            result.getOrElse { error ->
-                // A transport-level failure never reaches a status code, and the
-                // exception class is the diagnosis: an SSL handshake failure and
-                // a timeout mean completely different things here.
-                buildString {
-                    appendLine("NO RESPONSE")
-                    appendLine("  ${error::class.java.simpleName}")
-                    appendLine("  ${error.message ?: "no message"}")
-                }
-            }
+            probeHttpRequest(
+                client = client,
+                headers = headers,
+                requestedUrl = url,
+                sectionTitle = "BASE URL REQUEST",
+            ),
         )
+
+        if (mangaHttp != null) {
+            out.appendLine()
+            out.append(
+                probePopularBrowse(
+                    source = mangaHttp,
+                    client = client,
+                    headers = headers,
+                ),
+            )
+        }
 
         out.appendLine()
         out.appendLine("AFTER THE REQUEST")
         out.appendLine("  cf_clearance: ${if (hasClearance(url)) "present" else "absent"}")
         out.toString()
     }
+
+private fun probeHttpRequest(
+    client: OkHttpClient,
+    headers: Headers,
+    requestedUrl: String,
+    sectionTitle: String,
+    archiveSelector: String? = null,
+): String {
+    return runCatching {
+        client.newCall(GET(requestedUrl, headers)).execute().use { response ->
+            val sent = response.request.header("User-Agent")
+            val body = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
+            val finalUrl = response.request.url.toString()
+
+            buildString {
+                appendLine(sectionTitle)
+                appendLine("  requested URL: $requestedUrl")
+                appendLine("  final URL:     $finalUrl")
+                appendLine("  status:        ${response.code} ${response.message}")
+                appendLine("  protocol:      ${response.protocol}")
+                appendLine("  UA sent:       ${sent ?: "none"}")
+                appendLine()
+                appendLine("CLOUDFLARE")
+                appendLine("  cf-mitigated: ${response.header("cf-mitigated") ?: "absent"}")
+                appendLine("  cf-ray:       ${response.header("cf-ray") ?: "absent"}")
+                appendLine("  server:       ${response.header("server") ?: "absent"}")
+                appendLine("  set-cookie:   ${cookieNames(response.headers.values("set-cookie"))}")
+
+                if (archiveSelector != null && body.isNotBlank()) {
+                    appendLine()
+                    append(selectorDiagnostics(body, finalUrl, archiveSelector))
+                }
+
+                appendLine()
+                appendLine("BODY (first ${BODY_CHARS} chars)")
+                appendLine("  ${bodyPreview(body)}")
+            }
+        }
+    }.getOrElse { error ->
+        buildString {
+            appendLine(sectionTitle)
+            appendLine("  requested URL: $requestedUrl")
+            appendLine("  NO RESPONSE")
+            appendLine("  ${error::class.java.simpleName}")
+            appendLine("  ${error.message ?: "no message"}")
+        }
+    }
+}
+
+private suspend fun probePopularBrowse(
+    source: HttpSource,
+    client: OkHttpClient,
+    headers: Headers,
+): String {
+    val selector = reflectedString(source, "archiveSelector")
+    val popularUrl = reflectedPopularArchiveUrl(source)
+
+    return buildString {
+        appendLine("POPULAR BROWSE DIAGNOSTIC")
+        appendLine("  parser class: ${source.javaClass.name}")
+        appendLine("  archive selector: ${selector ?: "unavailable"}")
+
+        if (popularUrl != null) {
+            appendLine()
+            append(
+                probeHttpRequest(
+                    client = client,
+                    headers = headers,
+                    requestedUrl = popularUrl,
+                    sectionTitle = "POPULAR HTTP REQUEST",
+                    archiveSelector = selector,
+                ),
+            )
+        } else {
+            appendLine("  popular URL: unavailable (source does not expose a Madara-style archive builder)")
+        }
+
+        appendLine()
+        appendLine("POPULAR SOURCE PARSER")
+        val parsed = runCatching { source.getPopularManga(1) }
+        parsed.fold(
+            onSuccess = { page ->
+                appendLine("  titles returned: ${page.mangas.size}")
+                appendLine("  has next page:   ${page.hasNextPage}")
+                page.mangas.take(5).forEachIndexed { index, manga ->
+                    appendLine("  ${index + 1}. ${manga.title}  [${manga.url}]")
+                }
+            },
+            onFailure = { error ->
+                appendLine("  FAILED: ${error::class.java.simpleName}")
+                appendLine("  ${error.message ?: "no message"}")
+            },
+        )
+    }
+}
+
+/**
+ * Current Keiyoushi MadaraNoAjax builds Popular with archiveUrlBuilder(1, "views", ...).
+ * Reflection keeps diagnostics out of the extension ABI while still showing the exact URL
+ * that matters for sources such as HentaiSco. If a source is not Madara-style, we simply
+ * skip this extra HTTP request instead of guessing.
+ */
+private fun reflectedPopularArchiveUrl(source: HttpSource): String? {
+    val mangaSubString = reflectedString(source, "getMangaSubString") ?: return null
+    val method = findMethod(source, "archiveUrlBuilder", 4) ?: return null
+    val path = "/${mangaSubString.trim('/')}/"
+    return runCatching {
+        method.isAccessible = true
+        val builder = method.invoke(source, 1, "views", path, "") as? HttpUrl.Builder
+            ?: return@runCatching null
+        builder.build().toString()
+    }.getOrNull()
+}
+
+private fun selectorDiagnostics(body: String, finalUrl: String, selector: String): String {
+    val document = Jsoup.parse(body, finalUrl)
+    val selectors = selector
+        .split(',')
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinct()
+
+    return buildString {
+        appendLine("SELECTOR COUNTS")
+        appendLine("  combined [$selector]: ${runCatching { document.select(selector).size }.getOrDefault(-1)}")
+        selectors.forEach { item ->
+            appendLine("  $item: ${runCatching { document.select(item).size }.getOrDefault(-1)}")
+        }
+        appendLine("  .post-title a: ${document.select(".post-title a").size}")
+        appendLine("  a[href]: ${document.select("a[href]").size}")
+    }
+}
+
+private fun reflectedString(target: Any, methodName: String): String? =
+    findMethod(target, methodName, 0)?.let { method ->
+        runCatching {
+            method.isAccessible = true
+            method.invoke(target) as? String
+        }.getOrNull()
+    }
+
+private fun findMethod(target: Any, name: String, parameterCount: Int): java.lang.reflect.Method? {
+    var type: Class<*>? = target.javaClass
+    while (type != null) {
+        type.declaredMethods.firstOrNull { method ->
+            method.name == name && method.parameterCount == parameterCount
+        }?.let { return it }
+        type = type.superclass
+    }
+    return null
+}
 
 private const val BODY_CHARS = 600
 
@@ -142,7 +262,7 @@ private fun bodyPreview(body: String): String {
         .replace(Regex("""\s+"""), " ")
         .trim()
     val text = flat.ifBlank { body.replace(Regex("""\s+"""), " ").trim() }
-    return if (text.length <= BODY_CHARS) text else text.take(BODY_CHARS) + "\u2026"
+    return if (text.length <= BODY_CHARS) text else text.take(BODY_CHARS) + "…"
 }
 
 private fun hasClearance(url: String): Boolean =
@@ -152,11 +272,7 @@ private fun hasClearance(url: String): Boolean =
             ?.any { it.substringBefore("=").trim() == "cf_clearance" } == true
     }.getOrDefault(false)
 
-/**
- * Runs [probeSource] and shows the result.
- *
- * Selectable, because the useful thing to do with this is paste it somewhere.
- */
+/** Runs [probeSource] and shows the result. Selectable so it can be pasted into a bug report. */
 @Composable
 internal fun NetworkProbeDialog(source: Source, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -174,15 +290,15 @@ internal fun NetworkProbeDialog(source: Source, onDismiss: () -> Unit) {
         text = {
             if (text == null) {
                 Column {
-                    Text("Requesting\u2026", style = MaterialTheme.typography.bodyMedium)
+                    Text("Requesting…", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "The Cloudflare interceptor gets a headless attempt first, " +
-                            "so a blocked source can take up to 30 seconds to answer.",
+                        "Testing the base URL and the source's Popular browse path. " +
+                            "Cloudflare retries can make this take up to 30 seconds.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
@@ -190,13 +306,13 @@ internal fun NetworkProbeDialog(source: Source, onDismiss: () -> Unit) {
                     Column(
                         modifier = Modifier
                             .heightIn(max = 380.dp)
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState()),
                     ) {
                         Text(text, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Done") } }
+        confirmButton = { Button(onClick = onDismiss) { Text("Done") } },
     )
 }
