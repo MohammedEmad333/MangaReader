@@ -5,7 +5,7 @@ internal val releaseNotes258To258 = listOf(
         code = 270,
         name = "0.270",
         header = "More duplicate-data crash guards",
-        body = "Yomu now deduplicates chapters returned by extensions before rendering and normalizes duplicate library entries from imports or older backups. This prevents another class of Compose lazy-list key crashes on series and library screens.",
+        body = "Yomu now deduplicates chapters returned by extensions, normalizes duplicate library entries from imports or older backups, and cleans duplicate queued/failed downloads restored from disk. This prevents more Compose lazy-list key crashes on series, library, and download queue screens.",
     ),
     ReleaseNote(
         code = 269,
