@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Required to download JSON and APKs -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -19,9 +20,8 @@
          the tachiyomi.extension feature. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!-- Chapter downloads run in a foreground service so they survive the app
-         being backgrounded or swiped away. DATA_SYNC is the type Android 14
-         requires to be declared for this kind of work. -->
+    <!-- Chapter and HLS downloads run in foreground services so they survive
+         backgrounding. DATA_SYNC is the type Android 14 requires here. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -116,6 +116,13 @@
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- WorkManager's foreground dispatcher is used by long HLS downloads.
+             Merge the dataSync type onto its library manifest declaration. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- The library refresh sweeps every saved series for its chapter list,
              which is minutes of network work on a large library. Same reasoning
