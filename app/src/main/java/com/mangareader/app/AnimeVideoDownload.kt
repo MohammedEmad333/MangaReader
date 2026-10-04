@@ -6,8 +6,11 @@ import android.net.Uri
 import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import java.io.File
 
-/** Queues the currently selected anime stream in Android's system downloader. */
+/** Queues the currently selected anime stream for offline download. */
 internal object AnimeVideoDownload {
     fun enqueue(context: Context, video: PlayableVideo): Long? {
         val uri = runCatching { Uri.parse(video.url) }.getOrNull()
@@ -17,16 +20,21 @@ internal object AnimeVideoDownload {
         }
 
         if (looksLikeHls(video.url)) {
-            Toast.makeText(
-                context,
-                "HLS streams cannot be saved as a single file yet. Choose another quality/source when available.",
-                Toast.LENGTH_LONG,
-            ).show()
+            val work = OneTimeWorkRequestBuilder<AnimeHlsDownloadWorker>()
+                .setInputData(AnimeHlsDownloadWorker.input(video))
+                .addTag("anime-hls-download")
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueue(work)
+            Toast.makeText(context, "HLS download started", Toast.LENGTH_SHORT).show()
             return null
         }
 
         val title = video.episodeTitle.ifBlank { video.title.ifBlank { "Yomu episode" } }
         val fileName = safeFileName(title) + "." + extensionFor(video.url)
+        val destination = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "Yomu/Anime/$fileName",
+        )
         val request = DownloadManager.Request(uri)
             .setTitle(title)
             .setDescription("Downloading anime episode")
@@ -42,6 +50,16 @@ internal object AnimeVideoDownload {
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         return runCatching { manager.enqueue(request) }
             .onSuccess {
+                AnimeOfflineIndex.record(
+                    context,
+                    AnimeOfflineItem(
+                        title = title,
+                        path = destination.absolutePath,
+                        sourceUrl = video.url,
+                        quality = video.title,
+                        downloadedAt = System.currentTimeMillis(),
+                    ),
+                )
                 Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
             }
             .onFailure {
