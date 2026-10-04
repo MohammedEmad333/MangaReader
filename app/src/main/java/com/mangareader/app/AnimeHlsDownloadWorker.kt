@@ -34,14 +34,14 @@ internal class AnimeHlsDownloadWorker(
 
         var episodeDir: File? = null
         try {
-            setProgress(workDataOf(KEY_STAGE to "Preparing", KEY_PERCENT to 0))
+            setProgress(progressData(title, quality, "Preparing", 0))
             val client = OkHttpClient.Builder()
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build()
             episodeDir = createEpisodeDirectory(applicationContext, title)
 
-            setProgress(workDataOf(KEY_STAGE to "Reading playlist", KEY_PERCENT to 1))
+            setProgress(progressData(title, quality, "Reading playlist", 1))
             val rootText = fetchText(client, url, headers)
             val (mediaUrl, mediaText) = if (isMasterPlaylist(rootText)) {
                 val variant = chooseVariant(url, rootText, quality)
@@ -57,6 +57,8 @@ internal class AnimeHlsDownloadWorker(
                 playlist = mediaText,
                 headers = headers,
                 outputDir = episodeDir,
+                title = title,
+                quality = quality,
             )
             currentCoroutineContext().ensureActive()
 
@@ -74,7 +76,7 @@ internal class AnimeHlsDownloadWorker(
                     downloadedAt = System.currentTimeMillis(),
                 ),
             )
-            setProgress(workDataOf(KEY_STAGE to "Complete", KEY_PERCENT to 100))
+            setProgress(progressData(title, quality, "Complete", 100))
             Result.success(workDataOf(KEY_OUTPUT_PATH to localPlaylist.absolutePath))
         } catch (cancelled: CancellationException) {
             episodeDir?.deleteRecursively()
@@ -91,6 +93,8 @@ internal class AnimeHlsDownloadWorker(
         playlist: String,
         headers: Map<String, String>,
         outputDir: File,
+        title: String,
+        quality: String,
     ): String {
         val lines = playlist.lines()
         val mediaUris = lines.filter { it.isNotBlank() && !it.startsWith("#") }
@@ -131,7 +135,7 @@ internal class AnimeHlsDownloadWorker(
                     rewritten += ensureDownloaded(line.trim(), "seg")
                     completed++
                     val percent = ((completed * 98f) / total).toInt().coerceIn(2, 99)
-                    setProgress(workDataOf(KEY_STAGE to "Downloading segments", KEY_PERCENT to percent))
+                    setProgress(progressData(title, quality, "Downloading segments", percent))
                 }
             }
         }
@@ -231,6 +235,14 @@ internal class AnimeHlsDownloadWorker(
         check(dir.mkdirs() || dir.isDirectory) { "Could not create anime download folder" }
         return dir
     }
+
+    private fun progressData(title: String, quality: String, stage: String, percent: Int): Data =
+        workDataOf(
+            KEY_TITLE to title,
+            KEY_QUALITY to quality,
+            KEY_STAGE to stage,
+            KEY_PERCENT to percent.coerceIn(0, 100),
+        )
 
     private fun sha1(value: String): String = MessageDigest.getInstance("SHA-1")
         .digest(value.toByteArray())
