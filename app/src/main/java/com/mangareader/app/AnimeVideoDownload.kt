@@ -8,6 +8,7 @@ import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import java.io.File
 
 /** Queues the currently selected anime stream for offline download. */
 internal object AnimeVideoDownload {
@@ -32,6 +33,10 @@ internal object AnimeVideoDownload {
 
         val title = video.episodeTitle.ifBlank { video.title.ifBlank { "Yomu episode" } }
         val fileName = safeFileName(title) + "." + extensionFor(video.url)
+        val destination = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "Yomu/Anime/$fileName",
+        )
         val request = DownloadManager.Request(uri)
             .setTitle(title)
             .setDescription("Downloading anime episode")
@@ -47,6 +52,16 @@ internal object AnimeVideoDownload {
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         return runCatching { manager.enqueue(request) }
             .onSuccess {
+                AnimeOfflineIndex.record(
+                    context,
+                    AnimeOfflineItem(
+                        title = title,
+                        path = destination.absolutePath,
+                        sourceUrl = video.url,
+                        quality = video.title,
+                        downloadedAt = System.currentTimeMillis(),
+                    ),
+                )
                 Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
             }
             .onFailure {
