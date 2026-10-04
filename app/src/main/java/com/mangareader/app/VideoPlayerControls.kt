@@ -1,24 +1,22 @@
 package com.mangareader.app
 
 import android.content.Context
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,14 +25,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 internal object VideoPlayerPrefs {
     private const val PREFS = "video_player"
@@ -58,155 +57,119 @@ internal object VideoPlayerPrefs {
 
     fun setSpeed(context: Context, speed: Float) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putFloat(SPEED, speed)
-            .apply()
+            .edit().putFloat(SPEED, speed).apply()
     }
 
     fun resizeMode(context: Context): VideoResizeMode =
         runCatching {
             VideoResizeMode.valueOf(
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(RESIZE_MODE, null)
-                    .orEmpty(),
+                    .getString(RESIZE_MODE, null).orEmpty(),
             )
         }.getOrDefault(VideoResizeMode.FIT)
 
     fun setResizeMode(context: Context, mode: VideoResizeMode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(RESIZE_MODE, mode.name)
-            .apply()
+            .edit().putString(RESIZE_MODE, mode.name).apply()
     }
 
     fun loop(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(LOOP, false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(LOOP, false)
 
     fun setLoop(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(LOOP, enabled)
-            .apply()
+            .edit().putBoolean(LOOP, enabled).apply()
     }
 
     fun seekSeconds(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(SEEK_SECONDS, 10)
-            .takeIf { it in VIDEO_SEEK_SECONDS }
-            ?: 10
+            .getInt(SEEK_SECONDS, 10).takeIf { it in VIDEO_SEEK_SECONDS } ?: 10
 
     fun setSeekSeconds(context: Context, seconds: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(SEEK_SECONDS, seconds.coerceIn(5, 30))
-            .apply()
+            .edit().putInt(SEEK_SECONDS, seconds.coerceIn(5, 30)).apply()
     }
 
     fun controlsTimeoutSeconds(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(CONTROLS_TIMEOUT_SECONDS, 4)
-            .takeIf { it in VIDEO_CONTROL_TIMEOUT_SECONDS }
-            ?: 4
+            .takeIf { it in VIDEO_CONTROL_TIMEOUT_SECONDS } ?: 4
 
     fun setControlsTimeoutSeconds(context: Context, seconds: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(CONTROLS_TIMEOUT_SECONDS, seconds)
-            .apply()
+            .edit().putInt(CONTROLS_TIMEOUT_SECONDS, seconds).apply()
     }
 
     fun subtitleLanguage(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(SUBTITLE_LANGUAGE, VIDEO_LANGUAGE_AUTO)
-            ?: VIDEO_LANGUAGE_AUTO
+            .getString(SUBTITLE_LANGUAGE, VIDEO_LANGUAGE_AUTO) ?: VIDEO_LANGUAGE_AUTO
 
     fun setSubtitleLanguage(context: Context, language: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(SUBTITLE_LANGUAGE, language)
-            .apply()
+            .edit().putString(SUBTITLE_LANGUAGE, language).apply()
     }
 
     fun audioLanguage(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(AUDIO_LANGUAGE, VIDEO_LANGUAGE_AUTO)
-            ?: VIDEO_LANGUAGE_AUTO
+            .getString(AUDIO_LANGUAGE, VIDEO_LANGUAGE_AUTO) ?: VIDEO_LANGUAGE_AUTO
 
     fun setAudioLanguage(context: Context, language: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(AUDIO_LANGUAGE, language)
-            .apply()
+            .edit().putString(AUDIO_LANGUAGE, language).apply()
     }
 
     fun preferredStreamTitle(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(PREFERRED_STREAM_TITLE, "")
-            .orEmpty()
+            .getString(PREFERRED_STREAM_TITLE, "").orEmpty()
 
     fun setPreferredStreamTitle(context: Context, title: String) {
         val normalized = normalizeStreamPreference(title)
         if (normalized.isBlank()) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(PREFERRED_STREAM_TITLE, normalized)
-            .apply()
+            .edit().putString(PREFERRED_STREAM_TITLE, normalized).apply()
     }
 
     fun subtitleSize(context: Context): VideoSubtitleSize =
         runCatching {
             VideoSubtitleSize.valueOf(
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(SUBTITLE_SIZE, null)
-                    .orEmpty(),
+                    .getString(SUBTITLE_SIZE, null).orEmpty(),
             )
         }.getOrDefault(VideoSubtitleSize.MEDIUM)
 
     fun setSubtitleSize(context: Context, size: VideoSubtitleSize) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(SUBTITLE_SIZE, size.name)
-            .apply()
+            .edit().putString(SUBTITLE_SIZE, size.name).apply()
     }
 
     fun subtitleBackground(context: Context): VideoSubtitleBackground =
         runCatching {
             VideoSubtitleBackground.valueOf(
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(SUBTITLE_BACKGROUND, null)
-                    .orEmpty(),
+                    .getString(SUBTITLE_BACKGROUND, null).orEmpty(),
             )
         }.getOrDefault(VideoSubtitleBackground.SEMI)
 
     fun setSubtitleBackground(context: Context, background: VideoSubtitleBackground) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(SUBTITLE_BACKGROUND, background.name)
-            .apply()
+            .edit().putString(SUBTITLE_BACKGROUND, background.name).apply()
     }
 
     fun subtitlePosition(context: Context): VideoSubtitlePosition =
         runCatching {
             VideoSubtitlePosition.valueOf(
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(SUBTITLE_POSITION, null)
-                    .orEmpty(),
+                    .getString(SUBTITLE_POSITION, null).orEmpty(),
             )
         }.getOrDefault(VideoSubtitlePosition.BOTTOM)
 
     fun setSubtitlePosition(context: Context, position: VideoSubtitlePosition) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(SUBTITLE_POSITION, position.name)
-            .apply()
+            .edit().putString(SUBTITLE_POSITION, position.name).apply()
     }
 
     fun reset(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 }
 
@@ -240,6 +203,11 @@ internal val VIDEO_CONTROL_TIMEOUT_SECONDS = listOf(2, 4, 6, 10, 0)
 internal const val VIDEO_LANGUAGE_AUTO = "__auto__"
 internal const val VIDEO_LANGUAGE_OFF = "__off__"
 
+/**
+ * Compact companion strip for Media3's native playback controls.
+ * Secondary settings live in one overflow menu instead of a long horizontal
+ * list, which keeps landscape playback readable on phones.
+ */
 @Composable
 internal fun VideoPlayerQuickControls(
     player: Player,
@@ -284,370 +252,247 @@ internal fun VideoPlayerQuickControls(
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var speedMenu by remember { mutableStateOf(false) }
-    var subtitleMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     var streamMenu by remember { mutableStateOf(false) }
-    var resizeMenu by remember { mutableStateOf(false) }
-    var sleepMenu by remember { mutableStateOf(false) }
-    var seekMenu by remember { mutableStateOf(false) }
-    var timeoutMenu by remember { mutableStateOf(false) }
-    var audioMenu by remember { mutableStateOf(false) }
-    var subtitleSizeMenu by remember { mutableStateOf(false) }
-    var subtitleBackgroundMenu by remember { mutableStateOf(false) }
-    var subtitlePositionMenu by remember { mutableStateOf(false) }
+    var speedMenu by remember { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
     var seekDragFraction by remember { mutableStateOf<Float?>(null) }
-    val streamOptions = remember(streams) {
-        streams.distinctBy { it.url }
-    }
-
+    val streamOptions = remember(streams) { streams.distinctBy { it.url } }
     val sliderFraction = seekDragFraction ?: seekFraction(currentPositionMs, durationMs)
-    val previewPositionMs =
-        seekDragFraction?.let { seekPositionForFraction(it, durationMs) } ?: currentPositionMs
+    val previewPositionMs = seekDragFraction?.let { seekPositionForFraction(it, durationMs) }
+        ?: currentPositionMs
 
     Surface(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        tonalElevation = 3.dp,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+        ) {
             Slider(
                 value = sliderFraction,
                 onValueChange = { seekDragFraction = it },
                 onValueChangeFinished = {
-                    val fraction = seekDragFraction
-                    if (fraction != null && durationMs > 0L) {
-                        player.seekTo(seekPositionForFraction(fraction, durationMs))
+                    seekDragFraction?.let { fraction ->
+                        if (durationMs > 0L) player.seekTo(seekPositionForFraction(fraction, durationMs))
                     }
                     seekDragFraction = null
                 },
                 enabled = durationMs > 0L,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
+
             Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-            TextButton(onClick = onPlayPause) {
-                Text(playPauseLabel(playing))
-            }
+                TextButton(onClick = onPlayPause) {
+                    Text(if (playing) "Pause" else "Play")
+                }
 
-            Text(
-                text = playbackTimeLabel(previewPositionMs, durationMs),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
+                Text(
+                    text = playbackTimeLabel(previewPositionMs, durationMs),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
 
-            TextButton(
-                onClick = {
+                TextButton(onClick = {
                     player.seekTo(seekBackTarget(player.currentPosition, seekSeconds))
-                },
-            ) {
-                Text("−" + seekSeconds + "s")
-            }
+                }) { Text("−${seekSeconds}s") }
 
-            TextButton(
-                onClick = {
+                TextButton(onClick = {
                     player.seekTo(seekForwardTarget(player.currentPosition, player.duration, seekSeconds))
-                },
-            ) {
-                Text("+" + seekSeconds + "s")
-            }
+                }) { Text("+${seekSeconds}s") }
 
-            TextButton(onClick = { seekMenu = true }) {
-                Text("Seek " + seekSeconds + "s")
-            }
-            DropdownMenu(
-                expanded = seekMenu,
-                onDismissRequest = { seekMenu = false },
-            ) {
-                VIDEO_SEEK_SECONDS.forEach { seconds ->
-                    DropdownMenuItem(
-                        text = { Text(seconds.toString() + " seconds") },
-                        onClick = {
-                            seekMenu = false
-                            onSeekSecondsChange(seconds)
-                        },
-                    )
-                }
-            }
-
-            TextButton(onClick = { timeoutMenu = true }) {
-                Text(controlsTimeoutLabel(controlsTimeoutSeconds))
-            }
-            DropdownMenu(
-                expanded = timeoutMenu,
-                onDismissRequest = { timeoutMenu = false },
-            ) {
-                VIDEO_CONTROL_TIMEOUT_SECONDS.forEach { seconds ->
-                    DropdownMenuItem(
-                        text = { Text(controlsTimeoutMenuLabel(seconds)) },
-                        onClick = {
-                            timeoutMenu = false
-                            onControlsTimeoutChange(seconds)
-                        },
-                    )
-                }
-            }
-
-            if (streamOptions.size > 1) {
-                TextButton(onClick = { streamMenu = true }) {
-                    Text(
-                        streamDisplayLabel(
-                            selectedStream,
-                            streamOptions.indexOfFirst { it.url == selectedStream.url },
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                DropdownMenu(
-                    expanded = streamMenu,
-                    onDismissRequest = { streamMenu = false },
-                ) {
-                    streamOptions.forEachIndexed { index, option ->
-                        DropdownMenuItem(
-                            text = { Text(streamDisplayLabel(option, index)) },
-                            onClick = {
-                                streamMenu = false
-                                onStreamChange(option)
-                            },
+                Box {
+                    TextButton(onClick = { streamMenu = true }) {
+                        Text(
+                            streamDisplayLabel(
+                                selectedStream,
+                                streamOptions.indexOfFirst { it.url == selectedStream.url },
+                            ),
+                            maxLines = 1,
                         )
                     }
-                }
-            }
-
-            TextButton(onClick = { resizeMenu = true }) {
-                Text(resizeMode.label)
-            }
-            DropdownMenu(
-                expanded = resizeMenu,
-                onDismissRequest = { resizeMenu = false },
-            ) {
-                VideoResizeMode.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = {
-                            resizeMenu = false
-                            onResizeModeChange(option)
-                        },
-                    )
-                }
-            }
-
-            TextButton(onClick = { onLoopChange(!loopEnabled) }) {
-                Text(if (loopEnabled) "Loop ✓" else "Loop")
-            }
-
-            TextButton(onClick = { sleepMenu = true }) {
-                Text(sleepTimerCountdownLabel(sleepTimerMinutes, sleepTimerRemainingMs))
-            }
-            DropdownMenu(
-                expanded = sleepMenu,
-                onDismissRequest = { sleepMenu = false },
-            ) {
-                listOf<Int?>(15, 30, 45, 60, null).forEach { minutes ->
-                    DropdownMenuItem(
-                        text = { Text(sleepTimerMenuLabel(minutes)) },
-                        onClick = {
-                            sleepMenu = false
-                            onSleepTimerChange(minutes)
-                        },
-                    )
-                }
-            }
-
-            TextButton(onClick = onPictureInPicture) {
-                Text("PiP")
-            }
-
-            TextButton(onClick = { onLandscapeLockChange(!landscapeLocked) }) {
-                Text(if (landscapeLocked) "Landscape ✓" else "Landscape")
-            }
-
-            TextButton(onClick = { speedMenu = true }) {
-                Text(formatPlaybackSpeed(speed))
-            }
-            DropdownMenu(
-                expanded = speedMenu,
-                onDismissRequest = { speedMenu = false },
-            ) {
-                VIDEO_SPEEDS.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(formatPlaybackSpeed(option)) },
-                        onClick = {
-                            speedMenu = false
-                            onSpeedChange(option)
-                        },
-                    )
-                }
-            }
-
-            if (subtitles.isNotEmpty()) {
-                TextButton(onClick = { subtitleMenu = true }) {
-                    Text(subtitleButtonLabel(subtitleLanguage))
-                }
-                DropdownMenu(
-                    expanded = subtitleMenu,
-                    onDismissRequest = { subtitleMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Subtitles: Auto") },
-                        onClick = {
-                            subtitleMenu = false
-                            player.trackSelectionParameters =
-                                player.trackSelectionParameters
-                                    .buildUpon()
-                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                    .setPreferredTextLanguage(null)
-                                    .build()
-                            onSubtitleLanguageChange(VIDEO_LANGUAGE_AUTO)
-                        },
-                    )
-                    subtitles
-                        .map { it.language.trim() }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                        .forEach { language ->
+                    DropdownMenu(
+                        expanded = streamMenu,
+                        onDismissRequest = { streamMenu = false },
+                    ) {
+                        streamOptions.forEachIndexed { index, option ->
                             DropdownMenuItem(
-                                text = { Text(language) },
+                                text = { Text(streamDisplayLabel(option, index)) },
                                 onClick = {
-                                    subtitleMenu = false
-                                    player.trackSelectionParameters =
-                                        player.trackSelectionParameters
-                                            .buildUpon()
-                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                            .setPreferredTextLanguage(language)
-                                            .build()
-                                    onSubtitleLanguageChange(language)
+                                    streamMenu = false
+                                    onStreamChange(option)
                                 },
                             )
                         }
-                    DropdownMenuItem(
-                        text = { Text("Subtitles: Off") },
-                        onClick = {
-                            subtitleMenu = false
-                            player.trackSelectionParameters =
-                                player.trackSelectionParameters
-                                    .buildUpon()
-                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                                    .build()
-                            onSubtitleLanguageChange(VIDEO_LANGUAGE_OFF)
-                        },
-                    )
+                    }
                 }
-            }
 
-            TextButton(onClick = { subtitleSizeMenu = true }) {
-                Text(subtitleSize.label)
-            }
-            DropdownMenu(
-                expanded = subtitleSizeMenu,
-                onDismissRequest = { subtitleSizeMenu = false },
-            ) {
-                VideoSubtitleSize.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = {
-                            subtitleSizeMenu = false
-                            onSubtitleSizeChange(option)
-                        },
-                    )
+                Box {
+                    TextButton(onClick = { speedMenu = true }) { Text(formatPlaybackSpeed(speed)) }
+                    DropdownMenu(
+                        expanded = speedMenu,
+                        onDismissRequest = { speedMenu = false },
+                    ) {
+                        VIDEO_SPEEDS.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(formatPlaybackSpeed(option)) },
+                                onClick = {
+                                    speedMenu = false
+                                    onSpeedChange(option)
+                                },
+                            )
+                        }
+                    }
                 }
-            }
 
-            TextButton(onClick = { subtitleBackgroundMenu = true }) {
-                Text(subtitleBackground.label)
-            }
-            DropdownMenu(
-                expanded = subtitleBackgroundMenu,
-                onDismissRequest = { subtitleBackgroundMenu = false },
-            ) {
-                VideoSubtitleBackground.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = {
-                            subtitleBackgroundMenu = false
-                            onSubtitleBackgroundChange(option)
-                        },
-                    )
+                if (subtitles.isNotEmpty()) {
+                    TextButton(onClick = {
+                        val languages = subtitles.map { it.language.trim() }
+                            .filter { it.isNotBlank() }.distinct()
+                        val next = when (subtitleLanguage) {
+                            VIDEO_LANGUAGE_OFF -> VIDEO_LANGUAGE_AUTO
+                            VIDEO_LANGUAGE_AUTO -> languages.firstOrNull() ?: VIDEO_LANGUAGE_OFF
+                            else -> VIDEO_LANGUAGE_OFF
+                        }
+                        player.trackSelectionParameters = player.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, next == VIDEO_LANGUAGE_OFF)
+                            .apply {
+                                setPreferredTextLanguage(
+                                    next.takeUnless { it == VIDEO_LANGUAGE_AUTO || it == VIDEO_LANGUAGE_OFF },
+                                )
+                            }
+                            .build()
+                        onSubtitleLanguageChange(next)
+                    }) { Text(subtitleButtonLabel(subtitleLanguage)) }
                 }
-            }
 
-            TextButton(onClick = { subtitlePositionMenu = true }) {
-                Text(subtitlePosition.label)
-            }
-            DropdownMenu(
-                expanded = subtitlePositionMenu,
-                onDismissRequest = { subtitlePositionMenu = false },
-            ) {
-                VideoSubtitlePosition.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = {
-                            subtitlePositionMenu = false
-                            onSubtitlePositionChange(option)
-                        },
-                    )
+                TextButton(onClick = { AnimeVideoDownload.enqueue(context, selectedStream) }) {
+                    Text("Download")
                 }
-            }
 
-            if (audioLanguages.isNotEmpty()) {
-                TextButton(onClick = { audioMenu = true }) {
-                    Text(audioButtonLabel(audioLanguage))
-                }
-                DropdownMenu(
-                    expanded = audioMenu,
-                    onDismissRequest = { audioMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Audio: Auto") },
-                        onClick = {
-                            audioMenu = false
-                            onAudioLanguageChange(VIDEO_LANGUAGE_AUTO)
-                        },
-                    )
-                    audioLanguages.forEach { language ->
+                Box {
+                    TextButton(onClick = { moreMenu = true }) { Text("More ⋮") }
+                    DropdownMenu(
+                        expanded = moreMenu,
+                        onDismissRequest = { moreMenu = false },
+                    ) {
                         DropdownMenuItem(
-                            text = { Text(language) },
+                            text = { Text("Display: ${resizeMode.label}") },
                             onClick = {
-                                audioMenu = false
-                                onAudioLanguageChange(language)
+                                moreMenu = false
+                                val values = VideoResizeMode.entries
+                                onResizeModeChange(values[(values.indexOf(resizeMode) + 1) % values.size])
                             },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (loopEnabled) "Loop: On" else "Loop: Off") },
+                            onClick = { moreMenu = false; onLoopChange(!loopEnabled) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(sleepTimerCountdownLabel(sleepTimerMinutes, sleepTimerRemainingMs)) },
+                            onClick = {
+                                moreMenu = false
+                                val options = listOf<Int?>(15, 30, 45, 60, null)
+                                val next = options[(options.indexOf(sleepTimerMinutes).takeIf { it >= 0 } ?: 4 + 1) % options.size]
+                                onSleepTimerChange(next)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Picture in picture") },
+                            onClick = { moreMenu = false; onPictureInPicture() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (landscapeLocked) "Unlock orientation" else "Lock landscape") },
+                            onClick = { moreMenu = false; onLandscapeLockChange(!landscapeLocked) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Seek interval: ${seekSeconds}s") },
+                            onClick = {
+                                moreMenu = false
+                                val i = VIDEO_SEEK_SECONDS.indexOf(seekSeconds).coerceAtLeast(0)
+                                onSeekSecondsChange(VIDEO_SEEK_SECONDS[(i + 1) % VIDEO_SEEK_SECONDS.size])
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(controlsTimeoutLabel(controlsTimeoutSeconds)) },
+                            onClick = {
+                                moreMenu = false
+                                val i = VIDEO_CONTROL_TIMEOUT_SECONDS.indexOf(controlsTimeoutSeconds).coerceAtLeast(0)
+                                onControlsTimeoutChange(
+                                    VIDEO_CONTROL_TIMEOUT_SECONDS[(i + 1) % VIDEO_CONTROL_TIMEOUT_SECONDS.size],
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(subtitleSize.label) },
+                            onClick = {
+                                moreMenu = false
+                                val values = VideoSubtitleSize.entries
+                                onSubtitleSizeChange(values[(values.indexOf(subtitleSize) + 1) % values.size])
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(subtitleBackground.label) },
+                            onClick = {
+                                moreMenu = false
+                                val values = VideoSubtitleBackground.entries
+                                onSubtitleBackgroundChange(
+                                    values[(values.indexOf(subtitleBackground) + 1) % values.size],
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(subtitlePosition.label) },
+                            onClick = {
+                                moreMenu = false
+                                val values = VideoSubtitlePosition.entries
+                                onSubtitlePositionChange(
+                                    values[(values.indexOf(subtitlePosition) + 1) % values.size],
+                                )
+                            },
+                        )
+                        if (audioLanguages.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(audioButtonLabel(audioLanguage)) },
+                                onClick = {
+                                    moreMenu = false
+                                    val options = listOf(VIDEO_LANGUAGE_AUTO) + audioLanguages
+                                    val i = options.indexOf(audioLanguage).coerceAtLeast(0)
+                                    onAudioLanguageChange(options[(i + 1) % options.size])
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(if (muted) "Unmute" else "Mute") },
+                            onClick = { moreMenu = false; onMuteToggle() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reset player settings") },
+                            onClick = { moreMenu = false; onResetSettings() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Lock controls") },
+                            onClick = { moreMenu = false; onLock() },
                         )
                     }
                 }
-            }
-
-            TextButton(onClick = onMuteToggle) {
-                Text(if (muted) "Unmute" else "Mute")
-            }
-
-            TextButton(onClick = onResetSettings) {
-                Text("Reset")
-            }
-
-            TextButton(onClick = onLock) {
-                Text("Lock")
-            }
             }
         }
     }
 }
 
 internal fun seekFraction(positionMs: Long, durationMs: Long): Float =
-    if (durationMs <= 0L) 0f
-    else (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
 
 internal fun seekPositionForFraction(fraction: Float, durationMs: Long): Long =
-    if (durationMs <= 0L) 0L
-    else (fraction.coerceIn(0f, 1f) * durationMs.toFloat()).toLong()
+    if (durationMs <= 0L) 0L else (fraction.coerceIn(0f, 1f) * durationMs.toFloat()).toLong()
 
 @Composable
 internal fun VideoPlayerGestureLayer(
@@ -680,17 +525,13 @@ internal fun VideoPlayerGestureLayer(
                                     boosted = true
                                     onHoldStart()
                                 }
-                                val released = tryAwaitRelease()
+                                tryAwaitRelease()
                                 holdJob.cancel()
-                                if (boosted) {
-                                    onHoldEnd()
-                                }
+                                if (boosted) onHoldEnd()
                             }
                         }
                     },
-                    onTap = {
-                        if (!locked) onSingleTap()
-                    },
+                    onTap = { if (!locked) onSingleTap() },
                     onDoubleTap = { offset ->
                         if (!locked) {
                             when (doubleTapZone(offset.x, size.width.toFloat())) {
@@ -725,25 +566,17 @@ internal fun VideoPlayerGestureLayer(
                                 val absY = kotlin.math.abs(accumulatedY)
                                 if (absX > 12f || absY > 12f) {
                                     horizontal = absX > absY
-                                    if (horizontal == true) {
-                                        onHorizontalStart()
-                                    } else {
-                                        onVerticalStart(dragFromLeft)
-                                    }
+                                    if (horizontal == true) onHorizontalStart() else onVerticalStart(dragFromLeft)
                                 }
                             }
                             when (horizontal) {
                                 true -> {
                                     change.consume()
-                                    onHorizontalProgress(
-                                        (accumulatedX / size.width).coerceIn(-1f, 1f),
-                                    )
+                                    onHorizontalProgress((accumulatedX / size.width).coerceIn(-1f, 1f))
                                 }
                                 false -> {
                                     change.consume()
-                                    onVerticalProgress(
-                                        (-accumulatedY / size.height).coerceIn(-1f, 1f),
-                                    )
+                                    onVerticalProgress((-accumulatedY / size.height).coerceIn(-1f, 1f))
                                 }
                                 null -> Unit
                             }
@@ -751,14 +584,12 @@ internal fun VideoPlayerGestureLayer(
                     },
                     onDragEnd = {
                         if (!locked) {
-                            if (horizontal == true) onHorizontalEnd()
-                            else if (horizontal == false) onVerticalEnd()
+                            if (horizontal == true) onHorizontalEnd() else if (horizontal == false) onVerticalEnd()
                         }
                     },
                     onDragCancel = {
                         if (!locked) {
-                            if (horizontal == true) onHorizontalEnd()
-                            else if (horizontal == false) onVerticalEnd()
+                            if (horizontal == true) onHorizontalEnd() else if (horizontal == false) onVerticalEnd()
                         }
                     },
                 )
@@ -769,11 +600,7 @@ internal fun VideoPlayerGestureLayer(
 internal fun seekBackTarget(positionMs: Long, seconds: Int = 10): Long =
     (positionMs - seconds.coerceAtLeast(1) * 1_000L).coerceAtLeast(0L)
 
-internal fun seekForwardTarget(
-    positionMs: Long,
-    durationMs: Long,
-    seconds: Int = 10,
-): Long {
+internal fun seekForwardTarget(positionMs: Long, durationMs: Long, seconds: Int = 10): Long {
     val target = positionMs + seconds.coerceAtLeast(1) * 1_000L
     return if (durationMs > 0L) target.coerceAtMost(durationMs) else target
 }
@@ -787,67 +614,30 @@ internal fun streamDisplayLabel(video: PlayableVideo, index: Int): String {
     return if (index >= 0) "Stream " + (index + 1) else "Quality"
 }
 
-
-internal fun sleepTimerLabel(minutes: Int?): String =
-    minutes?.let { "Sleep " + it + "m" } ?: "Sleep"
-
-internal fun sleepTimerMenuLabel(minutes: Int?): String =
-    minutes?.let { "Stop after " + it + " min" } ?: "Sleep timer off"
-
-internal fun sleepTimerDurationMs(minutes: Int): Long =
-    minutes.coerceAtLeast(1).toLong() * 60_000L
-
-
-internal fun controlsTimeoutLabel(seconds: Int): String =
-    if (seconds == 0) "Controls always" else "Hide " + seconds + "s"
-
-internal fun controlsTimeoutMenuLabel(seconds: Int): String =
-    if (seconds == 0) "Never hide controls" else "Hide after " + seconds + " seconds"
-
-
-internal fun subtitleButtonLabel(language: String): String =
-    when (language) {
-        VIDEO_LANGUAGE_OFF -> "CC off"
-        VIDEO_LANGUAGE_AUTO -> "CC"
-        else -> "CC " + language
-    }
-
-internal fun audioButtonLabel(language: String): String =
-    if (language == VIDEO_LANGUAGE_AUTO) "Audio" else "Audio " + language
-
-
-internal fun normalizeStreamPreference(title: String): String =
-    title.trim().lowercase()
-
-internal fun preferredStream(
-    initial: PlayableVideo,
-    streams: List<PlayableVideo>,
-    preferredTitle: String,
-): PlayableVideo {
+internal fun sleepTimerLabel(minutes: Int?): String = minutes?.let { "Sleep ${it}m" } ?: "Sleep"
+internal fun sleepTimerMenuLabel(minutes: Int?): String = minutes?.let { "Stop after $it min" } ?: "Sleep timer off"
+internal fun sleepTimerDurationMs(minutes: Int): Long = minutes.coerceAtLeast(1).toLong() * 60_000L
+internal fun controlsTimeoutLabel(seconds: Int): String = if (seconds == 0) "Controls always" else "Hide ${seconds}s"
+internal fun controlsTimeoutMenuLabel(seconds: Int): String = if (seconds == 0) "Never hide controls" else "Hide after $seconds seconds"
+internal fun subtitleButtonLabel(language: String): String = when (language) {
+    VIDEO_LANGUAGE_OFF -> "CC off"
+    VIDEO_LANGUAGE_AUTO -> "CC"
+    else -> "CC $language"
+}
+internal fun audioButtonLabel(language: String): String = if (language == VIDEO_LANGUAGE_AUTO) "Audio" else "Audio $language"
+internal fun normalizeStreamPreference(title: String): String = title.trim().lowercase()
+internal fun preferredStream(initial: PlayableVideo, streams: List<PlayableVideo>, preferredTitle: String): PlayableVideo {
     val normalized = normalizeStreamPreference(preferredTitle)
     if (normalized.isBlank()) return initial
-    return streams.firstOrNull {
-        normalizeStreamPreference(it.title) == normalized
-    } ?: initial
+    return streams.firstOrNull { normalizeStreamPreference(it.title) == normalized } ?: initial
 }
 
-
-internal fun scrubTargetPosition(
-    startPositionMs: Long,
-    durationMs: Long,
-    progress: Float,
-): Long {
+internal fun scrubTargetPosition(startPositionMs: Long, durationMs: Long, progress: Float): Long {
     val spanMs = if (durationMs > 0L) {
         (durationMs / 4L).coerceAtMost(300_000L).coerceAtLeast(30_000L)
-    } else {
-        120_000L
-    }
+    } else 120_000L
     val target = startPositionMs + (spanMs * progress.coerceIn(-1f, 1f)).toLong()
-    return if (durationMs > 0L) {
-        target.coerceIn(0L, durationMs)
-    } else {
-        target.coerceAtLeast(0L)
-    }
+    return if (durationMs > 0L) target.coerceIn(0L, durationMs) else target.coerceAtLeast(0L)
 }
 
 internal fun formatVideoTime(positionMs: Long): String {
@@ -856,65 +646,38 @@ internal fun formatVideoTime(positionMs: Long): String {
     val minutes = (totalSeconds % 3_600L) / 60L
     val seconds = totalSeconds % 60L
     return if (hours > 0L) {
-        hours.toString() + ":" +
-            minutes.toString().padStart(2, '0') + ":" +
-            seconds.toString().padStart(2, '0')
+        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     } else {
-        minutes.toString() + ":" + seconds.toString().padStart(2, '0')
+        "$minutes:${seconds.toString().padStart(2, '0')}"
     }
 }
 
-
-internal fun muteButtonLabel(muted: Boolean): String =
-    if (muted) "Unmute" else "Mute"
-
-
-internal enum class VideoGestureEdge {
-    START,
-    END,
+internal fun muteButtonLabel(muted: Boolean): String = if (muted) "Unmute" else "Mute"
+internal enum class VideoGestureEdge { START, END }
+internal fun scrubEdge(targetMs: Long, durationMs: Long): VideoGestureEdge? = when {
+    targetMs <= 0L -> VideoGestureEdge.START
+    durationMs > 0L && targetMs >= durationMs -> VideoGestureEdge.END
+    else -> null
 }
-
-internal fun scrubEdge(targetMs: Long, durationMs: Long): VideoGestureEdge? =
-    when {
-        targetMs <= 0L -> VideoGestureEdge.START
-        durationMs > 0L && targetMs >= durationMs -> VideoGestureEdge.END
-        else -> null
-    }
-
-internal fun levelEdge(value: Float): VideoGestureEdge? =
-    when {
-        value <= 0f -> VideoGestureEdge.START
-        value >= 1f -> VideoGestureEdge.END
-        else -> null
-    }
-
-
-internal fun playPauseLabel(playing: Boolean): String =
-    if (playing) "Pause" else "Play"
-
-
+internal fun levelEdge(value: Float): VideoGestureEdge? = when {
+    value <= 0f -> VideoGestureEdge.START
+    value >= 1f -> VideoGestureEdge.END
+    else -> null
+}
+internal fun playPauseLabel(playing: Boolean): String = if (playing) "Pause" else "Play"
 internal fun sleepTimerCountdownLabel(minutes: Int?, remainingMs: Long?): String {
     if (minutes == null || remainingMs == null) return "Sleep"
     val totalSeconds = (remainingMs.coerceAtLeast(0L) + 999L) / 1_000L
     val mins = totalSeconds / 60L
     val seconds = totalSeconds % 60L
-    return "Sleep " + mins + ":" + seconds.toString().padStart(2, '0')
+    return "Sleep $mins:${seconds.toString().padStart(2, '0')}"
 }
-
-
 internal fun playbackTimeLabel(positionMs: Long, durationMs: Long): String {
     val position = formatVideoTime(positionMs)
     val duration = if (durationMs > 0L) formatVideoTime(durationMs) else "--:--"
-    return position + " / " + duration
+    return "$position / $duration"
 }
-
-
-internal enum class VideoDoubleTapZone {
-    LEFT,
-    CENTER,
-    RIGHT,
-}
-
+internal enum class VideoDoubleTapZone { LEFT, CENTER, RIGHT }
 internal fun doubleTapZone(x: Float, width: Float): VideoDoubleTapZone {
     if (width <= 0f) return VideoDoubleTapZone.CENTER
     val fraction = (x / width).coerceIn(0f, 1f)
