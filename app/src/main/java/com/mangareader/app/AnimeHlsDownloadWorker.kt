@@ -87,11 +87,18 @@ internal class AnimeHlsDownloadWorker(
             reportProgress(title, quality, "Complete", 100)
             Result.success(workDataOf(KEY_OUTPUT_PATH to localPlaylist.absolutePath))
         } catch (cancelled: CancellationException) {
-            episodeDir?.deleteRecursively()
+            // Keep already-fetched segments. WorkManager can restart work after the
+            // process is stopped, and deleting them here would force a full HLS
+            // download from byte zero every time Android interrupts the worker.
             throw cancelled
         } catch (error: Throwable) {
-            episodeDir?.deleteRecursively()
-            Result.failure(workDataOf(KEY_ERROR to (error.message ?: "HLS download failed")))
+            if (shouldRetryHlsDownload(runAttemptCount)) {
+                reportProgress(title, quality, "Waiting to retry", 1)
+                Result.retry()
+            } else {
+                episodeDir?.deleteRecursively()
+                Result.failure(workDataOf(KEY_ERROR to (error.message ?: "HLS download failed")))
+            }
         }
     }
 
