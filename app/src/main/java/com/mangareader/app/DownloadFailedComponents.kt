@@ -1,33 +1,20 @@
 package com.mangareader.app
 
 import android.content.Context
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -48,15 +35,22 @@ internal fun LazyListScope.downloadFailedSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "Failed (${failed.size})",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Failed downloads",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    "${failed.size} ${if (failed.size == 1) "item needs" else "items need"} attention",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row {
                 TextButton(
                     onClick = {
@@ -69,14 +63,10 @@ internal fun LazyListScope.downloadFailedSection(
                                 }
                                 changed
                             }
-                            if (retried > 0) {
-                                DownloadService.start(context)
-                            }
+                            if (retried > 0) DownloadService.start(context)
                         }
                     },
-                ) {
-                    Text("Retry all")
-                }
+                ) { Text("Retry all") }
                 TextButton(
                     onClick = {
                         val appContext = context.applicationContext
@@ -84,9 +74,7 @@ internal fun LazyListScope.downloadFailedSection(
                             DownloadQueue.clearFailed(appContext)
                         }
                     },
-                ) {
-                    Text("Clear")
-                }
+                ) { Text("Clear") }
             }
         }
     }
@@ -105,15 +93,20 @@ internal fun LazyListScope.downloadFailedSection(
 
     if (queued.isNotEmpty()) {
         item {
-            Text(
-                "Queued (${queued.size})",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(
-                    start = 16.dp,
-                    top = 12.dp,
-                    bottom = 4.dp,
-                ),
-            )
+            Column(
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    "Queued downloads",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    "${queued.size} ${if (queued.size == 1) "item" else "items"} waiting",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -125,71 +118,72 @@ internal fun DownloadFailedRow(
     context: Context,
     scope: CoroutineScope,
 ) {
-    ListItem(
-        headlineContent = {
-            Text(
-                entry.item.seriesTitle.ifBlank { entry.item.chapterName },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        supportingContent = {
-            Column {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        ListItem(
+            headlineContent = {
                 Text(
-                    entry.item.chapterName,
+                    entry.item.seriesTitle.ifBlank { entry.item.chapterName },
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                SelectionContainer {
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        entry.reason,
+                        entry.item.chapterName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    SelectionContainer {
+                        Text(
+                            entry.reason,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
-            }
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    onClick = {
-                        val appContext = context.applicationContext
-                        scope.launch {
-                            val retried = withContext(Dispatchers.IO) {
-                                val changed = DownloadQueue.retry(
-                                    appContext,
-                                    setOf(entry.item.chapterId),
-                                )
-                                if (changed > 0 && queuePaused) {
-                                    DownloadQueue.setPaused(appContext, false)
+            },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            val appContext = context.applicationContext
+                            scope.launch {
+                                val retried = withContext(Dispatchers.IO) {
+                                    val changed = DownloadQueue.retry(
+                                        appContext,
+                                        setOf(entry.item.chapterId),
+                                    )
+                                    if (changed > 0 && queuePaused) {
+                                        DownloadQueue.setPaused(appContext, false)
+                                    }
+                                    changed
                                 }
-                                changed
+                                if (retried > 0) DownloadService.start(context)
                             }
-                            if (retried > 0) {
-                                DownloadService.start(context)
+                        },
+                    ) { Text("Retry") }
+                    TextButton(
+                        onClick = {
+                            val appContext = context.applicationContext
+                            scope.launch(Dispatchers.IO) {
+                                DownloadQueue.dismissFailed(appContext, entry.item.chapterId)
                             }
-                        }
-                    },
-                ) {
-                    Text("Retry")
+                        },
+                    ) { Text("Dismiss") }
                 }
-                TextButton(
-                    onClick = {
-                        val appContext = context.applicationContext
-                        scope.launch(Dispatchers.IO) {
-                            DownloadQueue.dismissFailed(
-                                appContext,
-                                entry.item.chapterId,
-                            )
-                        }
-                    },
-                ) {
-                    Text("Dismiss")
-                }
-            }
-        },
-    )
-    HorizontalDivider()
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
 }
