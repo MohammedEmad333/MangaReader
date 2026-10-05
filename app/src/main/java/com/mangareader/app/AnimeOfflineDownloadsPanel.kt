@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,12 +52,10 @@ private data class ActiveAnimeDownload(
 )
 
 private data class ActiveDirectAnimeDownload(
-    val id: Long,
-    val path: String,
-    val title: String,
-    val quality: String,
+    val item: PendingDirectAnimeDownload,
     val stage: String,
     val percent: Int,
+    val failed: Boolean,
 )
 
 private data class DirectDownloadsSnapshot(
@@ -95,21 +94,30 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                             info.state == WorkInfo.State.BLOCKED
                     }
                     .map { info ->
+                        val baseStage = info.progress.getString(AnimeHlsDownloadWorker.KEY_STAGE)
+                            .orEmpty()
+                            .ifBlank {
+                                when (info.state) {
+                                    WorkInfo.State.ENQUEUED -> "Queued"
+                                    WorkInfo.State.BLOCKED -> "Waiting"
+                                    else -> "Starting"
+                                }
+                            }
+                        val stage = if (
+                            info.runAttemptCount > 0 &&
+                            (baseStage == "Queued" || baseStage == "Starting" || baseStage == "Preparing")
+                        ) {
+                            "Retrying · $baseStage"
+                        } else {
+                            baseStage
+                        }
                         ActiveAnimeDownload(
                             id = info.id,
                             title = info.progress.getString(AnimeHlsDownloadWorker.KEY_TITLE)
                                 .orEmpty()
                                 .ifBlank { "Queued anime download" },
                             quality = info.progress.getString(AnimeHlsDownloadWorker.KEY_QUALITY).orEmpty(),
-                            stage = info.progress.getString(AnimeHlsDownloadWorker.KEY_STAGE)
-                                .orEmpty()
-                                .ifBlank {
-                                    when (info.state) {
-                                        WorkInfo.State.ENQUEUED -> "Queued"
-                                        WorkInfo.State.BLOCKED -> "Waiting"
-                                        else -> "Starting"
-                                    }
-                                },
+                            stage = stage,
                             percent = info.progress.getInt(AnimeHlsDownloadWorker.KEY_PERCENT, 0)
                                 .coerceIn(0, 100),
                             state = info.state,
@@ -143,7 +151,8 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
         }
     }
     val directVisible = remember(directDownloads, needle) {
-        directDownloads.filter { item ->
+        directDownloads.filter { download ->
+            val item = download.item
             needle.isBlank() ||
                 item.title.contains(needle, ignoreCase = true) ||
                 item.quality.contains(needle, ignoreCase = true)
@@ -180,16 +189,35 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                 )
             }
 
-            directVisible.forEach { item ->
+            directVisible.forEach { download ->
+                val item = download.item
                 DownloadProgressRow(
                     title = item.title,
                     quality = item.quality,
-                    stage = item.stage,
-                    percent = item.percent,
+                    stage = download.stage,
+                    percent = download.percent,
                     onCancel = {
                         systemDownloadManager.remove(item.id)
                         AnimeDirectDownloadIndex.remove(context, item.id)
                         File(item.path).delete()
+                    },
+                    onRetry = if (download.failed) {
+                        {
+                            AnimeDirectDownloadReconciler.retryFailed(context, item)
+                            revision++
+                        }
+                    } else {
+                        null
+                    },
+                    onDelete = if (download.failed) {
+                        {
+                            systemDownloadManager.remove(item.id)
+                            AnimeDirectDownloadIndex.remove(context, item.id)
+                            File(item.path).delete()
+                            revision++
+                        }
+                    } else {
+                        null
                     },
                 )
             }
@@ -302,6 +330,8 @@ private fun DownloadProgressRow(
     stage: String,
     percent: Int,
     onCancel: () -> Unit,
+    onRetry: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     ListItem(
         headlineContent = {
@@ -320,12 +350,31 @@ private fun DownloadProgressRow(
             }
         },
         trailingContent = {
-            IconButton(onClick = onCancel) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Cancel anime download",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+            if (onRetry != null && onDelete != null) {
+                Row {
+                    IconButton(onClick = onRetry) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Retry anime download",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete failed anime download",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = onCancel) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Cancel anime download",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         },
     )
@@ -375,53 +424,43 @@ private fun pollDirectDownloads(
                         completed++
                     } else {
                         active += ActiveDirectAnimeDownload(
-                            id = item.id,
-                            path = item.path,
-                            title = item.title,
-                            quality = item.quality,
+                            item = item,
                             stage = "Finishing",
                             percent = 100,
+                            failed = false,
                         )
                     }
                 }
                 DownloadManager.STATUS_FAILED -> active += ActiveDirectAnimeDownload(
-                    id = item.id,
-                    path = item.path,
-                    title = item.title,
-                    quality = item.quality,
-                    stage = "Failed",
+                    item = item,
+                    stage = "Failed · tap retry or delete",
                     percent = percent,
+                    failed = true,
                 )
                 DownloadManager.STATUS_PAUSED -> active += ActiveDirectAnimeDownload(
-                    id = item.id,
-                    path = item.path,
-                    title = item.title,
-                    quality = item.quality,
-                    stage = "Paused",
+                    item = item,
+                    stage = if (item.retryCount > 0) "Paused while retrying" else "Paused",
                     percent = percent,
+                    failed = false,
                 )
                 DownloadManager.STATUS_RUNNING -> active += ActiveDirectAnimeDownload(
-                    id = item.id,
-                    path = item.path,
-                    title = item.title,
-                    quality = item.quality,
-                    stage = "Downloading file",
+                    item = item,
+                    stage = if (item.retryCount > 0) "Retrying file" else "Downloading file",
                     percent = percent,
+                    failed = false,
                 )
                 else -> active += ActiveDirectAnimeDownload(
-                    id = item.id,
-                    path = item.path,
-                    title = item.title,
-                    quality = item.quality,
-                    stage = "Queued",
+                    item = item,
+                    stage = if (item.retryCount > 0) "Retry queued" else "Queued",
                     percent = percent,
+                    failed = false,
                 )
             }
         }
     }
 
     return DirectDownloadsSnapshot(
-        active = active.sortedBy { it.title.lowercase() },
+        active = active.sortedBy { it.item.title.lowercase() },
         completed = completed,
     )
 }
