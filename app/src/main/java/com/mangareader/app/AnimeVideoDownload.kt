@@ -54,21 +54,15 @@ internal object AnimeVideoDownload {
         val title = video.episodeTitle.ifBlank { video.title.ifBlank { "Yomu episode" } }
         val extension = extensionFor(video.url)
         val destination = uniqueDirectDestination(context, title, video.title, extension)
-        val relativePath = "Yomu/Anime/${destination.name}"
-        val request = DownloadManager.Request(uri)
-            .setTitle(title)
-            .setDescription("Downloading anime episode")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(false)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, relativePath)
-
-        video.headers.forEach { (name, value) ->
-            if (name.isNotBlank() && value.isNotBlank()) request.addRequestHeader(name, value)
+        val id = runCatching {
+            enqueueDirectRequest(
+                context = context,
+                sourceUrl = video.url,
+                title = title,
+                destination = destination,
+                headers = video.headers,
+            )
         }
-
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        return runCatching { manager.enqueue(request) }
             .onSuccess { id ->
                 AnimeDirectDownloadIndex.record(
                     context,
@@ -79,6 +73,7 @@ internal object AnimeVideoDownload {
                         sourceUrl = video.url,
                         quality = video.title,
                         startedAt = System.currentTimeMillis(),
+                        headers = video.headers.filter { (name, value) -> name.isNotBlank() && value.isNotBlank() },
                     ),
                 )
                 Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
@@ -87,6 +82,41 @@ internal object AnimeVideoDownload {
                 Toast.makeText(context, "Could not start download", Toast.LENGTH_SHORT).show()
             }
             .getOrNull()
+        return id
+    }
+
+    internal fun retryDirect(context: Context, item: PendingDirectAnimeDownload): Long =
+        enqueueDirectRequest(
+            context = context,
+            sourceUrl = item.sourceUrl,
+            title = item.title,
+            destination = File(item.path),
+            headers = item.headers,
+        )
+
+    private fun enqueueDirectRequest(
+        context: Context,
+        sourceUrl: String,
+        title: String,
+        destination: File,
+        headers: Map<String, String>,
+    ): Long {
+        val uri = Uri.parse(sourceUrl)
+        val relativePath = "Yomu/Anime/${destination.name}"
+        val request = DownloadManager.Request(uri)
+            .setTitle(title.ifBlank { "Yomu episode" })
+            .setDescription("Downloading anime episode")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(false)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, relativePath)
+
+        headers.forEach { (name, value) ->
+            if (name.isNotBlank() && value.isNotBlank()) request.addRequestHeader(name, value)
+        }
+
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        return manager.enqueue(request)
     }
 
     private fun alreadyOffline(context: Context, sourceUrl: String): Boolean =

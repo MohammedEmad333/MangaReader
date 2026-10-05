@@ -4,6 +4,11 @@ import android.app.DownloadManager
 import android.content.Context
 import java.io.File
 
+internal const val MAX_DIRECT_ANIME_DOWNLOAD_RETRIES = 1
+
+internal fun shouldRetryDirectAnimeDownload(retryCount: Int): Boolean =
+    retryCount < MAX_DIRECT_ANIME_DOWNLOAD_RETRIES
+
 /**
  * Reconciles direct anime downloads delegated to Android DownloadManager.
  *
@@ -44,9 +49,42 @@ internal object AnimeDirectDownloadReconciler {
 
             return when (it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
                 DownloadManager.STATUS_SUCCESSFUL -> promoteCompleted(context, item)
+                DownloadManager.STATUS_FAILED -> retryOrDiscard(context, manager, item)
                 else -> false
             }
         }
+    }
+
+    private fun retryOrDiscard(
+        context: Context,
+        manager: DownloadManager,
+        item: PendingDirectAnimeDownload,
+    ): Boolean {
+        if (!shouldRetryDirectAnimeDownload(item.retryCount)) {
+            AnimeDirectDownloadIndex.remove(context, item.id)
+            File(item.path).delete()
+            return false
+        }
+
+        manager.remove(item.id)
+        File(item.path).delete()
+        val replacementId = runCatching {
+            AnimeVideoDownload.retryDirect(context, item)
+        }.getOrElse {
+            AnimeDirectDownloadIndex.remove(context, item.id)
+            return false
+        }
+
+        AnimeDirectDownloadIndex.replace(
+            context = context,
+            oldId = item.id,
+            item = item.copy(
+                id = replacementId,
+                startedAt = System.currentTimeMillis(),
+                retryCount = item.retryCount + 1,
+            ),
+        )
+        return false
     }
 
     private fun promoteCompleted(context: Context, item: PendingDirectAnimeDownload): Boolean {
