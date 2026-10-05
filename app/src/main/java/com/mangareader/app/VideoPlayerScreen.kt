@@ -738,9 +738,6 @@ private fun subtitleMimeType(url: String): String? {
     }
 }
 
-private fun formatPlaybackSpeed(speed: Float): String =
-    if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "$speed×"
-
 internal enum class VideoVerticalGesture {
     NONE,
     BRIGHTNESS,
