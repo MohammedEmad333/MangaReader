@@ -242,3 +242,42 @@ internal fun PrefNote(text: String) {
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
     )
 }
+
+@Composable
+internal fun SettingsActionCard(
+    title: String,
+    summary: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val supporting: (@Composable () -> Unit)? = summary?.let { value ->
+        {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            },
+            supportingContent = supporting,
+            trailingContent = trailing,
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick),
+        )
+    }
+}
