@@ -1,33 +1,25 @@
 package com.mangareader.app
 
 import android.content.Context
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -73,107 +65,133 @@ internal fun DownloadQueuedRow(
     progress: DownloadQueue.DownloadProgress?,
     scope: CoroutineScope,
 ) {
-    ListItem(
-        headlineContent = {
-            Text(
-                item.seriesTitle.ifBlank { item.chapterName },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        supportingContent = {
-            Column {
+    val status = downloadQueueStatus(
+        isActive = isActive,
+        itemPaused = itemPaused,
+        queuePaused = queuePaused,
+        progress = progress,
+    )
+    val statusContainer = when {
+        isActive -> MaterialTheme.colorScheme.primaryContainer
+        itemPaused || queuePaused -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val statusContent = when {
+        isActive -> MaterialTheme.colorScheme.onPrimaryContainer
+        itemPaused || queuePaused -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = if (isActive) 2.dp else 1.dp,
+    ) {
+        ListItem(
+            headlineContent = {
                 Text(
-                    item.chapterName,
+                    item.seriesTitle.ifBlank { item.chapterName },
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        item.chapterName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
-                if (isActive) {
-                    val bar = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                    val percent = progress?.percent
+                    Surface(
+                        shape = MaterialTheme.shapes.extraSmall,
+                        color = statusContainer,
+                        contentColor = statusContent,
+                    ) {
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
 
-                    if (percent == null) {
-                        LinearProgressIndicator(modifier = bar)
-                    } else {
-                        LinearProgressIndicator(
-                            progress = { percent / 100f },
-                            modifier = bar,
+                    if (isActive) {
+                        val bar = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp)
+                        val percent = progress?.percent
+
+                        if (percent == null) {
+                            LinearProgressIndicator(modifier = bar)
+                        } else {
+                            LinearProgressIndicator(
+                                progress = { percent / 100f },
+                                modifier = bar,
+                            )
+                        }
+                    }
+                }
+            },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            DownloadService.start(
+                                context,
+                                if (itemPaused) {
+                                    DownloadService.ACTION_RESUME_ITEM
+                                } else {
+                                    DownloadService.ACTION_PAUSE_ITEM
+                                },
+                                item.chapterId,
+                            )
+                        },
+                    ) {
+                        Icon(
+                            if (itemPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            contentDescription = if (itemPaused) {
+                                "Resume this chapter"
+                            } else {
+                                "Pause this chapter"
+                            },
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            val appContext = context.applicationContext
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    DownloadQueue.remove(appContext, item.chapterId)
+                                }
+                                if (isActive) {
+                                    DownloadService.start(
+                                        context,
+                                        DownloadService.ACTION_SKIP,
+                                        item.chapterId,
+                                    )
+                                }
+                            }
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove from queue",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-            }
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    downloadQueueStatus(
-                        isActive = isActive,
-                        itemPaused = itemPaused,
-                        queuePaused = queuePaused,
-                        progress = progress,
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-
-                IconButton(
-                    onClick = {
-                        DownloadService.start(
-                            context,
-                            if (itemPaused) {
-                                DownloadService.ACTION_RESUME_ITEM
-                            } else {
-                                DownloadService.ACTION_PAUSE_ITEM
-                            },
-                            item.chapterId,
-                        )
-                    },
-                ) {
-                    Icon(
-                        if (itemPaused) {
-                            Icons.Default.PlayArrow
-                        } else {
-                            Icons.Default.Pause
-                        },
-                        contentDescription = if (itemPaused) {
-                            "Resume this chapter"
-                        } else {
-                            "Pause this chapter"
-                        },
-                    )
-                }
-
-                IconButton(
-                    onClick = {
-                        val appContext = context.applicationContext
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                DownloadQueue.remove(appContext, item.chapterId)
-                            }
-                            if (isActive) {
-                                DownloadService.start(
-                                    context,
-                                    DownloadService.ACTION_SKIP,
-                                    item.chapterId,
-                                )
-                            }
-                        }
-                    },
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Remove from queue",
-                    )
-                }
-            }
-        },
-    )
-    HorizontalDivider()
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
 }
 
 internal fun downloadQueueStatus(
