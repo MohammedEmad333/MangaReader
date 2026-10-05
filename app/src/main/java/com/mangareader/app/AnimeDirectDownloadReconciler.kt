@@ -9,6 +9,8 @@ internal const val MAX_DIRECT_ANIME_DOWNLOAD_RETRIES = 1
 internal fun shouldRetryDirectAnimeDownload(retryCount: Int): Boolean =
     retryCount < MAX_DIRECT_ANIME_DOWNLOAD_RETRIES
 
+internal fun resetDirectAnimeRetryCount(): Int = 0
+
 /**
  * Reconciles direct anime downloads delegated to Android DownloadManager.
  *
@@ -49,7 +51,7 @@ internal object AnimeDirectDownloadReconciler {
             item = item.copy(
                 id = replacementId,
                 startedAt = System.currentTimeMillis(),
-                retryCount = 0,
+                retryCount = resetDirectAnimeRetryCount(),
             ),
         )
         return true
