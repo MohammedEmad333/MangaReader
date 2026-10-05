@@ -1,14 +1,37 @@
 package com.mangareader.app
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,55 +48,80 @@ internal fun HistoryHeader(
     onClearView: () -> Unit,
     onClearAll: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("History", style = MaterialTheme.typography.titleLarge)
-        if (historyCount > 0) {
-            TextButton(onClick = onClearAll) { Text("Clear all") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("History", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (historyCount == 0) "Recently read and watched items"
+                    else "$historyCount recent ${if (historyCount == 1) "item" else "items"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (historyCount > 0) {
+                TextButton(onClick = onClearAll) { Text("Clear all") }
+            }
+        }
+
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Search history") },
+                    placeholder = { Text("Series, chapter or episode") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    shape = MaterialTheme.shapes.large,
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    listOf("All", "Manga", "Anime").forEach { label ->
+                        FilterChip(
+                            selected = mediaFilter == label,
+                            onClick = { onMediaFilterChange(label) },
+                            label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                        )
+                    }
+                    if (historyViewIsActive(mediaFilter, searchQuery)) {
+                        TextButton(onClick = onClearView) { Text("Reset") }
+                    }
+                }
+            }
         }
     }
-
-    OutlinedTextField(
-        value = searchQuery,
-        onValueChange = onSearchQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        singleLine = true,
-        label = { Text("Search history") },
-        placeholder = { Text("Series, chapter or episode") },
-    )
 
     if (loading) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
     ErrorBanner(error)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        listOf("All", "Manga", "Anime").forEach { label ->
-            FilterChip(
-                selected = mediaFilter == label,
-                onClick = { onMediaFilterChange(label) },
-                label = { Text(label) },
-            )
-        }
-        if (historyViewIsActive(mediaFilter, searchQuery)) {
-            TextButton(onClick = onClearView) {
-                Text("Clear")
-            }
-        }
-    }
-    HorizontalDivider()
 }
 
 @Composable
@@ -88,91 +136,98 @@ internal fun HistoryEntryRow(
 ) {
     val context = LocalContext.current
 
-    ListItem(
-        leadingContent = {
-            CoverImage(
-                cover = coverModel(entry.coverPath),
-                title = entry.title,
-                modifier = Modifier
-                    .width(64.dp)
-                    .aspectRatio(0.7f)
-                    .alpha(if (dim) 0.4f else 1f),
-            )
-        },
-        headlineContent = {
-            Text(
-                entry.title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.alpha(if (dim) 0.4f else 1f),
-            )
-        },
-        supportingContent = {
-            val supportingText =
-                if (entry.mediaType == "anime") {
-                    val position = VideoPlaybackProgress.position(context, entry.chapterKey)
-                    val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
-                    val completed = VideoPlaybackProgress.isCompleted(context, entry.chapterKey)
-                    buildString {
-                        if (entry.detail.isNotBlank()) append(entry.detail)
-                        when {
-                            completed && position > 0L -> {
-                                if (isNotEmpty()) append(" • ")
-                                append("Watched • Rewatch ")
-                                append(formatMediaTime(position))
-                                if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                            }
-                            completed -> {
-                                if (isNotEmpty()) append(" • ")
-                                append("Watched")
-                            }
-                            position > 0L -> {
-                                if (isNotEmpty()) append(" • ")
-                                append(formatMediaTime(position))
-                                if (duration > 0L) append(" / ${formatMediaTime(duration)}")
-                            }
-                            else -> {
-                                if (isNotEmpty()) append(" • ")
-                                append("Started")
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        ListItem(
+            leadingContent = {
+                CoverImage(
+                    cover = coverModel(entry.coverPath),
+                    title = entry.title,
+                    modifier = Modifier
+                        .width(68.dp)
+                        .aspectRatio(0.7f)
+                        .alpha(if (dim) 0.4f else 1f),
+                )
+            },
+            headlineContent = {
+                Text(
+                    entry.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(if (dim) 0.4f else 1f),
+                )
+            },
+            supportingContent = {
+                val supportingText =
+                    if (entry.mediaType == "anime") {
+                        val position = VideoPlaybackProgress.position(context, entry.chapterKey)
+                        val duration = VideoPlaybackProgress.duration(context, entry.chapterKey)
+                        val completed = VideoPlaybackProgress.isCompleted(context, entry.chapterKey)
+                        buildString {
+                            if (entry.detail.isNotBlank()) append(entry.detail)
+                            when {
+                                completed && position > 0L -> {
+                                    if (isNotEmpty()) append(" • ")
+                                    append("Watched • Rewatch ")
+                                    append(formatMediaTime(position))
+                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
+                                }
+                                completed -> {
+                                    if (isNotEmpty()) append(" • ")
+                                    append("Watched")
+                                }
+                                position > 0L -> {
+                                    if (isNotEmpty()) append(" • ")
+                                    append(formatMediaTime(position))
+                                    if (duration > 0L) append(" / ${formatMediaTime(duration)}")
+                                }
+                                else -> {
+                                    if (isNotEmpty()) append(" • ")
+                                    append("Started")
+                                }
                             }
                         }
+                    } else if (entry.total > 0) {
+                        "Page ${entry.page + 1} of ${entry.total}"
+                    } else {
+                        "Page ${entry.page + 1}"
                     }
-                } else if (entry.total > 0) {
-                    "Page ${entry.page + 1} of ${entry.total}"
-                } else {
-                    "Page ${entry.page + 1}"
-                }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = supportingText,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                EntryBadges(
-                    downloaded = downloaded,
-                    local = badgeLocal,
-                    unread = unread,
-                )
-            }
-        },
-        modifier = Modifier.clickable(onClick = onOpen),
-        trailingContent = {
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Remove from history",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-    )
-    HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = supportingText,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    EntryBadges(downloaded = downloaded, local = badgeLocal, unread = unread)
+                }
+            },
+            modifier = Modifier.clickable(onClick = onOpen),
+            trailingContent = {
+                IconButton(onClick = onRemove) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Remove from history",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
 }
 
 @Composable
@@ -199,9 +254,7 @@ internal fun HistoryDialogs(
                 )
             },
             confirmButton = {
-                Button(onClick = { onConfirmRemove(pendingRemove) }) {
-                    Text("Remove")
-                }
+                Button(onClick = { onConfirmRemove(pendingRemove) }) { Text("Remove") }
             },
             dismissButton = {
                 TextButton(onClick = onDismissRemove) { Text("Cancel") }
@@ -228,7 +281,6 @@ internal fun HistoryDialogs(
         )
     }
 }
-
 
 internal fun historyViewIsActive(mediaFilter: String, searchQuery: String): Boolean =
     normalizeHistoryMediaFilter(mediaFilter) != "All" || searchQuery.isNotBlank()
