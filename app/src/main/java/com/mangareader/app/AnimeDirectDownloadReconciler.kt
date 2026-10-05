@@ -31,6 +31,30 @@ internal object AnimeDirectDownloadReconciler {
         return reconcile(context, manager, item)
     }
 
+    /** User-initiated retry after the automatic retry budget has been exhausted. */
+    fun retryFailed(context: Context, item: PendingDirectAnimeDownload): Boolean {
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        manager.remove(item.id)
+        File(item.path).delete()
+
+        val replacementId = runCatching {
+            AnimeVideoDownload.retryDirect(context, item)
+        }.getOrElse {
+            return false
+        }
+
+        AnimeDirectDownloadIndex.replace(
+            context = context,
+            oldId = item.id,
+            item = item.copy(
+                id = replacementId,
+                startedAt = System.currentTimeMillis(),
+                retryCount = 0,
+            ),
+        )
+        return true
+    }
+
     private fun reconcile(
         context: Context,
         manager: DownloadManager,
@@ -49,29 +73,26 @@ internal object AnimeDirectDownloadReconciler {
 
             return when (it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
                 DownloadManager.STATUS_SUCCESSFUL -> promoteCompleted(context, item)
-                DownloadManager.STATUS_FAILED -> retryOrDiscard(context, manager, item)
+                DownloadManager.STATUS_FAILED -> retryOrKeepFailed(context, manager, item)
                 else -> false
             }
         }
     }
 
-    private fun retryOrDiscard(
+    private fun retryOrKeepFailed(
         context: Context,
         manager: DownloadManager,
         item: PendingDirectAnimeDownload,
     ): Boolean {
-        if (!shouldRetryDirectAnimeDownload(item.retryCount)) {
-            AnimeDirectDownloadIndex.remove(context, item.id)
-            File(item.path).delete()
-            return false
-        }
+        // Keep the terminal failure in the persistent index so Downloads can
+        // show an explicit Retry/Delete choice instead of silently discarding it.
+        if (!shouldRetryDirectAnimeDownload(item.retryCount)) return false
 
         manager.remove(item.id)
         File(item.path).delete()
         val replacementId = runCatching {
             AnimeVideoDownload.retryDirect(context, item)
         }.getOrElse {
-            AnimeDirectDownloadIndex.remove(context, item.id)
             return false
         }
 
