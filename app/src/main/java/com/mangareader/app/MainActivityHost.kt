@@ -33,10 +33,14 @@ class MainActivity : ComponentActivity() {
         AppTheme.applySecureScreen(this, AppTheme.secureScreen(this))
 
         setContent {
-            MaterialTheme(colorScheme = yomuColorScheme()) {
+            MaterialTheme(
+                colorScheme = yomuColorScheme(),
+                typography = YomuTypography,
+                shapes = YomuShapes,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     YomuApp()
                 }

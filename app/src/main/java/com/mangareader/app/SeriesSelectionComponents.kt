@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -38,13 +41,29 @@ internal fun SeriesAction(
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 12.dp),
+            .padding(vertical = 7.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, contentDescription = label, tint = tint)
-        Spacer(Modifier.height(4.dp))
+        Surface(
+            modifier = Modifier.size(42.dp),
+            shape = CircleShape,
+            color = tint.copy(alpha = 0.12f),
+            contentColor = tint,
+        ) {
+            androidx.compose.foundation.layout.Box(
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(21.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
         Text(
-            label,
+            text = label,
             style = MaterialTheme.typography.labelSmall,
             color = tint,
         )
@@ -67,26 +86,28 @@ internal fun ChapterSelectionBar(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp,
         shadowElevation = 8.dp,
     ) {
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(vertical = 6.dp)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onClear) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear selection")
                 }
                 Text(
-                    "$count selected",
-                    style = MaterialTheme.typography.titleSmall,
+                    text = "$count selected",
+                    style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onSelectAll) {
-                    Text("All")
+                    Text("Select all")
                 }
             }
 

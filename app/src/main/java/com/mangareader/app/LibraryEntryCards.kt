@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,20 +33,19 @@ internal fun LibraryListEntryRow(
 ) {
     val isAnime = entry.sourceId.isAnimeExtensionSourceId() ||
         entry.seriesId.startsWith("anime:")
+    val container = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (isSelected) {
-                    Modifier.background(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                    )
-                } else {
-                    Modifier
-                },
-            )
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(container)
             .pointerInput(entry.seriesId, selecting) {
                 detectTapGestures(
                     onTap = {
@@ -54,21 +54,21 @@ internal fun LibraryListEntryRow(
                     onLongPress = { onToggle() },
                 )
             }
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         CoverImage(
             cover = entry.cover.ifBlank { null },
             title = entry.title,
             seriesId = entry.seriesId,
             modifier = Modifier
-                .width(44.dp)
+                .width(48.dp)
                 .aspectRatio(0.7f)
                 .alpha(if (dim) 0.4f else 1f),
         )
         Spacer(Modifier.width(12.dp))
         Text(
-            entry.title,
-            style = MaterialTheme.typography.bodyMedium,
+            text = entry.title,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -76,9 +76,10 @@ internal fun LibraryListEntryRow(
                 .alpha(if (dim) 0.4f else 1f),
         )
         if (isAnime) {
+            Spacer(Modifier.width(8.dp))
             LibraryAnimeBadge()
-            Spacer(Modifier.width(6.dp))
         }
+        Spacer(Modifier.width(6.dp))
         EntryBadges(
             downloaded = downloaded,
             local = badgeLocal,
@@ -105,7 +106,7 @@ internal fun LibraryGridEntryCard(
 
     Column(
         modifier = Modifier
-            .padding(vertical = 4.dp)
+            .padding(vertical = 5.dp)
             .pointerInput(entry.seriesId, selecting) {
                 detectTapGestures(
                     onTap = {
@@ -115,7 +116,9 @@ internal fun LibraryGridEntryCard(
                 )
             },
     ) {
-        Box {
+        Box(
+            modifier = Modifier.clip(MaterialTheme.shapes.medium),
+        ) {
             CoverImage(
                 cover = entry.cover.ifBlank { null },
                 title = entry.title,
@@ -129,7 +132,7 @@ internal fun LibraryGridEntryCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(4.dp),
+                    .padding(7.dp),
             ) {
                 EntryBadges(
                     downloaded = downloaded,
@@ -143,12 +146,19 @@ internal fun LibraryGridEntryCard(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 4.dp, vertical = 3.dp),
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.84f),
+                                ),
+                            ),
+                        )
+                        .padding(start = 9.dp, end = 9.dp, top = 24.dp, bottom = 8.dp),
                 ) {
                     Text(
-                        entry.title,
-                        style = MaterialTheme.typography.labelSmall,
+                        text = entry.title,
+                        style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -161,7 +171,7 @@ internal fun LibraryGridEntryCard(
                 LibraryAnimeBadge(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp),
+                        .padding(7.dp),
                 )
             }
 
@@ -169,9 +179,7 @@ internal fun LibraryGridEntryCard(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                        ),
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)),
                 )
                 Icon(
                     Icons.Default.Check,
@@ -179,22 +187,24 @@ internal fun LibraryGridEntryCard(
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
+                        .padding(8.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary)
-                        .padding(2.dp),
+                        .padding(4.dp),
                 )
             }
         }
 
         if (display == LibraryDisplay.COMFORTABLE_GRID) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(7.dp))
             Text(
-                entry.title,
-                style = MaterialTheme.typography.bodySmall,
+                text = entry.title,
+                style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.alpha(if (dim) 0.4f else 1f),
+                modifier = Modifier
+                    .padding(horizontal = 2.dp)
+                    .alpha(if (dim) 0.4f else 1f),
             )
         }
     }
@@ -205,13 +215,14 @@ internal fun LibraryAnimeBadge(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        tonalElevation = 2.dp,
     ) {
         Text(
-            "Anime",
+            text = "Anime",
             style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
         )
     }
 }

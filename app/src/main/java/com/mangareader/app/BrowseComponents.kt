@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,39 +42,39 @@ internal fun ComfortableCell(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
-    onOpen: (Series) -> Unit
+    onOpen: (Series) -> Unit,
 ) {
     val dim = marks.dim(series.id)
     Column(
         modifier = Modifier
             .padding(6.dp)
-            .clickable { onOpen(series) }
+            .clickable { onOpen(series) },
     ) {
-        Box {
+        Box(modifier = Modifier.clip(MaterialTheme.shapes.medium)) {
             CoverImage(
                 cover = series.cover,
                 title = series.title,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.7f)
-                    .alpha(if (dim) 0.4f else 1f)
+                    .alpha(if (dim) 0.4f else 1f),
             )
-            Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+            Box(modifier = Modifier.align(Alignment.TopStart).padding(7.dp)) {
                 EntryBadges(
                     downloaded = marks.downloaded(series.id),
                     local = marks.badgeLocal && local,
-                    unread = marks.unreadOf(series.id)
+                    unread = marks.unreadOf(series.id),
                 )
             }
         }
         Text(
             text = series.title,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .padding(top = 4.dp)
-                .alpha(if (dim) 0.4f else 1f)
+                .padding(horizontal = 2.dp, vertical = 7.dp)
+                .alpha(if (dim) 0.4f else 1f),
         )
     }
 }
@@ -83,13 +84,14 @@ internal fun CompactCell(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
-    onOpen: (Series) -> Unit
+    onOpen: (Series) -> Unit,
 ) {
     val dim = marks.dim(series.id)
     Box(
         modifier = Modifier
             .padding(6.dp)
-            .clickable { onOpen(series) }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable { onOpen(series) },
     ) {
         CoverImage(
             cover = series.cover,
@@ -97,18 +99,18 @@ internal fun CompactCell(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.7f)
-                .alpha(if (dim) 0.4f else 1f)
+                .alpha(if (dim) 0.4f else 1f),
         )
-        Box(modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+        Box(modifier = Modifier.align(Alignment.TopStart).padding(7.dp)) {
             EntryBadges(
                 downloaded = marks.downloaded(series.id),
                 local = marks.badgeLocal && local,
-                unread = marks.unreadOf(series.id)
+                unread = marks.unreadOf(series.id),
             )
         }
         Text(
             text = series.title,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             color = Color.White,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -117,10 +119,13 @@ internal fun CompactCell(
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                    )
+                        listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.86f),
+                        ),
+                    ),
                 )
-                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .padding(start = 9.dp, end = 9.dp, top = 24.dp, bottom = 8.dp),
         )
     }
 }
@@ -130,39 +135,42 @@ internal fun ListRow(
     series: Series,
     marks: EntryMarks,
     local: Boolean,
-    onOpen: (Series) -> Unit
+    onOpen: (Series) -> Unit,
 ) {
     val dim = marks.dim(series.id)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable { onOpen(series) }
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         CoverImage(
             cover = series.cover,
             title = series.title,
             modifier = Modifier
-                .width(44.dp)
+                .width(48.dp)
                 .aspectRatio(0.7f)
-                .alpha(if (dim) 0.4f else 1f)
+                .alpha(if (dim) 0.4f else 1f),
         )
         Spacer(Modifier.width(12.dp))
         Text(
             text = series.title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
-                .alpha(if (dim) 0.4f else 1f)
+                .alpha(if (dim) 0.4f else 1f),
         )
         Spacer(Modifier.width(8.dp))
         EntryBadges(
             downloaded = marks.downloaded(series.id),
             local = marks.badgeLocal && local,
-            unread = marks.unreadOf(series.id)
+            unread = marks.unreadOf(series.id),
         )
     }
 }

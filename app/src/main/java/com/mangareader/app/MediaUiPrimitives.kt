@@ -27,9 +27,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Turns a stored cover string into something Coil can actually load.
- */
+/** Turns a stored cover string into something Coil can actually load. */
 internal fun coverModel(path: String?): Any? {
     val s = path?.trim().orEmpty()
     return when {
@@ -54,8 +52,10 @@ fun CoverImage(
 
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        shadowElevation = 1.dp,
     ) {
         if (cover != null) {
             AsyncImage(
@@ -155,9 +155,10 @@ internal fun SourceIcon(
     }
 
     Surface(
-        modifier = modifier.size(40.dp),
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.size(42.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        tonalElevation = 1.dp,
     ) {
         if (icon != null) {
             AsyncImage(

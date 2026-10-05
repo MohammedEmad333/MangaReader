@@ -50,10 +50,19 @@ internal fun LibraryTopControls(
     onTabSelected: (Int) -> Unit,
 ) {
     var bulkMenuOpen by remember { mutableStateOf(false) }
+    val topBarColors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.background,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+    )
 
     if (selecting) {
         TopAppBar(
-            title = { Text("$selectedCount selected") },
+            title = {
+                Text(
+                    text = "$selectedCount selected",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            },
             navigationIcon = {
                 IconButton(onClick = onClearSelection) {
                     Icon(Icons.Default.Close, contentDescription = "Clear selection")
@@ -101,6 +110,7 @@ internal fun LibraryTopControls(
                     }
                 }
             },
+            colors = topBarColors,
         )
     } else {
         TopAppBar(
@@ -109,18 +119,32 @@ internal fun LibraryTopControls(
                     TextField(
                         value = search,
                         onValueChange = onSearchChange,
-                        placeholder = { Text("Search library") },
+                        placeholder = { Text("Search your library") },
                         singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        shape = MaterialTheme.shapes.large,
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent,
                         ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
-                    Text("Library")
+                    Column {
+                        Text(
+                            text = "Library",
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        Text(
+                            text = libraryVisibleSummaryLabel(visibleCount, totalCount),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             },
             actions = {
@@ -147,6 +171,7 @@ internal fun LibraryTopControls(
                     )
                 }
             },
+            colors = topBarColors,
         )
     }
 
@@ -161,23 +186,19 @@ internal fun LibraryTopControls(
                 selected = mediaFilter == label,
                 onClick = { onMediaFilterChange(label) },
                 label = { Text(label) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
             )
         }
-    }
-
-    if (!selecting) {
-        Text(
-            text = libraryVisibleSummaryLabel(visibleCount, totalCount),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-        )
     }
 
     if (groups.size > 1 && showTabs) {
         ScrollableTabRow(
             selectedTabIndex = currentPage.coerceIn(0, groups.size - 1),
             edgePadding = 8.dp,
+            containerColor = MaterialTheme.colorScheme.background,
         ) {
             groups.forEachIndexed { index, group ->
                 Tab(
@@ -195,7 +216,6 @@ internal fun LibraryTopControls(
         }
     }
 }
-
 
 internal fun libraryVisibleSummaryLabel(visibleCount: Int, totalCount: Int): String =
     "Showing " + visibleCount.coerceAtLeast(0) + " of " + totalCount.coerceAtLeast(0)

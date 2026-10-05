@@ -1,40 +1,27 @@
 package com.mangareader.app
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import me.saket.swipe.SwipeAction
-import me.saket.swipe.SwipeableActionsBox
 
 @Composable
 internal fun SeriesHero(
@@ -60,7 +47,7 @@ internal fun SeriesHero(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .matchParentSize()
-                    .alpha(0.20f),
+                    .alpha(0.16f),
             )
         }
 
@@ -69,8 +56,9 @@ internal fun SeriesHero(
                 .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
+                        colors = listOf(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
                             MaterialTheme.colorScheme.background,
                         ),
                     ),
@@ -78,16 +66,16 @@ internal fun SeriesHero(
         )
 
         Column {
-            Spacer(Modifier.height(TOP_BAR_HEIGHT))
+            Spacer(Modifier.height(TOP_BAR_HEIGHT + 8.dp))
 
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = 18.dp),
             ) {
                 CoverImage(
                     cover = series.cover,
                     title = series.title,
                     modifier = Modifier
-                        .width(108.dp)
+                        .width(116.dp)
                         .aspectRatio(0.7f)
                         .then(
                             if (series.cover != null) {
@@ -98,12 +86,12 @@ internal fun SeriesHero(
                         ),
                 )
 
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(18.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        series.title,
-                        style = MaterialTheme.typography.titleLarge,
+                        text = series.title,
+                        style = MaterialTheme.typography.headlineSmall,
                         maxLines = 4,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.clickable {
@@ -124,13 +112,9 @@ internal fun SeriesHero(
                     )
 
                     credits.forEach { (role, name) ->
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(7.dp))
                         Text(
-                            if (credits.size > 1) {
-                                "$role · $name"
-                            } else {
-                                name
-                            },
+                            text = if (credits.size > 1) "$role · $name" else name,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -141,84 +125,90 @@ internal fun SeriesHero(
                         )
                     }
 
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        listOfNotNull(
-                            series.status,
-                            sourceName.ifBlank { null },
-                        ).joinToString(" • "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                SeriesAction(
-                    icon = if (inLibrary) {
-                        Icons.Default.Favorite
-                    } else {
-                        Icons.Default.FavoriteBorder
-                    },
-                    label = if (inLibrary) {
-                        "In library"
-                    } else {
-                        "Add to library"
-                    },
-                    tint = if (inLibrary) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    onClick = onLibraryAction,
-                )
-
-                if (inLibrary) {
-                    SeriesAction(
-                        icon = Icons.Default.Edit,
-                        label = "Categories",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        onClick = onCategories,
-                    )
-                }
-
-                if (canDownload && hasChapters) {
-                    SeriesAction(
-                        icon = if (downloadingAll) {
-                            Icons.Default.Clear
-                        } else {
-                            Icons.Default.Download
-                        },
-                        label = if (downloadingAll) {
-                            "Stop"
-                        } else {
-                            "Download all"
-                        },
-                        tint = if (downloadingAll) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        onClick = onToggleAllDownloads,
-                    )
-
-                    if (downloadedCount != null && downloadedCount > 0) {
-                        SeriesAction(
-                            icon = Icons.Default.Delete,
-                            label = "Delete ($downloadedCount)",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick = onDeleteDownloads,
-                        )
+                    val meta = listOfNotNull(
+                        series.status?.takeIf { it.isNotBlank() },
+                        sourceName.ifBlank { null },
+                    ).joinToString(" • ")
+                    if (meta.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ) {
+                            Text(
+                                text = meta,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
+
+            Surface(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.92f),
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    SeriesAction(
+                        icon = if (inLibrary) {
+                            Icons.Default.Favorite
+                        } else {
+                            Icons.Default.FavoriteBorder
+                        },
+                        label = if (inLibrary) "In library" else "Add to library",
+                        tint = if (inLibrary) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        onClick = onLibraryAction,
+                    )
+
+                    if (inLibrary) {
+                        SeriesAction(
+                            icon = Icons.Default.Edit,
+                            label = "Categories",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onCategories,
+                        )
+                    }
+
+                    if (canDownload && hasChapters) {
+                        SeriesAction(
+                            icon = if (downloadingAll) Icons.Default.Clear else Icons.Default.Download,
+                            label = if (downloadingAll) "Stop" else "Download all",
+                            tint = if (downloadingAll) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            onClick = onToggleAllDownloads,
+                        )
+
+                        if (downloadedCount != null && downloadedCount > 0) {
+                            SeriesAction(
+                                icon = Icons.Default.Delete,
+                                label = "Delete ($downloadedCount)",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = onDeleteDownloads,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

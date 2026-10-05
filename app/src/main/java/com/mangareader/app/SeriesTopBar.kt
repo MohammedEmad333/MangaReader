@@ -67,7 +67,8 @@ internal fun SeriesTopBar(
     TopAppBar(
         title = {
             Text(
-                title,
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.alpha(barAlpha),
@@ -160,7 +161,7 @@ internal fun SeriesTopBar(
                                         "Include in library refresh"
                                     } else {
                                         "Skip library refresh"
-                                    }
+                                    },
                                 )
                             },
                             onClick = {
@@ -183,7 +184,7 @@ internal fun SeriesTopBar(
                                             "Disable auto-download"
                                         } else {
                                             "Auto-download new chapters"
-                                        }
+                                        },
                                     )
                                 },
                                 onClick = {
@@ -233,8 +234,8 @@ internal fun SeriesTopBar(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = barAlpha),
-            scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = barAlpha),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = barAlpha * 0.96f),
+            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = barAlpha),
         ),
         modifier = modifier,
     )
