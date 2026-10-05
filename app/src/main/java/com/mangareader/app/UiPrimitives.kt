@@ -5,21 +5,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/**
- * The one back affordance in the app.
- */
+/** The one back affordance in the app. */
 @Composable
 internal fun BackButton(onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
+    FilledTonalIconButton(onClick = onClick) {
         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
     }
 }
@@ -28,14 +27,14 @@ internal fun BackButton(onClick: () -> Unit) {
 @Composable
 internal fun SectionHeader(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.padding(
             start = 16.dp,
             end = 16.dp,
-            top = 16.dp,
-            bottom = 4.dp,
+            top = 22.dp,
+            bottom = 8.dp,
         ),
     )
 }
@@ -67,14 +66,20 @@ internal fun httpHint(error: String): String? {
 /** The 18+ marker shown next to adult sources, matching the extension index flag. */
 @Composable
 internal fun NsfwBadge() {
-    Text(
-        "18+",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.error,
-    )
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Text(
+            text = "18+",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
 }
 
-/** Shared error line under screen top bars. */
+/** Shared error surface under screen top bars. */
 @Composable
 internal fun ErrorBanner(
     error: String?,
@@ -83,37 +88,35 @@ internal fun ErrorBanner(
 ) {
     if (error == null) return
 
-    Column(
-        modifier = Modifier.padding(
-            horizontal = 16.dp,
-            vertical = 8.dp,
-        ),
+    Surface(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
     ) {
-        Text(
-            text = error,
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        val hint = httpHint(error)
-        if (hint != null) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Text(
-                text = hint,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp),
+                text = error,
+                style = MaterialTheme.typography.bodyMedium,
             )
-        }
 
-        if (actionLabel != null && onAction != null) {
-            TextButton(
-                onClick = onAction,
-                contentPadding = PaddingValues(
-                    horizontal = 0.dp,
-                    vertical = 4.dp,
-                ),
-            ) {
-                Text(actionLabel)
+            val hint = httpHint(error)
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+            }
+
+            if (actionLabel != null && onAction != null) {
+                TextButton(
+                    onClick = onAction,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                ) {
+                    Text(actionLabel)
+                }
             }
         }
     }
