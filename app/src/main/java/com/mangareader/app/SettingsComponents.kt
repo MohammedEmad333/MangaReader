@@ -250,6 +250,15 @@ internal fun SettingsActionCard(
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val supporting: (@Composable () -> Unit)? = summary?.let { value ->
+        {
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,14 +274,7 @@ internal fun SettingsActionCard(
                     style = MaterialTheme.typography.titleSmall,
                 )
             },
-            supportingContent = summary?.let { value ->
-                {
-                    Text(
-                        text = value,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
+            supportingContent = supporting,
             trailingContent = trailing,
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             modifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick),
