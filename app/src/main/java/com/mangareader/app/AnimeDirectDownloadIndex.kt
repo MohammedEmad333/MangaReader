@@ -11,6 +11,8 @@ internal data class PendingDirectAnimeDownload(
     val sourceUrl: String,
     val quality: String,
     val startedAt: Long,
+    val headers: Map<String, String> = emptyMap(),
+    val retryCount: Int = 0,
 )
 
 /** Persistent metadata for direct-file downloads delegated to Android DownloadManager. */
@@ -38,6 +40,8 @@ internal object AnimeDirectDownloadIndex {
                             sourceUrl = item.optString("sourceUrl"),
                             quality = item.optString("quality"),
                             startedAt = item.optLong("startedAt"),
+                            headers = item.optJSONObject("headers").toStringMap(),
+                            retryCount = item.optInt("retryCount", 0).coerceAtLeast(0),
                         ),
                     )
                 }
@@ -48,6 +52,15 @@ internal object AnimeDirectDownloadIndex {
     @Synchronized
     fun record(context: Context, item: PendingDirectAnimeDownload) {
         write(context, (list(context).filterNot { it.id == item.id } + item).sortedByDescending { it.startedAt })
+    }
+
+    @Synchronized
+    fun replace(context: Context, oldId: Long, item: PendingDirectAnimeDownload) {
+        write(
+            context,
+            (list(context).filterNot { it.id == oldId || it.id == item.id } + item)
+                .sortedByDescending { it.startedAt },
+        )
     }
 
     @Synchronized
@@ -66,6 +79,13 @@ internal object AnimeDirectDownloadIndex {
                         put("sourceUrl", item.sourceUrl)
                         put("quality", item.quality)
                         put("startedAt", item.startedAt)
+                        put("retryCount", item.retryCount)
+                        put(
+                            "headers",
+                            JSONObject().apply {
+                                item.headers.forEach { (name, value) -> put(name, value) }
+                            },
+                        )
                     },
                 )
             }
@@ -74,5 +94,17 @@ internal object AnimeDirectDownloadIndex {
             .edit()
             .putString(KEY_ITEMS, array.toString())
             .apply()
+    }
+}
+
+private fun JSONObject?.toStringMap(): Map<String, String> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = optString(key)
+            if (key.isNotBlank() && value.isNotBlank()) put(key, value)
+        }
     }
 }
