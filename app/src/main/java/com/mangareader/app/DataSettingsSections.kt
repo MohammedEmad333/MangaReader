@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import java.io.File
 
@@ -22,28 +23,15 @@ internal fun DataStorageLocationSection(
     onReorganise: () -> Unit,
 ) {
     SectionHeader("Storage location")
-    ListItem(
-        headlineContent = { Text(locationLabel) },
-        supportingContent = {
-            Text(
-                if (moving) "Moving chapters…"
-                else "Chapter downloads and automatic backups",
-            )
-        },
-        trailingContent = {
-            TextButton(
-                enabled = !moving,
-                onClick = onChooseLocation,
-            ) {
-                Text("Change")
-            }
-        },
-        modifier = Modifier.clickable(
-            enabled = !moving,
-            onClick = onChooseLocation,
-        ),
+
+    DataActionCard(
+        title = locationLabel,
+        summary = if (moving) "Moving chapters…" else "Chapter downloads and automatic backups",
+        actionLabel = "Change",
+        enabled = !moving,
+        onAction = onChooseLocation,
+        onRowClick = onChooseLocation,
     )
-    HorizontalDivider()
 
     if (customDir != null && !active) {
         PrefNote(
@@ -54,55 +42,34 @@ internal fun DataStorageLocationSection(
     }
 
     if (customDir != null) {
-        ListItem(
-            headlineContent = { Text("Use app storage") },
-            supportingContent = { Text("Back to the default, inside the app") },
-            trailingContent = {
-                TextButton(
-                    enabled = !moving,
-                    onClick = onUseAppStorage,
-                ) {
-                    Text("Reset")
-                }
-            },
+        DataActionCard(
+            title = "Use app storage",
+            summary = "Back to the default, inside the app",
+            actionLabel = "Reset",
+            enabled = !moving,
+            onAction = onUseAppStorage,
         )
-        HorizontalDivider()
     }
 
-    ListItem(
-        headlineContent = { Text("Import Tachiyomi backup") },
-        supportingContent = {
-            Text("Library, categories, read state and history from a .tachibk file")
-        },
-        trailingContent = {
-            TextButton(
-                enabled = !reorganising && !moving,
-                onClick = onImport,
-            ) {
-                Text("Scan")
-            }
-        },
+    DataActionCard(
+        title = "Import Tachiyomi backup",
+        summary = "Library, categories, read state and history from a .tachibk file",
+        actionLabel = "Scan",
+        enabled = !reorganising && !moving,
+        onAction = onImport,
     )
-    HorizontalDivider()
 
-    ListItem(
-        headlineContent = { Text("Reorganise downloads") },
-        supportingContent = {
-            Text(
-                if (reorganising) "Filing chapters…"
-                else "File chapters from before this layout under source and series",
-            )
+    DataActionCard(
+        title = "Reorganise downloads",
+        summary = if (reorganising) {
+            "Filing chapters…"
+        } else {
+            "File chapters from before this layout under source and series"
         },
-        trailingContent = {
-            TextButton(
-                enabled = !reorganising && !moving,
-                onClick = onReorganise,
-            ) {
-                Text("Run")
-            }
-        },
+        actionLabel = "Run",
+        enabled = !reorganising && !moving,
+        onAction = onReorganise,
     )
-    HorizontalDivider()
 
     PrefNote(
         "A “Yomu” folder is created inside whatever you pick, holding " +
@@ -124,37 +91,50 @@ internal fun DataBackupSettingsSection(
     onFrequencyChange: (BackupFrequency) -> Unit,
 ) {
     SectionHeader("Backup and restore")
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        OutlinedButton(
-            enabled = !busy,
-            onClick = onCreateBackup,
-            modifier = Modifier.weight(1f),
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Create backup")
-        }
-        OutlinedButton(
-            enabled = !busy,
-            onClick = onRestoreBackup,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text("Restore backup")
+            OutlinedButton(
+                enabled = !busy,
+                onClick = onCreateBackup,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Create backup")
+            }
+            OutlinedButton(
+                enabled = !busy,
+                onClick = onRestoreBackup,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Restore backup")
+            }
         }
     }
-    Spacer(Modifier.height(8.dp))
 
     SectionHeader("Automatic backup frequency")
-    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-        PrefChipRow(
-            label = "Frequency",
-            options = BackupFrequency.entries.map { it.label },
-            selected = BackupFrequency.entries.indexOf(frequency),
-            onSelect = { onFrequencyChange(BackupFrequency.entries[it]) },
-        )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+            PrefChipRow(
+                label = "Frequency",
+                options = BackupFrequency.entries.map { it.label },
+                selected = BackupFrequency.entries.indexOf(frequency),
+                onSelect = { onFrequencyChange(BackupFrequency.entries[it]) },
+            )
+        }
     }
 
     PrefNote(
@@ -169,21 +149,57 @@ internal fun DataBackupSettingsSection(
         },
     )
 
-    ListItem(
-        headlineContent = { Text("Last automatic backup") },
-        supportingContent = {
-            Text(
-                if (lastBackup <= 0L) {
-                    "Never"
-                } else {
-                    DateUtils.getRelativeTimeSpanString(
-                        lastBackup,
-                        System.currentTimeMillis(),
-                        DateUtils.MINUTE_IN_MILLIS,
-                    ).toString()
-                },
-            )
+    DataActionCard(
+        title = "Last automatic backup",
+        summary = if (lastBackup <= 0L) {
+            "Never"
+        } else {
+            DateUtils.getRelativeTimeSpanString(
+                lastBackup,
+                System.currentTimeMillis(),
+                DateUtils.MINUTE_IN_MILLIS,
+            ).toString()
         },
     )
-    HorizontalDivider()
+}
+
+@Composable
+private fun DataActionCard(
+    title: String,
+    summary: String,
+    actionLabel: String? = null,
+    enabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
+    onRowClick: (() -> Unit)? = null,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        ListItem(
+            headlineContent = {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+            },
+            supportingContent = {
+                Text(summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            },
+            trailingContent = if (actionLabel == null || onAction == null) null else {
+                {
+                    TextButton(onClick = onAction, enabled = enabled) {
+                        Text(actionLabel)
+                    }
+                }
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier = if (onRowClick != null) {
+                Modifier.clickable(enabled = enabled, onClick = onRowClick)
+            } else {
+                Modifier
+            },
+        )
+    }
 }
