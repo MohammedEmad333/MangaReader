@@ -89,6 +89,7 @@ internal fun VideoPlayerScreen(
     var playbackSpeed by remember(context) {
         mutableStateOf(VideoPlayerPrefs.speed(context))
     }
+    var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
     var videoResizeMode by remember(context) {
         mutableStateOf(VideoPlayerPrefs.resizeMode(context))
     }
@@ -611,14 +612,17 @@ internal fun VideoPlayerScreen(
                     lastScrubEdge = null
                 },
                 onHoldStart = {
+                    if (speedBeforeHold == null) {
+                        speedBeforeHold = playbackSpeed
+                    }
                     player.setPlaybackSpeed(2f)
                     gestureOverlay = "2×"
                 },
                 onHoldEnd = {
-                    playbackSpeed = 1f
-                    VideoPlayerPrefs.setSpeed(context, 1f)
-                    player.setPlaybackSpeed(1f)
-                    gestureOverlay = "1×"
+                    val restoredSpeed = speedBeforeHold ?: playbackSpeed
+                    speedBeforeHold = null
+                    player.setPlaybackSpeed(restoredSpeed)
+                    gestureOverlay = formatPlaybackSpeed(restoredSpeed)
                 },
             )
         }
@@ -734,7 +738,6 @@ private fun subtitleMimeType(url: String): String? {
     }
 }
 
-
 internal enum class VideoVerticalGesture {
     NONE,
     BRIGHTNESS,
@@ -789,7 +792,6 @@ private fun setScreenBrightnessFraction(activity: Activity?, fraction: Float) {
     }
 }
 
-
 internal fun availableAudioLanguages(tracks: Tracks): List<String> =
     tracks.groups
         .filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -816,7 +818,6 @@ internal fun languageTrackParameters(
             audioLanguage.takeUnless { it == VIDEO_LANGUAGE_AUTO },
         )
         .build()
-
 
 internal fun subtitleCaptionStyle(background: VideoSubtitleBackground): CaptionStyleCompat =
     CaptionStyleCompat(
