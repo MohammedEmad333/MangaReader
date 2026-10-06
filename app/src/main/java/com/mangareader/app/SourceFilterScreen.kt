@@ -1,87 +1,52 @@
 package com.mangareader.app
 
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import coil.compose.AsyncImage
-import dalvik.system.PathClassLoader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
- * One row in the Sources list. Local folders and extension sources render the
- * same way, so they're flattened into this before the list is built; `config`
- * is non-null only for local folders, which is what gates the Edit/Delete menu.
+ * Source visibility controls grouped by language. Visibility semantics are kept
+ * separate from presentation so disabling a language still leaves each source's
+ * individual hidden state intact.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SourceFilterScreen(
     rows: List<BrowseRow>,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
     val context = LocalContext.current
     var hidden by remember { mutableStateOf(SourcePrefs.hiddenSources(context)) }
     var enabledLangs by remember { mutableStateOf(SourcePrefs.enabledLangs(context)) }
-    // Read, not written, here: 18+ is a Settings switch. It still belongs in
-    // the count below, or "N of M shown" contradicts the list beside it.
     val showNsfw = remember { SourcePrefs.showNsfw(context) }
 
     val groups = remember(rows) {
@@ -93,96 +58,171 @@ internal fun SourceFilterScreen(
     val allIds = remember(rows) { rows.map { it.id } }
     val allLangs = remember(rows) { rows.map { it.lang.ifBlank { "Other" } }.distinct() }
     val allShown = hidden.isEmpty() && allLangs.all { it in enabledLangs }
+    val shown = rows.count {
+        SourcePrefs.isVisible(
+            it.id,
+            it.lang.ifBlank { "Other" },
+            it.isNsfw,
+            hidden,
+            enabledLangs,
+            showNsfw,
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Sources") },
-            navigationIcon = {
-                BackButton(onBack)
-            }
+            title = {
+                Column {
+                    Text("Sources", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "$shown of ${rows.size} shown",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            navigationIcon = { BackButton(onBack) },
         )
 
-        // The list of every installed source, grouped by language with a header
-        // and a divider per group — the longest list in Browse and the one card
-        // 87 reported. The handle reads its own item count, so the grouping
-        // needs no arithmetic here.
         val sourceListState = rememberLazyListState()
         Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(state = sourceListState, modifier = Modifier.fillMaxSize()) {
-            item {
-                ListItem(
-                    headlineContent = { Text("All sources") },
-                    supportingContent = {
-                        val shown = rows.count {
-                            SourcePrefs.isVisible(
-                                it.id, it.lang.ifBlank { "Other" }, it.isNsfw,
-                                hidden, enabledLangs, showNsfw
-                            )
-                        }
-                        Text("$shown of ${rows.size} shown")
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = allShown,
-                            onCheckedChange = { on ->
-                                enabledLangs = SourcePrefs.setLangsEnabled(context, allLangs, on)
-                                // Turning everything on also clears individual
-                                // hides, or the switch would lie about the count.
-                                if (on) {
-                                    hidden = SourcePrefs.setSourcesHidden(context, allIds, false)
-                                }
-                            }
+            LazyColumn(
+                state = sourceListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
+                        ListItem(
+                            headlineContent = {
+                                Text("All sources", style = MaterialTheme.typography.titleMedium)
+                            },
+                            supportingContent = {
+                                Text(
+                                    "$shown of ${rows.size} available in Browse",
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = allShown,
+                                    onCheckedChange = { on ->
+                                        enabledLangs = SourcePrefs.setLangsEnabled(context, allLangs, on)
+                                        if (on) {
+                                            hidden = SourcePrefs.setSourcesHidden(context, allIds, false)
+                                        }
+                                    },
+                                )
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
                     }
-                )
-                HorizontalDivider()
+                }
+
+                groups.forEach { (lang, sources) ->
+                    val langOff = lang !in enabledLangs
+                    val shownInGroup = sources.count {
+                        SourcePrefs.isVisible(
+                            it.id,
+                            it.lang.ifBlank { "Other" },
+                            it.isNsfw,
+                            hidden,
+                            enabledLangs,
+                            showNsfw,
+                        )
+                    }
+
+                    item {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            tonalElevation = 1.dp,
+                        ) {
+                            ListItem(
+                                headlineContent = {
+                                    Text(lang, style = MaterialTheme.typography.titleMedium)
+                                },
+                                supportingContent = {
+                                    Text(
+                                        if (langOff) {
+                                            "Disabled · ${sources.size} sources"
+                                        } else {
+                                            "$shownInGroup of ${sources.size} visible"
+                                        },
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                trailingContent = {
+                                    Switch(
+                                        checked = !langOff,
+                                        onCheckedChange = { on ->
+                                            enabledLangs = SourcePrefs.setLangEnabled(context, lang, on)
+                                        },
+                                    )
+                                },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                    }
+
+                    items(sources.sortedBy { it.name.lowercase() }) { row ->
+                        val on = row.id !in hidden
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 3.dp)
+                                .alpha(if (langOff) 0.45f else 1f),
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            ListItem(
+                                leadingContent = { SourceIcon(row.iconPkg, row.name) },
+                                headlineContent = {
+                                    Text(row.name, style = MaterialTheme.typography.titleSmall)
+                                },
+                                supportingContent = if (row.isNsfw) {
+                                    {
+                                        Text(
+                                            "18+ source",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                                trailingContent = {
+                                    Checkbox(
+                                        checked = on && !langOff,
+                                        enabled = !langOff,
+                                        onCheckedChange = {
+                                            hidden = SourcePrefs.toggleSourceHidden(context, row.id)
+                                        },
+                                    )
+                                },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                modifier = Modifier.clickable(enabled = !langOff) {
+                                    hidden = SourcePrefs.toggleSourceHidden(context, row.id)
+                                },
+                            )
+                        }
+                    }
+                }
             }
 
-            groups.forEach { (lang, sources) ->
-                val langOff = lang !in enabledLangs
-                item {
-                    ListItem(
-                        headlineContent = {
-                            Text(lang, style = MaterialTheme.typography.titleSmall)
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = !langOff,
-                                onCheckedChange = { on ->
-                                    enabledLangs = SourcePrefs.setLangEnabled(context, lang, on)
-                                }
-                            )
-                        }
-                    )
-                }
-                items(sources.sortedBy { it.name.lowercase() }) { row ->
-                    val on = row.id !in hidden
-                    ListItem(
-                        leadingContent = { SourceIcon(row.iconPkg, row.name) },
-                        headlineContent = { Text(row.name) },
-                        trailingContent = {
-                            Checkbox(
-                                checked = on && !langOff,
-                                // A language switched off greys out its sources
-                                // rather than silently rewriting each checkbox.
-                                enabled = !langOff,
-                                onCheckedChange = {
-                                    hidden = SourcePrefs.toggleSourceHidden(context, row.id)
-                                }
-                            )
-                        },
-                        modifier = Modifier.clickable(enabled = !langOff) {
-                            hidden = SourcePrefs.toggleSourceHidden(context, row.id)
-                        }
-                    )
-                }
-                item { HorizontalDivider() }
-            }
-        }
-        ListScrollHandle(
-            state = sourceListState,
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
+            ListScrollHandle(
+                state = sourceListState,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
         }
     }
 }
