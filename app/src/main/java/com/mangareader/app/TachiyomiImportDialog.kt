@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import android.os.Environment
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,9 +14,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,14 +35,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.zip.GZIPInputStream
 
-/**
- * Pick a file, look at what's in it, then decide.
- *
- * The preview is the safety mechanism, the same one `Backup.restore` uses when
- * it validates a whole payload before touching anything. If the parser were
- * reading the wrong fields, the counts and the sample titles on this screen
- * would be visibly wrong — and nothing has been written yet.
- */
 @Composable
 internal fun TachiyomiImportDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -61,119 +54,182 @@ internal fun TachiyomiImportDialog(onDismiss: () -> Unit) {
     val summary = parsed
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Import Tachiyomi backup") },
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Import Tachiyomi backup")
+                Text(
+                    "Preview first, then merge into Yomu",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
         text = {
             Column(
                 modifier = Modifier
-                    .heightIn(max = 400.dp)
-                    .verticalScroll(rememberScrollState())
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 val message = error
                 val finished = done
                 when {
-                    finished != null -> Text(finished)
-
-                    message != null -> Text(
-                        message,
-                        color = MaterialTheme.colorScheme.error
-                    )
-
-                    busy -> {
-                        Text("Working\u2026")
-                        Spacer(Modifier.height(12.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(12.dp))
+                    finished != null -> Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
                         Text(
-                            "A large library takes a moment. Don't leave this screen.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            finished,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
                         )
                     }
 
-                    summary != null -> {
-                        Text("Found in ${chosen?.name.orEmpty()}:")
-                        Spacer(Modifier.height(8.dp))
-                        Text("\u2022 ${summary.inLibrary} series in the library")
-                        if (summary.historyOnly > 0) {
-                            Text(
-                                "\u2022 ${summary.historyOnly} read but not in the " +
-                                    "library \u2014 skipped"
-                            )
-                        }
-                        Text("\u2022 ${summary.chapters} chapters")
-                        Text("\u2022 ${summary.readChapters} marked read")
-                        Text("\u2022 ${summary.savedPages} with a saved page")
-                        Text("\u2022 ${summary.historyEntries} history entries")
-                        Text("\u2022 ${summary.categories.size} categories")
-                        Text("\u2022 ${summary.sourceNames.size} sources")
-                        Spacer(Modifier.height(12.dp))
+                    message != null -> Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
                         Text(
-                            "First few titles \u2014 if these look wrong, cancel:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            message,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
                         )
-                        summary.series.take(4).forEach {
-                            Text(
-                                "\u2022 ${it.title}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                    }
+
+                    busy -> {
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text("Working…", style = MaterialTheme.typography.titleSmall)
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                Text(
+                                    "A large library can take a moment. Keep this screen open while Yomu validates the backup.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    summary != null -> {
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    chosen?.name.orEmpty(),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                                Text("${summary.inLibrary} series in the library")
+                                if (summary.historyOnly > 0) {
+                                    Text("${summary.historyOnly} read-only series will be skipped")
+                                }
+                                Text("${summary.chapters} chapters · ${summary.readChapters} marked read")
+                                Text("${summary.savedPages} saved page positions · ${summary.historyEntries} history entries")
+                                Text("${summary.categories.size} categories · ${summary.sourceNames.size} sources")
+                            }
+                        }
+
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text("First titles", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "If these look wrong, cancel before importing.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                summary.series.take(4).forEach {
+                                    Text("• ${it.title}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+
                         Text(
-                            "Nothing is removed \u2014 this merges into what's already here. " +
-                                "Downloads aren't in a Tachiyomi backup and won't appear.",
+                            "Nothing is removed — the backup merges into your current library. Downloads are not part of a Tachiyomi backup.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
                     files == null -> {
-                        Text("Looking for backup files\u2026")
-                        Spacer(Modifier.height(12.dp))
+                        Text("Looking for backup files…", style = MaterialTheme.typography.titleSmall)
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
 
-                    files.isNullOrEmpty() -> Text(
-                        "No .tachibk files found on storage. Tachiyomi writes them to " +
-                            "Manga/Tachiyomi/autobackup by default \u2014 copy one there or " +
-                            "to Download and try again."
-                    )
+                    files.isNullOrEmpty() -> Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        Text(
+                            "No .tachibk files found. Tachiyomi normally writes them to Manga/Tachiyomi/autobackup — copy one there or to Download and try again.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(14.dp),
+                        )
+                    }
 
                     else -> {
                         Text(
-                            "Pick a backup:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "Choose a backup",
+                            style = MaterialTheme.typography.titleSmall,
                         )
-                        Spacer(Modifier.height(4.dp))
                         files.orEmpty().forEach { f ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        chosen = f
-                                        busy = true
-                                        scope.launch {
-                                            val result = withContext(Dispatchers.IO) {
-                                                runCatching { readTachiyomiBackup(f) }
-                                            }
-                                            busy = false
-                                            result.onSuccess { parsed = it }
-                                            result.onFailure {
-                                                error = it.message ?: "Could not read that file."
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                color = if (chosen == f) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerLow
+                                },
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            chosen = f
+                                            error = null
+                                            busy = true
+                                            scope.launch {
+                                                val result = withContext(Dispatchers.IO) {
+                                                    runCatching { readTachiyomiBackup(f) }
+                                                }
+                                                busy = false
+                                                result.onSuccess { parsed = it }
+                                                result.onFailure {
+                                                    error = it.message ?: "Could not read that file."
+                                                }
                                             }
                                         }
-                                    }
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Text(f.name, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    "${f.length() / 1024} KB",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                ) {
+                                    Text(f.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${f.length() / 1024} KB",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
-                            HorizontalDivider()
                         }
                     }
                 }
@@ -181,25 +237,34 @@ internal fun TachiyomiImportDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             if (summary != null && done == null && !busy) {
-                Button(onClick = {
-                    busy = true
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            runCatching { applyTachiyomiBackup(context, summary) }
+                Button(
+                    onClick = {
+                        busy = true
+                        error = null
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching { applyTachiyomiBackup(context, summary) }
+                            }
+                            busy = false
+                            result.onSuccess { done = it }
+                            result.onFailure { error = it.message ?: "Import failed." }
                         }
-                        busy = false
-                        result.onSuccess { done = it }
-                        result.onFailure { error = it.message ?: "Import failed." }
-                    }
-                }) { Text("Import") }
+                    },
+                ) {
+                    Text("Import")
+                }
             } else {
-                TextButton(enabled = !busy, onClick = onDismiss) { Text("Close") }
+                TextButton(enabled = !busy, onClick = onDismiss) {
+                    Text("Close")
+                }
             }
         },
         dismissButton = {
             if (summary != null && done == null && !busy) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
             }
-        }
+        },
     )
 }
