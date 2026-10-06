@@ -4,23 +4,19 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -161,105 +158,130 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
 
     if (allItems.isEmpty() && activeDownloads.isEmpty() && directDownloads.isEmpty()) return
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         val totalActive = activeDownloads.size + directDownloads.size
         val totalActiveVisible = activeVisible.size + directVisible.size
         if (totalActive > 0) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 1.dp,
             ) {
-                Text("Downloading anime", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "$totalActiveVisible/$totalActive",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            activeVisible.forEach { item ->
-                DownloadProgressRow(
-                    title = item.title,
-                    quality = item.quality,
-                    stage = item.stage,
-                    percent = item.percent,
-                    onCancel = { workManager.cancelWorkById(item.id) },
-                )
-            }
-
-            directVisible.forEach { download ->
-                val item = download.item
-                DownloadProgressRow(
-                    title = item.title,
-                    quality = item.quality,
-                    stage = download.stage,
-                    percent = download.percent,
-                    onCancel = {
-                        systemDownloadManager.remove(item.id)
-                        AnimeDirectDownloadIndex.remove(context, item.id)
-                        File(item.path).delete()
-                    },
-                    onRetry = if (download.failed) {
-                        {
-                            AnimeDirectDownloadReconciler.retryFailed(context, item)
-                            revision++
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text("Downloading anime", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Active transfers and retry state",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                    } else {
-                        null
-                    },
-                    onDelete = if (download.failed) {
-                        {
-                            systemDownloadManager.remove(item.id)
-                            AnimeDirectDownloadIndex.remove(context, item.id)
-                            File(item.path).delete()
-                            revision++
-                        }
-                    } else {
-                        null
-                    },
-                )
+                        Text(
+                            "$totalActiveVisible/$totalActive",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+
+                    activeVisible.forEach { item ->
+                        DownloadProgressCard(
+                            title = item.title,
+                            quality = item.quality,
+                            stage = item.stage,
+                            percent = item.percent,
+                            onCancel = { workManager.cancelWorkById(item.id) },
+                        )
+                    }
+
+                    directVisible.forEach { download ->
+                        val item = download.item
+                        DownloadProgressCard(
+                            title = item.title,
+                            quality = item.quality,
+                            stage = download.stage,
+                            percent = download.percent,
+                            onCancel = {
+                                systemDownloadManager.remove(item.id)
+                                AnimeDirectDownloadIndex.remove(context, item.id)
+                                File(item.path).delete()
+                            },
+                            onRetry = if (download.failed) {
+                                {
+                                    AnimeDirectDownloadReconciler.retryFailed(context, item)
+                                    revision++
+                                }
+                            } else {
+                                null
+                            },
+                            onDelete = if (download.failed) {
+                                {
+                                    systemDownloadManager.remove(item.id)
+                                    AnimeDirectDownloadIndex.remove(context, item.id)
+                                    File(item.path).delete()
+                                    revision++
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
             }
         }
 
         if (allItems.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 1.dp,
             ) {
-                Text("Offline anime", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "${items.size}/${allItems.size}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            if (items.isEmpty()) {
-                Text(
-                    "No offline episodes match this search.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-            } else {
-                items.forEach { item ->
-                    val file = File(item.path)
-                    ListItem(
-                        leadingContent = {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        },
-                        headlineContent = {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text("Offline anime", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                item.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
+                                "Ready to play without a connection",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        },
-                        supportingContent = {
+                        }
+                        Text(
+                            "${items.size}/${allItems.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+
+                    if (items.isEmpty()) {
+                        Text(
+                            "No offline episodes match this search.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    } else {
+                        items.forEach { item ->
+                            val file = File(item.path)
                             val kind = if (item.path.endsWith(".m3u8", ignoreCase = true)) {
                                 "HLS offline"
                             } else {
@@ -268,30 +290,59 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                             val quality = item.quality.takeIf { it.isNotBlank() }
                                 ?.let { " · $it" }
                                 .orEmpty()
-                            Text("$kind$quality")
-                        },
-                        trailingContent = {
-                            IconButton(onClick = { pendingDelete = item }) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete offline episode",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
+
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (file.exists()) {
+                                                context.startActivity(
+                                                    VideoPlayerActivity.intent(
+                                                        context = context,
+                                                        url = Uri.fromFile(file).toString(),
+                                                        resumeKey = "offline:${item.path}",
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                        .padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            item.title,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            "$kind$quality",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    IconButton(onClick = { pendingDelete = item }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete offline episode",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
                             }
-                        },
-                        modifier = Modifier.clickable {
-                            if (file.exists()) {
-                                context.startActivity(
-                                    VideoPlayerActivity.intent(
-                                        context = context,
-                                        url = Uri.fromFile(file).toString(),
-                                        resumeKey = "offline:${item.path}",
-                                    ),
-                                )
-                            }
-                        },
-                    )
-                    HorizontalDivider()
+                        }
+                    }
                 }
             }
         }
@@ -310,6 +361,9 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
                         pendingDelete = null
                         revision++
                     },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
                 ) {
                     Text("Delete")
                 }
@@ -324,7 +378,7 @@ internal fun AnimeOfflineDownloadsPanel(query: String) {
 }
 
 @Composable
-private fun DownloadProgressRow(
+private fun DownloadProgressCard(
     title: String,
     quality: String,
     stage: String,
@@ -333,23 +387,39 @@ private fun DownloadProgressRow(
     onRetry: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
-    ListItem(
-        headlineContent = {
-            Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 val qualityLabel = quality.takeIf { it.isNotBlank() }
                     ?.let { " · $it" }
                     .orEmpty()
-                Text("$stage · $percent%$qualityLabel")
+                Text(
+                    "$stage · $percent%$qualityLabel",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 LinearProgressIndicator(
                     progress = { percent.coerceIn(0, 100) / 100f },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        },
-        trailingContent = {
+            Spacer(Modifier.width(8.dp))
             if (onRetry != null && onDelete != null) {
                 Row {
                     IconButton(onClick = onRetry) {
@@ -363,7 +433,7 @@ private fun DownloadProgressRow(
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Delete failed anime download",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
@@ -376,9 +446,8 @@ private fun DownloadProgressRow(
                     )
                 }
             }
-        },
-    )
-    HorizontalDivider()
+        }
+    }
 }
 
 private fun pollDirectDownloads(
