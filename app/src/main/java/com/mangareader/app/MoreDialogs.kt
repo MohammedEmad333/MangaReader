@@ -1,73 +1,20 @@
 package com.mangareader.app
 
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
-// PullToRefreshBox lives in a SUB-PACKAGE of material3. The wildcard above does
-// NOT reach it — that is exactly the 0.98 CI failure.
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import coil.compose.AsyncImage
-import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @Composable
 internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
@@ -87,76 +34,133 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Extension repositories") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Paste a repo index URL (the raw index.min.json). Extensions from " +
-                        "added repos appear under Browse \u2192 Extensions.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = newRepo,
-                        onValueChange = { newRepo = it },
-                        label = { Text("Repo index URL") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        enabled = repos != null && newRepo.isNotBlank() && !saving,
-                        onClick = {
-                            val appContext = context.applicationContext
-                            val url = newRepo.trim()
-                            saving = true
-                            scope.launch {
-                                repos = withContext(Dispatchers.IO) {
-                                    ExtensionRepos.add(appContext, url)
-                                    ExtensionRepos.list(appContext)
-                                }
-                                newRepo = ""
-                                saving = false
-                            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "Add repository",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            "Paste the raw index.min.json URL. Added extensions appear under Browse → Extensions.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = newRepo,
+                                onValueChange = { newRepo = it },
+                                label = { Text("Repo index URL") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                enabled = repos != null && newRepo.isNotBlank() && !saving,
+                                onClick = {
+                                    val appContext = context.applicationContext
+                                    val url = newRepo.trim()
+                                    saving = true
+                                    scope.launch {
+                                        repos = withContext(Dispatchers.IO) {
+                                            ExtensionRepos.add(appContext, url)
+                                            ExtensionRepos.list(appContext)
+                                        }
+                                        newRepo = ""
+                                        saving = false
+                                    }
+                                },
+                            ) { Text(if (saving) "Saving…" else "Add") }
                         }
-                    ) { Text(if (saving) "Saving…" else "Add") }
+                    }
                 }
 
-                if (repos == null) {
-                    Text(
-                        "Loading repositories…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else if (repos!!.isEmpty()) {
-                    Text(
-                        "No repositories yet.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .heightIn(max = 260.dp)
-                            .verticalScroll(rememberScrollState())
+                when {
+                    repos == null -> Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
                     ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Loading repositories…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    repos!!.isEmpty() -> Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text("No repositories yet", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Add one above to install extensions from an external source.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    else -> Column(
+                        modifier = Modifier
+                            .heightIn(max = 300.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Saved repositories",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
                         repos.orEmpty().forEach { url ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                },
-                                trailingContent = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                tonalElevation = 1.dp,
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        url,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         TextButton(onClick = {
                                             clipboard.setText(AnnotatedString(url))
                                             android.widget.Toast.makeText(
                                                 context,
                                                 "Copied repo URL",
-                                                android.widget.Toast.LENGTH_SHORT
+                                                android.widget.Toast.LENGTH_SHORT,
                                             ).show()
                                         }) { Text("Copy") }
                                         TextButton(
                                             enabled = !saving,
+                                            colors = ButtonDefaults.textButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.error,
+                                            ),
                                             onClick = {
                                                 val appContext = context.applicationContext
                                                 saving = true
@@ -167,12 +171,11 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
                                                     }
                                                     saving = false
                                                 }
-                                            }
+                                            },
                                         ) { Text("Remove") }
                                     }
                                 }
-                            )
-                            HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -180,6 +183,6 @@ internal fun ExtensionReposDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(enabled = !saving, onClick = onDismiss) { Text("Done") }
-        }
+        },
     )
 }
