@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -57,15 +59,16 @@ internal fun WhatsNewDialog(notes: List<ReleaseNote>, onDismiss: () -> Unit) {
     if (notes.isEmpty()) return
 
     val expanded = remember(notes) { mutableStateMapOf(notes.first().code to true) }
+    val latest = notes.first()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("What's new")
                 Text(
                     if (notes.size == 1) {
-                        "Yomu ${notes.first().name}"
+                        "Yomu ${latest.name} is ready"
                     } else {
                         "${notes.size} updates since your last visit"
                     },
@@ -77,20 +80,49 @@ internal fun WhatsNewDialog(notes: List<ReleaseNote>, onDismiss: () -> Unit) {
         text = {
             Column(
                 modifier = Modifier
-                    .heightIn(max = 440.dp)
+                    .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "Latest · ${latest.name}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            latest.header,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            if (notes.size == 1) {
+                                "Here’s what changed in this update."
+                            } else {
+                                "Newest update first. Older unseen releases are below."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(2.dp))
+
                 notes.forEachIndexed { index, note ->
                     val open = expanded[note.code] == true
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
-                        color = if (index == 0) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerLow
-                        },
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
                         tonalElevation = if (open) 2.dp else 0.dp,
                     ) {
                         Column(
@@ -106,39 +138,28 @@ internal fun WhatsNewDialog(notes: List<ReleaseNote>, onDismiss: () -> Unit) {
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "Version ${note.name}",
+                                        if (index == 0) "Current update · ${note.name}" else "Version ${note.name}",
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = if (index == 0) {
-                                            MaterialTheme.colorScheme.onSecondaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.primary
-                                        },
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
                                     Text(
                                         note.header,
                                         style = MaterialTheme.typography.titleSmall,
-                                        color = if (index == 0) {
-                                            MaterialTheme.colorScheme.onSecondaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        },
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                                 Icon(
                                     if (open) Icons.Default.KeyboardArrowUp
                                     else Icons.Default.KeyboardArrowDown,
                                     contentDescription = if (open) "Collapse" else "Expand",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             if (open) {
                                 Text(
                                     note.body,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = if (index == 0) {
-                                        MaterialTheme.colorScheme.onSecondaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -148,7 +169,7 @@ internal fun WhatsNewDialog(notes: List<ReleaseNote>, onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text("Got it")
+                Text("Continue")
             }
         },
     )
