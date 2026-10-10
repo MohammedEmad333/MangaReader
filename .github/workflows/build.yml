@@ -187,6 +187,7 @@ jobs:
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest "${assets[@]}" --clobber
             gh release edit latest \
+              --target "$GITHUB_SHA" \
               -t "Yomu v${version}" -p \
               -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
           else
