@@ -183,7 +183,27 @@ jobs:
             assets+=("$release_asset")
           fi
 
-          gh release delete latest --cleanup-tag -y || true
-          gh release create latest "${assets[@]}" \
-            -t "Yomu v${version}" -p \
-            -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
+          # Upload first so a failed upload cannot remove the installable release.
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest "${assets[@]}" --clobber
+            gh release edit latest \
+              -t "Yomu v${version}" -p \
+              -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
+          else
+            gh release create latest "${assets[@]}" \
+              -t "Yomu v${version}" -p \
+              -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
+          fi
+
+          # Remove assets from older versions only after this version is uploaded.
+          # Do not delete anything if listing fails (set -e is active).
+          gh release view latest --json assets --jq '.assets[].name' |
+            while IFS= read -r asset; do
+              keep=false
+              for current in "${assets[@]}"; do
+                if [ "$asset" = "$current" ]; then keep=true; break; fi
+              done
+              if [ "$keep" = false ]; then
+                gh release delete-asset latest "$asset" -y
+              fi
+            done
