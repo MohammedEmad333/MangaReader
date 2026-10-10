@@ -25,7 +25,7 @@ internal fun ReaderRoute(
         ReaderScreen(
             pages = pages,
             stillLoading = stillLoading,
-            initialPage = savedPage(context, chapterKey).coerceIn(0, (total - 1).coerceAtLeast(0)),
+            initialPage = safeReaderPageIndex(savedPage(context, chapterKey), total),
             sourceId = sourceId,
             seriesId = series?.id.orEmpty(),
             seriesTitle = series?.title ?: "",
