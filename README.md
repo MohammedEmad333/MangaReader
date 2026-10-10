@@ -21,12 +21,12 @@ Anime episodes use the built-in Media3 player with stream selection, subtitles, 
 
 - JDK 17
 - Android SDK with API 36 available
-- Gradle 8.9 (CI currently installs this version)
+- Gradle 8.13 (the version pinned by CI; no Gradle Wrapper is committed)
 - Android 7.0 / API 24 or newer
 
 ## Build
 
-Until the Gradle Wrapper is committed, use a local Gradle 8.9 installation:
+Until the Gradle Wrapper is committed, use a local Gradle 8.13 installation:
 
 ```bash
 gradle testDebugUnitTest
@@ -70,6 +70,12 @@ The `source-api` module intentionally carries compatibility dependencies require
 ## Security and permissions
 
 Yomu installs and discovers external source packages, downloads content, and supports user-selected storage locations. This requires permissions that are broader than a typical reader app. Any future Play Store distribution should re-evaluate package visibility, storage, APK install/delete, and cleartext-network requirements against current Play policies.
+
+## Operational security notes
+
+External manga and anime source APKs run with the host application's capabilities. Only install trusted source packages, and review their provenance before installation. The app currently permits cleartext HTTP traffic for compatibility with some sources; it should not be used to transfer credentials or other sensitive data over unencrypted connections. Any move to a restrictive network security policy must be tested against supported extensions.
+
+Broad package visibility and storage permissions are compatibility-related. Review these permissions and replace them with narrower Android APIs where feasible before Play Store distribution.
 
 ## Release hygiene
 
