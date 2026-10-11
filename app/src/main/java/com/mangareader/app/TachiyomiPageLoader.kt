@@ -133,6 +133,31 @@ internal class TachiyomiPageLoader(
                 delay(BATCH_GAP_MS)
             }
         }
+
+        // Retry failed reader pages once, without re-fetching successful pages.
+        // Keep user-visible pages first, and leave persistent downloads alone.
+        if (!persist && done.any { it == null }) {
+            val retryOrder = readerFailedPageRetryOrder(
+                done.map { it != null },
+                priorityTicket?.get() ?: startAt,
+                ReaderPagePriority.visiblePages(priorityKey),
+                ReaderPagePriority.direction(priorityKey)
+            )
+            for (index in retryOrder) {
+                if (hostFailures.values.any { it >= HOST_CONNECT_FAILURE_LIMIT }) break
+                val recovered = try {
+                    downloadPage(pages[index], dir, index, hostFailures)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                if (recovered != null) {
+                    done[index] = recovered
+                    onUpdate(done.toList())
+                }
+            }
+        }
         } finally {
             if (priorityTicket != null) ReaderPagePriority.finish(priorityKey, priorityTicket)
         }
