@@ -66,12 +66,23 @@ internal class TachiyomiPageLoader(
         onUpdate(done.toList())
 
         val firstError = AtomicReference<Throwable?>(null)
-        val order = fetchOrder(pages.size, startAt)
+        val priorityKey = chapterKeyOf("tachi:${delegate.id}", chapter)
+        val priorityTicket = if (persist) null else ReaderPagePriority.begin(priorityKey, startAt)
+        val started = mutableSetOf<Int>()
         var attempted = 0
         var failedSoFar = 0
+        var batch = 0
         val hostFailures = ConcurrentHashMap<String, Int>()
 
-        order.chunked(PAGE_CONCURRENCY).forEachIndexed { batch, chunk ->
+        try {
+        while (started.size < pages.size) {
+            // Re-evaluate at every batch, so a jump to page 10 does not
+            // wait for pages 3-9 to finish before page 10 is requested.
+            val chunk = prioritizedPageOrder(
+                pages.size, priorityTicket?.get() ?: startAt, started
+            ).take(PAGE_CONCURRENCY)
+            if (chunk.isEmpty()) break
+            started.addAll(chunk)
             chunk.map { index ->
                 async {
                     val outcome = runCatching {
@@ -112,12 +123,16 @@ internal class TachiyomiPageLoader(
                 throw stopped
             }
 
-            if ((batch + 1) * PAGE_CONCURRENCY < order.size) {
-                if ((batch + 1) % CONNECTION_RECYCLE_BATCHES == 0) {
+            batch++
+            if (started.size < pages.size) {
+                if (batch % CONNECTION_RECYCLE_BATCHES == 0) {
                     recycleConnections()
                 }
                 delay(BATCH_GAP_MS)
             }
+        }
+        } finally {
+            if (priorityTicket != null) ReaderPagePriority.finish(priorityKey, priorityTicket)
         }
 
         if (!persist) return@coroutineScope
@@ -145,13 +160,6 @@ internal class TachiyomiPageLoader(
                 downloadPage(page, dir, index, hostFailures)
             }.getOrNull()
         }
-    }
-
-    private fun fetchOrder(count: Int, startAt: Int): List<Int> {
-        if (count <= 0) return emptyList()
-        val start = startAt.coerceIn(0, count - 1)
-        if (start == 0) return (0 until count).toList()
-        return (start until count) + (start - 1 downTo 0)
     }
 
     private suspend fun cappedPageList(sChapter: SChapter): List<TachiPage> {
