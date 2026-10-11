@@ -56,4 +56,25 @@ class ReaderPagePriorityTest {
         assertEquals(emptyList<Int>(), ReaderPagePriority.visiblePages(key))
     }
 
+    @Test fun backwardNavigationPrefetchesPreviousPagesFirst() {
+        assertEquals(listOf(5, 4, 3, 2, 1, 0, 6, 7, 8, 9),
+            prioritizedPageOrder(10, 5, direction = -1))
+    }
+
+    @Test fun visiblePagesRemainHighestPriorityWhenMovingBackwards() {
+        assertEquals(listOf(5, 6, 4, 3, 2, 1, 0, 7, 8, 9),
+            prioritizedPageOrder(10, 5, visiblePages = listOf(5, 6), direction = -1))
+    }
+
+    @Test fun switchingDirectionUpdatesActivePriority() {
+        val key = "direction-switch-test"
+        val ticket = ReaderPagePriority.begin(key, 9)
+        ReaderPagePriority.update(key, 5)
+        assertEquals(-1, ReaderPagePriority.direction(key))
+        ReaderPagePriority.update(key, 7)
+        assertEquals(1, ReaderPagePriority.direction(key))
+        ReaderPagePriority.finish(key, ticket)
+        assertEquals(1, ReaderPagePriority.direction(key))
+    }
+
 }
