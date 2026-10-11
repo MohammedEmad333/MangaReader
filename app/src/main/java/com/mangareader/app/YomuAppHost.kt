@@ -75,6 +75,17 @@ internal fun YomuAppHost() {
         )
     }
 
+    // Restore a previous reading session through the existing history resolver.
+    // History may be absent or an extension may have been removed; in that
+    // case leave the normal home screen available instead of failing startup.
+    LaunchedEffect(state, actions) {
+        val checkpoint = ReaderSessionCheckpointStore.load(context)
+        val entry = checkpoint?.let { findRestorableReaderHistory(it, startup.history) }
+        if (entry != null && state.reader.chapterIndex == null) {
+            actions.openFromHistory(entry)
+        }
+    }
+
     YomuRootRouter(
         state = state,
         actions = actions,
