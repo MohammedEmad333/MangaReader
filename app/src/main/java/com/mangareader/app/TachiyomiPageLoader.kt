@@ -79,7 +79,8 @@ internal class TachiyomiPageLoader(
             // Re-evaluate at every batch, so a jump to page 10 does not
             // wait for pages 3-9 to finish before page 10 is requested.
             val chunk = prioritizedPageOrder(
-                pages.size, priorityTicket?.get() ?: startAt, started
+                pages.size, priorityTicket?.get() ?: startAt, started,
+                if (priorityTicket == null) emptyList() else ReaderPagePriority.visiblePages(priorityKey)
             ).take(PAGE_CONCURRENCY)
             if (chunk.isEmpty()) break
             started.addAll(chunk)

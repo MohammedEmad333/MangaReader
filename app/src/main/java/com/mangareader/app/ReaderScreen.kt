@@ -79,6 +79,7 @@ internal fun ReaderScreen(
     onNext: () -> Unit,
     onSelectChapter: (Int) -> Unit,
     onProgress: (Int) -> Unit,
+    onVisiblePages: (List<Int>) -> Unit,
     onClose: () -> Unit
 ) {
     val view = LocalView.current
@@ -162,6 +163,7 @@ internal fun ReaderScreen(
         onPrev = onPrev,
         onNext = onNext,
         onProgress = onProgress,
+        onVisiblePages = onVisiblePages,
         scope = scope,
     )
     val headRows = navigation.headRows

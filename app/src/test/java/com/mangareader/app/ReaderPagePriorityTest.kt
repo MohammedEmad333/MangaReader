@@ -33,4 +33,27 @@ class ReaderPagePriorityTest {
         assertEquals(7, newer.get())
         ReaderPagePriority.finish(key, newer)
     }
+    @Test fun viewportPagesComeBeforeOffscreenPages() {
+        assertEquals(
+            listOf(9, 8, 10, 11, 7, 6, 5, 4, 3, 2, 1, 0),
+            prioritizedPageOrder(12, 9, visiblePages = listOf(9, 8, 10))
+        )
+    }
+
+    @Test fun invalidViewportAndStartedPagesAreSkipped() {
+        assertEquals(
+            listOf(4, 3, 2, 1, 0),
+            prioritizedPageOrder(6, 4, setOf(5), listOf(-1, 5, 99, 4, 5))
+        )
+    }
+
+    @Test fun viewportPriorityClearedWithFinishedLoad() {
+        val key = "viewport-priority-test"
+        val ticket = ReaderPagePriority.begin(key, 0)
+        ReaderPagePriority.updateVisible(key, listOf(3, 4))
+        assertEquals(listOf(3, 4), ReaderPagePriority.visiblePages(key))
+        ReaderPagePriority.finish(key, ticket)
+        assertEquals(emptyList<Int>(), ReaderPagePriority.visiblePages(key))
+    }
+
 }

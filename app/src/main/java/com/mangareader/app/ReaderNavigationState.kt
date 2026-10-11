@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
 import kotlin.math.roundToInt
 
 private const val TRANSITION_DWELL_MS = 550L
@@ -37,6 +39,7 @@ internal fun rememberReaderNavigationState(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onProgress: (Int) -> Unit,
+    onVisiblePages: (List<Int>) -> Unit,
     scope: CoroutineScope,
 ): ReaderNavigationState {
     /**
@@ -217,6 +220,21 @@ internal fun rememberReaderNavigationState(
     // Re-dispatch once loading completes so read status can be finalized.
     // The callback validates bounds and avoids persisting empty-page progress.
     LaunchedEffect(currentPage, pages.size, stillLoading) { onProgress(currentPage) }
+
+    // LazyColumn may show multiple pages simultaneously. Prioritize all of
+    // them before offscreen prefetch, without recording them as read progress.
+    LaunchedEffect(listState, pages.size, settings.mode) {
+        if (settings.mode == ReaderMode.LONG_STRIP) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+                    .map { it.index - headRows }
+                    .filter { it in pages.indices }
+                    .distinct()
+            }.distinctUntilChanged().collect { onVisiblePages(it) }
+        } else {
+            onVisiblePages(emptyList())
+        }
+    }
 
     // Where the thumb is mid-drag, null when it isn't. Hoisted because there
     // are now two sliders that mean the same thing — one in the control bar, one
