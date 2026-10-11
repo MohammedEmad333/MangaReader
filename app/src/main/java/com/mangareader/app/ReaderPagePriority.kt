@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal object ReaderPagePriority {
     private val active = ConcurrentHashMap<String, AtomicInteger>()
+    private val visible = ConcurrentHashMap<String, List<Int>>()
 
     fun begin(chapterKey: String, startAt: Int): AtomicInteger =
         AtomicInteger(startAt).also { active[chapterKey] = it }
@@ -17,8 +18,14 @@ internal object ReaderPagePriority {
         if (pageIndex >= 0) active[chapterKey]?.set(pageIndex)
     }
 
+    fun updateVisible(chapterKey: String, pages: List<Int>) {
+        if (active.containsKey(chapterKey)) visible[chapterKey] = pages.filter { it >= 0 }.distinct()
+    }
+
+    fun visiblePages(chapterKey: String): List<Int> = visible[chapterKey].orEmpty()
+
     fun finish(chapterKey: String, ticket: AtomicInteger) {
-        active.remove(chapterKey, ticket)
+        if (active.remove(chapterKey, ticket)) visible.remove(chapterKey)
     }
 }
 
@@ -27,9 +34,11 @@ internal fun prioritizedPageOrder(
     pageCount: Int,
     visiblePage: Int,
     alreadyStarted: Set<Int> = emptySet(),
+    visiblePages: List<Int> = emptyList(),
 ): List<Int> {
     if (pageCount <= 0) return emptyList()
     val start = visiblePage.coerceIn(0, pageCount - 1)
-    return ((start until pageCount) + (start - 1 downTo 0))
-        .filterNot { it in alreadyStarted }
+    val viewport = visiblePages.filter { it in 0 until pageCount }
+    return (listOf(start) + viewport + (start + 1 until pageCount) + (start - 1 downTo 0))
+        .distinct().filterNot { it in alreadyStarted }
 }
