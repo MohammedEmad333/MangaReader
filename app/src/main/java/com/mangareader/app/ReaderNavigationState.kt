@@ -28,6 +28,7 @@ internal data class ReaderNavigationState(
 @Composable
 internal fun rememberReaderNavigationState(
     pages: List<java.io.File?>,
+    stillLoading: Boolean,
     initialPage: Int,
     settings: ReaderSettings,
     chapterIndex: Int,
@@ -212,7 +213,10 @@ internal fun rememberReaderNavigationState(
         // close now that the bounded value exists a few lines up.
         else -> (listState.firstVisibleItemIndex - headRows).coerceIn(0, lastPage)
     }
-    LaunchedEffect(currentPage) { onProgress(currentPage) }
+    // A last-page position may remain unchanged when streaming finishes.
+    // Re-dispatch once loading completes so read status can be finalized.
+    // The callback validates bounds and avoids persisting empty-page progress.
+    LaunchedEffect(currentPage, pages.size, stillLoading) { onProgress(currentPage) }
 
     // Where the thumb is mid-drag, null when it isn't. Hoisted because there
     // are now two sliders that mean the same thing — one in the control bar, one

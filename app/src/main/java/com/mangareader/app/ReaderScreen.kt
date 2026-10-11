@@ -153,6 +153,7 @@ internal fun ReaderScreen(
 
     val navigation = rememberReaderNavigationState(
         pages = pages,
+        stillLoading = stillLoading,
         initialPage = initialPage,
         settings = settings,
         chapterIndex = chapterIndex,
