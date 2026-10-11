@@ -1,5 +1,9 @@
 package com.mangareader.app
 
-/** A loading or empty chapter must not be marked read. */
-internal fun isReaderChapterCompleted(pageIndex: Int, loadedPageCount: Int): Boolean =
-    loadedPageCount > 0 && pageIndex >= loadedPageCount - 1
+/** A streaming chapter is complete only after loading finishes at its final page. */
+internal fun isReaderChapterCompleted(
+    pageIndex: Int,
+    loadedPageCount: Int,
+    stillLoading: Boolean = false,
+): Boolean =
+    !stillLoading && loadedPageCount > 0 && pageIndex == loadedPageCount - 1
