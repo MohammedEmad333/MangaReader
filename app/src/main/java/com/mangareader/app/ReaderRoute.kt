@@ -42,6 +42,17 @@ internal fun ReaderRoute(
                 if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
                 ReaderPagePriority.update(chapterKey, page)
                 savePage(context, chapterKey, page)
+                if (!isIncognito(context)) {
+                    ReaderSessionCheckpointStore.save(
+                        context,
+                        ReaderSessionCheckpoint(
+                            sourceId = sourceId,
+                            seriesId = series?.id.orEmpty(),
+                            chapterId = chapter.id,
+                            page = page,
+                        )
+                    )
+                }
                 if (isReaderChapterCompleted(page, total, stillLoading)) {
                     ReadState.setRead(context, chapterKey, true)
                 }
