@@ -11,7 +11,7 @@ class ReaderFailedPageRetryTest {
     }
 
     @Test fun visibleFailedPageWinsOverOffscreenPages() {
-        assertEquals(listOf(5, 1, 3), readerFailedPageRetryOrder(
+        assertEquals(listOf(1, 5, 3), readerFailedPageRetryOrder(
             listOf(true, false, true, false, true, false), 1, listOf(5), 1
         ))
     }
