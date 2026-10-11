@@ -12,8 +12,11 @@ internal object ReaderPagePriority {
     private val visible = ConcurrentHashMap<String, List<Int>>()
     private val directions = ConcurrentHashMap<String, Int>()
 
-    fun begin(chapterKey: String, startAt: Int): AtomicInteger =
-        AtomicInteger(startAt).also { active[chapterKey] = it }
+    fun begin(chapterKey: String, startAt: Int): AtomicInteger {
+        directions.remove(chapterKey)
+        visible.remove(chapterKey)
+        return AtomicInteger(startAt).also { active[chapterKey] = it }
+    }
 
     fun update(chapterKey: String, pageIndex: Int) {
         if (pageIndex < 0) return
