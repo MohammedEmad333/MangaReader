@@ -39,7 +39,7 @@ internal fun ReaderRoute(
             onSelectChapter = onOpenChapter,
             onProgress = { page ->
                 savePage(context, chapterKey, page)
-                if (page >= total - 1) {
+                if (isReaderChapterCompleted(page, total)) {
                     ReadState.setRead(context, chapterKey, true)
                 }
                 if (!isIncognito(context)) {
