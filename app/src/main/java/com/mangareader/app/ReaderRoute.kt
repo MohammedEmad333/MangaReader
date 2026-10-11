@@ -37,6 +37,7 @@ internal fun ReaderRoute(
             onPrev = { onOpenChapter(chapterIndex - 1) },
             onNext = { onOpenChapter(chapterIndex + 1) },
             onSelectChapter = onOpenChapter,
+            onVisiblePages = { visible -> ReaderPagePriority.updateVisible(chapterKey, visible) },
             onProgress = { page ->
                 if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
                 ReaderPagePriority.update(chapterKey, page)
