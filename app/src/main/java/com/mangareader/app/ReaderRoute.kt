@@ -38,6 +38,7 @@ internal fun ReaderRoute(
             onNext = { onOpenChapter(chapterIndex + 1) },
             onSelectChapter = onOpenChapter,
             onProgress = { page ->
+                if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
                 savePage(context, chapterKey, page)
                 if (isReaderChapterCompleted(page, total)) {
                     ReadState.setRead(context, chapterKey, true)
