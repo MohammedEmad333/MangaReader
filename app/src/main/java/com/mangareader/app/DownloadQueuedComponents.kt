@@ -44,12 +44,14 @@ internal fun LazyListScope.downloadQueuedSection(
         val isActive = item.chapterId == activeId
         val itemPaused = item.chapterId in pausedIds
         val progress = DownloadQueue.progress[item.chapterId]
+        val canMoveLater = items.lastOrNull()?.chapterId != item.chapterId && !isActive
 
         DownloadQueuedRow(
             context = context,
             item = item,
             isActive = isActive,
             itemPaused = itemPaused,
+            canMoveLater = canMoveLater,
             queuePaused = queuePaused,
             progress = progress,
             scope = scope,
@@ -63,6 +65,7 @@ internal fun DownloadQueuedRow(
     item: DownloadItem,
     isActive: Boolean,
     itemPaused: Boolean,
+    canMoveLater: Boolean,
     queuePaused: Boolean,
     progress: DownloadQueue.DownloadProgress?,
     scope: CoroutineScope,
@@ -142,7 +145,7 @@ internal fun DownloadQueuedRow(
             },
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!isActive) {
+                    if (canMoveLater) {
                         IconButton(
                             onClick = {
                                 val appContext = context.applicationContext
