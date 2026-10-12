@@ -38,15 +38,16 @@ internal fun LazyListScope.downloadQueuedSection(
     pausedIds: Set<String>,
     scope: CoroutineScope,
 ) {
+    // Resolve the next eligible download once per list build instead of
+    // rescanning the queue for every row (quadratic for large queues).
+    val nextId = nextDownloadChapterId(items.map { it.chapterId }, activeId, pausedIds)
     items(
         items = items,
         key = { it.chapterId },
     ) { item ->
         val isActive = item.chapterId == activeId
         val itemPaused = item.chapterId in pausedIds
-        val isNext = item.chapterId == nextDownloadChapterId(
-            items.map { it.chapterId }, activeId, pausedIds
-        )
+        val isNext = item.chapterId == nextId
         val progress = DownloadQueue.progress[item.chapterId]
         val canMoveLater = items.lastOrNull()?.chapterId != item.chapterId && !isActive
         val position = items.indexOfFirst { it.chapterId == item.chapterId }
