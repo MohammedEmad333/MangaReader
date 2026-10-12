@@ -3,7 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -41,16 +41,15 @@ internal fun LazyListScope.downloadQueuedSection(
     // Resolve the next eligible download once per list build instead of
     // rescanning the queue for every row (quadratic for large queues).
     val nextId = nextDownloadChapterId(items.map { it.chapterId }, activeId, pausedIds)
-    items(
+    itemsIndexed(
         items = items,
-        key = { it.chapterId },
-    ) { item ->
+        key = { _, item -> item.chapterId },
+    ) { position, item ->
         val isActive = item.chapterId == activeId
         val itemPaused = item.chapterId in pausedIds
         val isNext = item.chapterId == nextId
         val progress = DownloadQueue.progress[item.chapterId]
         val canMoveLater = items.lastOrNull()?.chapterId != item.chapterId && !isActive
-        val position = items.indexOfFirst { it.chapterId == item.chapterId }
         val canMoveEarlier = !isActive && position > 0 && items[position - 1].chapterId != activeId
 
         DownloadQueuedRow(
