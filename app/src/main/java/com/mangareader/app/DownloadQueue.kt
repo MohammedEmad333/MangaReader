@@ -135,6 +135,16 @@ object DownloadQueue {
         return true
     }
 
+    /** Move a waiting chapter down by one slot, persisting the change. */
+    @Synchronized
+    fun moveDown(context: Context, chapterId: String): Boolean {
+        val reordered = moveQueuedItemDown(items, chapterId, activeId) { it.chapterId }
+        if (reordered == items) return false
+        items = reordered
+        save(context)
+        return true
+    }
+
     @Synchronized
     fun remove(context: Context, chapterId: String) {
         items = items.filterNot { it.chapterId == chapterId }
