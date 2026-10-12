@@ -135,6 +135,16 @@ object DownloadQueue {
         return true
     }
 
+    /** Move a waiting chapter one slot earlier, keeping active work undisturbed. */
+    @Synchronized
+    fun moveUp(context: Context, chapterId: String): Boolean {
+        val reordered = moveQueuedItemUp(items, chapterId, activeId) { it.chapterId }
+        if (reordered == items) return false
+        items = reordered
+        save(context)
+        return true
+    }
+
     /** Move a waiting chapter down by one slot, persisting the change. */
     @Synchronized
     fun moveDown(context: Context, chapterId: String): Boolean {

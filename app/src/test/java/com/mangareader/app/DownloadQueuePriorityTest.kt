@@ -51,4 +51,20 @@ class DownloadQueuePriorityTest {
         assertEquals(listOf("a", "c", "b"),
             moveQueuedItemDown(queue, "b", null) { it })
     }
+    @Test fun moveUpAdvancesOneSlotWithoutMovingActive() {
+        assertEquals(listOf("active", "b", "a", "c"),
+            moveQueuedItemUp(listOf("active", "a", "b", "c"), "b", "active") { it })
+    }
+
+    @Test fun moveUpCannotCrossActiveOrFirstPosition() {
+        val queue = listOf("active", "a", "b")
+        assertEquals(queue, moveQueuedItemUp(queue, "a", "active") { it })
+        assertEquals(queue, moveQueuedItemUp(queue, "active", "active") { it })
+        assertEquals(queue, moveQueuedItemUp(queue, "missing", "active") { it })
+    }
+
+    @Test fun moveUpWorksOnIdleQueue() {
+        assertEquals(listOf("b", "a", "c"),
+            moveQueuedItemUp(listOf("a", "b", "c"), "b", null) { it })
+    }
 }

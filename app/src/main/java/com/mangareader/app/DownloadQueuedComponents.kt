@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,6 +46,8 @@ internal fun LazyListScope.downloadQueuedSection(
         val itemPaused = item.chapterId in pausedIds
         val progress = DownloadQueue.progress[item.chapterId]
         val canMoveLater = items.lastOrNull()?.chapterId != item.chapterId && !isActive
+        val position = items.indexOfFirst { it.chapterId == item.chapterId }
+        val canMoveEarlier = !isActive && position > 0 && items[position - 1].chapterId != activeId
 
         DownloadQueuedRow(
             context = context,
@@ -52,6 +55,7 @@ internal fun LazyListScope.downloadQueuedSection(
             isActive = isActive,
             itemPaused = itemPaused,
             canMoveLater = canMoveLater,
+            canMoveEarlier = canMoveEarlier,
             queuePaused = queuePaused,
             progress = progress,
             scope = scope,
@@ -66,6 +70,7 @@ internal fun DownloadQueuedRow(
     isActive: Boolean,
     itemPaused: Boolean,
     canMoveLater: Boolean,
+    canMoveEarlier: Boolean,
     queuePaused: Boolean,
     progress: DownloadQueue.DownloadProgress?,
     scope: CoroutineScope,
@@ -145,6 +150,23 @@ internal fun DownloadQueuedRow(
             },
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (canMoveEarlier) {
+                        IconButton(
+                            onClick = {
+                                val appContext = context.applicationContext
+                                scope.launch(Dispatchers.IO) {
+                                    DownloadQueue.moveUp(appContext, item.chapterId)
+                                }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Move this chapter one position earlier",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
                     if (canMoveLater) {
                         IconButton(
                             onClick = {
