@@ -80,6 +80,7 @@ internal fun RootTransientRoute(
             chapterIndex = chapterIndex,
             onOpenChapter = { actions.openChapter(it) },
             onClose = {
+                ReaderSessionCheckpointStore.clear(context)
                 readerSession.close()
                 appState.readTick++
                 root.scope.launch {
