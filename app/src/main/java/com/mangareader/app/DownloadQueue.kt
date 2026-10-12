@@ -120,6 +120,21 @@ object DownloadQueue {
         return added.size
     }
 
+    /**
+     * Schedule a chapter next while preserving the active transfer and all
+     * other queued chapters' relative order. Persist the new order for restart.
+     */
+    @Synchronized
+    fun prioritize(context: Context, chapterId: String): Boolean {
+        if (chapterId.isBlank() || chapterId == activeId ||
+            items.none { it.chapterId == chapterId }) return false
+        val reordered = prioritizeQueuedItem(items, chapterId, activeId) { it.chapterId }
+        if (reordered == items) return false
+        items = reordered
+        save(context)
+        return true
+    }
+
     @Synchronized
     fun remove(context: Context, chapterId: String) {
         items = items.filterNot { it.chapterId == chapterId }
