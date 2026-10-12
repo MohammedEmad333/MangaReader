@@ -28,4 +28,21 @@ class DownloadQueuePriorityTest {
         assertEquals(listOf("active", "fourth", "first", "second", "third"),
             prioritize(listOf("active", "first", "second", "third", "fourth"), "fourth", "active"))
     }
+
+    @Test fun moveDownPreservesActiveAndOtherChapters() {
+        assertEquals(listOf("active", "second", "first", "third"),
+            moveQueuedItemDown(listOf("active", "first", "second", "third"), "first", "active") { it })
+    }
+
+    @Test fun moveDownRejectsActiveLastAndUnknown() {
+        val queue = listOf("active", "first", "last")
+        assertEquals(queue, moveQueuedItemDown(queue, "active", "active") { it })
+        assertEquals(queue, moveQueuedItemDown(queue, "last", "active") { it })
+        assertEquals(queue, moveQueuedItemDown(queue, "missing", "active") { it })
+    }
+
+    @Test fun moveDownWorksWhileIdle() {
+        assertEquals(listOf("b", "a", "c"),
+            moveQueuedItemDown(listOf("a", "b", "c"), "a", null) { it })
+    }
 }
