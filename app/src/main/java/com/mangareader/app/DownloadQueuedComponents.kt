@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -141,6 +142,23 @@ internal fun DownloadQueuedRow(
             },
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!isActive) {
+                        IconButton(
+                            onClick = {
+                                val appContext = context.applicationContext
+                                scope.launch(Dispatchers.IO) {
+                                    DownloadQueue.moveDown(appContext, item.chapterId)
+                                }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowDownward,
+                                contentDescription = "Move this chapter later",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
                     if (!isActive) {
                         IconButton(
                             onClick = {
