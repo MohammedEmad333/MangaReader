@@ -44,6 +44,9 @@ internal fun LazyListScope.downloadQueuedSection(
     ) { item ->
         val isActive = item.chapterId == activeId
         val itemPaused = item.chapterId in pausedIds
+        val isNext = item.chapterId == nextDownloadChapterId(
+            items.map { it.chapterId }, activeId, pausedIds
+        )
         val progress = DownloadQueue.progress[item.chapterId]
         val canMoveLater = items.lastOrNull()?.chapterId != item.chapterId && !isActive
         val position = items.indexOfFirst { it.chapterId == item.chapterId }
@@ -53,6 +56,7 @@ internal fun LazyListScope.downloadQueuedSection(
             context = context,
             item = item,
             isActive = isActive,
+            isNext = isNext,
             itemPaused = itemPaused,
             canMoveLater = canMoveLater,
             canMoveEarlier = canMoveEarlier,
@@ -68,6 +72,7 @@ internal fun DownloadQueuedRow(
     context: Context,
     item: DownloadItem,
     isActive: Boolean,
+    isNext: Boolean,
     itemPaused: Boolean,
     canMoveLater: Boolean,
     canMoveEarlier: Boolean,
@@ -77,6 +82,7 @@ internal fun DownloadQueuedRow(
 ) {
     val status = downloadQueueStatus(
         isActive = isActive,
+        isNext = isNext,
         itemPaused = itemPaused,
         queuePaused = queuePaused,
         progress = progress,
@@ -257,12 +263,14 @@ internal fun DownloadQueuedRow(
 
 internal fun downloadQueueStatus(
     isActive: Boolean,
+    isNext: Boolean = false,
     itemPaused: Boolean,
     queuePaused: Boolean,
     progress: DownloadQueue.DownloadProgress?,
 ): String = when {
     itemPaused -> "On hold"
     !isActive && queuePaused -> "Paused"
+    !isActive && isNext -> "Up next"
     !isActive -> "Queued"
     progress == null -> "Starting"
     progress.total == null -> "Fetching pages"
