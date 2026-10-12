@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -36,7 +36,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.13"
+          gradle-version: "8.14.5"
           # Explicit: write the cache from main so later runs can read it.
           cache-read-only: false
 
@@ -67,7 +67,7 @@ jobs:
       - name: Build debug APK
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-        run: gradle assembleDebug --build-cache
+        run: gradle :app:assembleDebug :extensions:cima4u:assembleDebug :extensions:dramacafe:assembleDebug :extensions:watanflix:assembleDebug --build-cache
 
       - name: Build release APK
         if: inputs.release
