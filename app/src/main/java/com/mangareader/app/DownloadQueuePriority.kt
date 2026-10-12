@@ -33,3 +33,19 @@ internal fun <T> moveQueuedItemDown(
         add(index + 1, selected)
     }
 }
+
+/** Move a waiting chapter one slot earlier, without interrupting the active chapter. */
+internal fun <T> moveQueuedItemUp(
+    items: List<T>,
+    selectedId: String,
+    activeId: String?,
+    idOf: (T) -> String,
+): List<T> {
+    val index = items.indexOfFirst { idOf(it) == selectedId }
+    if (index <= 0 || selectedId == activeId ||
+        idOf(items[index - 1]) == activeId) return items
+    return items.toMutableList().apply {
+        val selected = removeAt(index)
+        add(index - 1, selected)
+    }
+}
