@@ -45,4 +45,10 @@ class DownloadQueuePriorityTest {
         assertEquals(listOf("b", "a", "c"),
             moveQueuedItemDown(listOf("a", "b", "c"), "a", null) { it })
     }
+    @Test fun movingLastItemIsNoOpAndMovingMiddleWorks() {
+        val queue = listOf("a", "b", "c")
+        assertEquals(queue, moveQueuedItemDown(queue, "c", null) { it })
+        assertEquals(listOf("a", "c", "b"),
+            moveQueuedItemDown(queue, "b", null) { it })
+    }
 }
