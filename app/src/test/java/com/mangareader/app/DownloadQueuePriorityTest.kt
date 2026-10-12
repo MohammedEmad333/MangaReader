@@ -83,4 +83,10 @@ class DownloadQueuePriorityTest {
         ))
         assertEquals(null, nextDownloadChapterId(emptyList(), null, emptySet()))
     }
+
+    @Test fun nextRunnableInLargeQueueSkipsHeldAndActive() {
+        val ids = (0 until 200).map { "chapter-$it" }
+        val paused = (1 until 150).mapTo(mutableSetOf()) { "chapter-$it" }
+        assertEquals("chapter-150", nextDownloadChapterId(ids, "chapter-0", paused))
+    }
 }
