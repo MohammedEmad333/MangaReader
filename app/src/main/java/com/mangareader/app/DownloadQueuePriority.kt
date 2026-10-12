@@ -49,3 +49,10 @@ internal fun <T> moveQueuedItemUp(
         add(index - 1, selected)
     }
 }
+
+/** Show the first runnable waiting item, skipping paused and active chapters. */
+internal fun nextDownloadChapterId(
+    queuedIds: List<String>,
+    activeId: String?,
+    pausedIds: Set<String>,
+): String? = queuedIds.firstOrNull { it != activeId && it !in pausedIds }
