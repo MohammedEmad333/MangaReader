@@ -19,6 +19,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -33,17 +37,19 @@ internal fun SourceDialog(
     onSave: (SourceConfig) -> Unit,
 ) {
     val context = LocalContext.current
+    var folderError by remember { mutableStateOf(false) }
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
         if (uri != null) {
-            runCatching {
+            val granted = runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
-            }
-            onChange(value.copy(treeUri = uri.toString()))
+            }.isSuccess
+            folderError = !granted
+            if (granted) onChange(value.copy(treeUri = uri.toString()))
         }
     }
 
@@ -119,6 +125,13 @@ internal fun SourceDialog(
                                     color = MaterialTheme.colorScheme.primary,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (folderError) {
+                                Text(
+                                    "Could not keep access to this folder. Choose another folder or try again.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             }
                             OutlinedButton(
