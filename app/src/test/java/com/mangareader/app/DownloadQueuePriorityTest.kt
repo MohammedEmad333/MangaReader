@@ -67,4 +67,20 @@ class DownloadQueuePriorityTest {
         assertEquals(listOf("b", "a", "c"),
             moveQueuedItemUp(listOf("a", "b", "c"), "b", null) { it })
     }
+
+    @Test fun upNextSkipsPausedAndActiveChapters() {
+        assertEquals("waiting", nextDownloadChapterId(
+            listOf("active", "held", "waiting", "later"), "active", setOf("held")
+        ))
+    }
+
+    @Test fun upNextHandlesIdleAndFullyPausedQueues() {
+        assertEquals("first", nextDownloadChapterId(
+            listOf("first", "second"), null, emptySet()
+        ))
+        assertEquals(null, nextDownloadChapterId(
+            listOf("first", "second"), null, setOf("first", "second")
+        ))
+        assertEquals(null, nextDownloadChapterId(emptyList(), null, emptySet()))
+    }
 }
