@@ -188,11 +188,11 @@ jobs:
             gh release upload latest "${assets[@]}" --clobber
             gh release edit latest \
               --target "$GITHUB_SHA" \
-              -t "Yomu v${version}" -p \
+              -t "Yomu v${version}" --prerelease \
               -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
           else
             gh release create latest "${assets[@]}" \
-              -t "Yomu v${version}" -p \
+              -t "Yomu v${version}" --prerelease \
               -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
           fi
 
