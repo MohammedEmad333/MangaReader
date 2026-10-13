@@ -6,6 +6,13 @@ import org.junit.Test
 
 class LibrarySearchTermsTest {
     @Test
+    fun matchesArabicAlefMaqsuraAndYaVariants() {
+        assertTrue(libraryTitleMatches("ليلى", librarySearchTerms("ليلي")))
+        assertTrue(libraryTitleMatches("علي", librarySearchTerms("على")))
+        assertFalse(libraryTitleMatches("ليلى", librarySearchTerms("حكاية")))
+    }
+
+    @Test
     fun matchesArabicAlefVariantsAndTatweel() {
         assertTrue(libraryTitleMatches("أبطال المدينة", librarySearchTerms("ابطال")))
         assertTrue(libraryTitleMatches("إسلام", librarySearchTerms("اسلام")))
