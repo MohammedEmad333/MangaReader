@@ -6,6 +6,14 @@ import org.junit.Test
 class GlobalSearchSummaryTest {
 
     @Test
+    fun globalSearchSubmission_requiresTextAndIdleSearch() {
+        assertEquals(false, canSubmitGlobalSearch("", false))
+        assertEquals(false, canSubmitGlobalSearch("  ", false))
+        assertEquals(false, canSubmitGlobalSearch("manga", true))
+        assertEquals(true, canSubmitGlobalSearch(" manga ", false))
+    }
+
+    @Test
     fun globalSearchProgress_tracksSourcesAndClampsOutOfRangeValues() {
         assertEquals(0f, globalSearchProgress(0, 10), 0.0001f)
         assertEquals(0.25f, globalSearchProgress(1, 4), 0.0001f)
