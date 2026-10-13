@@ -6,6 +6,17 @@ import org.junit.Test
 class GlobalSearchSummaryTest {
 
     @Test
+    fun globalSearchProgress_tracksSourcesAndClampsOutOfRangeValues() {
+        assertEquals(0f, globalSearchProgress(0, 10), 0.0001f)
+        assertEquals(0.25f, globalSearchProgress(1, 4), 0.0001f)
+        assertEquals(1f, globalSearchProgress(4, 4), 0.0001f)
+        assertEquals(1f, globalSearchProgress(9, 4), 0.0001f)
+        assertEquals(0f, globalSearchProgress(-2, 4), 0.0001f)
+        assertEquals(0f, globalSearchProgress(5, 0), 0.0001f)
+    }
+
+
+    @Test
     fun globalSearchSummaryLabel_formatsAndClampsCounts() {
         assertEquals(
             "Searched 12 of 20 sources · 5 with results · 37 titles",
