@@ -77,10 +77,17 @@ internal fun GlobalSearchControls(
                     value = field,
                     onValueChange = onFieldChange,
                     label = { Text("Search") },
+                    trailingIcon = {
+                        if (field.isNotEmpty()) {
+                            IconButton(onClick = { onFieldChange("") }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
-                        if (field.isNotBlank() && !running) onSearch()
+                        if (canSubmitGlobalSearch(field, running)) onSearch()
                     }),
                     modifier = Modifier.weight(1f),
                 )
@@ -89,7 +96,7 @@ internal fun GlobalSearchControls(
                     OutlinedButton(onClick = onCancel) { Text("Stop") }
                 } else {
                     Button(
-                        enabled = field.isNotBlank(),
+                        enabled = canSubmitGlobalSearch(field, running),
                         onClick = onSearch,
                     ) { Text("Go") }
                 }
@@ -374,3 +381,6 @@ internal fun globalSearchSummaryLabel(
 /** Fraction of sources searched, bounded for asynchronous/late responses. */
 internal fun globalSearchProgress(done: Int, total: Int): Float =
     if (total <= 0) 0f else done.coerceIn(0, total).toFloat() / total
+
+internal fun canSubmitGlobalSearch(query: String, running: Boolean): Boolean =
+    query.isNotBlank() && !running
