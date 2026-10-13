@@ -6,6 +6,14 @@ import org.junit.Test
 
 class LibrarySearchTermsTest {
     @Test
+    fun matchesTitlesWithoutRequiringAccentsOrArabicVowels() {
+        assertTrue(libraryTitleMatches("Pokémon", librarySearchTerms("pokemon")))
+        assertTrue(libraryTitleMatches("الْحُرِّيَّةُ", librarySearchTerms("الحرية")))
+        assertTrue(libraryTitleMatches("Cafe", librarySearchTerms("Café")))
+        assertFalse(libraryTitleMatches("Pokémon", librarySearchTerms("pocket")))
+    }
+
+    @Test
     fun matchesWordsRegardlessOfOrderOrCase() {
         assertTrue(libraryTitleMatches("The Last Adventure", librarySearchTerms("adventure last")))
         assertTrue(libraryTitleMatches("The Last Adventure", librarySearchTerms("  LAST   adventure  ")))
