@@ -153,7 +153,7 @@ internal fun buildLibraryGroups(
 
 /** Match each query word independently so order and extra whitespace do not matter. */
 internal fun librarySearchTerms(query: String): List<String> =
-    query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    query.trim().split(Regex("[\\s\\p{Zs}]+")).filter { it.isNotEmpty() }
 
 internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean =
     terms.all { title.contains(it, ignoreCase = true) }

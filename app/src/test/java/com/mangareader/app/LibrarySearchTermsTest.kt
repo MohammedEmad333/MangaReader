@@ -13,6 +13,12 @@ class LibrarySearchTermsTest {
     }
 
     @Test
+    fun unicodeSpacesSeparateSearchWords() {
+        assertTrue(libraryTitleMatches("The Last Adventure", librarySearchTerms("last\u00a0adventure")))
+        assertTrue(libraryTitleMatches("The Last Adventure", librarySearchTerms("last\u3000adventure")))
+    }
+
+    @Test
     fun emptyQueryMatchesEveryTitle() {
         assertTrue(libraryTitleMatches("Any title", librarySearchTerms("  ")))
     }
