@@ -156,6 +156,9 @@ object LibraryRefresh {
      */
     internal val coversRepaired = AtomicInteger(0)
 
+    /** Releases found by comparing known chapter snapshots; first scans do not count. */
+    internal val newChapters = AtomicInteger(0)
+
     /** A snapshot of [failureTally], worst first. Safe to call at any time. */
     fun failureCounts(): List<Pair<String, Int>> =
         failureTally.entries
@@ -177,6 +180,7 @@ object LibraryRefresh {
         finishedAt = 0L
         failureTally.clear()
         coversRepaired.set(0)
+        newChapters.set(0)
     }
 
     internal fun end(context: Context) {
@@ -229,6 +233,7 @@ object LibraryRefresh {
             finishedAt = summary.finishedAt
             firstError = summary.firstError
             coversRepaired.set(summary.coversRepaired)
+            newChapters.set(summary.newChapters)
             failureTally.clear()
             summary.failures.forEach { (key, value) ->
                 failureTally[key] = AtomicInteger(value)
@@ -251,6 +256,7 @@ object LibraryRefresh {
                     finishedAt = finishedAt,
                     firstError = firstError,
                     coversRepaired = coversRepaired.get(),
+                    newChapters = newChapters.get(),
                     failures = failureTally.mapValues { it.value.get() },
                 ),
             )
