@@ -14,7 +14,7 @@ internal class SavedSeriesActionController(
     private val openChapter: (Int) -> Unit,
     private val openEpisode: (Chapter) -> Unit,
 ) {
-    fun openLibrary(entry: LibraryEntry) {
+    fun openLibrary(entry: LibraryEntry, requestedChapterId: String? = null) {
         appState.error = null
         seriesState.begin(
             Series(
@@ -42,6 +42,13 @@ internal class SavedSeriesActionController(
                             series,
                             chapters
                         )
+                        if (requestedChapterId != null && seriesState.active?.id == entry.seriesId) {
+                            findUpdateChapterIndex(chapters, requestedChapterId)
+                                ?.let { index ->
+                                    if (source.isAnime) chapters.getOrNull(index)?.let(openEpisode)
+                                    else openChapter(index)
+                                }
+                        }
                     }
                 )
             } catch (error: Throwable) {
