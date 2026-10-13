@@ -161,6 +161,7 @@ private fun searchableLibraryText(value: String): String =
     Normalizer.normalize(value, Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")
         .replace(Regex("[أإآٱ]"), "ا")
+        .replace("ى", "ي")
         .replace("ـ", "")
         .lowercase(Locale.ROOT)
 
