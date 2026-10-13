@@ -251,6 +251,15 @@ jobs:
               exit 1
             fi
           done
+          # A release asset can exist by name but still be empty. Check the
+          # remote asset metadata, not only the local Gradle build output.
+          empty_assets="$(gh release view latest --json assets --jq '.assets[] | select(.size <= 0) | .name')"
+          for name in "${expected[@]}"; do
+            if grep -Fqx -- "$name" <<< "$empty_assets"; then
+              echo "::error::Published release asset is empty: $name"
+              exit 1
+            fi
+          done
           target="$(gh release view latest --json targetCommitish --jq '.targetCommitish')"
           if [ "$target" != "$GITHUB_SHA" ]; then
             echo "::error::latest release targets $target instead of $GITHUB_SHA"
