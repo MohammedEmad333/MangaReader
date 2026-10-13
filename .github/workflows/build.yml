@@ -75,6 +75,24 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: gradle assembleRelease --build-cache
 
+      # Artifact uploads are best-effort because Actions storage can fill up,
+      # but missing build outputs are real failures and must never be ignored.
+      - name: Verify app and extension APK outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in \
+            app/build/outputs/apk/debug/app-debug.apk \
+            extensions/cima4u/build/outputs/apk/debug/cima4u-debug.apk \
+            extensions/dramacafe/build/outputs/apk/debug/dramacafe-debug.apk \
+            extensions/watanflix/build/outputs/apk/debug/watanflix-debug.apk; do
+            if [ ! -s "$apk" ]; then
+              echo "::error::Missing or empty APK build output: $apk"
+              exit 1
+            fi
+            echo "Verified $apk"
+          done
+
       - name: Upload Cima4u extension artifact
         uses: actions/upload-artifact@v7
         continue-on-error: true
