@@ -138,6 +138,9 @@ internal class AppActionController(
         toSeries: Series
     ) = libraryActions.migrate(from, toSource, toSeries)
 
+    fun openUpdateChapter(entry: LibraryEntry, chapterId: String) =
+        libraryActions.openUpdateChapter(entry, chapterId)
+
     fun openFromLibrary(entry: LibraryEntry) =
         libraryActions.openFromLibrary(entry)
 
