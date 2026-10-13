@@ -101,4 +101,6 @@ internal fun ChapterUpdatesSettingsSection() {
 internal fun formatChapterUpdateTime(timestamp: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
         .format(Date(timestamp))
-\ninternal fun chapterUpdatesCountLabel(count: Int): String =\n    if (count <= 0) "No new chapters detected yet" else "$count recent chapter updates"\n
+
+internal fun chapterUpdatesCountLabel(count: Int): String =
+    if (count <= 0) "No new chapters detected yet" else "$count recent chapter updates"
