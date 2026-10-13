@@ -181,6 +181,7 @@ internal fun LibraryRefreshSettingsSection() {
 
                         LibraryRefresh.finishedAt > 0L -> listOfNotNull(
                             "${LibraryRefresh.counted} counted",
+                            "${LibraryRefresh.newChapters.get()} new chapters",
                             if (LibraryRefresh.failed > 0) {
                                 "${LibraryRefresh.failed} failed"
                             } else null,
