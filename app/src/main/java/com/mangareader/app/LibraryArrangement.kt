@@ -160,6 +160,8 @@ internal fun librarySearchTerms(query: String): List<String> =
 private fun searchableLibraryText(value: String): String =
     Normalizer.normalize(value, Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")
+        .replace(Regex("[أإآٱ]"), "ا")
+        .replace("ـ", "")
         .lowercase(Locale.ROOT)
 
 internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean {
