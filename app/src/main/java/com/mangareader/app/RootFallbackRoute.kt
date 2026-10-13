@@ -17,7 +17,14 @@ internal fun RootFallbackRoute(
         appState.settingsOpen -> {
             SettingsScreen(
                 onBack = root.actions::closeSettings,
-                onOpenDownloadQueue = root.actions::openDownloadQueue
+                onOpenDownloadQueue = root.actions::openDownloadQueue,
+                onOpenUpdateSeries = { event ->
+                    val entry = findUpdateLibraryEntry(Library.list(root.context), event)
+                    if (entry != null) {
+                        root.actions.closeSettings()
+                        root.actions.openFromLibrary(entry)
+                    }
+                }
             )
         }
 
