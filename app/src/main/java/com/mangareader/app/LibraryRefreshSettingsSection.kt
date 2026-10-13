@@ -255,13 +255,7 @@ internal fun LibraryRefreshSettingsSection() {
             }
         }
 
-        if (LibraryRefresh.finishedAt > 0L) {
-            val formatted = java.text.DateFormat.getDateTimeInstance(
-                java.text.DateFormat.MEDIUM,
-                java.text.DateFormat.SHORT,
-            ).format(java.util.Date(LibraryRefresh.finishedAt))
-            PrefNote("Last refresh finished: $formatted")
-        }
+        lastRefreshLabel(LibraryRefresh.finishedAt)?.let { PrefNote(it) }
 
         LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
 
@@ -298,4 +292,14 @@ internal fun LibraryRefreshSettingsSection() {
             },
         )
     }
+}
+
+/** Completed runs only; an unfinished or dismissed refresh has no timestamp. */
+internal fun lastRefreshLabel(finishedAt: Long): String? {
+    if (finishedAt <= 0L) return null
+    val formatted = java.text.DateFormat.getDateTimeInstance(
+        java.text.DateFormat.MEDIUM,
+        java.text.DateFormat.SHORT,
+    ).format(java.util.Date(finishedAt))
+    return "Last refresh finished: $formatted"
 }
