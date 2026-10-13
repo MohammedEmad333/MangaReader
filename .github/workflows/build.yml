@@ -157,7 +157,7 @@ jobs:
       # while isMinifyEnabled is false. A warning on every ordinary build is
       # how people learn to ignore warnings.
       - name: Upload R8 mapping
-        if: github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request'
         # Same non-fatal treatment as the APK upload above and for the same
         # reason: a full storage quota must not fail the job or skip the
         # release. always() still tries it on a failed build (the run that most
