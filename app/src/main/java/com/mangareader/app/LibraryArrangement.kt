@@ -1,6 +1,8 @@
 package com.mangareader.app
 
 import android.content.Context
+import java.text.Normalizer
+import java.util.Locale
 
 internal data class LibraryGroupView(
     val key: String,
@@ -155,5 +157,13 @@ internal fun buildLibraryGroups(
 internal fun librarySearchTerms(query: String): List<String> =
     query.trim().split(Regex("[\\s\\p{Zs}]+")).filter { it.isNotEmpty() }
 
-internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean =
-    terms.all { title.contains(it, ignoreCase = true) }
+private fun searchableLibraryText(value: String): String =
+    Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase(Locale.ROOT)
+
+internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean {
+    if (terms.isEmpty()) return true
+    val normalizedTitle = searchableLibraryText(title)
+    return terms.all { normalizedTitle.contains(searchableLibraryText(it)) }
+}
