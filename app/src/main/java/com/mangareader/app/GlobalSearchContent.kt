@@ -135,9 +135,14 @@ internal fun GlobalSearchControls(
             }
 
             if (running) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (total > 0) {
+                    LinearProgressIndicator(
+                        progress = { globalSearchProgress(done, total) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
             if (total > 0) {
                 Text(
@@ -365,3 +370,7 @@ internal fun globalSearchSummaryLabel(
     "Searched " + done.coerceAtLeast(0) + " of " + total.coerceAtLeast(0) +
         " sources · " + withHits.coerceAtLeast(0) + " with results · " +
         titleMatches.coerceAtLeast(0) + " titles"
+
+/** Fraction of sources searched, bounded for asynchronous/late responses. */
+internal fun globalSearchProgress(done: Int, total: Int): Float =
+    if (total <= 0) 0f else done.coerceIn(0, total).toFloat() / total
