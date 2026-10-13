@@ -29,9 +29,21 @@ internal fun ChapterUpdatesSettingsSection(onOpenUpdateSeries: (ChapterUpdateEve
     var showHistory by remember { mutableStateOf(false) }
     var events by remember { mutableStateOf(ChapterUpdateJournal.list(context)) }
     var confirmClear by remember { mutableStateOf(false) }
+    var notificationsEnabled by remember {
+        mutableStateOf(ChapterUpdateNotificationPrefs.enabled(context))
+    }
     var updateSearch by remember { mutableStateOf("") }
 
     SectionHeader("New chapters")
+    PrefSwitchRow(
+        title = "Notify when new chapters are detected",
+        checked = notificationsEnabled,
+        summary = "Off by default. Requires Android notification permission; alerts will be enabled in the next phase.",
+        onChange = { enabled ->
+            notificationsEnabled = enabled
+            ChapterUpdateNotificationPrefs.setEnabled(context, enabled)
+        },
+    )
     ListItem(
         headlineContent = { Text("Detected chapter updates") },
         supportingContent = {
