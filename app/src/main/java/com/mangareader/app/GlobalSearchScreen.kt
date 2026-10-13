@@ -184,7 +184,10 @@ internal fun GlobalSearchScreen(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(shown) { result ->
+                items(
+                    items = shown,
+                    key = { it.source.id.toString() },
+                ) { result ->
                     GlobalSearchResultRow(
                         result = result,
                         migrating = migrating,
