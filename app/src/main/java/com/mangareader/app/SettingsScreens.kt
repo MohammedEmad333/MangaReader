@@ -41,6 +41,7 @@ private enum class SettingsSection(
 internal fun SettingsScreen(
     onBack: () -> Unit,
     onOpenDownloadQueue: () -> Unit,
+    onOpenUpdateSeries: (ChapterUpdateEvent) -> Unit,
 ) {
     var openSection by rememberSaveable { mutableStateOf("") }
     val section = SettingsSection.entries.firstOrNull { it.name == openSection }
@@ -52,7 +53,7 @@ internal fun SettingsScreen(
         when (section) {
             null -> SettingsIndex(onOpen = { openSection = it.name })
             SettingsSection.APPEARANCE -> AppearanceSettings()
-            SettingsSection.LIBRARY -> LibrarySettings()
+            SettingsSection.LIBRARY -> LibrarySettings(onOpenUpdateSeries)
             SettingsSection.READER -> ReaderDefaultsSettings()
             SettingsSection.DOWNLOADS -> DownloadSettings(onOpenDownloadQueue)
             SettingsSection.BROWSE -> BrowseSettings()
