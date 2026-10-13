@@ -16,7 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun LibrarySettings() {
+internal fun LibrarySettings(onOpenUpdateSeries: (ChapterUpdateEvent) -> Unit) {
     val context = LocalContext.current
     var showCategories by remember { mutableStateOf(false) }
     var categoryTick by remember { mutableIntStateOf(0) }
@@ -68,7 +68,7 @@ internal fun LibrarySettings() {
         )
 
         LibraryRefreshSettingsSection()
-        ChapterUpdatesSettingsSection()
+        ChapterUpdatesSettingsSection(onOpenUpdateSeries)
     }
 
     if (showCategories) {
