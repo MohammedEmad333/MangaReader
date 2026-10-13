@@ -13,6 +13,7 @@ internal data class LibraryRefreshSummary(
     val finishedAt: Long,
     val firstError: String?,
     val coversRepaired: Int,
+    val newChapters: Int,
     val failures: Map<String, Int>,
 )
 
@@ -41,6 +42,7 @@ internal object LibraryRefreshSummaryStore {
             finishedAt = o.optLong("finishedAt"),
             firstError = if (o.isNull("firstError")) null else o.optString("firstError"),
             coversRepaired = o.optInt("coversRepaired"),
+            newChapters = o.optInt("newChapters"),
             failures = failures,
         )
     }
@@ -58,6 +60,7 @@ internal object LibraryRefreshSummaryStore {
             .put("finishedAt", summary.finishedAt)
             .put("firstError", summary.firstError ?: JSONObject.NULL)
             .put("coversRepaired", summary.coversRepaired)
+            .put("newChapters", summary.newChapters)
             .put("failures", failures)
         prefs(context).edit().putString(SUMMARY_KEY, o.toString()).apply()
     }
