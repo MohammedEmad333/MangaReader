@@ -37,7 +37,7 @@ internal fun arrangeLibraryEntries(
     list: List<LibraryEntry>,
     spec: LibraryArrangeSpec,
 ): List<LibraryEntry> {
-    val needle = spec.search.trim()
+    val terms = librarySearchTerms(spec.search)
 
     // Keep this allocation-free per entry. The old version built a seven-Pair
     // List for every series, which turns a quick search/re-sort over a large
@@ -51,7 +51,7 @@ internal fun arrangeLibraryEntries(
             spec.filterStarted.accepts(counts?.started ?: false) &&
             spec.filterCompleted.accepts(counts?.completed ?: false) &&
             spec.filterNsfw.accepts(spec.nsfwSources[entry.sourceId] ?: false) &&
-            (needle.isBlank() || entry.title.contains(needle, ignoreCase = true))
+            libraryTitleMatches(entry.title, terms)
     }
 
     val ordered = when (spec.sort) {
@@ -150,3 +150,10 @@ internal fun buildLibraryGroups(
         }
     }
 }
+
+/** Match each query word independently so order and extra whitespace do not matter. */
+internal fun librarySearchTerms(query: String): List<String> =
+    query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean =
+    terms.all { title.contains(it, ignoreCase = true) }
