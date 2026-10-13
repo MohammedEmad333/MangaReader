@@ -255,6 +255,14 @@ internal fun LibraryRefreshSettingsSection() {
             }
         }
 
+        if (LibraryRefresh.finishedAt > 0L) {
+            val formatted = java.text.DateFormat.getDateTimeInstance(
+                java.text.DateFormat.MEDIUM,
+                java.text.DateFormat.SHORT,
+            ).format(java.util.Date(LibraryRefresh.finishedAt))
+            PrefNote("Last refresh finished: $formatted")
+        }
+
         LibraryRefresh.firstError?.let { PrefNote("First error: $it") }
 
         val failures = remember(
