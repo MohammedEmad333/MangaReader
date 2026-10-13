@@ -33,8 +33,7 @@ internal fun ChapterUpdatesSettingsSection() {
     ListItem(
         headlineContent = { Text("Detected chapter updates") },
         supportingContent = {
-            Text(if (events.isEmpty()) "No new chapters detected yet" else
-                "${events.size} recent chapter updates")
+            Text(chapterUpdatesCountLabel(events.size))
         },
         trailingContent = {
             TextButton(onClick = {
@@ -102,3 +101,4 @@ internal fun ChapterUpdatesSettingsSection() {
 internal fun formatChapterUpdateTime(timestamp: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
         .format(Date(timestamp))
+\ninternal fun chapterUpdatesCountLabel(count: Int): String =\n    if (count <= 0) "No new chapters detected yet" else "$count recent chapter updates"\n
