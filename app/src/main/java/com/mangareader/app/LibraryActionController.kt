@@ -48,6 +48,9 @@ internal class LibraryActionController(
         toSeries: Series
     ) = bulkActions.migrate(from, toSource, toSeries)
 
+    fun openUpdateChapter(entry: LibraryEntry, chapterId: String) =
+        savedSeriesActions.openLibrary(entry, chapterId)
+
     fun openFromLibrary(entry: LibraryEntry) =
         savedSeriesActions.openLibrary(entry)
 
