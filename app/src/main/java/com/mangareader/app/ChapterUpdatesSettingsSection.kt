@@ -1,5 +1,6 @@
 package com.mangareader.app
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,7 +24,7 @@ import java.util.Date
 
 /** Read-only updates history. Chapter navigation is added in a later PR. */
 @Composable
-internal fun ChapterUpdatesSettingsSection() {
+internal fun ChapterUpdatesSettingsSection(onOpenUpdateSeries: (ChapterUpdateEvent) -> Unit) {
     val context = LocalContext.current
     var showHistory by remember { mutableStateOf(false) }
     var events by remember { mutableStateOf(ChapterUpdateJournal.list(context)) }
@@ -72,6 +73,10 @@ internal fun ChapterUpdatesSettingsSection() {
                                 key = { "${it.sourceId}:${it.seriesId}:${it.chapterId}" },
                             ) { event ->
                                 ListItem(
+                                    modifier = Modifier.clickable {
+                                        showHistory = false
+                                        onOpenUpdateSeries(event)
+                                    },
                                     headlineContent = { Text(event.seriesTitle) },
                                     supportingContent = {
                                         Column {
