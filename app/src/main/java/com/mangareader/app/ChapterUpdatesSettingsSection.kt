@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +28,7 @@ internal fun ChapterUpdatesSettingsSection() {
     var showHistory by remember { mutableStateOf(false) }
     var events by remember { mutableStateOf(ChapterUpdateJournal.list(context)) }
     var confirmClear by remember { mutableStateOf(false) }
+    var updateSearch by remember { mutableStateOf("") }
 
     SectionHeader("New chapters")
     ListItem(
@@ -38,6 +39,7 @@ internal fun ChapterUpdatesSettingsSection() {
         trailingContent = {
             TextButton(onClick = {
                 events = ChapterUpdateJournal.list(context)
+                updateSearch = ""
                 showHistory = true
             }) { Text("View") }
         },
@@ -48,23 +50,38 @@ internal fun ChapterUpdatesSettingsSection() {
             onDismissRequest = { showHistory = false },
             title = { Text("Chapter updates") },
             text = {
-                if (events.isEmpty()) {
-                    Text("No updates yet. Refresh your library to check for new chapters.")
-                } else {
-                    LazyColumn {
-                        items(
-                            items = events,
-                            key = { "${it.sourceId}:${it.seriesId}:${it.chapterId}" },
-                        ) { event ->
-                            ListItem(
-                                headlineContent = { Text(event.seriesTitle) },
-                                supportingContent = {
-                                    Column {
-                                        Text(event.chapterName)
-                                        Text(formatChapterUpdateTime(event.detectedAt))
-                                    }
-                                },
-                            )
+                Column {
+                    OutlinedTextField(
+                        value = updateSearch,
+                        onValueChange = { updateSearch = it },
+                        label = { Text("Find series or chapter") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val visible = filterChapterUpdateEvents(events, updateSearch)
+                    if (visible.isEmpty()) {
+                        Text(
+                            if (events.isEmpty()) "No updates yet. Refresh your library to check for new chapters."
+                            else "No updates match your search.",
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    } else {
+                        LazyColumn {
+                            items(
+                                items = visible,
+                                key = { "${it.sourceId}:${it.seriesId}:${it.chapterId}" },
+                            ) { event ->
+                                ListItem(
+                                    headlineContent = { Text(event.seriesTitle) },
+                                    supportingContent = {
+                                        Column {
+                                            Text(event.chapterName)
+                                            Text(SourceNames.nameOf(context, event.sourceId))
+                                            Text(formatChapterUpdateTime(event.detectedAt))
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -104,3 +121,17 @@ internal fun formatChapterUpdateTime(timestamp: Long): String =
 
 internal fun chapterUpdatesCountLabel(count: Int): String =
     if (count <= 0) "No new chapters detected yet" else "$count recent chapter updates"
+
+/** Search update history while preserving the stored newest-first ordering. */
+internal fun filterChapterUpdateEvents(
+    events: List<ChapterUpdateEvent>,
+    query: String,
+): List<ChapterUpdateEvent> {
+    val needle = query.trim()
+    if (needle.isEmpty()) return events
+    return events.filter {
+        it.seriesTitle.contains(needle, ignoreCase = true) ||
+            it.chapterName.contains(needle, ignoreCase = true) ||
+            it.sourceId.contains(needle, ignoreCase = true)
+    }
+}
