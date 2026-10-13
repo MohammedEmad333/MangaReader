@@ -7,3 +7,7 @@ internal fun findUpdateLibraryEntry(
 ): LibraryEntry? = entries.firstOrNull {
     it.seriesId == update.seriesId && it.sourceId == update.sourceId
 }
+
+/** Chapter IDs must match exactly; never open an unrelated chapter by position. */
+internal fun findUpdateChapterIndex(chapters: List<Chapter>, chapterId: String): Int? =
+    chapters.indexOfFirst { it.id == chapterId }.takeIf { it >= 0 }

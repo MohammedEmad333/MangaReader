@@ -5,6 +5,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ChapterUpdateNavigationTest {
+    @Test fun selectsOnlyExactChapterId() {
+        val chapters = listOf(Chapter("chapter-a", "First"), Chapter("chapter-b", "Second"))
+        assertEquals(1, findUpdateChapterIndex(chapters, "chapter-b"))
+        assertNull(findUpdateChapterIndex(chapters, "missing"))
+        assertNull(findUpdateChapterIndex(emptyList(), "chapter-a"))
+    }
+
     private fun saved(source: String, series: String) =
         LibraryEntry(seriesId = series, sourceId = source, title = "Same title", cover = "", addedAt = 1L)
     private fun update(source: String, series: String) =

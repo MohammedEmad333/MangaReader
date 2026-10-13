@@ -22,7 +22,7 @@ internal fun RootFallbackRoute(
                     val entry = findUpdateLibraryEntry(Library.list(root.context), event)
                     if (entry != null) {
                         root.actions.closeSettings()
-                        root.actions.openFromLibrary(entry)
+                        root.actions.openUpdateChapter(entry, event.chapterId)
                     }
                 }
             )
