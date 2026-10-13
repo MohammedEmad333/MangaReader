@@ -45,6 +45,22 @@ internal class LibraryRefreshSourceWorker(
                     val previous = ChapterCache.load(context, entry.seriesId)
                     val newlyAvailable = ChapterUpdateDetector.newlyAvailable(previous, chapters)
                     LibraryRefresh.newChapters.addAndGet(newlyAvailable.size)
+                    if (newlyAvailable.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        ChapterUpdateJournal.append(
+                            context,
+                            newlyAvailable.map { chapter ->
+                                ChapterUpdateEvent(
+                                    sourceId = entry.sourceId,
+                                    seriesId = entry.seriesId,
+                                    seriesTitle = entry.title,
+                                    chapterId = chapter.id,
+                                    chapterName = chapter.name,
+                                    detectedAt = now,
+                                )
+                            },
+                        )
+                    }
 
                     ChapterCache.save(context, entry.seriesId, chapters)
 
