@@ -65,12 +65,13 @@ jobs:
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
 
       - name: Build debug APK
+        if: github.event_name != 'pull_request'
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug :extensions:cima4u:assembleDebug :extensions:dramacafe:assembleDebug :extensions:watanflix:assembleDebug --build-cache
 
       - name: Build release APK
-        if: inputs.release
+        if: github.event_name != 'pull_request' && inputs.release
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: gradle assembleRelease --build-cache
@@ -78,6 +79,7 @@ jobs:
       # Artifact uploads are best-effort because Actions storage can fill up,
       # but missing build outputs are real failures and must never be ignored.
       - name: Verify app and extension APK outputs
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -94,6 +96,7 @@ jobs:
           done
 
       - name: Upload Cima4u extension artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
@@ -103,6 +106,7 @@ jobs:
           retention-days: 7
 
       - name: Upload DramaCafe extension artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
@@ -112,6 +116,7 @@ jobs:
           retention-days: 7
 
       - name: Upload WatanFlix extension artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
@@ -121,6 +126,7 @@ jobs:
           retention-days: 7
 
       - name: Upload artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         # Non-fatal: this is a convenience copy for pulling a specific commit's
         # build, and it is subject to the account-wide Actions STORAGE quota,
@@ -151,7 +157,7 @@ jobs:
       # while isMinifyEnabled is false. A warning on every ordinary build is
       # how people learn to ignore warnings.
       - name: Upload R8 mapping
-        if: always()
+        if: github.event_name != 'pull_request'
         # Same non-fatal treatment as the APK upload above and for the same
         # reason: a full storage quota must not fail the job or skip the
         # release. always() still tries it on a failed build (the run that most
@@ -166,6 +172,7 @@ jobs:
           retention-days: 7
 
       - name: Read app version
+        if: github.event_name != 'pull_request'
         id: app_version
         shell: bash
         run: |
