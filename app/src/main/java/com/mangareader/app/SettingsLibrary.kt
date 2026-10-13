@@ -68,6 +68,7 @@ internal fun LibrarySettings() {
         )
 
         LibraryRefreshSettingsSection()
+        ChapterUpdatesSettingsSection()
     }
 
     if (showCategories) {
