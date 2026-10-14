@@ -26,6 +26,8 @@ import kotlinx.coroutines.withContext
 internal fun LibraryRefreshSettingsSection() {
     val context = LocalContext.current
     var sourcePickerOpen by remember { mutableStateOf(false) }
+    var scheduleFrequency by remember { mutableStateOf(ChapterUpdateSchedulePrefs.frequency(context)) }
+    var scheduleWifiOnly by remember { mutableStateOf(ChapterUpdateSchedulePrefs.wifiOnly(context)) }
     var skipCompleted by remember {
         mutableStateOf(LibraryRefreshPrefs.skipCompleted(context))
     }
@@ -80,6 +82,26 @@ internal fun LibraryRefreshSettingsSection() {
             LibraryRefresh.loadSummary(context.applicationContext)
         }
     }
+
+    SectionHeader("Automatic updates — preparation")
+    ListItem(
+        headlineContent = { Text("Check frequency") },
+        supportingContent = { Text(scheduleFrequency.label) },
+        modifier = Modifier.clickable {
+            scheduleFrequency = scheduleFrequency.next()
+            ChapterUpdateSchedulePrefs.setFrequency(context, scheduleFrequency)
+        },
+    )
+    PrefSwitchRow(
+        title = "Wi-Fi only for scheduled checks",
+        checked = scheduleWifiOnly,
+        summary = "Use Wi-Fi when automatic checking becomes available.",
+        onChange = {
+            scheduleWifiOnly = it
+            ChapterUpdateSchedulePrefs.setWifiOnly(context, it)
+        },
+    )
+    PrefNote("Scheduling is not active yet. These preferences are saved for the upcoming background worker; manual refresh still works as before.")
 
     SectionHeader("Refresh policy")
 
