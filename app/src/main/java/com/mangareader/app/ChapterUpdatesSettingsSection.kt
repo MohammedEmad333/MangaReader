@@ -1,5 +1,9 @@
 package com.mangareader.app
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,15 +37,27 @@ internal fun ChapterUpdatesSettingsSection(onOpenUpdateSeries: (ChapterUpdateEve
         mutableStateOf(ChapterUpdateNotificationPrefs.enabled(context))
     }
     var updateSearch by remember { mutableStateOf("") }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsEnabled = granted
+        ChapterUpdateNotificationPrefs.setEnabled(context, granted)
+    }
 
     SectionHeader("New chapters")
     PrefSwitchRow(
         title = "Notify when new chapters are detected",
         checked = notificationsEnabled,
-        summary = "Off by default. Requires Android notification permission; alerts will be enabled in the next phase.",
+        summary = "Off by default. Alerts are shown only for newly discovered chapters.",
         onChange = { enabled ->
-            notificationsEnabled = enabled
-            ChapterUpdateNotificationPrefs.setEnabled(context, enabled)
+            if (enabled && Build.VERSION.SDK_INT >= 33 &&
+                !ChapterUpdateNotifier.permissionGranted(context)
+            ) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                notificationsEnabled = enabled
+                ChapterUpdateNotificationPrefs.setEnabled(context, enabled)
+            }
         },
     )
     ListItem(
