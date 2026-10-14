@@ -60,6 +60,7 @@ internal class LibraryRefreshSourceWorker(
                                 )
                             },
                         )
+                        ChapterUpdateNotifier.post(context, entry.title, newlyAvailable.size)
                     }
 
                     ChapterCache.save(context, entry.seriesId, chapters)
