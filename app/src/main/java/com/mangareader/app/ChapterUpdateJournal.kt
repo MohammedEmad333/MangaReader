@@ -96,6 +96,12 @@ internal object ChapterUpdateJournal {
         incoming: List<ChapterUpdateEvent>,
     ): List<ChapterUpdateEvent> =
         (previous + incoming)
+            .map { event ->
+                if (previous.any { it.sourceId == event.sourceId && it.seriesId == event.seriesId &&
+                        it.chapterId == event.chapterId && it.isRead })
+                    event.copy(isRead = true)
+                else event
+            }
             .sortedByDescending { it.detectedAt }
             .distinctBy { Triple(it.sourceId, it.seriesId, it.chapterId) }
             .take(MAX_EVENTS)
