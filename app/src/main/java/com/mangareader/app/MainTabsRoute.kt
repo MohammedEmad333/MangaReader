@@ -46,7 +46,8 @@ internal fun MainTabsRoute(
     downloadsScroll: ScrollMemory,
     onOpenDownload: (DownloadedSeries) -> Unit,
     onOpenDownloadQueue: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenUpdateChapter: (ChapterUpdateEvent) -> Unit,
 ) {
     Scaffold(
         bottomBar = {
@@ -105,6 +106,7 @@ internal fun MainTabsRoute(
                     onOpen = onOpenDownload,
                     onOpenQueue = onOpenDownloadQueue
                 )
+                5 -> ChapterUpdatesTab(onOpenChapter = onOpenUpdateChapter)
                 4 -> MoreTab(
                     onOpenDownloads = onOpenDownloadQueue,
                     onOpenSettings = onOpenSettings
