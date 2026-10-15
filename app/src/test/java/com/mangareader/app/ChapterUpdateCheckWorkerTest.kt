@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ChapterUpdateCheckWorkerTest {
     @Test fun emptyAndInvalidBatchesAreSafe() {
-        assertEquals(emptyList<Int>(), scheduledUpdateBatch(emptyList(), 0, 12))
+        assertEquals(emptyList<Int>(), scheduledUpdateBatch(emptyList<Int>(), 0, 12))
         assertEquals(emptyList<Int>(), scheduledUpdateBatch(listOf(1, 2), 0, 0))
     }
 
