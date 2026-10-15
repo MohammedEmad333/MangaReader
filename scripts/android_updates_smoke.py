@@ -48,6 +48,11 @@ def wait_for(label, timeout=40):
     raise RuntimeError(f"Could not find '{label}' in Android UI after {timeout}s: {last_error}")
 
 
+def capture_screenshot(destination):
+    with open(destination, "wb") as output:
+        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=output, check=True)
+
+
 def main():
     try:
         run_smoke()
@@ -61,6 +66,10 @@ def main():
                 Path("smoke-results", name).write_text(adb(*args))
             except subprocess.CalledProcessError:
                 pass
+        try:
+            capture_screenshot("smoke-results/failure-screen.png")
+        except (OSError, subprocess.CalledProcessError):
+            pass
         raise
 
 
@@ -73,11 +82,7 @@ def run_smoke():
         raise RuntimeError("App exited during Updates navigation")
     # Capture the actual UI state for independent visual review.
     Path("smoke-results").mkdir(exist_ok=True)
-    subprocess.run(
-        ["adb", "exec-out", "screencap", "-p"],
-        stdout=open("smoke-results/updates-screen.png", "wb"),
-        check=True,
-    )
+    capture_screenshot("smoke-results/updates-screen.png")
     print("Updates tab opened successfully on Android emulator.")
 
 
