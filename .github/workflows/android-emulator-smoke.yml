@@ -49,3 +49,40 @@ jobs:
               exit 1
             fi
             echo "Yomu process launched successfully (PID $pid)."
+
+            # Verify that the Updates bottom-nav destination is accessible.
+            # Read actual accessibility node bounds rather than assuming a
+            # screen resolution or fixed navigation coordinates.
+            adb shell uiautomator dump /sdcard/yomu-window.xml
+            adb pull /sdcard/yomu-window.xml /tmp/yomu-window.xml >/dev/null
+            python3 - <<'PY'
+            import re
+            import xml.etree.ElementTree as ET
+            root = ET.parse("/tmp/yomu-window.xml").getroot()
+            nodes = [node for node in root.iter("node")
+                     if node.attrib.get("text") == "Updates"
+                     or node.attrib.get("content-desc") == "Updates"]
+            if not nodes:
+                raise SystemExit("Updates navigation item is missing from UI hierarchy")
+            bounds = nodes[0].attrib.get("bounds", "")
+            match = re.fullmatch(r"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]", bounds)
+            if not match:
+                raise SystemExit(f"Cannot read Updates navigation bounds: {bounds!r}")
+            x1, y1, x2, y2 = map(int, match.groups())
+            with open("/tmp/yomu-updates-tap", "w") as output:
+                output.write(f"{(x1+x2)//2} {(y1+y2)//2}")
+            PY
+            read -r tap_x tap_y < /tmp/yomu-updates-tap
+            adb shell input tap "$tap_x" "$tap_y"
+            sleep 3
+            adb shell uiautomator dump /sdcard/yomu-updates.xml
+            adb pull /sdcard/yomu-updates.xml /tmp/yomu-updates.xml >/dev/null
+            python3 - <<'PY'
+            import xml.etree.ElementTree as ET
+            root = ET.parse("/tmp/yomu-updates.xml").getroot()
+            if not any(node.attrib.get("text") == "Chapter updates"
+                       for node in root.iter("node")):
+                raise SystemExit("Updates screen did not open after tapping the navigation item")
+            print("Verified Updates screen navigation on Android emulator.")
+            PY
+
