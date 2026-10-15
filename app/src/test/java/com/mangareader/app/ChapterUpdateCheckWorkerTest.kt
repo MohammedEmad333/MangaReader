@@ -4,6 +4,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChapterUpdateCheckWorkerTest {
+    @Test fun scheduledRunStopsWhenManualRefreshStarts() {
+        assertEquals(false, shouldContinueScheduledCheck(false, true, ChapterUpdateFrequency.DAILY))
+    }
+
+    @Test fun scheduledRunStopsAfterOptOutOrCancellation() {
+        assertEquals(false, shouldContinueScheduledCheck(false, false, ChapterUpdateFrequency.OFF))
+        assertEquals(false, shouldContinueScheduledCheck(true, false, ChapterUpdateFrequency.DAILY))
+    }
+
+    @Test fun scheduledRunContinuesWhenEnabledAndIdle() {
+        assertEquals(true, shouldContinueScheduledCheck(false, false, ChapterUpdateFrequency.DAILY))
+    }
+
     @Test fun failedSourceDiscoveryRetriesAtMostThreeTimes() {
         assertEquals(true, shouldRetryUpdateSourceDiscovery(0))
         assertEquals(true, shouldRetryUpdateSourceDiscovery(2))
