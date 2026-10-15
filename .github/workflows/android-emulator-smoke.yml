@@ -65,7 +65,7 @@ jobs:
             if not nodes:
                 raise SystemExit("Updates navigation item is missing from UI hierarchy")
             bounds = nodes[0].attrib.get("bounds", "")
-            match = re.fullmatch(r"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]", bounds)
+            match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
             if not match:
                 raise SystemExit(f"Cannot read Updates navigation bounds: {bounds!r}")
             x1, y1, x2, y2 = map(int, match.groups())
