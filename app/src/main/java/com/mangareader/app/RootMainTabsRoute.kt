@@ -50,6 +50,11 @@ internal fun RootMainTabsRoute(
         downloadsScroll = root.ui.downloadsScroll,
         onOpenDownload = { actions.openFromDownloads(it) },
         onOpenDownloadQueue = actions::openDownloadQueue,
-        onOpenSettings = actions::openSettings
+        onOpenSettings = actions::openSettings,
+        onOpenUpdateChapter = { event ->
+            findUpdateLibraryEntry(Library.list(root.context), event)?.let { entry ->
+                actions.openUpdateChapter(entry, event.chapterId)
+            }
+        },
     )
 }
