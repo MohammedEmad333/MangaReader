@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -72,6 +73,13 @@ internal fun MainBottomNavigation(
             onClick = { onSelectTab(3) },
             label = { NavLabel("Downloads") },
             icon = { Icon(Icons.Filled.Download, contentDescription = null) },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = currentTab == 5,
+            onClick = { onSelectTab(5) },
+            label = { NavLabel("Updates") },
+            icon = { Icon(Icons.Filled.NewReleases, contentDescription = null) },
             colors = colors,
         )
         NavigationBarItem(
