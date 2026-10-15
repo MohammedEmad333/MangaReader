@@ -37,48 +37,61 @@ class ChapterUpdateCheckWorker(
         var checked = 0
         var failed = 0
         var unavailable = 0
+        var completedEntries = 0
         for (entry in batch) {
             if (isStopped) break
-            val source = sources[entry.sourceId]
-            if (source == null) {
-                unavailable++
-                continue
-            }
+            var cancelled = false
             try {
-                val series = source.restoreSeries(entry.seriesId, entry.title)
-                if (series == null) {
-                    failed++
-                    continue
+                val source = sources[entry.sourceId]
+                if (source == null) {
+                    unavailable++
+                } else {
+                    val series = source.restoreSeries(entry.seriesId, entry.title)
+                    if (series == null) {
+                        failed++
+                    } else {
+                        val chapters = source.listChapters(series)
+                        if (chapters.isEmpty()) {
+                            failed++
+                        } else {
+                            val previous = ChapterCache.load(context, entry.seriesId)
+                            val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
+                            if (fresh.isNotEmpty()) {
+                                val now = System.currentTimeMillis()
+                                ChapterUpdateJournal.append(context, fresh.map {
+                                    ChapterUpdateEvent(
+                                        entry.sourceId, entry.seriesId, entry.title,
+                                        it.id, it.name, now,
+                                    )
+                                })
+                                ChapterUpdateNotifier.post(context, entry.title, fresh.size)
+                            }
+                            ChapterCache.save(context, entry.seriesId, chapters)
+                            SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
+                            checked++
+                        }
+                    }
                 }
-                val chapters = source.listChapters(series)
-                if (chapters.isEmpty()) {
-                    failed++
-                    continue
-                }
-                val previous = ChapterCache.load(context, entry.seriesId)
-                val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
-                if (fresh.isNotEmpty()) {
-                    val now = System.currentTimeMillis()
-                    ChapterUpdateJournal.append(context, fresh.map {
-                        ChapterUpdateEvent(entry.sourceId, entry.seriesId, entry.title, it.id, it.name, now)
-                    })
-                    ChapterUpdateNotifier.post(context, entry.title, fresh.size)
-                }
-                ChapterCache.save(context, entry.seriesId, chapters)
-                SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
-                checked++
             } catch (e: CancellationException) {
+                cancelled = true
                 throw e
             } catch (_: Exception) {
                 failed++
+            } finally {
+                // Save progress after each completed attempt. A cancellation during an
+                // active request leaves that entry for the next scheduled run.
+                if (!cancelled) {
+                    completedEntries++
+                    prefs.edit().putInt(
+                        "chapter_update_check_cursor",
+                        scheduledCheckNextCursor(offset, completedEntries, library.size),
+                    ).apply()
+                }
             }
             delay(350L)
         }
         if (!isStopped) {
-            prefs.edit()
-                .putInt("chapter_update_check_cursor", (offset + batch.size) % library.size)
-                .apply()
-            ChapterUpdateCheckSummaryStore.save(
+        ChapterUpdateCheckSummaryStore.save(
                 context,
                 ChapterUpdateCheckSummary(System.currentTimeMillis(), checked, failed, unavailable),
             )
@@ -92,6 +105,10 @@ internal fun <T> scheduledUpdateBatch(items: List<T>, offset: Int, limit: Int): 
     val start = offset.coerceAtLeast(0) % items.size
     return (0 until minOf(limit, items.size)).map { items[(start + it) % items.size] }
 }
+
+/** Cursor advances only by entries actually attempted, even in a partial run. */
+internal fun scheduledCheckNextCursor(offset: Int, attempted: Int, size: Int): Int =
+    if (size <= 0) 0 else ((offset.toLong().coerceAtLeast(0) + attempted.coerceAtLeast(0)) % size).toInt()
 
 internal object ChapterUpdateScheduler {
     private const val WORK_NAME = "chapter_update_check"
