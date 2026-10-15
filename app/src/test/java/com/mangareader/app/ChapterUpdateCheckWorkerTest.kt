@@ -4,6 +4,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChapterUpdateCheckWorkerTest {
+    @Test fun cursorAdvancesOnlyForCompletedEntries() {
+        assertEquals(5, scheduledCheckNextCursor(3, 2, 10))
+        assertEquals(3, scheduledCheckNextCursor(3, 0, 10))
+        assertEquals(1, scheduledCheckNextCursor(9, 2, 10))
+    }
+
+    @Test fun cursorHandlesEmptyLibraryAndLargeOffsets() {
+        assertEquals(0, scheduledCheckNextCursor(100, 4, 0))
+        assertEquals(0, scheduledCheckNextCursor(Int.MAX_VALUE, 2, 3))
+    }
+
     @Test fun emptyAndInvalidBatchesAreSafe() {
         assertEquals(emptyList<Int>(), scheduledUpdateBatch(emptyList<Int>(), 0, 12))
         assertEquals(emptyList<Int>(), scheduledUpdateBatch(listOf(1, 2), 0, 0))
