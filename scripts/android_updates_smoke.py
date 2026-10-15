@@ -17,7 +17,7 @@ def ui_tree():
 
 
 def center(bounds):
-    values = [int(n) for n in re.findall(r"\\d+", bounds)]
+    values = [int(n) for n in re.findall(r"[0-9]+", bounds)]
     if len(values) != 4:
         raise ValueError("Invalid Android accessibility bounds: " + bounds)
     return ((values[0] + values[2]) // 2, (values[1] + values[3]) // 2)
