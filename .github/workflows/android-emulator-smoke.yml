@@ -28,6 +28,9 @@ jobs:
       - name: Build debug APK with standard debug signing
         run: gradle :app:assembleDebug --build-cache
 
+      - name: Verify UI smoke helper
+        run: python3 scripts/android_updates_smoke.py --self-test
+
       - name: Boot Android and smoke test install and launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -49,3 +52,4 @@ jobs:
               exit 1
             fi
             echo "Yomu process launched successfully (PID $pid)."
+            python3 scripts/android_updates_smoke.py
