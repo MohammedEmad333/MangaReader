@@ -4,6 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChapterUpdateCheckWorkerTest {
+    @Test fun failedSourceDiscoveryRetriesAtMostThreeTimes() {
+        assertEquals(true, shouldRetryUpdateSourceDiscovery(0))
+        assertEquals(true, shouldRetryUpdateSourceDiscovery(2))
+        assertEquals(false, shouldRetryUpdateSourceDiscovery(3))
+        assertEquals(false, shouldRetryUpdateSourceDiscovery(-1))
+    }
+
     @Test fun cursorAdvancesOnlyForCompletedEntries() {
         assertEquals(5, scheduledCheckNextCursor(3, 2, 10))
         assertEquals(3, scheduledCheckNextCursor(3, 0, 10))
