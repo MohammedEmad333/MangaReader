@@ -93,11 +93,13 @@ class ChapterUpdateCheckWorker(
                                         it.id, it.name, now,
                                     )
                                 })
-                                ChapterUpdateNotifier.post(context, entry.title, fresh.size)
                             }
                             ChapterCache.save(context, entry.seriesId, chapters)
                             SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
                             checked++
+                            if (fresh.isNotEmpty()) {
+                                safelyPostChapterUpdate { ChapterUpdateNotifier.post(context, entry.title, fresh.size) }
+                            }
                         }
                     }
                 }

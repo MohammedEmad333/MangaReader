@@ -57,3 +57,12 @@ internal object ChapterUpdateNotifier {
         runCatching { manager.notify(NOTIFICATION_ID, notification) }
     }
 }
+
+/** A notification failure must not make a successful chapter check appear failed. */
+internal fun safelyPostChapterUpdate(post: () -> Unit): Boolean =
+    try {
+        post()
+        true
+    } catch (_: Exception) {
+        false
+    }
