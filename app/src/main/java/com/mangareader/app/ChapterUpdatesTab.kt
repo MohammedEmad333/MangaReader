@@ -43,6 +43,12 @@ internal fun ChapterUpdatesTab(onOpenChapter: (ChapterUpdateEvent) -> Unit) {
                 }
             },
         )
+        if (events.any { !it.isRead }) {
+            TextButton(onClick = {
+                ChapterUpdateJournal.markRead(context)
+                events = ChapterUpdateJournal.list(context)
+            }) { Text("Mark all as read (${events.count { !it.isRead }})") }
+        }
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
@@ -80,8 +86,14 @@ internal fun ChapterUpdatesTab(onOpenChapter: (ChapterUpdateEvent) -> Unit) {
                             key = { "chapter:${it.sourceId}:${it.seriesId}:${it.chapterId}" },
                         ) { event ->
                             ListItem(
-                                modifier = Modifier.clickable { onOpenChapter(event) },
-                                headlineContent = { Text(event.chapterName) },
+                                modifier = Modifier.clickable {
+                                    ChapterUpdateJournal.markRead(context, setOf(Triple(event.sourceId, event.seriesId, event.chapterId)))
+                                    events = ChapterUpdateJournal.list(context)
+                                    onOpenChapter(event)
+                                },
+                                headlineContent = {
+                                    Text(if (event.isRead) event.chapterName else "● ${event.chapterName}")
+                                },
                                 supportingContent = { Text(formatChapterUpdateTime(event.detectedAt)) },
                             )
                         }

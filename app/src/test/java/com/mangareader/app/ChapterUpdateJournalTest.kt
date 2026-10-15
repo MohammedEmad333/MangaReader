@@ -4,6 +4,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChapterUpdateJournalTest {
+    @Test fun duplicateDiscoveryPreservesExistingReadState() {
+        val read = ChapterUpdateEvent("a", "s", "Series", "c", "Chapter", 10L, isRead = true)
+        val repeated = ChapterUpdateEvent("a", "s", "Series", "c", "Chapter", 20L)
+        val result = ChapterUpdateJournal.merge(listOf(read), listOf(repeated))
+        assertEquals(1, result.size)
+        assertEquals(true, result.single().isRead)
+        assertEquals(20L, result.single().detectedAt)
+    }
+
+    @Test fun newChapterRemainsUnreadByDefault() {
+        val result = ChapterUpdateJournal.merge(emptyList(), listOf(event("a", "s", "new", 40L)))
+        assertEquals(false, result.single().isRead)
+    }
+
     private fun event(source: String, series: String, chapter: String, at: Long) =
         ChapterUpdateEvent(source, series, "Series", chapter, "Chapter", at)
 
