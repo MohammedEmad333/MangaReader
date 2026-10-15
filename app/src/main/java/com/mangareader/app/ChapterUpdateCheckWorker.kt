@@ -34,6 +34,7 @@ class ChapterUpdateCheckWorker(
         val offset = prefs.getInt("chapter_update_check_cursor", 0).coerceAtLeast(0) % library.size
         val batch = scheduledUpdateBatch(library, offset, 12)
         val sources = SourceManager.listAllSources(context).associateBy { it.id }
+        var newChapters = 0
         var checked = 0
         var failed = 0
         var unavailable = 0
@@ -57,6 +58,7 @@ class ChapterUpdateCheckWorker(
                             val previous = ChapterCache.load(context, entry.seriesId)
                             val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
                             if (fresh.isNotEmpty()) {
+                                newChapters += fresh.size
                                 val now = System.currentTimeMillis()
                                 ChapterUpdateJournal.append(context, fresh.map {
                                     ChapterUpdateEvent(
@@ -91,9 +93,9 @@ class ChapterUpdateCheckWorker(
             delay(350L)
         }
         if (!isStopped) {
-        ChapterUpdateCheckSummaryStore.save(
+            ChapterUpdateCheckSummaryStore.save(
                 context,
-                ChapterUpdateCheckSummary(System.currentTimeMillis(), checked, failed, unavailable),
+                ChapterUpdateCheckSummary(System.currentTimeMillis(), checked, failed, unavailable, newChapters),
             )
         }
         ListenableWorker.Result.success()
