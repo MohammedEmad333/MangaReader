@@ -12,6 +12,7 @@ internal data class ChapterUpdateEvent(
     val chapterId: String,
     val chapterName: String,
     val detectedAt: Long,
+    val isRead: Boolean = false,
 )
 
 internal object ChapterUpdateJournal {
@@ -35,6 +36,7 @@ internal object ChapterUpdateJournal {
                     chapterId = item.getString("chapterId"),
                     chapterName = item.getString("chapterName"),
                     detectedAt = item.getLong("detectedAt"),
+                    isRead = item.optBoolean("isRead", false),
                 )
             }
         }.getOrDefault(emptyList())
@@ -53,7 +55,31 @@ internal object ChapterUpdateJournal {
                     .put("seriesTitle", event.seriesTitle)
                     .put("chapterId", event.chapterId)
                     .put("chapterName", event.chapterName)
-                    .put("detectedAt", event.detectedAt))
+                    .put("detectedAt", event.detectedAt)
+                    .put("isRead", event.isRead))
+            }
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY, array.toString()).apply()
+        }
+    }
+
+    fun markRead(context: Context, selected: Set<Triple<String, String, String>>? = null) {
+        synchronized(lock) {
+            val updates = list(context).map { event ->
+                if (selected == null || Triple(event.sourceId, event.seriesId, event.chapterId) in selected)
+                    event.copy(isRead = true)
+                else event
+            }
+            val array = JSONArray()
+            updates.forEach { event ->
+                array.put(JSONObject()
+                    .put("sourceId", event.sourceId)
+                    .put("seriesId", event.seriesId)
+                    .put("seriesTitle", event.seriesTitle)
+                    .put("chapterId", event.chapterId)
+                    .put("chapterName", event.chapterName)
+                    .put("detectedAt", event.detectedAt)
+                    .put("isRead", event.isRead))
             }
             context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY, array.toString()).apply()
