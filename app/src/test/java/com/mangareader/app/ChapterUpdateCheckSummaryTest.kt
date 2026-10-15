@@ -4,6 +4,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChapterUpdateCheckSummaryTest {
+    @Test fun sourceDiscoveryFailureIsNotShownAsSuccessfulEmptyRun() {
+        val summary = ChapterUpdateCheckSummary(
+            completedAt = 1234L,
+            checked = 0,
+            failed = 0,
+            unavailable = 0,
+            sourceDiscoveryFailed = true,
+        )
+        assertEquals("Could not load sources for automatic check", scheduledCheckOutcomeLabel(summary))
+    }
+
     @Test fun emptyHistoryDoesNotClaimSuccess() {
         assertEquals("No automatic check completed yet", scheduledCheckOutcomeLabel(null))
     }
