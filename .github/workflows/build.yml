@@ -47,6 +47,10 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest --build-cache
 
+      # Catch emulator UI helper regressions without booting a device on each PR.
+      - name: Verify Android emulator smoke helper
+        run: python3 scripts/android_updates_smoke.py --self-test
+
       # Pull requests compile and package an unsigned-for-release debug APK
       # with the runner's standard Android debug key. No release secrets needed.
       - name: Verify PR debug APK packaging
