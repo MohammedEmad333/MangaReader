@@ -41,9 +41,20 @@ class ChapterUpdateCheckWorker(
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            return@withContext if (shouldRetryUpdateSourceDiscovery(runAttemptCount))
-                ListenableWorker.Result.retry()
-            else ListenableWorker.Result.failure()
+            if (shouldRetryUpdateSourceDiscovery(runAttemptCount)) {
+                return@withContext ListenableWorker.Result.retry()
+            }
+            ChapterUpdateCheckSummaryStore.save(
+                context,
+                ChapterUpdateCheckSummary(
+                    completedAt = System.currentTimeMillis(),
+                    checked = 0,
+                    failed = 0,
+                    unavailable = 0,
+                    sourceDiscoveryFailed = true,
+                ),
+            )
+            return@withContext ListenableWorker.Result.failure()
         }
         var newChapters = 0
         var checked = 0
