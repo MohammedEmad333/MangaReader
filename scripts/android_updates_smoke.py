@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Android emulator smoke check: open the Updates tab using accessibility nodes."""
 import re
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -48,6 +49,22 @@ def wait_for(label, timeout=40):
 
 
 def main():
+    try:
+        run_smoke()
+    except Exception:
+        Path("smoke-results").mkdir(exist_ok=True)
+        for name, args in (
+            ("ui.xml", ("shell", "cat", "/sdcard/yomu-smoke.xml")),
+            ("logcat.txt", ("logcat", "-d", "-t", "1000")),
+        ):
+            try:
+                Path("smoke-results", name).write_text(adb(*args))
+            except subprocess.CalledProcessError:
+                pass
+        raise
+
+
+def run_smoke():
     tab = wait_for("Updates")
     x, y = center(tab.attrib["bounds"])
     adb("shell", "input", "tap", str(x), str(y))
@@ -63,6 +80,11 @@ if __name__ == "__main__":
         root = ET.fromstring('<hierarchy><node text="Updates" bounds="[0,0][30,20]"/></hierarchy>')
         assert find_node(root, "Updates") is not None
         assert find_node(root, "History") is None
+        try:
+            center("invalid")
+            raise AssertionError("Invalid bounds should fail")
+        except ValueError:
+            pass
         print("Smoke helper tests passed.")
     else:
         main()
