@@ -112,7 +112,7 @@ internal fun scheduledCheckNextCursor(offset: Int, attempted: Int, size: Int): I
 
 internal object ChapterUpdateScheduler {
     private const val WORK_NAME = "chapter_update_check"
-    fun schedule(context: Context) {
+    fun schedule(context: Context, preserveExisting: Boolean = false) {
         val appContext = context.applicationContext
         val frequency = ChapterUpdateSchedulePrefs.frequency(appContext)
         val manager = WorkManager.getInstance(appContext)
@@ -130,7 +130,11 @@ internal object ChapterUpdateScheduler {
             frequency.hours.toLong(), TimeUnit.HOURS
         ).setConstraints(constraints).build()
         manager.enqueueUniquePeriodicWork(
-            WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request
+            WORK_NAME, chapterUpdateExistingWorkPolicy(preserveExisting), request
         )
     }
 }
+
+/** Startup keeps the existing clock; explicit settings changes update constraints. */
+internal fun chapterUpdateExistingWorkPolicy(preserveExisting: Boolean): ExistingPeriodicWorkPolicy =
+    if (preserveExisting) ExistingPeriodicWorkPolicy.KEEP else ExistingPeriodicWorkPolicy.UPDATE
