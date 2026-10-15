@@ -7,6 +7,7 @@ internal data class ChapterUpdateCheckSummary(
     val checked: Int,
     val failed: Int,
     val unavailable: Int,
+    val newChapters: Int = 0,
 )
 
 internal object ChapterUpdateCheckSummaryStore {
@@ -19,6 +20,7 @@ internal object ChapterUpdateCheckSummaryStore {
             .putInt("chapter_update_last_checked", result.checked)
             .putInt("chapter_update_last_failed", result.failed)
             .putInt("chapter_update_last_unavailable", result.unavailable)
+            .putInt("chapter_update_last_new_chapters", result.newChapters)
             .apply()
     }
 
@@ -31,11 +33,12 @@ internal object ChapterUpdateCheckSummaryStore {
             prefs.getInt("chapter_update_last_checked", 0),
             prefs.getInt("chapter_update_last_failed", 0),
             prefs.getInt("chapter_update_last_unavailable", 0),
+            prefs.getInt("chapter_update_last_new_chapters", 0),
         )
     }
 }
 
 internal fun scheduledCheckOutcomeLabel(summary: ChapterUpdateCheckSummary?): String {
     if (summary == null) return "No automatic check completed yet"
-    return "${summary.checked} checked • ${summary.failed} failed • ${summary.unavailable} unavailable"
+    return "${summary.checked} checked • ${summary.newChapters} new chapters • ${summary.failed} failed • ${summary.unavailable} unavailable"
 }
