@@ -14,7 +14,7 @@ import androidx.core.content.ContextCompat
 /** Notifications are separate from the ongoing library-refresh progress channel. */
 internal object ChapterUpdateNotifier {
     private const val CHANNEL = "new_chapter_updates"
-    private const val NOTIFICATION_ID = 1042
+    private const val GROUP_KEY = "chapter_updates"
 
     fun permissionGranted(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
@@ -22,7 +22,7 @@ internal object ChapterUpdateNotifier {
                 context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
 
-    fun post(context: Context, seriesTitle: String, newlyDetectedCount: Int) {
+    fun post(context: Context, sourceId: String, seriesId: String, seriesTitle: String, newlyDetectedCount: Int) {
         if (!shouldNotifyChapterUpdates(
                 ChapterUpdateNotificationPrefs.enabled(context),
                 permissionGranted(context),
@@ -53,8 +53,9 @@ internal object ChapterUpdateNotifier {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
+            .setGroup(GROUP_KEY)
             .build()
-        runCatching { manager.notify(NOTIFICATION_ID, notification) }
+        runCatching { manager.notify(chapterUpdateNotificationTag(sourceId, seriesId), 1042, notification) }
     }
 }
 
@@ -66,3 +67,7 @@ internal fun safelyPostChapterUpdate(post: () -> Unit): Boolean =
     } catch (_: Exception) {
         false
     }
+
+/** Source-scoped tags keep notifications for separate series from replacing each other. */
+internal fun chapterUpdateNotificationTag(sourceId: String, seriesId: String): String =
+    "chapter-update:$sourceId:$seriesId"
