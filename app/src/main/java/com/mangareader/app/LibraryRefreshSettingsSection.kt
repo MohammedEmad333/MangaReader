@@ -83,25 +83,27 @@ internal fun LibraryRefreshSettingsSection() {
         }
     }
 
-    SectionHeader("Automatic updates — preparation")
+    SectionHeader("Automatic chapter checks")
     ListItem(
         headlineContent = { Text("Check frequency") },
         supportingContent = { Text(scheduleFrequency.label) },
         modifier = Modifier.clickable {
             scheduleFrequency = scheduleFrequency.next()
             ChapterUpdateSchedulePrefs.setFrequency(context, scheduleFrequency)
+            ChapterUpdateScheduler.schedule(context)
         },
     )
     PrefSwitchRow(
         title = "Wi-Fi only for scheduled checks",
         checked = scheduleWifiOnly,
-        summary = "Use Wi-Fi when automatic checking becomes available.",
+        summary = "Schedule checks only over Wi-Fi.",
         onChange = {
             scheduleWifiOnly = it
             ChapterUpdateSchedulePrefs.setWifiOnly(context, it)
+            ChapterUpdateScheduler.schedule(context)
         },
     )
-    PrefNote("Scheduling is not active yet. These preferences are saved for the upcoming background worker; manual refresh still works as before.")
+    PrefNote("Each scheduled check scans up to 12 series, continuing through the library over later runs. Android may delay scheduled checks to save battery. Manual full-library refresh is unchanged.")
 
     SectionHeader("Refresh policy")
 

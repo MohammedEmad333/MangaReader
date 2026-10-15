@@ -1,0 +1,99 @@
+package com.mangareader.app
+
+import android.content.Context
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ListenableWorker
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
+
+/**
+ * Short, bounded checks avoid starting a foreground service from background work.
+ * Each scheduled run advances a persisted cursor through the library.
+ */
+class ChapterUpdateCheckWorker(
+    context: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): ListenableWorker.Result = withContext(Dispatchers.IO) {
+        val context = applicationContext
+        if (ChapterUpdateSchedulePrefs.frequency(context) == ChapterUpdateFrequency.OFF)
+            return@withContext ListenableWorker.Result.success()
+        if (LibraryRefresh.running) return@withContext ListenableWorker.Result.success()
+        val library = Library.list(context)
+        if (library.isEmpty()) return@withContext ListenableWorker.Result.success()
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val offset = prefs.getInt("chapter_update_check_cursor", 0).coerceAtLeast(0) % library.size
+        val batch = scheduledUpdateBatch(library, offset, 12)
+        val sources = SourceManager.listAllSources(context).associateBy { it.id }
+        var processed = 0
+        for (entry in batch) {
+            if (isStopped) break
+            val source = sources[entry.sourceId] ?: continue
+            try {
+                val series = source.restoreSeries(entry.seriesId, entry.title) ?: continue
+                val chapters = source.listChapters(series)
+                if (chapters.isEmpty()) continue
+                val previous = ChapterCache.load(context, entry.seriesId)
+                val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
+                if (fresh.isNotEmpty()) {
+                    val now = System.currentTimeMillis()
+                    ChapterUpdateJournal.append(context, fresh.map {
+                        ChapterUpdateEvent(entry.sourceId, entry.seriesId, entry.title, it.id, it.name, now)
+                    })
+                    ChapterUpdateNotifier.post(context, entry.title, fresh.size)
+                }
+                ChapterCache.save(context, entry.seriesId, chapters)
+                SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // One unavailable source must not prevent checking other series.
+            }
+            processed++
+            delay(350L)
+        }
+        if (!isStopped) prefs.edit()
+            .putInt("chapter_update_check_cursor", (offset + batch.size) % library.size).apply()
+        ListenableWorker.Result.success()
+    }
+}
+
+internal fun <T> scheduledUpdateBatch(items: List<T>, offset: Int, limit: Int): List<T> {
+    if (items.isEmpty() || limit <= 0) return emptyList()
+    val start = offset.coerceAtLeast(0) % items.size
+    return (0 until minOf(limit, items.size)).map { items[(start + it) % items.size] }
+}
+
+internal object ChapterUpdateScheduler {
+    private const val WORK_NAME = "chapter_update_check"
+    fun schedule(context: Context) {
+        val appContext = context.applicationContext
+        val frequency = ChapterUpdateSchedulePrefs.frequency(appContext)
+        val manager = WorkManager.getInstance(appContext)
+        if (frequency == ChapterUpdateFrequency.OFF) {
+            manager.cancelUniqueWork(WORK_NAME)
+            return
+        }
+        val network = if (ChapterUpdateSchedulePrefs.wifiOnly(appContext))
+            NetworkType.UNMETERED else NetworkType.CONNECTED
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(network)
+            .setRequiresBatteryNotLow(true)
+            .build()
+        val request = PeriodicWorkRequestBuilder<ChapterUpdateCheckWorker>(
+            frequency.hours.toLong(), TimeUnit.HOURS
+        ).setConstraints(constraints).build()
+        manager.enqueueUniquePeriodicWork(
+            WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request
+        )
+    }
+}
