@@ -34,14 +34,27 @@ class ChapterUpdateCheckWorker(
         val offset = prefs.getInt("chapter_update_check_cursor", 0).coerceAtLeast(0) % library.size
         val batch = scheduledUpdateBatch(library, offset, 12)
         val sources = SourceManager.listAllSources(context).associateBy { it.id }
-        var processed = 0
+        var checked = 0
+        var failed = 0
+        var unavailable = 0
         for (entry in batch) {
             if (isStopped) break
-            val source = sources[entry.sourceId] ?: continue
+            val source = sources[entry.sourceId]
+            if (source == null) {
+                unavailable++
+                continue
+            }
             try {
-                val series = source.restoreSeries(entry.seriesId, entry.title) ?: continue
+                val series = source.restoreSeries(entry.seriesId, entry.title)
+                if (series == null) {
+                    failed++
+                    continue
+                }
                 val chapters = source.listChapters(series)
-                if (chapters.isEmpty()) continue
+                if (chapters.isEmpty()) {
+                    failed++
+                    continue
+                }
                 val previous = ChapterCache.load(context, entry.seriesId)
                 val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
                 if (fresh.isNotEmpty()) {
@@ -53,16 +66,23 @@ class ChapterUpdateCheckWorker(
                 }
                 ChapterCache.save(context, entry.seriesId, chapters)
                 SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
+                checked++
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // One unavailable source must not prevent checking other series.
+                failed++
             }
-            processed++
             delay(350L)
         }
-        if (!isStopped) prefs.edit()
-            .putInt("chapter_update_check_cursor", (offset + batch.size) % library.size).apply()
+        if (!isStopped) {
+            prefs.edit()
+                .putInt("chapter_update_check_cursor", (offset + batch.size) % library.size)
+                .apply()
+            ChapterUpdateCheckSummaryStore.save(
+                context,
+                ChapterUpdateCheckSummary(System.currentTimeMillis(), checked, failed, unavailable),
+            )
+        }
         ListenableWorker.Result.success()
     }
 }
