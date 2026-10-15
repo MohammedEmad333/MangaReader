@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,7 @@ internal fun ChapterUpdatesTab(onOpenChapter: (ChapterUpdateEvent) -> Unit) {
     var query by remember { mutableStateOf("") }
     var confirmClear by remember { mutableStateOf(false) }
     val visible = filterChapterUpdateEvents(events, query)
+    val grouped = groupChapterUpdatesByDay(visible, ::chapterUpdateDayLabel)
 
     Column(modifier = Modifier.fillMaxSize()) {
         ListItem(
@@ -56,17 +58,37 @@ internal fun ChapterUpdatesTab(onOpenChapter: (ChapterUpdateEvent) -> Unit) {
             )
         } else {
             LazyColumn(modifier = Modifier.weight(1f)) {
-                items(visible, key = { "${it.sourceId}:${it.seriesId}:${it.chapterId}" }) { event ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenChapter(event) },
-                        headlineContent = { Text(event.seriesTitle) },
-                        supportingContent = {
-                            Column {
-                                Text(event.chapterName)
-                                Text(formatChapterUpdateTime(event.detectedAt))
-                            }
-                        },
-                    )
+                grouped.forEach { (date, seriesGroups) ->
+                    item(key = "day:$date") {
+                        Text(
+                            date,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    seriesGroups.forEach { group ->
+                        item(key = "series:$date:${group.sourceId}:${group.seriesId}") {
+                            ListItem(
+                                headlineContent = { Text(group.seriesTitle) },
+                                supportingContent = {
+                                    Text("${group.events.size} new chapter(s)")
+                                },
+                            )
+                        }
+                        items(
+                            group.events,
+                            key = { "chapter:${it.sourceId}:${it.seriesId}:${it.chapterId}" },
+                        ) { event ->
+                            ListItem(
+                                modifier = Modifier.clickable { onOpenChapter(event) },
+                                headlineContent = { Text(event.chapterName) },
+                                supportingContent = { Text(formatChapterUpdateTime(event.detectedAt)) },
+                            )
+                        }
+                        item(key = "divider:$date:${group.sourceId}:${group.seriesId}") {
+                            HorizontalDivider()
+                        }
+                    }
                 }
             }
             TextButton(onClick = { confirmClear = true }) { Text("Clear history") }
