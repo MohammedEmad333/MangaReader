@@ -105,6 +105,16 @@ internal fun LibraryRefreshSettingsSection() {
     )
     PrefNote("Each scheduled check scans up to 12 series, continuing through the library over later runs. Android may delay scheduled checks to save battery. Manual full-library refresh is unchanged.")
 
+    val automaticSummary = remember(LibraryRefresh.finishedAt, scheduleFrequency) {
+        ChapterUpdateCheckSummaryStore.load(context)
+    }
+    PrefNote("Last scheduled check: " + scheduledCheckOutcomeLabel(automaticSummary))
+    automaticSummary?.let {
+        PrefNote("Finished: " + java.text.DateFormat.getDateTimeInstance(
+            java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT,
+        ).format(java.util.Date(it.completedAt)))
+    }
+
     SectionHeader("Refresh policy")
 
     PrefSwitchRow(
