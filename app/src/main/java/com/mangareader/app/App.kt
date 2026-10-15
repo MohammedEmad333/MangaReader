@@ -62,6 +62,10 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Injekt.importModule(AppModule(this))
+        // Recover schedules after restoring preferences without resetting existing work.
+        thread(name = "chapter-updates-schedule", isDaemon = true) {
+            runCatching { ChapterUpdateScheduler.schedule(this, preserveExisting = true) }
+        }
 
         ContextCompat.registerReceiver(
             this,
