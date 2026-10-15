@@ -71,6 +71,13 @@ def run_smoke():
     wait_for("Chapter updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
+    # Capture the actual UI state for independent visual review.
+    Path("smoke-results").mkdir(exist_ok=True)
+    subprocess.run(
+        ["adb", "exec-out", "screencap", "-p"],
+        stdout=open("smoke-results/updates-screen.png", "wb"),
+        check=True,
+    )
     print("Updates tab opened successfully on Android emulator.")
 
 
