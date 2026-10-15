@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -33,7 +34,17 @@ class ChapterUpdateCheckWorker(
         val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
         val offset = prefs.getInt("chapter_update_check_cursor", 0).coerceAtLeast(0) % library.size
         val batch = scheduledUpdateBatch(library, offset, 12)
-        val sources = SourceManager.listAllSources(context).associateBy { it.id }
+        // Discovery may fail before any series is attempted. Retry instead of
+        // silently losing the entire scheduled checking window.
+        val sources = try {
+            SourceManager.listAllSources(context).associateBy { it.id }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return@withContext if (shouldRetryUpdateSourceDiscovery(runAttemptCount))
+                ListenableWorker.Result.retry()
+            else ListenableWorker.Result.failure()
+        }
         var newChapters = 0
         var checked = 0
         var failed = 0
@@ -130,7 +141,9 @@ internal object ChapterUpdateScheduler {
             .build()
         val request = PeriodicWorkRequestBuilder<ChapterUpdateCheckWorker>(
             frequency.hours.toLong(), TimeUnit.HOURS
-        ).setConstraints(constraints).build()
+        ).setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+            .build()
         manager.enqueueUniquePeriodicWork(
             WORK_NAME, chapterUpdateExistingWorkPolicy(preserveExisting), request
         )
@@ -140,3 +153,7 @@ internal object ChapterUpdateScheduler {
 /** Startup keeps the existing clock; explicit settings changes update constraints. */
 internal fun chapterUpdateExistingWorkPolicy(preserveExisting: Boolean): ExistingPeriodicWorkPolicy =
     if (preserveExisting) ExistingPeriodicWorkPolicy.KEEP else ExistingPeriodicWorkPolicy.UPDATE
+
+/** Avoid unlimited retries if loading installed extensions repeatedly fails. */
+internal fun shouldRetryUpdateSourceDiscovery(previousAttempts: Int): Boolean =
+    previousAttempts in 0..2
