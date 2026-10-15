@@ -12,6 +12,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ internal fun LibraryRefreshSettingsSection() {
     var sourcePickerOpen by remember { mutableStateOf(false) }
     var scheduleFrequency by remember { mutableStateOf(ChapterUpdateSchedulePrefs.frequency(context)) }
     var scheduleWifiOnly by remember { mutableStateOf(ChapterUpdateSchedulePrefs.wifiOnly(context)) }
+    var automaticSummaryReload by remember { mutableIntStateOf(0) }
     var skipCompleted by remember {
         mutableStateOf(LibraryRefreshPrefs.skipCompleted(context))
     }
@@ -105,10 +107,13 @@ internal fun LibraryRefreshSettingsSection() {
     )
     PrefNote("Each scheduled check scans up to 12 series, continuing through the library over later runs. Android may delay scheduled checks to save battery. Manual full-library refresh is unchanged.")
 
-    val automaticSummary = remember(LibraryRefresh.finishedAt, scheduleFrequency) {
+    val automaticSummary = remember(LibraryRefresh.finishedAt, scheduleFrequency, automaticSummaryReload) {
         ChapterUpdateCheckSummaryStore.load(context)
     }
     PrefNote("Last scheduled check: " + scheduledCheckOutcomeLabel(automaticSummary))
+    TextButton(onClick = { automaticSummaryReload++ }) {
+        Text("Refresh automatic-check status")
+    }
     automaticSummary?.let {
         PrefNote("Finished: " + java.text.DateFormat.getDateTimeInstance(
             java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT,
