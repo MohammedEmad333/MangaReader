@@ -53,3 +53,12 @@ jobs:
             fi
             echo "Yomu process launched successfully (PID $pid)."
             python3 scripts/android_updates_smoke.py
+
+      - name: Upload emulator failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-smoke-diagnostics
+          path: smoke-results/
+          if-no-files-found: ignore
+          retention-days: 7
