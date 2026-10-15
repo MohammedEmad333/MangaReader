@@ -47,6 +47,15 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest --build-cache
 
+      # Pull requests compile and package an unsigned-for-release debug APK
+      # with the runner's standard Android debug key. No release secrets needed.
+      - name: Verify PR debug APK packaging
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --build-cache
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
       # Every APK published from main must use one persistent signing
       # certificate. GitHub-hosted runners otherwise generate a fresh debug
       # keystore, which makes Android reject the next APK as an update.
