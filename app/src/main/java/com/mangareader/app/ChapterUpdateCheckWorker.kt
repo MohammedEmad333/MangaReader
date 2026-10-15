@@ -62,7 +62,12 @@ class ChapterUpdateCheckWorker(
         var unavailable = 0
         var completedEntries = 0
         for (entry in batch) {
-            if (isStopped) break
+            if (!shouldContinueScheduledCheck(
+                    isStopped,
+                    LibraryRefresh.running,
+                    ChapterUpdateSchedulePrefs.frequency(context),
+                )
+            ) break
             var cancelled = false
             try {
                 val source = sources[entry.sourceId]
@@ -168,3 +173,10 @@ internal fun chapterUpdateExistingWorkPolicy(preserveExisting: Boolean): Existin
 /** Avoid unlimited retries if loading installed extensions repeatedly fails. */
 internal fun shouldRetryUpdateSourceDiscovery(previousAttempts: Int): Boolean =
     previousAttempts in 0..2
+
+/** Re-evaluate before every entry, not just when the scheduled run starts. */
+internal fun shouldContinueScheduledCheck(
+    stopped: Boolean,
+    manualRefreshRunning: Boolean,
+    frequency: ChapterUpdateFrequency,
+): Boolean = !stopped && !manualRefreshRunning && frequency != ChapterUpdateFrequency.OFF
