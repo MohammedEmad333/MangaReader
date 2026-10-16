@@ -28,7 +28,7 @@ internal class AvifPageDecoder(
 ) : Decoder {
     override suspend fun decode(): DecodeResult? = withContext(Dispatchers.IO) {
         val data = result.source.source().readByteArray()
-        val coder = HeifCoder(options.context)
+        val coder = HeifCoder()
         val bitmap = if (options.size == Size.ORIGINAL) {
             coder.decode(data)
         } else {
