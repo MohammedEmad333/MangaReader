@@ -112,6 +112,7 @@ class App : Application(), ImageLoaderFactory {
                     .build()
             }
             .components {
+                add(AvifPageDecoder.Factory())
                 // Without this, Coil's default BitmapFactoryDecoder still
                 // "succeeds" on a GIF or animated WebP cover — it just decodes
                 // frame zero and stops. No error, no grey box, nothing
