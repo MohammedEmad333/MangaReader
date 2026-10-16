@@ -112,11 +112,11 @@ def run_smoke():
     adb("shell", "input", "text", "smoketest")
     wait_for("smoketest")
     wait_for("Chapter updates")
-    # Dismiss the soft keyboard, then verify that bottom navigation still works.
+    # Dismiss the soft keyboard, then verify that the Library bottom navigation tab still works.
     adb("shell", "input", "keyevent", "4")
-    home = wait_for("Home")
-    hx, hy = center(home.attrib["bounds"])
-    adb("shell", "input", "tap", str(hx), str(hy))
+    library = wait_for("Library")
+    lx, ly = center(library.attrib["bounds"])
+    adb("shell", "input", "tap", str(lx), str(ly))
     wait_for("Updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
