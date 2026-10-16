@@ -91,6 +91,7 @@ def run_smoke():
     sx, sy = center(search.attrib["bounds"])
     adb("shell", "input", "tap", str(sx), str(sy))
     adb("shell", "input", "text", "smoketest")
+    wait_for("smoketest")
     wait_for("Chapter updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
