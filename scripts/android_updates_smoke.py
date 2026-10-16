@@ -97,6 +97,8 @@ def run_smoke():
     x, y = center(tab.attrib["bounds"])
     adb("shell", "input", "tap", str(x), str(y))
     wait_for("Chapter updates")
+    # A fresh install with no followed series should show a useful empty state.
+    wait_for("No new chapters detected yet")
     # These controls must be available even for a fresh library with no updates.
     wait_for("Refresh")
     wait_for("Search series or chapter")
