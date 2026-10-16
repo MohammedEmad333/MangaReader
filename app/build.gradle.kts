@@ -191,6 +191,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
+    // Native AVIF decoding on Android 7+, including large source gallery files.
+    implementation("io.github.awxkee:avif-coder:2.2.0")
     implementation("me.saket.telephoto:zoomable-image-coil:0.14.0")
     implementation("me.saket.swipe:swipe:1.3.0")
     // Through the BOM rather than a hard 4.12.0 pin, and the same BOM version
