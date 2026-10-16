@@ -36,6 +36,15 @@ jobs:
       - name: Verify UI smoke helper
         run: python3 scripts/android_updates_smoke.py --self-test
 
+      - name: Enable KVM acceleration for emulator
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            echo "KVM available and enabled"
+          else
+            echo "::warning::KVM not available on runner; emulator may be too slow"
+          fi
+
       - name: Boot Android and smoke test install and launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
