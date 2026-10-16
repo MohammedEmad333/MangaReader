@@ -28,11 +28,19 @@ def center(bounds):
     return ((values[0] + values[2]) // 2, (values[1] + values[3]) // 2)
 
 
+def matches_node_label(node, label):
+    for attribute in ("text", "content-desc"):
+        value = node.get(attribute, "")
+        if value == label or label in [part.strip() for part in value.split(",")]:
+            return True
+    return False
+
+
 def find_node(root, label):
     return next(
         (
             node for node in root.iter("node")
-            if node.get("text") == label or node.get("content-desc") == label
+            if matches_node_label(node, label)
         ),
         None,
     )
@@ -41,15 +49,22 @@ def find_node(root, label):
 def wait_for(label, timeout=40):
     until = time.monotonic() + timeout
     last_error = None
+    last_labels = []
     while time.monotonic() < until:
         try:
-            node = find_node(ui_tree(), label)
+            root = ui_tree()
+            last_labels = [
+                (node.get("text") or node.get("content-desc") or "")[:100]
+                for node in root.iter("node")
+                if node.get("text") or node.get("content-desc")
+            ][:50]
+            node = find_node(root, label)
             if node is not None:
                 return node
         except (ET.ParseError, subprocess.CalledProcessError, RuntimeError) as error:
             last_error = error
         time.sleep(3)
-    raise RuntimeError(f"Could not find '{label}' in Android UI after {timeout}s: {last_error}")
+    raise RuntimeError(f"Could not find '{label}' in Android UI after {timeout}s: {last_error}; visible labels: {last_labels}")
 
 
 def capture_screenshot(destination):
@@ -111,6 +126,8 @@ if __name__ == "__main__":
         root = ET.fromstring('<hierarchy><node text="Updates" bounds="[0,0][30,20]"/></hierarchy>')
         assert find_node(root, "Updates") is not None
         assert find_node(root, "History") is None
+        merged = ET.fromstring('<hierarchy><node content-desc="Home, Updates, Library"/></hierarchy>')
+        assert find_node(merged, "Updates") is not None
         sample = ET.fromstring(
             '<hierarchy><node text="Refresh"/><node content-desc="Search series or chapter"/></hierarchy>'
         )
