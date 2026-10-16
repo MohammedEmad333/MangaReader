@@ -117,7 +117,10 @@ def run_smoke():
     library = wait_for("Library")
     lx, ly = center(library.attrib["bounds"])
     adb("shell", "input", "tap", str(lx), str(ly))
-    wait_for("Updates")
+    updates = wait_for("Updates")
+    ux, uy = center(updates.attrib["bounds"])
+    adb("shell", "input", "tap", str(ux), str(uy))
+    wait_for("Chapter updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
     # Capture the actual UI state for independent visual review.
