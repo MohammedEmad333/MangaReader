@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/android-emulator-smoke.yml"
       - "scripts/android_updates_smoke.py"
+      - "scripts/android_emulator_launch.sh"
 
 permissions:
   contents: read
@@ -43,20 +44,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            set -eu
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop com.mangareader.app || true
-            adb shell monkey -p com.mangareader.app -c android.intent.category.LAUNCHER 1
-            sleep 15
-            pid="$(adb shell pidof com.mangareader.app | tr -d '\r')"
-            if [ -z "$pid" ]; then
-              echo "::error::Yomu process was not running after launcher smoke test."
-              adb logcat -d -t 500
-              exit 1
-            fi
-            echo "Yomu process launched successfully (PID $pid)."
-            python3 scripts/android_updates_smoke.py
+          script: bash scripts/android_emulator_launch.sh
 
       - name: Upload Updates screen capture
         if: success()
