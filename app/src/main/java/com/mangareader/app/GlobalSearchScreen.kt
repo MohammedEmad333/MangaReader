@@ -116,15 +116,10 @@ internal fun GlobalSearchScreen(
     val withHits = results.count { it.series.isNotEmpty() }
     val titleMatches = results.sumOf { it.series.size }
     val shown = if (hasResultsOnly) results.filter { it.series.isNotEmpty() } else results
-    val ordering = remember(query, shown, pinnedOnly, hasResultsOnly, mediaFilter, migrating) {
-        buildList {
-            add(query)
-            add(pinnedOnly.toString())
-            add(hasResultsOnly.toString())
-            add(mediaFilter)
-            add(migrating.toString())
-            shown.forEach { add(it.source.id.toString()) }
-        }
+    // Results stream in while searching. Adding a source must not recreate the
+    // list state or snap the user back to the top.
+    val ordering = remember(query, pinnedOnly, hasResultsOnly, mediaFilter, migrating) {
+        globalSearchScrollSignature(query, pinnedOnly, hasResultsOnly, mediaFilter, migrating)
     }
     scroll.sync(ordering)
 
@@ -208,3 +203,12 @@ internal fun GlobalSearchScreen(
 }
 
 // ---------- library ----------
+
+/** Search identity, independent of results arriving asynchronously. */
+internal fun globalSearchScrollSignature(
+    query: String,
+    pinnedOnly: Boolean,
+    hasResultsOnly: Boolean,
+    mediaFilter: String,
+    migrating: Boolean,
+): List<String> = listOf(query, pinnedOnly.toString(), hasResultsOnly.toString(), mediaFilter, migrating.toString())
