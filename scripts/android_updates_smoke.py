@@ -86,6 +86,12 @@ def run_smoke():
     rx, ry = center(refresh.attrib["bounds"])
     adb("shell", "input", "tap", str(rx), str(ry))
     wait_for("Chapter updates")
+    # Search must accept user input and remain on the Updates screen.
+    search = wait_for("Search series or chapter")
+    sx, sy = center(search.attrib["bounds"])
+    adb("shell", "input", "tap", str(sx), str(sy))
+    adb("shell", "input", "text", "smoketest")
+    wait_for("Chapter updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
     # Capture the actual UI state for independent visual review.
