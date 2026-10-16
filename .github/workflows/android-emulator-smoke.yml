@@ -44,7 +44,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am force-stop com.mangareader.app || true
             adb shell monkey -p com.mangareader.app -c android.intent.category.LAUNCHER 1
