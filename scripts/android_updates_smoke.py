@@ -13,8 +13,12 @@ def adb(*args):
 
 
 def ui_tree():
-    adb("shell", "uiautomator", "dump", "/sdcard/yomu-smoke.xml")
-    return ET.fromstring(adb("shell", "cat", "/sdcard/yomu-smoke.xml"))
+    # Capture command output as well as XML errors to diagnose stuck Android UI automation.
+    result = adb("shell", "uiautomator", "dump", "/sdcard/window.xml")
+    try:
+        return ET.fromstring(adb("shell", "cat", "/sdcard/window.xml"))
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError("UI dump output: " + result + "; read failure: " + error.output) from error
 
 
 def center(bounds):
@@ -42,9 +46,9 @@ def wait_for(label, timeout=40):
             node = find_node(ui_tree(), label)
             if node is not None:
                 return node
-        except (ET.ParseError, subprocess.CalledProcessError) as error:
+        except (ET.ParseError, subprocess.CalledProcessError, RuntimeError) as error:
             last_error = error
-        time.sleep(2)
+        time.sleep(3)
     raise RuntimeError(f"Could not find '{label}' in Android UI after {timeout}s: {last_error}")
 
 
@@ -59,7 +63,7 @@ def main():
     except Exception:
         Path("smoke-results").mkdir(exist_ok=True)
         for name, args in (
-            ("ui.xml", ("shell", "cat", "/sdcard/yomu-smoke.xml")),
+            ("ui.xml", ("shell", "cat", "/sdcard/window.xml")),
             ("logcat.txt", ("logcat", "-d", "-t", "1000")),
         ):
             try:
@@ -74,7 +78,7 @@ def main():
 
 
 def run_smoke():
-    tab = wait_for("Updates")
+    tab = wait_for("Updates", timeout=90)
     x, y = center(tab.attrib["bounds"])
     adb("shell", "input", "tap", str(x), str(y))
     wait_for("Chapter updates")
