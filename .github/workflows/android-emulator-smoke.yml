@@ -2,6 +2,11 @@ name: Android emulator smoke test
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/android-emulator-smoke.yml"
+      - "scripts/android_updates_smoke.py"
+      - "scripts/android_emulator_launch.sh"
 
 permissions:
   contents: read
@@ -31,28 +36,25 @@ jobs:
       - name: Verify UI smoke helper
         run: python3 scripts/android_updates_smoke.py --self-test
 
+      - name: Enable KVM acceleration for emulator
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            echo "KVM available and enabled"
+          else
+            echo "::warning::KVM not available on runner; emulator may be too slow"
+          fi
+
       - name: Boot Android and smoke test install and launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: 30
+          target: default
           arch: x86_64
           profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none -memory 3072 -cores 2
           disable-animations: true
-          script: |
-            set -euo pipefail
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop com.mangareader.app || true
-            adb shell monkey -p com.mangareader.app -c android.intent.category.LAUNCHER 1
-            sleep 15
-            pid="$(adb shell pidof com.mangareader.app | tr -d '\r')"
-            if [ -z "$pid" ]; then
-              echo "::error::Yomu process was not running after launcher smoke test."
-              adb logcat -d -t 500
-              exit 1
-            fi
-            echo "Yomu process launched successfully (PID $pid)."
-            python3 scripts/android_updates_smoke.py
+          script: bash scripts/android_emulator_launch.sh
 
       - name: Upload Updates screen capture
         if: success()
