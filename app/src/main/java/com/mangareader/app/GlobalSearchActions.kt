@@ -3,7 +3,11 @@ package com.mangareader.app
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -164,9 +168,28 @@ internal class GlobalSearchState(
                 )
                 total = targets.size
 
-                targets.chunked(GLOBAL_SEARCH_CONCURRENCY).forEach { chunk ->
-                    results = results + searchGlobalBatch(newQuery, chunk)
-                    done += chunk.size
+                // Do not hold up an entire batch when one source is slow.
+                // Limit simultaneous requests, but publish each source as soon as it finishes.
+                val semaphore = Semaphore(GLOBAL_SEARCH_CONCURRENCY)
+                coroutineScope {
+                    targets.map { source ->
+                        async {
+                            val series = semaphore.withPermit {
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        source.searchSeries(newQuery, 1).series
+                                            .take(GLOBAL_SEARCH_PER_SOURCE)
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        emptyList()
+                                    }
+                                }
+                            }
+                            results = results + GlobalResult(source, series)
+                            done += 1
+                        }
+                    }.awaitAll()
                 }
             } finally {
                 running = false
