@@ -39,11 +39,11 @@ jobs:
       - name: Boot Android and smoke test install and launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           target: default
           arch: x86_64
           profile: pixel_6
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none -memory 3072 -cores 2
           disable-animations: true
           script: bash scripts/android_emulator_launch.sh
 
