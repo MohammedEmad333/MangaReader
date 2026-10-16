@@ -78,6 +78,9 @@ def run_smoke():
     x, y = center(tab.attrib["bounds"])
     adb("shell", "input", "tap", str(x), str(y))
     wait_for("Chapter updates")
+    # These controls must be available even for a fresh library with no updates.
+    wait_for("Refresh")
+    wait_for("Search series or chapter")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
     # Capture the actual UI state for independent visual review.
@@ -92,6 +95,11 @@ if __name__ == "__main__":
         root = ET.fromstring('<hierarchy><node text="Updates" bounds="[0,0][30,20]"/></hierarchy>')
         assert find_node(root, "Updates") is not None
         assert find_node(root, "History") is None
+        sample = ET.fromstring(
+            '<hierarchy><node text="Refresh"/><node content-desc="Search series or chapter"/></hierarchy>'
+        )
+        assert find_node(sample, "Refresh") is not None
+        assert find_node(sample, "Search series or chapter") is not None
         try:
             center("invalid")
             raise AssertionError("Invalid bounds should fail")
