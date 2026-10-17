@@ -23,7 +23,7 @@ internal fun isAvifHeader(bytes: ByteArray): Boolean {
     if (bytes.size < 16 || !bytes.copyOfRange(4, 8).contentEquals("ftyp".toByteArray())) {
         return false
     }
-    val declaredSize = (bytes[0].toLong() and 0xffL shl 24) or
+    val declaredSize = ((bytes[0].toLong() and 0xffL) shl 24) or
         ((bytes[1].toLong() and 0xffL) shl 16) or
         ((bytes[2].toLong() and 0xffL) shl 8) or
         (bytes[3].toLong() and 0xffL)
