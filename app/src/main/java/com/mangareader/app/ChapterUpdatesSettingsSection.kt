@@ -155,16 +155,31 @@ internal fun formatChapterUpdateTime(timestamp: Long): String =
 internal fun chapterUpdatesCountLabel(count: Int): String =
     if (count <= 0) "No new chapters detected yet" else "$count recent chapter updates"
 
-/** Search update history while preserving the stored newest-first ordering. */
+/** Filter the Updates feed by read status without changing persisted event order. */
+internal enum class ChapterUpdateReadFilter(val label: String) {
+    ALL("All"),
+    UNREAD("Unread"),
+    READ("Read"),
+}
+
+/** Search and read-status filters compose; neither changes the stored journal. */
 internal fun filterChapterUpdateEvents(
     events: List<ChapterUpdateEvent>,
     query: String,
+    readFilter: ChapterUpdateReadFilter = ChapterUpdateReadFilter.ALL,
 ): List<ChapterUpdateEvent> {
     val needle = query.trim()
-    if (needle.isEmpty()) return events
-    return events.filter {
-        it.seriesTitle.contains(needle, ignoreCase = true) ||
-            it.chapterName.contains(needle, ignoreCase = true) ||
-            it.sourceId.contains(needle, ignoreCase = true)
+    return events.filter { event ->
+        val statusMatches = when (readFilter) {
+            ChapterUpdateReadFilter.ALL -> true
+            ChapterUpdateReadFilter.UNREAD -> !event.isRead
+            ChapterUpdateReadFilter.READ -> event.isRead
+        }
+        statusMatches && (
+            needle.isEmpty() ||
+                event.seriesTitle.contains(needle, ignoreCase = true) ||
+                event.chapterName.contains(needle, ignoreCase = true) ||
+                event.sourceId.contains(needle, ignoreCase = true)
+        )
     }
 }
