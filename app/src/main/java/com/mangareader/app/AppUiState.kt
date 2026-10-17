@@ -10,6 +10,7 @@ internal class AppUiState(
     initialHistory: List<HistoryEntry>,
 ) {
     var currentTab by mutableIntStateOf(0)
+    var updatesTick by mutableIntStateOf(0)
 
     var configs by mutableStateOf(initialConfigs)
     var extensionSources by mutableStateOf<List<Source>>(emptyList())

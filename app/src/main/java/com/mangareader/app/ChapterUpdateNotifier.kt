@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 internal object ChapterUpdateNotifier {
     private const val CHANNEL = "new_chapter_updates"
     private const val GROUP_KEY = "chapter_updates"
+    private const val ACTION_OPEN_UPDATES = "com.mangareader.app.action.OPEN_CHAPTER_UPDATES"
+    const val EXTRA_OPEN_UPDATES = "com.mangareader.app.OPEN_CHAPTER_UPDATES"
 
     fun permissionGranted(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
@@ -40,9 +42,11 @@ internal object ChapterUpdateNotifier {
             )
         }
         val open = PendingIntent.getActivity(
-            context, 0,
+            context, 1,
             Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                .setAction(ACTION_OPEN_UPDATES)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_OPEN_UPDATES, true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val label = if (newlyDetectedCount == 1) "1 new chapter" else "$newlyDetectedCount new chapters"

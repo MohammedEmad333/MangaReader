@@ -124,6 +124,24 @@ def run_smoke():
     ux, uy = center(updates.attrib["bounds"])
     adb("shell", "input", "tap", str(ux), str(uy))
     wait_for("Chapter updates")
+    # A notification targets the Updates tab even when another tab is active.
+    # Use the same explicit component, flags, action and extra as the real PendingIntent.
+    library = wait_for("Library")
+    lx, ly = center(library.attrib["bounds"])
+    adb("shell", "input", "tap", str(lx), str(ly))
+    wait_for("Library")
+    notification_intent = (
+        "shell", "am", "start", "-W", "-f", "0x24000000",
+        "-n", "com.mangareader.app/.MainActivity",
+        "-a", "com.mangareader.app.action.OPEN_CHAPTER_UPDATES",
+        "--ez", "com.mangareader.app.OPEN_CHAPTER_UPDATES", "true",
+    )
+    adb(*notification_intent)
+    wait_for("Chapter updates")
+    # Also cover a notification launching the app from a stopped process.
+    adb("shell", "am", "force-stop", "com.mangareader.app")
+    adb(*notification_intent)
+    wait_for("Chapter updates")
     if not adb("shell", "pidof", "com.mangareader.app").strip():
         raise RuntimeError("App exited during Updates navigation")
     # Capture the actual UI state for independent visual review.

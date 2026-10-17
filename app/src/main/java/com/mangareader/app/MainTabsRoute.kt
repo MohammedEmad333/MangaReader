@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 @Composable
 internal fun MainTabsRoute(
     currentTab: Int,
+    updatesTick: Int,
     onSelectTab: (Int) -> Unit,
     libraryTick: Int,
     error: String?,
@@ -106,7 +107,7 @@ internal fun MainTabsRoute(
                     onOpen = onOpenDownload,
                     onOpenQueue = onOpenDownloadQueue
                 )
-                5 -> ChapterUpdatesTab(onOpenChapter = onOpenUpdateChapter)
+                5 -> ChapterUpdatesTab(onOpenChapter = onOpenUpdateChapter, refreshTick = updatesTick)
                 4 -> MoreTab(
                     onOpenDownloads = onOpenDownloadQueue,
                     onOpenSettings = onOpenSettings
