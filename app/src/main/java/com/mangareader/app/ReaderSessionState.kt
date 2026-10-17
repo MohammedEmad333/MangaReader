@@ -31,13 +31,16 @@ internal class ReaderSessionState {
         index: Int,
         onRootLoadingChanged: (Boolean) -> Unit,
         onClearError: () -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        retryAt: Int? = null,
     ) {
         val chapter = chapters.getOrNull(index) ?: return
+        if (retryAt != null && !canRetryReaderPage(pages, loading, chapterIndex, index, retryAt)) return
+        val previousPages = if (retryAt != null) pages else emptyList()
         onClearError()
         loadJob?.cancel()
 
-        val resumeAt = savedPage(
+        val resumeAt = retryAt ?: savedPage(
             context,
             chapterKeyOf(source.id, chapter)
         )
@@ -54,7 +57,7 @@ internal class ReaderSessionState {
                     resumeAt = resumeAt
                 ) { partial ->
                     withContext(Dispatchers.Main) {
-                        pages = partial
+                        pages = if (retryAt == null) partial else mergeRetriedReaderPages(previousPages, partial)
                         if (!opened && partial.isNotEmpty()) {
                             opened = true
                             chapterIndex = index
@@ -74,7 +77,7 @@ internal class ReaderSessionState {
                         "Could not open this chapter"
                     )
                 )
-                pages = emptyList()
+                pages = previousPages
             } finally {
                 if (token == loadSequence) {
                     loading = false
