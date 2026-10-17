@@ -14,6 +14,41 @@ class ChapterPagePayloadTest {
         assertTrue(isObviouslyInvalidPage("{\"error\":\"blocked\"}".toByteArray()))
     }
 
+    @Test fun rejectsPlaintextAndJsonCdnBlockResponses() {
+        listOf(
+            "Access Denied",
+            " 403 Forbidden",
+            "429 Too Many Requests",
+            "Cloudflare Ray ID: test",
+            "502 Bad Gateway",
+            "Error 404: page not found",
+            "upstream connect error or disconnect/reset before headers",
+            "{ \"errors\": [\"blocked\"] }",
+            "[{\"error\":\"blocked\"}]",
+            " <head><title>Access denied</title>",
+        ).forEach { body ->
+            assertTrue("Should reject: $body", isObviouslyInvalidPage(body.toByteArray()))
+        }
+    }
+
+    @Test fun rejectsEmptyOrWhitespaceOnlyPageBodies() {
+        assertTrue(isObviouslyInvalidPage(byteArrayOf()))
+        assertTrue(isObviouslyInvalidPage("  \n\t ".toByteArray()))
+    }
+
+    @Test fun permitsKnownBinaryImageMagicBytes() {
+        listOf(
+            byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47),
+            byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xe0.toByte()),
+            "RIFF".toByteArray() + ByteArray(4) + "WEBP".toByteArray(),
+            "GIF89a".toByteArray(),
+            byteArrayOf(0, 0, 0, 24) + "ftypavif".toByteArray(),
+            byteArrayOf(0, 0, 0, 24) + "ftypmif1".toByteArray() + ByteArray(4) + "avif".toByteArray(),
+        ).forEach { image ->
+            assertFalse(isObviouslyInvalidPage(image))
+        }
+    }
+
     @Test fun readsPagePrefixOnOlderAndroidApisWithoutNewJavaStreamMethods() {
         val bytes = ByteArray(256) { it.toByte() }
         ByteArrayInputStream(bytes).use { input ->
