@@ -35,6 +35,7 @@ internal fun YomuStateBundle.openChapterUpdatesFromNotification(context: Context
     app.loading = false
     app.error = null
     app.currentTab = 5
+    app.updatesTick++
 
     // A notification tap is an explicit navigation choice, not a reader resume.
     ReaderSessionCheckpointStore.clear(context)
