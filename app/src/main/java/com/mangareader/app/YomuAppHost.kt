@@ -43,6 +43,9 @@ internal fun YomuAppHost() {
     )
 
     val activity = context as? ComponentActivity
+    val launchedFromUpdatesNotification = remember(activity, startup) {
+        activity?.intent?.getBooleanExtra(ChapterUpdateNotifier.EXTRA_OPEN_UPDATES, false) == true
+    }
 
     // Application startup no longer restores the queue on the main thread.
     // Once the IO snapshot has restored it, resume exactly the same work the
@@ -60,7 +63,8 @@ internal fun YomuAppHost() {
         onOpenQueue = {
             appState.currentTab = 3
             appState.downloadsOpen = true
-        }
+        },
+        onOpenUpdates = { state.openChapterUpdatesFromNotification(context) },
     )
     ExtensionResumeObserver(
         activity = activity,
@@ -78,7 +82,8 @@ internal fun YomuAppHost() {
     // Restore a previous reading session through the existing history resolver.
     // History may be absent or an extension may have been removed; in that
     // case leave the normal home screen available instead of failing startup.
-    LaunchedEffect(state, actions) {
+    LaunchedEffect(state, actions, launchedFromUpdatesNotification) {
+        if (launchedFromUpdatesNotification) return@LaunchedEffect
         val checkpoint = ReaderSessionCheckpointStore.load(context)
         val entry = checkpoint?.let { findRestorableReaderHistory(it, startup.history) }
         if (entry != null && state.reader.chapterIndex == null) {
