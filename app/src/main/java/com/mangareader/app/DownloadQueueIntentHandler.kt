@@ -10,20 +10,36 @@ import androidx.core.util.Consumer
 @Composable
 internal fun DownloadQueueIntentHandler(
     activity: ComponentActivity?,
-    onOpenQueue: () -> Unit
+    onOpenQueue: () -> Unit,
+    onOpenUpdates: () -> Unit,
 ) {
-    fun consumeQueueRequest(intent: Intent?) {
-        if (intent?.getBooleanExtra(DownloadService.EXTRA_OPEN_QUEUE, false) != true) return
+    fun consumeNavigationRequest(intent: Intent?) {
+        if (intent == null) return
+        val openQueue = intent.getBooleanExtra(DownloadService.EXTRA_OPEN_QUEUE, false)
+        val openUpdates = intent.getBooleanExtra(ChapterUpdateNotifier.EXTRA_OPEN_UPDATES, false)
+        val destination = notificationDestination(openQueue, openUpdates)
+        // Consume one-shot navigation before the composition can be recreated.
         intent.removeExtra(DownloadService.EXTRA_OPEN_QUEUE)
-        onOpenQueue()
+        intent.removeExtra(ChapterUpdateNotifier.EXTRA_OPEN_UPDATES)
+        when (destination) {
+            3 -> onOpenQueue()
+            5 -> onOpenUpdates()
+        }
+
+/** Updates win only if both flags are present; normal launches do not navigate. */
+internal fun notificationDestination(openQueue: Boolean, openUpdates: Boolean): Int? = when {
+    openUpdates -> 5
+    openQueue -> 3
+    else -> null
+}
     }
 
     LaunchedEffect(Unit) {
-        consumeQueueRequest(activity?.intent)
+        consumeNavigationRequest(activity?.intent)
     }
 
     DisposableEffect(activity) {
-        val listener = Consumer<Intent> { consumeQueueRequest(it) }
+        val listener = Consumer<Intent> { consumeNavigationRequest(it) }
         activity?.addOnNewIntentListener(listener)
         onDispose {
             activity?.removeOnNewIntentListener(listener)
