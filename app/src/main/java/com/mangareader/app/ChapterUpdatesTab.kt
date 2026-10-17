@@ -25,9 +25,13 @@ import androidx.compose.ui.unit.dp
 
 /** Full-size updates feed, independent of the Library settings dialog. */
 @Composable
-internal fun ChapterUpdatesTab(onOpenChapter: (ChapterUpdateEvent) -> Unit) {
+internal fun ChapterUpdatesTab(
+    onOpenChapter: (ChapterUpdateEvent) -> Unit,
+    refreshTick: Int,
+) {
     val context = LocalContext.current
-    var events by remember { mutableStateOf(ChapterUpdateJournal.list(context)) }
+    // Refresh existing Updates screens when a notification arrives while this tab is already visible.
+    var events by remember(refreshTick) { mutableStateOf(ChapterUpdateJournal.list(context)) }
     var query by remember { mutableStateOf("") }
     var confirmClear by remember { mutableStateOf(false) }
     val visible = filterChapterUpdateEvents(events, query)
