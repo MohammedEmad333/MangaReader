@@ -92,7 +92,12 @@ internal class SeriesActionController(
         }
     }
 
-    fun openChapter(index: Int) {
+    fun openChapter(index: Int) = loadChapter(index, retryAt = null)
+
+    fun retryChapterPage(chapterIndex: Int, pageIndex: Int) =
+        loadChapter(chapterIndex, retryAt = pageIndex)
+
+    private fun loadChapter(index: Int, retryAt: Int?) {
         val source = browseState.source ?: return
         readerSession.open(
             context = context,
@@ -102,7 +107,8 @@ internal class SeriesActionController(
             index = index,
             onRootLoadingChanged = { appState.loading = it },
             onClearError = { appState.error = null },
-            onError = { appState.error = it }
+            onError = { appState.error = it },
+            retryAt = retryAt,
         )
     }
 
