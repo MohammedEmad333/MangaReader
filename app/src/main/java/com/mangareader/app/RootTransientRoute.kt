@@ -79,6 +79,7 @@ internal fun RootTransientRoute(
             chapters = seriesState.chapters,
             chapterIndex = chapterIndex,
             onOpenChapter = { actions.openChapter(it) },
+            onRetryPage = { actions.retryChapterPage(chapterIndex, it) },
             onClose = {
                 ReaderSessionCheckpointStore.clear(context)
                 readerSession.close()
