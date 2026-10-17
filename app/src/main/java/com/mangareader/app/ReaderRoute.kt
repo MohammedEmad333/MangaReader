@@ -15,6 +15,7 @@ internal fun ReaderRoute(
     chapters: List<Chapter>,
     chapterIndex: Int,
     onOpenChapter: (Int) -> Unit,
+    onRetryPage: (Int) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -38,6 +39,7 @@ internal fun ReaderRoute(
             onNext = { onOpenChapter(chapterIndex + 1) },
             onSelectChapter = onOpenChapter,
             onVisiblePages = { visible -> ReaderPagePriority.updateVisible(chapterKey, visible) },
+            onRetryPage = onRetryPage,
             onProgress = { page ->
                 if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
                 ReaderPagePriority.update(chapterKey, page)
