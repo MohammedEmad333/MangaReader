@@ -114,6 +114,9 @@ internal class AppActionController(
     fun openChapter(index: Int) =
         seriesActions.openChapter(index)
 
+    fun retryChapterPage(chapterIndex: Int, pageIndex: Int) =
+        seriesActions.retryChapterPage(chapterIndex, pageIndex)
+
     fun queueDownloads(source: Source, chapters: List<Chapter>) =
         seriesActions.queueDownloads(source, chapters)
 
