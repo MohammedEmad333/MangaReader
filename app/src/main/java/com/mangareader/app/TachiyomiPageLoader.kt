@@ -367,12 +367,25 @@ internal fun InputStream.readPagePrefix(): ByteArray {
     return prefix.copyOf(total)
 }
 
-/** Reject common server error payloads without rejecting AVIF or extensionless images. */
+/**
+ * A 200 response can still contain a CDN block/rate-limit document instead of an image.
+ * Keep only unmistakable text/error signatures: image bytes are still accepted by
+ * their decoders, including extensionless AVIF/HEIF, JPEG, PNG and WebP.
+ */
 internal fun isObviouslyInvalidPage(prefix: ByteArray): Boolean {
-    val start = prefix.toString(Charsets.UTF_8).trimStart('\uFEFF', ' ', '\t', '\r', '\n').lowercase()
-    return start.startsWith("<!doctype html") ||
-        start.startsWith("<html") ||
-        start.startsWith("<?xml") ||
-        start.startsWith("{\"error\"") ||
-        start.startsWith("{\"message\"")
+    if (prefix.isEmpty()) return true
+    val start = prefix.toString(Charsets.UTF_8)
+        .trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+        .lowercase()
+    if (start.isEmpty()) return true
+    if (start.startsWith("{") || start.startsWith("[")) return true // JSON error payload
+    if (listOf("<!doctype html", "<html", "<head", "<body", "<script", "<?xml")
+            .any(start::startsWith)) return true
+    return listOf(
+        "access denied", "access forbidden", "forbidden", "unauthorized",
+        "403 forbidden", "404 not found", "429 too many requests",
+        "502 bad gateway", "503 service unavailable", "504 gateway timeout",
+        "too many requests", "rate limit exceeded", "error 403",
+        "error 404", "upstream connect error", "cloudflare",
+    ).any(start::startsWith)
 }
