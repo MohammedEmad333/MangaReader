@@ -1,13 +1,16 @@
 package com.mangareader.app
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,8 +36,9 @@ internal fun ChapterUpdatesTab(
     // Refresh existing Updates screens when a notification arrives while this tab is already visible.
     var events by remember(refreshTick) { mutableStateOf(ChapterUpdateJournal.list(context)) }
     var query by remember { mutableStateOf("") }
+    var readFilter by remember { mutableStateOf(ChapterUpdateReadFilter.ALL) }
     var confirmClear by remember { mutableStateOf(false) }
-    val visible = filterChapterUpdateEvents(events, query)
+    val visible = filterChapterUpdateEvents(events, query, readFilter)
     val grouped = groupChapterUpdatesByDay(visible, ::chapterUpdateDayLabel)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -60,10 +64,32 @@ internal fun ChapterUpdatesTab(
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ChapterUpdateReadFilter.entries.forEach { option ->
+                val count = when (option) {
+                    ChapterUpdateReadFilter.ALL -> events.size
+                    ChapterUpdateReadFilter.UNREAD -> events.count { !it.isRead }
+                    ChapterUpdateReadFilter.READ -> events.count { it.isRead }
+                }
+                FilterChip(
+                    selected = readFilter == option,
+                    onClick = { readFilter = option },
+                    label = { Text("${option.label} ($count)") },
+                )
+            }
+        }
         if (visible.isEmpty()) {
             Text(
-                if (events.isEmpty()) "No chapter updates yet. Refresh your library to check for new releases."
-                else "No updates match your search.",
+                when {
+                    events.isEmpty() -> "No chapter updates yet. Refresh your library to check for new releases."
+                    query.isNotBlank() -> "No updates match your search and filter."
+                    readFilter == ChapterUpdateReadFilter.UNREAD -> "No unread chapter updates."
+                    readFilter == ChapterUpdateReadFilter.READ -> "No read chapter updates."
+                    else -> "No chapter updates to show."
+                },
                 modifier = Modifier.padding(20.dp),
             )
         } else {
@@ -107,6 +133,8 @@ internal fun ChapterUpdatesTab(
                     }
                 }
             }
+        }
+        if (events.isNotEmpty()) {
             TextButton(onClick = { confirmClear = true }) { Text("Clear history") }
         }
     }
