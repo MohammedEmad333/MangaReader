@@ -10,6 +10,7 @@ internal fun RootMainTabsRoute(
     val actions = root.actions
     MainTabsRoute(
         currentTab = appState.currentTab,
+        updatesTick = appState.updatesTick,
         onSelectTab = actions::selectTab,
         libraryTick = appState.libraryTick,
         error = appState.error,
