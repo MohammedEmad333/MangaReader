@@ -283,7 +283,10 @@ internal class TachiyomiPageLoader(
         page.imageUrl = page.imageUrl?.repointFromLoopback()
 
         val target = File(dir, "%04d".format(index))
-        if (target.exists() && target.length() > 0L) return target
+        if (target.exists() && target.length() > 0L) {
+            if (!isObviouslyInvalidPage(target.inputStream().use { it.readNBytes(128) })) return target
+            target.delete()
+        }
 
         val body = if (http != null) {
             http.getImage(page).body!!
@@ -300,7 +303,14 @@ internal class TachiyomiPageLoader(
                 input.copyTo(output)
             }
         }
-        partial.renameTo(target)
+        if (isObviouslyInvalidPage(partial.inputStream().use { it.readNBytes(128) })) {
+            partial.delete()
+            throw IOException("The source returned an HTML/JSON response instead of a chapter image")
+        }
+        if (!partial.renameTo(target)) {
+            partial.delete()
+            throw IOException("Could not save the downloaded chapter page")
+        }
         return target
     }
 
@@ -338,4 +348,14 @@ internal class TachiyomiPageLoader(
         val TRANSIENT_HTTP_CODES = setOf(400, 408, 425, 429, 500, 502, 503, 504)
         val fallbackClient = OkHttpClient()
     }
+}
+
+/** Reject common server error payloads without rejecting AVIF or extensionless images. */
+internal fun isObviouslyInvalidPage(prefix: ByteArray): Boolean {
+    val start = prefix.toString(Charsets.UTF_8).trimStart('\uFEFF', ' ', '\t', '\r', '\n').lowercase()
+    return start.startsWith("<!doctype html") ||
+        start.startsWith("<html") ||
+        start.startsWith("<?xml") ||
+        start.startsWith("{\"error\"") ||
+        start.startsWith("{\"message\"")
 }
