@@ -17,6 +17,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
@@ -284,7 +285,7 @@ internal class TachiyomiPageLoader(
 
         val target = File(dir, "%04d".format(index))
         if (target.exists() && target.length() > 0L) {
-            if (!isObviouslyInvalidPage(target.inputStream().use { it.readNBytes(128) })) return target
+            if (!isObviouslyInvalidPage(target.inputStream().use { it.readPagePrefix() })) return target
             target.delete()
         }
 
@@ -303,7 +304,7 @@ internal class TachiyomiPageLoader(
                 input.copyTo(output)
             }
         }
-        if (isObviouslyInvalidPage(partial.inputStream().use { it.readNBytes(128) })) {
+        if (isObviouslyInvalidPage(partial.inputStream().use { it.readPagePrefix() })) {
             partial.delete()
             throw IOException("The source returned an HTML/JSON response instead of a chapter image")
         }
@@ -348,6 +349,22 @@ internal class TachiyomiPageLoader(
         val TRANSIENT_HTTP_CODES = setOf(400, 408, 425, 429, 500, 502, 503, 504)
         val fallbackClient = OkHttpClient()
     }
+}
+
+/**
+ * Read only the first page bytes using InputStream APIs available on Android 7+.
+ * InputStream.readNBytes was introduced in Android API 33 and cannot be called
+ * directly by this application's minSdk 24 users.
+ */
+internal fun InputStream.readPagePrefix(): ByteArray {
+    val prefix = ByteArray(128)
+    var total = 0
+    while (total < prefix.size) {
+        val read = read(prefix, total, prefix.size - total)
+        if (read <= 0) break
+        total += read
+    }
+    return prefix.copyOf(total)
 }
 
 /** Reject common server error payloads without rejecting AVIF or extensionless images. */
