@@ -80,6 +80,7 @@ internal fun ReaderPage(
     /** Non-null when this page is responsible for its own taps. */
     onTap: ((Float) -> Unit)? = null,
     widePageMode: ReaderWidePageMode = ReaderWidePageMode.FIT,
+    onRetry: () -> Unit,
 ) {
     // A placeholder handles no gestures of its own, so where the page owns the
     // tap it has to be attached here too — otherwise tapping a page that hasn't
@@ -167,11 +168,19 @@ internal fun ReaderPage(
             modifier = placeholder.heightIn(min = 240.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                "Page ${index + 1} couldn't be loaded",
-                color = textColor,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "Page ${index + 1} couldn't be loaded. Check your connection and try again.",
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Button(onClick = onRetry) {
+                    Text("Retry page ${index + 1}")
+                }
+            }
         }
     }
 }

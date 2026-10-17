@@ -80,6 +80,7 @@ internal fun ReaderScreen(
     onSelectChapter: (Int) -> Unit,
     onProgress: (Int) -> Unit,
     onVisiblePages: (List<Int>) -> Unit,
+    onRetryPage: (Int) -> Unit,
     onClose: () -> Unit
 ) {
     val view = LocalView.current
@@ -255,6 +256,7 @@ internal fun ReaderScreen(
                 colorFilter = filter,
                 textColor = onBackground,
                 pageGap = settings.pageGap.dp,
+                onRetryPage = onRetryPage,
             )
         } else {
             ReaderPagedPages(
@@ -288,6 +290,7 @@ internal fun ReaderScreen(
                     }
                 },
                 widePageMode = settings.widePageMode,
+                onRetryPage = onRetryPage,
             )
         }
 

@@ -35,6 +35,7 @@ internal fun ReaderLongStripPages(
     colorFilter: ColorFilter?,
     textColor: Color,
     pageGap: Dp,
+    onRetryPage: (Int) -> Unit,
 ) {
     LazyColumn(
         state = listState,
@@ -71,6 +72,7 @@ internal fun ReaderLongStripPages(
                     .heightIn(min = 240.dp),
                 contentScale = ContentScale.FillWidth,
                 textColor = textColor,
+                onRetry = { onRetryPage(index) },
             )
         }
 
@@ -111,6 +113,7 @@ internal fun ReaderPagedPages(
     textColor: Color,
     onTap: (Float) -> Unit,
     widePageMode: ReaderWidePageMode,
+    onRetryPage: (Int) -> Unit,
 ) {
     HorizontalPager(
         state = pagerState,
@@ -149,6 +152,7 @@ internal fun ReaderPagedPages(
                 zoomable = true,
                 onTap = onTap,
                 widePageMode = widePageMode,
+                onRetry = { onRetryPage(index - headRows) },
             )
         }
     }
