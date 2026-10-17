@@ -1,5 +1,6 @@
 package com.mangareader.app
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -46,6 +47,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Keep a notification tap received during startup available for Compose to consume.
+        setIntent(intent)
     }
 
     private fun ensureNotificationPermission() {
