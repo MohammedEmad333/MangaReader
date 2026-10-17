@@ -25,13 +25,6 @@ internal fun DownloadQueueIntentHandler(
             3 -> onOpenQueue()
             5 -> onOpenUpdates()
         }
-
-/** Updates win only if both flags are present; normal launches do not navigate. */
-internal fun notificationDestination(openQueue: Boolean, openUpdates: Boolean): Int? = when {
-    openUpdates -> 5
-    openQueue -> 3
-    else -> null
-}
     }
 
     LaunchedEffect(Unit) {
@@ -45,4 +38,11 @@ internal fun notificationDestination(openQueue: Boolean, openUpdates: Boolean): 
             activity?.removeOnNewIntentListener(listener)
         }
     }
+}
+
+/** Updates win only if both flags are present; normal launches do not navigate. */
+internal fun notificationDestination(openQueue: Boolean, openUpdates: Boolean): Int? = when {
+    openUpdates -> 5
+    openQueue -> 3
+    else -> null
 }
