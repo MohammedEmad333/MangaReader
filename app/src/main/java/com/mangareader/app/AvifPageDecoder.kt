@@ -14,11 +14,34 @@ import com.radzivon.bartoshyk.avif.coder.ScaleMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Detect the file's AVIF brand, not its extension: Tachiyomi saves pages as 0001. */
+/**
+ * Detect the AVIF image/sequence brand in the ISO BMFF file-type box.
+ * The AVIF brand may be compatible rather than primary (for example mif1 + avif).
+ * Tachiyomi caches chapter pages as 0001, without a usable filename extension.
+ */
 internal fun isAvifHeader(bytes: ByteArray): Boolean {
-    if (bytes.size < 12) return false
-    val brand = String(bytes, 4, 8, Charsets.US_ASCII)
-    return brand == "ftypavif" || brand == "ftypavis"
+    if (bytes.size < 16 || !bytes.copyOfRange(4, 8).contentEquals("ftyp".toByteArray())) {
+        return false
+    }
+    val declaredSize = ((bytes[0].toLong() and 0xffL) shl 24) or
+        ((bytes[1].toLong() and 0xffL) shl 16) or
+        ((bytes[2].toLong() and 0xffL) shl 8) or
+        (bytes[3].toLong() and 0xffL)
+
+    // The 64-bit extended-size form (size == 1) is not read from this bounded prefix.
+    if (declaredSize == 1L || (declaredSize != 0L && declaredSize < 16L)) return false
+    val limit = if (declaredSize == 0L) bytes.size
+        else minOf(bytes.size.toLong(), declaredSize).toInt()
+    fun isAvifBrand(offset: Int): Boolean {
+        if (offset + 4 > limit) return false
+        val brand = String(bytes, offset, 4, Charsets.US_ASCII)
+        return brand == "avif" || brand == "avis"
+    }
+    if (isAvifBrand(8)) return true
+    for (offset in 16 until limit - 3 step 4) {
+        if (isAvifBrand(offset)) return true
+    }
+    return false
 }
 
 /** Native AVIF fallback for devices whose Android image decoder rejects source galleries. */
@@ -50,8 +73,13 @@ internal class AvifPageDecoder(
 
     class Factory : Decoder.Factory {
         override fun create(result: SourceResult, options: Options, imageLoader: ImageLoader): Decoder? {
-            val header = result.source.source().peek().readByteArray(12)
-            return if (isAvifHeader(header)) AvifPageDecoder(result, options) else null
+            // A bounded peek must tolerate short or corrupt files without throwing EOFException.
+            // Inspect compatible brands inside ftyp, never the extensionless cache filename.
+            val header = ByteArray(128)
+            val read = result.source.source().peek().read(header, 0, header.size)
+            return if (read > 0 && isAvifHeader(header.copyOf(read))) {
+                AvifPageDecoder(result, options)
+            } else null
         }
     }
 }
