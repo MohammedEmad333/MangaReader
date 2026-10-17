@@ -33,7 +33,7 @@ class ChapterPagePayloadTest {
 
     @Test fun rejectsEmptyOrWhitespaceOnlyPageBodies() {
         assertTrue(isObviouslyInvalidPage(byteArrayOf()))
-        assertTrue(isObviouslyInvalidPage("  \\n\\t ".toByteArray()))
+        assertTrue(isObviouslyInvalidPage("  \n\t ".toByteArray()))
     }
 
     @Test fun permitsKnownBinaryImageMagicBytes() {
