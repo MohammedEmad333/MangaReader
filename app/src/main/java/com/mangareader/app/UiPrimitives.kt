@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun BackButton(onClick: () -> Unit) {
     FilledTonalIconButton(onClick = onClick) {
-        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
     }
 }
 
