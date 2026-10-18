@@ -16,6 +16,7 @@ internal class GlobalSearchResultCache(
     private data class Entry(val series: List<Series>, val createdAt: Long)
     private val entries = LinkedHashMap<Pair<String, String>, Entry>(16, 0.75f, true)
 
+    @Synchronized
     fun get(sourceId: String, query: String): List<Series>? {
         val key = sourceId to query.trim().lowercase()
         val entry = entries[key] ?: return null
@@ -26,6 +27,7 @@ internal class GlobalSearchResultCache(
         return entry.series
     }
 
+    @Synchronized
     fun put(sourceId: String, query: String, series: List<Series>) {
         if (series.isEmpty()) return
         val key = sourceId to query.trim().lowercase()
