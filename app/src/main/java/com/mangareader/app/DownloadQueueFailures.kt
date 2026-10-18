@@ -21,7 +21,7 @@ internal object DownloadQueueFailures {
         return DownloadQueueFailureEdit(
             items = items + toQueue,
             failed = failed.filterNot { it.item.chapterId in chapterIds },
-            changed = toQueue.size,
+            changed = back.map { it.item.chapterId }.distinct().size,
         )
     }
 
