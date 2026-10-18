@@ -56,7 +56,12 @@ internal fun YomuAppHost() {
         }
     }
 
-    DoubleBackToExitHandler(activity)
+    // Secondary root tabs return to Home. Overlay/reader handlers take priority.
+    DoubleBackToExitHandler(
+        activity = activity,
+        currentTab = appState.currentTab,
+        onHome = { appState.currentTab = 0 },
+    )
 
     DownloadQueueIntentHandler(
         activity = activity,
