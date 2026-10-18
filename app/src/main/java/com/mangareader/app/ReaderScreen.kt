@@ -142,14 +142,17 @@ internal fun ReaderScreen(
         }
     }
 
-    BackHandler {
-        when {
-            showSettings -> showSettings = false
-            showChapters -> showChapters = false
-            showControls -> showControls = false
-            else -> onClose()
+    // System back and the reader toolbar Back button must share the same
+    // dismissal order, otherwise the toolbar exits while a sheet is still open.
+    fun navigateBack() {
+        when (readerBackTarget(showSettings, showChapters, showControls)) {
+            ReaderBackTarget.SETTINGS -> showSettings = false
+            ReaderBackTarget.CHAPTERS -> showChapters = false
+            ReaderBackTarget.CONTROLS -> showControls = false
+            ReaderBackTarget.READER -> onClose()
         }
     }
+    BackHandler { navigateBack() }
 
     ReaderWindowEffects(settings, showControls)
 
@@ -312,7 +315,7 @@ internal fun ReaderScreen(
             onOpenSettings = { showSettings = true },
             seriesTitle = seriesTitle,
             chapterName = chapterName,
-            onClose = onClose,
+            onClose = { navigateBack() },
             pageTextColor = onBackground,
             pageOutlineColor = outlineBackground,
         )
