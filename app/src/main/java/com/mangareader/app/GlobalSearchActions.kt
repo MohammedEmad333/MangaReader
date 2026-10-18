@@ -12,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun normalizeGlobalSearchMediaFilter(value: String?): String =
     value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
@@ -99,6 +100,7 @@ internal class GlobalSearchState(
     var mediaIsAnime by androidx.compose.runtime.mutableStateOf<Boolean?>(null)
 
     private var job: kotlinx.coroutines.Job? = null
+    private val cache = GlobalSearchResultCache()
 
     fun cancel() {
         job?.cancel()
@@ -177,8 +179,15 @@ internal class GlobalSearchState(
                             val series = semaphore.withPermit {
                                 withContext(Dispatchers.IO) {
                                     try {
-                                        source.searchSeries(newQuery, 1).series
-                                            .take(GLOBAL_SEARCH_PER_SOURCE)
+                                        val cached = cache.get(source.id, newQuery)
+                                        if (cached != null) cached else {
+                                            val fetched = withTimeoutOrNull(GLOBAL_SEARCH_SOURCE_TIMEOUT_MS) {
+                                                source.searchSeries(newQuery, 1).series
+                                                    .take(GLOBAL_SEARCH_PER_SOURCE)
+                                            } ?: emptyList()
+                                            if (fetched.isNotEmpty()) cache.put(source.id, newQuery, fetched)
+                                            fetched
+                                        }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (_: Exception) {
@@ -192,7 +201,10 @@ internal class GlobalSearchState(
                     }.awaitAll()
                 }
             } finally {
-                running = false
+                // A cancelled prior query must never clear the new query's spinner.
+                if (job === kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) {
+                    running = false
+                }
             }
         }
     }
