@@ -8,7 +8,7 @@ class GlobalSearchResultCacheTest {
     private var time = 1_000L
     private val cache = GlobalSearchResultCache(now = { time }, ttlMs = 100L, maxEntries = 2)
 
-    private fun sample(id: String) = Series(id = id, title = id)
+    private fun sample(id: String) = Series(id = id, title = id, cover = null)
 
     @Test fun repeatsQueriesWithoutRepeatingSourceRequests() {
         val results = listOf(sample("one"))
