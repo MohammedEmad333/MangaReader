@@ -193,11 +193,12 @@ internal fun ChallengeWebViewScreen(
         }
     }
 
-    BackHandler {
-        // canGoBack() on a destroyed WebView is exactly the kind of call this
-        // whole change exists to avoid making.
+    // The toolbar arrow and Android Back both navigate WebView history first.
+    // Never query a renderer after it has been destroyed.
+    fun navigateBack() {
         if (!rendererDied && webView.canGoBack()) webView.goBack() else onBack()
     }
+    BackHandler { navigateBack() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -208,7 +209,7 @@ internal fun ChallengeWebViewScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            navigationIcon = { BackButton(onBack) },
+            navigationIcon = { BackButton { navigateBack() } },
             actions = {
                 // Manual escape hatch: the poll only fires on a cookie that
                 // appears while the screen is open, and some sources hand out

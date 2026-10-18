@@ -99,7 +99,11 @@ internal fun EmbedWebViewScreen(
         fullscreenExit = null
         fullscreenView = null
     }
-    BackHandler { if (fullscreenView != null) leaveFullscreen() else onBack() }
+    // Fullscreen must close before either back affordance leaves the player.
+    fun navigateBack() {
+        if (fullscreenView != null) leaveFullscreen() else onBack()
+    }
+    BackHandler { navigateBack() }
 
     // OVERLAID, NOT SWAPPED. Returning early here and drawing only the
     // fullscreen view would take the WebView out of the composition, and a
@@ -148,7 +152,7 @@ internal fun EmbedWebViewScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            navigationIcon = { BackButton(onBack) },
+            navigationIcon = { BackButton { navigateBack() } },
             actions = {
                 // Only once the page is visible. With it hidden these duplicate
                 // what the loop above already does, and a control that repeats
