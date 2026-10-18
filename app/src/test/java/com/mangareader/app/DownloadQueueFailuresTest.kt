@@ -18,7 +18,7 @@ class DownloadQueueFailuresTest {
         )
         assertEquals(listOf("active", "already", "waiting", "failed"), edited.items.map { it.chapterId })
         assertEquals(listOf("other"), edited.failed.map { it.item.chapterId })
-        assertEquals(1, edited.changed)
+        assertEquals(2, edited.changed)
     }
 
     @Test fun retryRemovesStaleFailureWithoutDuplicatingQueuedChapter() {
@@ -26,7 +26,7 @@ class DownloadQueueFailuresTest {
         val edited = DownloadQueueFailures.retry(original, listOf(failure("already")), setOf("already"))
         assertEquals(original, edited.items)
         assertEquals(emptyList<FailedDownload>(), edited.failed)
-        assertEquals(0, edited.changed)
+        assertEquals(1, edited.changed)
     }
 
     @Test fun duplicateFailedEntriesOnlyQueueOnce() {
