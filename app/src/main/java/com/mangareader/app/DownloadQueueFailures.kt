@@ -16,10 +16,12 @@ internal object DownloadQueueFailures {
         if (back.isEmpty()) {
             return DownloadQueueFailureEdit(items, failed, 0)
         }
+        val queuedIds = items.mapTo(mutableSetOf()) { it.chapterId }
+        val toQueue = back.map { it.item }.filter { queuedIds.add(it.chapterId) }
         return DownloadQueueFailureEdit(
-            items = items + back.map { it.item },
+            items = items + toQueue,
             failed = failed.filterNot { it.item.chapterId in chapterIds },
-            changed = back.size,
+            changed = back.map { it.item.chapterId }.distinct().size,
         )
     }
 
