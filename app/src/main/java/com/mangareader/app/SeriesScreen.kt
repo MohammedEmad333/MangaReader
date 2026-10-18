@@ -196,9 +196,10 @@ internal fun SeriesScreen(
     // Back leaves the selection before it leaves the screen — the same rule the
     // settings screen applies to its open section, and the one people expect
     // from every contextual action bar on Android.
-    BackHandler {
+    fun navigateBack() {
         if (selecting) selectedIds = emptySet() else onBack()
     }
+    BackHandler { navigateBack() }
     var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
     var libraryBusy by remember(series.id) { mutableStateOf(false) }
 
@@ -310,7 +311,7 @@ internal fun SeriesScreen(
         onOpenChapterOptions = { showChapterOptions = true },
         onFindVideos = onFindVideos,
         onMigrate = onMigrate,
-        onBack = onBack,
+        onBack = { navigateBack() },
     )
 
     SeriesAuxiliaryDialogs(
