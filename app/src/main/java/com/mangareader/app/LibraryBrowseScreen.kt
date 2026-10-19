@@ -123,12 +123,21 @@ internal fun LibraryScreen(
      */
     onSolveChallenge: (() -> Unit)? = null
 ) {
-    BackHandler { onBack() }
     val context = LocalContext.current
     var searchField by remember(query) { mutableStateOf(query) }
     // Opens itself when a search is already running, so returning to a screen
     // showing results doesn't hide the field that produced them.
     var searchOpen by remember(title) { mutableStateOf(query.isNotBlank()) }
+    fun navigateBack() {
+        if (searchOpen) {
+            searchOpen = false
+            searchField = ""
+            if (query.isNotBlank()) onSearch("")
+        } else {
+            onBack()
+        }
+    }
+    BackHandler { navigateBack() }
     val viewPreferenceKey = remember(sourceId) { browseViewPreferenceKey(sourceId) }
     var view by remember(sourceId) {
         val stored = prefs(context).getString(
@@ -196,7 +205,7 @@ internal fun LibraryScreen(
             },
             onRescan = onRescan,
             onDiagnose = onDiagnose,
-            onBack = onBack,
+            onBack = { navigateBack() },
         )
 
         BrowseScreenBody(
