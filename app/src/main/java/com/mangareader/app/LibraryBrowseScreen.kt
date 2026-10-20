@@ -61,6 +61,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -124,12 +125,16 @@ internal fun LibraryScreen(
     onSolveChallenge: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
     var searchField by remember(query) { mutableStateOf(query) }
     // Opens itself when a search is already running, so returning to a screen
     // showing results doesn't hide the field that produced them.
     var searchOpen by remember(title) { mutableStateOf(query.isNotBlank()) }
     fun navigateBack() {
-        if (searchOpen) {
+        if (searchOpen && searchFocused) {
+            focusManager.clearFocus()
+        } else if (searchOpen) {
             searchOpen = false
             searchField = ""
             if (query.isNotBlank()) onSearch("")
@@ -181,6 +186,7 @@ internal fun LibraryScreen(
             query = query,
             searchField = searchField,
             onSearchFieldChange = { searchField = it },
+            onSearchFocusChanged = { searchFocused = it },
             onToggleSearch = {
                 if (searchOpen && query.isNotBlank()) {
                     searchField = ""
