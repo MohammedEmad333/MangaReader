@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,9 @@ internal fun DoubleBackToExitHandler(
 ) {
     val context = LocalContext.current
     var backArmedAt by remember { mutableLongStateOf(0L) }
+
+    // A previous exit confirmation must not remain armed after switching tabs.
+    LaunchedEffect(currentTab) { backArmedAt = 0L }
 
     BackHandler {
         val now = SystemClock.elapsedRealtime()
