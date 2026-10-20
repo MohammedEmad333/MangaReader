@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,7 @@ internal fun LibraryTopControls(
     onDownload: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchOpenChange: (Boolean) -> Unit,
+    onSearchFocusChanged: (Boolean) -> Unit,
     onOpenOptions: () -> Unit,
     onMediaFilterChange: (String) -> Unit,
     onTabSelected: (Int) -> Unit,
@@ -131,7 +133,7 @@ internal fun LibraryTopControls(
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent,
                         ),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { onSearchFocusChanged(it.isFocused) },
                     )
                 } else {
                     Column {
