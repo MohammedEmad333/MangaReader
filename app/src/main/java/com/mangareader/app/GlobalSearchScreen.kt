@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,7 +104,12 @@ internal fun GlobalSearchScreen(
     scroll: ScrollMemory,
     onBack: () -> Unit
 ) {
-    BackHandler { onBack() }
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
+    fun navigateBack() {
+        if (searchFocused) focusManager.clearFocus() else onBack()
+    }
+    BackHandler { navigateBack() }
     val context = LocalContext.current
     // Once for the whole screen, not once per result. A global search can put
     // several hundred cells on screen across a dozen source rows.
