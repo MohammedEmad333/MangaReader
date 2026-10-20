@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -50,6 +51,7 @@ internal fun BrowseScreenControls(
     query: String,
     searchField: String,
     onSearchFieldChange: (String) -> Unit,
+    onSearchFocusChanged: (Boolean) -> Unit,
     onToggleSearch: () -> Unit,
     onSearch: () -> Unit,
     onClearSearch: () -> Unit,
@@ -187,7 +189,7 @@ internal fun BrowseScreenControls(
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                         singleLine = true,
                         shape = MaterialTheme.shapes.large,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).onFocusChanged { onSearchFocusChanged(it.isFocused) },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilledTonalButton(onClick = onSearch) {
