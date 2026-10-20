@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +44,7 @@ internal fun GlobalSearchControls(
     withHits: Int,
     titleMatches: Int,
     onBack: () -> Unit,
+    onFieldFocusChanged: (Boolean) -> Unit,
 ) {
     TopAppBar(
         title = { Text(if (migrating) "Migrate to…" else "Search all sources") },
@@ -89,7 +91,7 @@ internal fun GlobalSearchControls(
                     keyboardActions = KeyboardActions(onSearch = {
                         if (canSubmitGlobalSearch(field, running)) onSearch()
                     }),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).onFocusChanged { onFieldFocusChanged(it.isFocused) },
                 )
                 Spacer(Modifier.width(8.dp))
                 if (running) {
