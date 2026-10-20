@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -261,10 +262,16 @@ internal fun LibraryTab(
         }
     }
 
+    val focusManager = LocalFocusManager.current
+    var librarySearchFocused by remember { mutableStateOf(false) }
     BackHandler(enabled = selecting) { selected = emptySet() }
     BackHandler(enabled = !selecting && searchOpen) {
-        onSearchOpenChange(false)
-        onSearchChange("")
+        if (librarySearchFocused) {
+            focusManager.clearFocus()
+        } else {
+            onSearchOpenChange(false)
+            onSearchChange("")
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -303,6 +310,7 @@ internal fun LibraryTab(
             },
             onSearchChange = onSearchChange,
             onSearchOpenChange = onSearchOpenChange,
+            onSearchFocusChanged = { librarySearchFocused = it },
             onOpenOptions = { optionsOpen = true },
             onMediaFilterChange = { label ->
                 val next = LibraryMediaFilter.entries.firstOrNull { it.label == label }
