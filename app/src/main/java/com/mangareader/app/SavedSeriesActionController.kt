@@ -122,11 +122,12 @@ internal class SavedSeriesActionController(
 
         scope.launch {
             appState.loading = true
+            var adoptedGeneration = generation
             try {
                 openHistoryEntry(context, entry) { target ->
                     if (generation != seriesState.snapshotGeneration()) return@openHistoryEntry
                     seriesState.begin(target.series, SeriesOrigin.HISTORY)
-                    seriesState.origin = SeriesOrigin.HISTORY
+                    adoptedGeneration = seriesState.snapshotGeneration()
                     adoptSource(target.source)
                     seriesState.active = target.series
                     seriesState.chapters = target.chapters
@@ -140,11 +141,11 @@ internal class SavedSeriesActionController(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (generation == seriesState.snapshotGeneration()) {
+                if (adoptedGeneration == seriesState.snapshotGeneration()) {
                     appState.error = sourceFailureMessage(error, "Could not resume")
                 }
             } finally {
-                if (generation == seriesState.snapshotGeneration()) appState.loading = false
+                if (adoptedGeneration == seriesState.snapshotGeneration()) appState.loading = false
             }
         }
     }
