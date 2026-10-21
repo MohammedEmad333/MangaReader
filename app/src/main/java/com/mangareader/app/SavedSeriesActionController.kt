@@ -11,11 +11,13 @@ internal class SavedSeriesActionController(
     private val appState: AppUiState,
     private val browseState: SourceBrowseState,
     private val seriesState: SeriesNavigationState,
+    private val readerSession: ReaderSessionState,
     private val enrichSeries: (Source, Series) -> Unit,
     private val openChapter: (Int) -> Unit,
     private val openEpisode: (Chapter) -> Unit,
 ) {
     fun openLibrary(entry: LibraryEntry, requestedChapterId: String? = null) {
+        readerSession.close()
         appState.error = null
         seriesState.begin(
             Series(
@@ -69,6 +71,7 @@ internal class SavedSeriesActionController(
     }
 
     fun openDownloads(entry: DownloadedSeries) {
+        readerSession.close()
         appState.error = null
         seriesState.begin(
             Series(
@@ -115,6 +118,7 @@ internal class SavedSeriesActionController(
     }
 
     fun openHistory(entry: HistoryEntry) {
+        readerSession.close()
         appState.error = null
         // Invalidate any in-flight library/download opening request immediately.
         seriesState.clear()
