@@ -15,6 +15,21 @@ class SeriesNavigationGenerationTest {
         assertTrue(state.isCurrent("series-b", state.snapshotGeneration()))
     }
 
+    @Test fun staleSavedSeriesSourceCallbackCannotReplaceCurrentSource() {
+        val state = SeriesNavigationState()
+        state.begin(Series("series-a", "A", null), SeriesOrigin.LIBRARY)
+        val oldRequest = state.snapshotGeneration()
+        state.begin(Series("series-b", "B", null), SeriesOrigin.LIBRARY)
+        val newRequest = state.snapshotGeneration()
+
+        var selectedSource = "source-b"
+        if (state.isCurrent("series-a", oldRequest)) selectedSource = "source-a"
+
+        assertFalse(state.isCurrent("series-a", oldRequest))
+        assertTrue(state.isCurrent("series-b", newRequest))
+        assertTrue(selectedSource == "source-b")
+    }
+
     @Test fun reopeningSameSeriesInvalidatesPreviousRequest() {
         val state = SeriesNavigationState()
         state.begin(Series("same", "Series", null), SeriesOrigin.BROWSE)
