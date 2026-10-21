@@ -36,6 +36,8 @@ internal class SeriesActionController(
 
     fun open(series: Series) {
         val source = browseState.source ?: return
+        // Cancel pending page streams before the active series identity changes.
+        readerSession.close()
         seriesState.begin(series, SeriesOrigin.BROWSE)
         seriesState.tagReturn = null
         appState.error = null

@@ -63,6 +63,7 @@ internal class AppActionController(
         appState = appState,
         browseState = browseState,
         seriesState = seriesState,
+        readerSession = readerSession,
         globalSearch = globalSearch,
         migrationState = migrationState,
         enrichSeries = seriesActions::enrich,
