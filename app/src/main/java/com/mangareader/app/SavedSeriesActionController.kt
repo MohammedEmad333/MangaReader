@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -25,24 +26,28 @@ internal class SavedSeriesActionController(
             SeriesOrigin.LIBRARY
         )
 
+        val generation = seriesState.snapshotGeneration()
         scope.launch {
             appState.loading = true
             try {
                 openLibraryEntry(
                     context = context,
                     entry = entry,
-                    onSourceResolved = ::adoptSource,
+                    onSourceResolved = { source ->
+                        if (seriesState.isCurrent(entry.seriesId, generation)) adoptSource(source)
+                    },
                     onCachedChapters = { cached ->
-                        applyCached(entry.seriesId, cached)
+                        applyCached(entry.seriesId, generation, cached)
                     },
                     onResolved = { source, series, chapters ->
                         applyResolved(
                             entry.seriesId,
+                            generation,
                             source,
                             series,
                             chapters
                         )
-                        if (requestedChapterId != null && seriesState.active?.id == entry.seriesId) {
+                        if (requestedChapterId != null && seriesState.isCurrent(entry.seriesId, generation)) {
                             findUpdateChapterIndex(chapters, requestedChapterId)
                                 ?.let { index ->
                                     if (source.isAnime) chapters.getOrNull(index)?.let(openEpisode)
@@ -51,13 +56,15 @@ internal class SavedSeriesActionController(
                         }
                     }
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not open this series"
-                )
+                if (seriesState.isCurrent(entry.seriesId, generation)) {
+                    appState.error = sourceFailureMessage(error, "Could not open this series")
+                }
+            } finally {
+                if (seriesState.isCurrent(entry.seriesId, generation)) appState.loading = false
             }
-            appState.loading = false
         }
     }
 
@@ -72,42 +79,53 @@ internal class SavedSeriesActionController(
             SeriesOrigin.DOWNLOADS
         )
 
+        val generation = seriesState.snapshotGeneration()
         scope.launch {
             appState.loading = true
             try {
                 openDownloadedEntry(
                     context = context,
                     entry = entry,
-                    onSourceResolved = ::adoptSource,
+                    onSourceResolved = { source ->
+                        if (seriesState.isCurrent(entry.seriesId, generation)) adoptSource(source)
+                    },
                     onCachedChapters = { cached ->
-                        applyCached(entry.seriesId, cached)
+                        applyCached(entry.seriesId, generation, cached)
                     },
                     onResolved = { source, series, chapters ->
                         applyResolved(
                             entry.seriesId,
+                            generation,
                             source,
                             series,
                             chapters
                         )
                     }
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not open this series"
-                )
+                if (seriesState.isCurrent(entry.seriesId, generation)) {
+                    appState.error = sourceFailureMessage(error, "Could not open this series")
+                }
+            } finally {
+                if (seriesState.isCurrent(entry.seriesId, generation)) appState.loading = false
             }
-            appState.loading = false
         }
     }
 
     fun openHistory(entry: HistoryEntry) {
         appState.error = null
+        // Invalidate any in-flight library/download opening request immediately.
+        seriesState.clear()
+        val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
             try {
                 openHistoryEntry(context, entry) { target ->
+                    if (generation != seriesState.snapshotGeneration()) return@openHistoryEntry
+                    seriesState.begin(target.series, SeriesOrigin.HISTORY)
                     seriesState.origin = SeriesOrigin.HISTORY
                     adoptSource(target.source)
                     seriesState.active = target.series
@@ -119,13 +137,15 @@ internal class SavedSeriesActionController(
                         openChapter(target.index)
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
-                appState.error = sourceFailureMessage(
-                    error,
-                    "Could not resume"
-                )
+                if (generation == seriesState.snapshotGeneration()) {
+                    appState.error = sourceFailureMessage(error, "Could not resume")
+                }
+            } finally {
+                if (generation == seriesState.snapshotGeneration()) appState.loading = false
             }
-            appState.loading = false
         }
     }
 
@@ -136,20 +156,22 @@ internal class SavedSeriesActionController(
 
     private fun applyCached(
         expectedSeriesId: String,
+        generation: Long,
         chapters: List<Chapter>
     ) {
-        if (seriesState.active?.id == expectedSeriesId) {
+        if (seriesState.isCurrent(expectedSeriesId, generation)) {
             seriesState.chapters = chapters
         }
     }
 
     private fun applyResolved(
         expectedSeriesId: String,
+        generation: Long,
         source: Source,
         series: Series,
         chapters: List<Chapter>
     ) {
-        if (seriesState.active?.id != expectedSeriesId) return
+        if (!seriesState.isCurrent(expectedSeriesId, generation)) return
 
         seriesState.active = series
         seriesState.chapters = chapters
