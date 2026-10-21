@@ -8,6 +8,11 @@ internal class MigrationNavigationState {
     var from by mutableStateOf<MigrateFrom?>(null)
     var target by mutableStateOf<Pair<Source, Series>?>(null)
 
+    fun begin(origin: MigrateFrom) {
+        target = null
+        from = origin
+    }
+
     fun clear() {
         from = null
         target = null
