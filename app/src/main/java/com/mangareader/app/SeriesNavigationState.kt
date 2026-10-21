@@ -10,11 +10,18 @@ internal class SeriesNavigationState {
     var fetched by mutableStateOf(false)
     var origin by mutableStateOf(SeriesOrigin.BROWSE)
     var tagReturn by mutableStateOf<Series?>(null)
+    private var navigationGeneration = 0L
+
+    /** Distinguishes requests even when the same series is opened twice. */
+    fun snapshotGeneration(): Long = navigationGeneration
+    fun isCurrent(seriesId: String, generation: Long): Boolean =
+        generation == navigationGeneration && active?.id == seriesId
 
     fun begin(
         series: Series,
         origin: SeriesOrigin
     ) {
+        navigationGeneration++
         active = series
         chapters = emptyList()
         fetched = false
@@ -22,6 +29,7 @@ internal class SeriesNavigationState {
     }
 
     fun clear() {
+        navigationGeneration++
         active = null
         chapters = emptyList()
     }
@@ -33,13 +41,19 @@ internal suspend fun SeriesNavigationState.reloadChapters(
     source: Source,
     series: Series
 ): String? {
+    val generation = snapshotGeneration()
     return try {
-        chapters = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             loadSeriesChapters(context, source, series)
         }
+        if (!isCurrent(series.id, generation)) return null
+        chapters = loaded
         fetched = true
         null
+    } catch (error: kotlinx.coroutines.CancellationException) {
+        throw error
     } catch (error: Throwable) {
-        sourceFailureMessage(error, "Could not list chapters")
+        if (!isCurrent(series.id, generation)) null
+        else sourceFailureMessage(error, "Could not list chapters")
     }
 }
