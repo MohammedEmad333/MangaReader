@@ -40,4 +40,17 @@ class SeriesNavigationGenerationTest {
         state.clear()
         assertFalse(state.isCurrent("same", second))
     }
+    @Test fun clearingSeriesResetsFetchedChapterState() {
+        val state = SeriesNavigationState()
+        state.begin(Series("series-a", "A", null), SeriesOrigin.BROWSE)
+        state.fetched = true
+        val oldGeneration = state.snapshotGeneration()
+
+        state.clear()
+
+        assertFalse(state.fetched)
+        assertTrue(state.chapters.isEmpty())
+        assertTrue(state.active == null)
+        assertFalse(state.isCurrent("series-a", oldGeneration))
+    }
 }
