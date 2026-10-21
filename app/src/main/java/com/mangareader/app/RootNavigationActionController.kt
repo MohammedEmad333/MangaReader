@@ -72,11 +72,11 @@ internal class RootNavigationActionController(
         val active = seriesState.active ?: return
         val sourceId = browseState.sourceId ?: return
 
-        migrationState.from = MigrateFrom(
+        migrationState.begin(MigrateFrom(
             active.id,
             sourceId,
             active.title
-        )
+        ))
         globalSearch.mediaIsAnime =
             browseState.source?.isAnime ?: sourceId.startsWith("aniyomi:")
         seriesState.tagReturn = active
