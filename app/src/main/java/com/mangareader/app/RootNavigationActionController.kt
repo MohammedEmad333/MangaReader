@@ -89,7 +89,9 @@ internal class RootNavigationActionController(
     fun backFromGlobalSearch() {
         globalSearch.cancel()
         globalSearch.open = false
-        migrationState.from = null
+        // Leaving the picker must discard both the origin and any selected target.
+        // Otherwise a later migration can inherit the previous target dialog.
+        migrationState.clear()
         globalSearch.mediaIsAnime = null
         browseState.series = null
 
