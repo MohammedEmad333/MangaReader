@@ -45,6 +45,11 @@ internal class ReaderSessionState {
             chapterKeyOf(source.id, chapter)
         )
         val token = ++loadSequence
+        if (retryAt == null) {
+            // Never display the previous series/chapter while a new one loads.
+            pages = emptyList()
+            chapterIndex = null
+        }
         var opened = false
 
         loadJob = scope.launch {
@@ -57,6 +62,7 @@ internal class ReaderSessionState {
                     resumeAt = resumeAt
                 ) { partial ->
                     withContext(Dispatchers.Main) {
+                        if (token != loadSequence) return@withContext
                         pages = if (retryAt == null) partial else mergeRetriedReaderPages(previousPages, partial)
                         if (!opened && partial.isNotEmpty()) {
                             opened = true
@@ -65,19 +71,21 @@ internal class ReaderSessionState {
                     }
                 }
 
-                if (pages.isEmpty()) {
+                if (token == loadSequence && pages.isEmpty()) {
                     onError("This chapter has no pages")
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                onError(
-                    sourceFailureMessage(
-                        error,
-                        "Could not open this chapter"
+                if (token == loadSequence) {
+                    onError(
+                        sourceFailureMessage(
+                            error,
+                            "Could not open this chapter"
+                        )
                     )
-                )
-                pages = previousPages
+                    pages = previousPages
+                }
             } finally {
                 if (token == loadSequence) {
                     loading = false

@@ -16,6 +16,7 @@ internal class SeriesActionController(
     private val mediaState: MediaNavigationState
 ) {
     fun enrich(source: Source, series: Series) {
+        val generation = seriesState.snapshotGeneration()
         scope.launch {
             val enriched = withContext(Dispatchers.IO) {
                 loadAndHealSeriesDetails(
@@ -26,7 +27,7 @@ internal class SeriesActionController(
             }
             if (
                 enriched != null &&
-                seriesState.active?.id == series.id
+                seriesState.isCurrent(series.id, generation)
             ) {
                 seriesState.active = enriched
             }
@@ -39,15 +40,15 @@ internal class SeriesActionController(
         seriesState.tagReturn = null
         appState.error = null
         enrich(source, series)
+        val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            appState.error = seriesState.reloadChapters(
-                context,
-                source,
-                series
-            )
-            appState.loading = false
+            val error = seriesState.reloadChapters(context, source, series)
+            if (seriesState.isCurrent(series.id, generation)) {
+                appState.error = error
+                appState.loading = false
+            }
         }
     }
 
@@ -80,15 +81,15 @@ internal class SeriesActionController(
         Downloads.invalidateCompletion()
         appState.downloadTick++
         enrich(source, series)
+        val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            appState.error = seriesState.reloadChapters(
-                context,
-                source,
-                series
-            )
-            appState.loading = false
+            val error = seriesState.reloadChapters(context, source, series)
+            if (seriesState.isCurrent(series.id, generation)) {
+                appState.error = error
+                appState.loading = false
+            }
         }
     }
 
