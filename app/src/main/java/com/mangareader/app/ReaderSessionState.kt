@@ -22,6 +22,7 @@ internal class ReaderSessionState {
 
     private var loadJob: Job? = null
     private var loadSequence = 0
+    private var rootLoadingCallback: ((Boolean) -> Unit)? = null
 
     fun open(
         context: Context,
@@ -45,6 +46,7 @@ internal class ReaderSessionState {
             chapterKeyOf(source.id, chapter)
         )
         val token = ++loadSequence
+        rootLoadingCallback = onRootLoadingChanged
         if (retryAt == null) {
             // Never display the previous series/chapter while a new one loads.
             pages = emptyList()
@@ -90,6 +92,7 @@ internal class ReaderSessionState {
                 if (token == loadSequence) {
                     loading = false
                     onRootLoadingChanged(false)
+                    rootLoadingCallback = null
                 }
             }
         }
@@ -99,6 +102,8 @@ internal class ReaderSessionState {
         loadJob?.cancel()
         loadJob = null
         loadSequence++
+        rootLoadingCallback?.invoke(false)
+        rootLoadingCallback = null
         loading = false
         chapterIndex = null
         pages = emptyList()
