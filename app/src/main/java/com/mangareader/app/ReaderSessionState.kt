@@ -87,6 +87,9 @@ internal class ReaderSessionState {
                         )
                     )
                     pages = previousPages
+                    // A failed fresh load has no pages to display: do not leave
+                    // its chapter selected after discarding streamed pages.
+                    if (retryAt == null) chapterIndex = null
                 }
             } finally {
                 if (token == loadSequence) {
