@@ -32,6 +32,7 @@ internal class SeriesNavigationState {
         navigationGeneration++
         active = null
         chapters = emptyList()
+        fetched = false
     }
 }
 
