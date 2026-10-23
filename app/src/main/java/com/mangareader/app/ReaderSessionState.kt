@@ -91,10 +91,12 @@ internal class ReaderSessionState {
                             "Could not open this chapter"
                         )
                     )
-                    pages = previousPages
-                    // A failed fresh load has no pages to display: do not leave
-                    // its chapter selected after discarding streamed pages.
-                    if (retryAt == null) chapterIndex = null
+                    // Preserve successfully streamed pages on a network failure.
+                    // The reader can still display them while reporting the error.
+                    if (pages.isEmpty()) {
+                        pages = previousPages
+                        if (retryAt == null) chapterIndex = null
+                    }
                 }
             } finally {
                 if (token == loadSequence) {
