@@ -40,6 +40,9 @@ internal class ReaderSessionState {
         val previousPages = if (retryAt != null) pages else emptyList()
         onClearError()
         loadJob?.cancel()
+        // Release the previous screen's loading indicator before replacing its callback.
+        rootLoadingCallback?.invoke(false)
+        rootLoadingCallback = null
 
         val resumeAt = retryAt ?: savedPage(
             context,
