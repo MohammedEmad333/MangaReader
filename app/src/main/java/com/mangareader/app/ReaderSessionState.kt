@@ -58,6 +58,8 @@ internal class ReaderSessionState {
         var opened = false
 
         loadJob = scope.launch {
+            // A queued coroutine may begin after the reader was closed or replaced.
+            if (token != loadSequence) return@launch
             loading = true
             onRootLoadingChanged(true)
             try {
