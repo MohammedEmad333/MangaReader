@@ -103,6 +103,8 @@ internal class ReaderSessionState {
                     loading = false
                     onRootLoadingChanged(false)
                     rootLoadingCallback = null
+                    // Do not retain a completed chapter streaming job.
+                    loadJob = null
                 }
             }
         }
