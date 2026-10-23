@@ -77,6 +77,8 @@ internal class ReaderSessionState {
                 }
 
                 if (token == loadSequence && pages.isEmpty()) {
+                    // A completed empty stream must not leave a chapter selected.
+                    if (retryAt == null) chapterIndex = null
                     onError("This chapter has no pages")
                 }
             } catch (error: CancellationException) {
