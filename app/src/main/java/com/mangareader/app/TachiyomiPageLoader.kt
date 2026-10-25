@@ -88,8 +88,12 @@ internal class TachiyomiPageLoader(
             started.addAll(chunk)
             chunk.map { index ->
                 async {
-                    val outcome = runCatching {
-                        downloadPage(pages[index], dir, index, hostFailures)
+                    val outcome = try {
+                        Result.success(downloadPage(pages[index], dir, index, hostFailures))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Result.failure<File>(error)
                     }
                     outcome.exceptionOrNull()?.let {
                         firstError.compareAndSet(null, it)
@@ -184,9 +188,13 @@ internal class TachiyomiPageLoader(
         val dir = Downloads.cacheDirFor(context, chapter.id).apply { mkdirs() }
         val hostFailures = ConcurrentHashMap<String, Int>()
         return pages.mapIndexedNotNull { index, page ->
-            runCatching {
+            try {
                 downloadPage(page, dir, index, hostFailures)
-            }.getOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
