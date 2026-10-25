@@ -299,20 +299,24 @@ internal class TachiyomiPageLoader(
         }
 
         val partial = File(dir, "%04d.part".format(index))
-        body.byteStream().use { input ->
-            partial.outputStream().use { output ->
-                input.copyTo(output)
+        try {
+            body.byteStream().use { input ->
+                partial.outputStream().use { output ->
+                    input.copyTo(output)
+                }
             }
-        }
-        if (isObviouslyInvalidPage(partial.inputStream().use { it.readPagePrefix() })) {
+            if (isObviouslyInvalidPage(partial.inputStream().use { it.readPagePrefix() })) {
+                throw IOException("The source returned an HTML/JSON response instead of a chapter image")
+            }
+            if (!partial.renameTo(target)) {
+                throw IOException("Could not save the downloaded chapter page")
+            }
+            return target
+        } finally {
+            // Interrupted transfers and invalid CDN responses must not leave
+            // a stale temporary image for a later retry.
             partial.delete()
-            throw IOException("The source returned an HTML/JSON response instead of a chapter image")
         }
-        if (!partial.renameTo(target)) {
-            partial.delete()
-            throw IOException("Could not save the downloaded chapter page")
-        }
-        return target
     }
 
     private fun String.repointFromLoopback(): String {
