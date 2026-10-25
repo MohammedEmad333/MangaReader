@@ -284,9 +284,14 @@ internal class TachiyomiPageLoader(
         page.imageUrl = page.imageUrl?.repointFromLoopback()
 
         val target = File(dir, "%04d".format(index))
-        if (target.exists() && target.length() > 0L) {
-            if (!isObviouslyInvalidPage(target.inputStream().use { it.readPagePrefix() })) return target
-            target.delete()
+        if (target.exists()) {
+            // A zero-byte file is also a failed previous download, not a cache hit.
+            if (target.length() > 0L &&
+                !isObviouslyInvalidPage(target.inputStream().use { it.readPagePrefix() })
+            ) return target
+            if (!target.delete()) {
+                throw IOException("Could not remove invalid cached chapter page")
+            }
         }
 
         val body = if (http != null) {
