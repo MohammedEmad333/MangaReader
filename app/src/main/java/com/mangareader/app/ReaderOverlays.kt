@@ -35,6 +35,7 @@ internal fun BoxScope.ReaderControlsOverlay(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onOpenChapters: () -> Unit,
+    onOpenPages: () -> Unit,
     onOpenSettings: () -> Unit,
     seriesTitle: String,
     chapterName: String,
@@ -116,6 +117,7 @@ internal fun BoxScope.ReaderControlsOverlay(
             onPrev = onPrev,
             onNext = onNext,
             onChapters = onOpenChapters,
+            onPages = onOpenPages,
             onSettings = onOpenSettings,
         )
     }

@@ -100,17 +100,20 @@ internal fun ReaderScreen(
     var showControls by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
+    var showPages by remember { mutableStateOf(false) }
 
     LaunchedEffect(
         showControls,
         showSettings,
         showChapters,
+        showPages,
         settings.controlsAutoHideSeconds,
     ) {
         if (
             showControls &&
             !showSettings &&
             !showChapters &&
+            !showPages &&
             settings.controlsAutoHideSeconds > 0
         ) {
             delay(settings.controlsAutoHideSeconds * 1_000L)
@@ -145,6 +148,10 @@ internal fun ReaderScreen(
     // System back and the reader toolbar Back button must share the same
     // dismissal order, otherwise the toolbar exits while a sheet is still open.
     fun navigateBack() {
+        if (showPages) {
+            showPages = false
+            return
+        }
         when (readerBackTarget(showSettings, showChapters, showControls)) {
             ReaderBackTarget.SETTINGS -> showSettings = false
             ReaderBackTarget.CHAPTERS -> showChapters = false
@@ -312,6 +319,7 @@ internal fun ReaderScreen(
             onPrev = onPrev,
             onNext = onNext,
             onOpenChapters = { showChapters = true },
+            onOpenPages = { showPages = true },
             onOpenSettings = { showSettings = true },
             seriesTitle = seriesTitle,
             chapterName = chapterName,
@@ -319,6 +327,60 @@ internal fun ReaderScreen(
             pageTextColor = onBackground,
             pageOutlineColor = outlineBackground,
         )
+    }
+
+    if (showPages) {
+        ModalBottomSheet(onDismissRequest = { showPages = false }) {
+            Text(
+                text = "Chapter pages",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+                itemsIndexed(pages) { index, file ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showPages = false
+                                showControls = false
+                                scope.launch {
+                                    val target = index + navigation.headRows
+                                    if (settings.mode == ReaderMode.LONG_STRIP) {
+                                        listState.scrollToItem(target)
+                                    } else {
+                                        pagerState.scrollToPage(target)
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (file != null) {
+                            AsyncImage(
+                                model = file,
+                                contentDescription = "Preview page ${index + 1}",
+                                modifier = Modifier.size(width = 72.dp, height = 96.dp),
+                                contentScale = ContentScale.Fit,
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.size(width = 72.dp, height = 96.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("Not loaded", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        Text(
+                            text = "Page ${index + 1}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     ReaderSheets(

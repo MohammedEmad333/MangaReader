@@ -79,6 +79,7 @@ internal fun ReaderBottomBar(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onChapters: () -> Unit,
+    onPages: () -> Unit,
     onSettings: () -> Unit
 ) {
     Surface(
@@ -128,6 +129,7 @@ internal fun ReaderBottomBar(
             ) {
                 TextButton(onClick = onPrev, enabled = hasPrev) { Text("Prev") }
                 TextButton(onClick = onChapters) { Text("Chapters") }
+                TextButton(onClick = onPages, enabled = total > 0) { Text("Pages") }
                 TextButton(onClick = onSettings) { Text("Settings") }
                 TextButton(onClick = onNext, enabled = hasNext) { Text("Next") }
             }
