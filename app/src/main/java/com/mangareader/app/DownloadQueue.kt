@@ -186,6 +186,8 @@ object DownloadQueue {
         if (hit.isEmpty()) return emptySet()
         items = items.filterNot { it.chapterId in hit }
         progress = progress - hit
+        // Removed downloads must not retain per-chapter pause flags if re-queued.
+        pausedIds = pausedIds - hit
         save(context)
         return hit
     }
