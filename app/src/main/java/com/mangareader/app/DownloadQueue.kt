@@ -213,7 +213,10 @@ object DownloadQueue {
     }
 
     /** Pauses or resumes one chapter, independently of the queue-wide [paused]. */
+    @Synchronized
     fun setItemPaused(context: Context, chapterId: String, value: Boolean) {
+        // Do not persist pause entries for chapters no longer in the queue.
+        if (value && items.none { it.chapterId == chapterId }) return
         pausedIds = if (value) pausedIds + chapterId else pausedIds - chapterId
         save(context)
     }
