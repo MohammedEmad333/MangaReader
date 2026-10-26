@@ -338,6 +338,7 @@ internal fun ReaderScreen(
             )
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
                 itemsIndexed(pages) { index, file ->
+                    val isCurrent = index == currentPage
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -372,11 +373,20 @@ internal fun ReaderScreen(
                                 Text("Not loaded", style = MaterialTheme.typography.labelSmall)
                             }
                         }
-                        Text(
-                            text = "Page ${index + 1}",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
+                        Column {
+                            Text(
+                                text = "Page ${index + 1}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (isCurrent) {
+                                Text(
+                                    text = "Currently reading",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                     }
                 }
             }
