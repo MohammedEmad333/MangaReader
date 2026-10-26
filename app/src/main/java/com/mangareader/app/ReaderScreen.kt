@@ -330,13 +330,19 @@ internal fun ReaderScreen(
     }
 
     if (showPages) {
+        val previewListState = rememberLazyListState(
+            initialFirstVisibleItemIndex = currentPage.coerceIn(0, (pages.size - 1).coerceAtLeast(0)),
+        )
         ModalBottomSheet(onDismissRequest = { showPages = false }) {
             Text(
                 text = "Chapter pages",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+            LazyColumn(
+                state = previewListState,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+            ) {
                 itemsIndexed(pages) { index, file ->
                     val isCurrent = index == currentPage
                     Row(
