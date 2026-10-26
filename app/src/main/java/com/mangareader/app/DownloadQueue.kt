@@ -113,6 +113,8 @@ object DownloadQueue {
         }
         if (added.isEmpty()) return 0
         items = items + added
+        // Re-queued downloads should not inherit stale individual pause flags.
+        pausedIds = pausedIds - added.map { it.chapterId }.toSet()
         // Re-queuing something clears its old failure, so the same chapter can't
         // sit in both lists at once.
         failed = failed.filterNot { f -> added.any { it.chapterId == f.item.chapterId } }
