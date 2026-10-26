@@ -343,8 +343,10 @@ object DownloadQueue {
         restored = true
         DownloadQueueStore.restore(context)?.let { snapshot ->
             paused = snapshot.paused
-            pausedIds = snapshot.pausedIds
             items = snapshot.items
+            // Drop pause flags for chapters no longer in the restored queue.
+            // This also repairs stale state saved by older app versions.
+            pausedIds = snapshot.pausedIds.intersect(items.map { it.chapterId }.toSet())
             failed = snapshot.failed
         }
     }
