@@ -15,7 +15,8 @@ internal class SourceBrowseState {
     var query by mutableStateOf("")
     var mode by mutableStateOf(BrowseMode.POPULAR)
     var loadingMore by mutableStateOf(false)
-    private var listingGeneration = 0L
+    internal var listingGeneration = 0L
+        private set
 
     fun resetListing(
         source: Source,
