@@ -44,6 +44,16 @@ class HistoryFilterTest {
     }
 
     @Test
+    fun readingHistorySummary_countsSavedPositionsWithoutInventingLifetimeTotals() {
+        val completed = manga.copy(chapterKey = "m2", page = 19)
+        val missingTotal = manga.copy(chapterKey = "m3", total = 0)
+        assertEquals(
+            ReadingHistorySummary(inProgress = 1, finished = 1, anime = 1),
+            readingHistorySummary(listOf(manga, completed, missingTotal, anime)),
+        )
+    }
+
+    @Test
     fun filterHistory_combinesMediaAndSearch() {
         val all = listOf(manga, anime)
 
