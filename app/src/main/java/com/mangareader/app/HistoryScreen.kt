@@ -168,6 +168,7 @@ internal fun HistoryScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         HistoryHeader(
             historyCount = history.size,
+            summary = remember(history) { readingHistorySummary(history) },
             loading = loading,
             error = error,
             mediaFilter = mediaFilter,
@@ -258,6 +259,24 @@ internal fun HistoryScreen(
 
 }
 
+
+internal data class ReadingHistorySummary(
+    val inProgress: Int,
+    val finished: Int,
+    val anime: Int,
+)
+
+/** Current saved positions, not lifetime reading totals. */
+internal fun readingHistorySummary(entries: List<HistoryEntry>): ReadingHistorySummary =
+    ReadingHistorySummary(
+        inProgress = entries.count {
+            it.mediaType != "anime" && it.total > 0 && it.page in 0 until it.total - 1
+        },
+        finished = entries.count {
+            it.mediaType != "anime" && it.total > 0 && it.page >= it.total - 1
+        },
+        anime = entries.count { it.mediaType == "anime" },
+    )
 
 internal fun filterHistory(
     history: List<HistoryEntry>,
