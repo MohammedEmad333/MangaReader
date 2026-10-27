@@ -98,7 +98,7 @@ internal object HistoryViewPrefs {
 }
 
 internal fun normalizeHistoryMediaFilter(value: String?): String =
-    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" } ?: "All"
+    value?.takeIf { it == "All" || it == "Manga" || it == "Anime" || it == "Continue" } ?: "All"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -269,6 +269,8 @@ internal fun filterHistory(
         val matchesMedia = when (mediaFilter) {
             "Anime" -> entry.mediaType == "anime"
             "Manga" -> entry.mediaType != "anime"
+            "Continue" -> entry.mediaType != "anime" &&
+                entry.total > 0 && entry.page >= 0 && entry.page < entry.total - 1
             else -> true
         }
         val matchesQuery = needle.isEmpty() ||

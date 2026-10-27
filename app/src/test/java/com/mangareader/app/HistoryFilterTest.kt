@@ -32,6 +32,18 @@ class HistoryFilterTest {
     )
 
     @Test
+    fun filterHistory_continueShowsOnlyUnfinishedManga() {
+        val finished = manga.copy(chapterKey = "finished", page = 19)
+        val invalid = manga.copy(chapterKey = "unknown", total = 0)
+        val list = listOf(manga, finished, invalid, anime)
+
+        assertEquals(listOf(manga), filterHistory(list, "Continue", ""))
+        assertEquals(listOf(manga), filterHistory(list, "Continue", "piece"))
+        assertEquals(emptyList<HistoryEntry>(), filterHistory(list, "Continue", "frieren"))
+        assertEquals("Continue", normalizeHistoryMediaFilter("Continue"))
+    }
+
+    @Test
     fun filterHistory_combinesMediaAndSearch() {
         val all = listOf(manga, anime)
 

@@ -99,7 +99,7 @@ internal fun HistoryHeader(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    listOf("All", "Manga", "Anime").forEach { label ->
+                    listOf("All", "Manga", "Anime", "Continue").forEach { label ->
                         FilterChip(
                             selected = mediaFilter == label,
                             onClick = { onMediaFilterChange(label) },
