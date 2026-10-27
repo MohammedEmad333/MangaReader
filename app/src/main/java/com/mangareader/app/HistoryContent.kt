@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun HistoryHeader(
     historyCount: Int,
+    summary: ReadingHistorySummary,
     loading: Boolean,
     error: String?,
     mediaFilter: String,
@@ -72,6 +73,12 @@ internal fun HistoryHeader(
                 TextButton(onClick = onClearAll) { Text("Clear all") }
             }
         }
+
+        Text(
+            "Reading snapshot: ${summary.inProgress} in progress • ${summary.finished} at last page • ${summary.anime} anime",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Surface(
             shape = MaterialTheme.shapes.large,
