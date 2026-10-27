@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 
 internal class SourceBrowseState {
     var sourceId by mutableStateOf<String?>(null)
@@ -14,12 +15,16 @@ internal class SourceBrowseState {
     var query by mutableStateOf("")
     var mode by mutableStateOf(BrowseMode.POPULAR)
     var loadingMore by mutableStateOf(false)
+    internal var listingGeneration = 0L
+        private set
 
     fun resetListing(
         source: Source,
         query: String,
         mode: BrowseMode
     ) {
+        listingGeneration++
+        loadingMore = false
         this.sourceId = source.id
         this.source = source
         this.series = null
@@ -30,6 +35,8 @@ internal class SourceBrowseState {
     }
 
     fun clearSource() {
+        listingGeneration++
+        loadingMore = false
         source = null
         sourceId = null
         series = null
@@ -45,13 +52,18 @@ internal suspend fun SourceBrowseState.loadFirstPage(
 ): String? {
     resetListing(source, query, mode)
     SourcePrefs.setLastUsed(context, source.id)
+    val generation = listingGeneration
 
     return try {
         val result = loadSourcePage(source, query, mode, 1)
+        if (generation != listingGeneration) return null
         series = result.series
         hasNext = result.hasNext
         null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (error: Throwable) {
+        if (generation != listingGeneration) return null
         series = emptyList()
         sourceFailureMessage(error, "Could not scan this source")
     }
@@ -63,6 +75,7 @@ internal suspend fun SourceBrowseState.loadNextPage(): String? {
 
     loadingMore = true
     val next = page + 1
+    val generation = listingGeneration
 
     return try {
         val result = loadSourcePage(
@@ -71,14 +84,18 @@ internal suspend fun SourceBrowseState.loadNextPage(): String? {
             mode,
             next
         )
+        if (generation != listingGeneration) return null
         series = (series ?: emptyList()) + result.series
         page = next
         hasNext = result.hasNext
         null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (error: Throwable) {
+        if (generation != listingGeneration) return null
         hasNext = false
         sourceFailureMessage(error, "Could not load more")
     } finally {
-        loadingMore = false
+        if (generation == listingGeneration) loadingMore = false
     }
 }
