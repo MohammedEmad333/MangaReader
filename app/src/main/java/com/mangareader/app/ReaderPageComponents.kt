@@ -176,12 +176,19 @@ internal fun ReaderPage(
                 )
                 if (renderFailed) {
                     Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
-                        Text(
-                            text = "Page ${index + 1} could not be displayed. Try reopening this chapter.",
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(20.dp),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        ) {
+                            Text(
+                                text = "Page ${index + 1} could not be displayed. Try reopening this chapter.",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                Text("Retry page ${index + 1}")
+                            }
+                        }
                     }
                 }
             }
