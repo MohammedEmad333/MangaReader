@@ -185,9 +185,11 @@ internal fun ReaderPage(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            TextButton(onClick = onRetry, enabled = !stillLoading) {
-                                Text("Retry page ${index + 1}")
-                            }
+                            Text(
+                                text = "Reopen the chapter to try loading the image again.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
