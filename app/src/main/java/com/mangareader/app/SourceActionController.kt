@@ -10,21 +10,23 @@ internal class SourceActionController(
     private val appState: AppUiState,
     private val browseState: SourceBrowseState
 ) {
+    private var openRequestId = 0L
+
     fun openSource(
         source: Source,
         query: String = "",
         mode: BrowseMode = BrowseMode.POPULAR
     ) {
+        val requestId = ++openRequestId
         appState.error = null
+        appState.loading = true
         scope.launch {
-            appState.loading = true
-            appState.error = browseState.loadFirstPage(
-                context,
-                source,
-                query,
-                mode
-            )
-            appState.loading = false
+            try {
+                val error = browseState.loadFirstPage(context, source, query, mode)
+                if (requestId == openRequestId) appState.error = error
+            } finally {
+                if (requestId == openRequestId) appState.loading = false
+            }
         }
     }
 
