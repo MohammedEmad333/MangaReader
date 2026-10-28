@@ -93,7 +93,7 @@ internal fun ReaderPage(
             }
         }
 
-    val usableFile = file?.takeIf { it.isFile && it.length() > 0L }
+    val usableFile = file?.takeIf(::isUsableReaderPage)
     val rotateWide = remember(usableFile, widePageMode) {
         if (usableFile == null) {
             false
