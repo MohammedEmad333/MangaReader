@@ -2,11 +2,16 @@ package com.mangareader.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
@@ -46,20 +51,42 @@ internal fun SourceBrowseRoute(
                 "unknown"
             }
             Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                Text(
-                    text = if (health.lastError == null) {
-                        "Last browse: successful • $checkedAt"
-                    } else {
-                        "Last browse failed • $checkedAt: ${health.lastError}"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (health.lastError == null) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (loading) "Checking source…" else if (health.lastError == null) {
+                                "Last browse: successful"
+                            } else {
+                                "Last browse failed"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (health.lastError != null && !loading) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                        TextButton(onClick = onRescan, enabled = !loading && !loadingMore) {
+                            Text("Check again")
+                        }
+                    }
+                    Text(
+                        text = "Last checked: $checkedAt • Successes: ${health.successes} • Failures: ${health.failures}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (health.lastError != null) {
+                        Text(
+                            text = health.lastError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         }
         LibraryScreen(

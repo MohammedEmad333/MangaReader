@@ -13,6 +13,8 @@ internal data class SourceBrowseHealth(
     val lastSuccessAt: Long? = null,
     val lastFailureAt: Long? = null,
     val lastError: String? = null,
+    val successes: Int = 0,
+    val failures: Int = 0,
 )
 
 internal class SourceBrowseState {
@@ -31,6 +33,8 @@ internal class SourceBrowseState {
                 lastSuccessAt = saved.optLong("success").takeIf { it > 0L },
                 lastFailureAt = saved.optLong("failure").takeIf { it > 0L },
                 lastError = saved.optString("error").takeIf { it.isNotBlank() },
+                successes = saved.optInt("successes").coerceAtLeast(0),
+                failures = saved.optInt("failures").coerceAtLeast(0),
             ))
         } catch (_: org.json.JSONException) {
             // Malformed previous state should not prevent browsing.
@@ -43,6 +47,8 @@ internal class SourceBrowseState {
             .put("success", value.lastSuccessAt ?: 0L)
             .put("failure", value.lastFailureAt ?: 0L)
             .put("error", value.lastError ?: "")
+            .put("successes", value.successes)
+            .put("failures", value.failures)
         context.getSharedPreferences("source_browse_health", Context.MODE_PRIVATE)
             .edit().putString(sourceId, encoded.toString()).apply()
     }
@@ -52,6 +58,7 @@ internal class SourceBrowseState {
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastSuccessAt = timestamp,
             lastError = null,
+            successes = if (previous.successes == Int.MAX_VALUE) Int.MAX_VALUE else previous.successes + 1,
         ))
         persistHealth(context, sourceId)
     }
@@ -61,6 +68,7 @@ internal class SourceBrowseState {
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastFailureAt = timestamp,
             lastError = message,
+            failures = if (previous.failures == Int.MAX_VALUE) Int.MAX_VALUE else previous.failures + 1,
         ))
         persistHealth(context, sourceId)
     }
