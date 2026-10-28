@@ -25,6 +25,7 @@ internal fun SourceBrowseRoute(
     loading: Boolean,
     error: String?,
     health: SourceBrowseHealth?,
+    onClearHealth: () -> Unit,
     filtersOpen: () -> Unit,
     diagnose: () -> Unit,
     mode: BrowseMode,
@@ -70,8 +71,13 @@ internal fun SourceBrowseRoute(
                                 MaterialTheme.colorScheme.onSurface
                             },
                         )
-                        TextButton(onClick = onRescan, enabled = !loading && !loadingMore) {
-                            Text("Check again")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = onClearHealth, enabled = !loading && !loadingMore) {
+                                Text("Reset stats")
+                            }
+                            TextButton(onClick = onRescan, enabled = !loading && !loadingMore) {
+                                Text("Check again")
+                            }
                         }
                     }
                     Text(
