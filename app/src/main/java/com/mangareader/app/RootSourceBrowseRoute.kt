@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 internal fun RootSourceBrowseRoute(
@@ -10,6 +11,7 @@ internal fun RootSourceBrowseRoute(
     val browseState = root.browse
     val actions = root.actions
     val source = browseState.source ?: return
+    val context = LocalContext.current
     val site = source.siteUrl()
     val startChallenge: (() -> Unit)? = if (site == null) null else fun() {
         appState.challengeUrl = site
@@ -22,6 +24,7 @@ internal fun RootSourceBrowseRoute(
         loading = appState.loading,
         error = appState.error,
         health = browseState.healthFor(source.id),
+        onClearHealth = { browseState.clearHealth(context, source.id) },
         filtersOpen = actions::showFilters,
         diagnose = actions::showProbe,
         mode = browseState.mode,
