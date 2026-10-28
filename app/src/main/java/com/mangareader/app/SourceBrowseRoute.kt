@@ -9,6 +9,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 internal fun SourceBrowseRoute(
@@ -36,12 +38,19 @@ internal fun SourceBrowseRoute(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         if (health != null) {
+            val lastAttempt = maxOf(health.lastSuccessAt ?: 0L, health.lastFailureAt ?: 0L)
+            val checkedAt = if (lastAttempt > 0L) {
+                DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                    .format(Date(lastAttempt))
+            } else {
+                "unknown"
+            }
             Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                 Text(
                     text = if (health.lastError == null) {
-                        "Last browse: successful"
+                        "Last browse: successful • $checkedAt"
                     } else {
-                        "Last browse failed: ${health.lastError}"
+                        "Last browse failed • $checkedAt: ${health.lastError}"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (health.lastError == null) {
