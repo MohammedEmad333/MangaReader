@@ -149,13 +149,30 @@ internal fun ReaderPage(
                 onTap?.invoke(offset.x)
             }
         )
-        file != null -> AsyncImage(
-            model = file,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = contentScale,
-            colorFilter = colorFilter
-        )
+        file != null -> {
+            var renderFailed by remember(file) { mutableStateOf(false) }
+            Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                AsyncImage(
+                    model = file,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale,
+                    colorFilter = colorFilter,
+                    onError = { renderFailed = true },
+                    onSuccess = { renderFailed = false },
+                )
+                if (renderFailed) {
+                    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
+                        Text(
+                            text = "Page ${index + 1} could not be displayed. Try reopening this chapter.",
+                            modifier = Modifier.padding(20.dp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+        }
         // Null while the chapter is still downloading means "not here yet";
         // null once it has finished means that page failed.
         stillLoading -> Box(
