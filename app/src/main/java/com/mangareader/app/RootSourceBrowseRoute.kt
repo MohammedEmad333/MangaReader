@@ -21,6 +21,7 @@ internal fun RootSourceBrowseRoute(
         series = browseState.series,
         loading = appState.loading,
         error = appState.error,
+        health = browseState.healthFor(source.id),
         filtersOpen = actions::showFilters,
         diagnose = actions::showProbe,
         mode = browseState.mode,
