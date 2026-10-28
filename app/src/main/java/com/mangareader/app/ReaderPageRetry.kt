@@ -13,7 +13,7 @@ internal fun canRetryReaderPage(
     !loading &&
         currentChapterIndex == requestedChapterIndex &&
         pageIndex in pages.indices &&
-        pages[pageIndex] == null
+        pages[pageIndex]?.let { it.isFile && it.length() > 0L } != true
 
 /**
  * The source replays cached pages before retrying a failed one.
@@ -24,5 +24,8 @@ internal fun mergeRetriedReaderPages(
     update: List<File?>,
 ): List<File?> {
     require(previous.size == update.size) { "Page count changed; reopen the chapter" }
-    return update.mapIndexed { index, file -> file ?: previous[index] }
+    return update.mapIndexed { index, file ->
+        file?.takeIf { it.isFile && it.length() > 0L }
+            ?: previous[index]?.takeIf { it.isFile && it.length() > 0L }
+    }
 }
