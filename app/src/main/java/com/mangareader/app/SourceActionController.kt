@@ -21,6 +21,7 @@ internal class SourceActionController(
         appState.error = null
         appState.loading = true
         scope.launch {
+            if (requestId != openRequestId) return@launch
             try {
                 val error = browseState.loadFirstPage(context, source, query, mode)
                 if (requestId == openRequestId) appState.error = error
@@ -31,9 +32,12 @@ internal class SourceActionController(
     }
 
     fun loadMoreSeries() {
+        val sourceGeneration = browseState.listingGeneration
         scope.launch {
-            browseState.loadNextPage()?.let {
-                appState.error = it
+            if (sourceGeneration != browseState.listingGeneration) return@launch
+            val error = browseState.loadNextPage()
+            if (sourceGeneration == browseState.listingGeneration && error != null) {
+                appState.error = error
             }
         }
     }
