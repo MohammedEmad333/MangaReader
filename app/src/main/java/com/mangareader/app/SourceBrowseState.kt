@@ -23,6 +23,14 @@ internal class SourceBrowseState {
 
     fun healthFor(sourceId: String): SourceBrowseHealth? = healthBySource[sourceId]
 
+    /** Clear this source's recorded observations without affecting other sources. */
+    fun clearHealth(context: Context, sourceId: String) {
+        if (sourceId.isBlank()) return
+        healthBySource = healthBySource - sourceId
+        context.getSharedPreferences("source_browse_health", Context.MODE_PRIVATE)
+            .edit().remove(sourceId).apply()
+    }
+
     fun restoreHealth(context: Context, sourceId: String) {
         if (healthBySource.containsKey(sourceId)) return
         val raw = context.getSharedPreferences("source_browse_health", Context.MODE_PRIVATE)
