@@ -8,8 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReaderPageRetryTest {
-    private val kept = File("cached-page-0000")
-    private val recovered = File("retried-page-0001")
+    private val kept = File.createTempFile("cached-page-", ".png").apply { writeBytes(byteArrayOf(1)); deleteOnExit() }
+    private val recovered = File.createTempFile("retried-page-", ".png").apply { writeBytes(byteArrayOf(2)); deleteOnExit() }
 
     @Test fun onlyFailedPagesInActiveChapterCanRetry() {
         val pages = listOf(kept, null)
@@ -35,5 +35,22 @@ class ReaderPageRetryTest {
         assertThrows(IllegalArgumentException::class.java) {
             mergeRetriedReaderPages(listOf(kept, null), listOf(recovered))
         }
+    }
+
+    @Test fun missingAndEmptyCacheFilesAreEligibleForRetry() {
+        val vanished = File.createTempFile("vanished-", ".png")
+        vanished.delete()
+        val empty = File.createTempFile("empty-", ".png").apply { deleteOnExit() }
+        assertTrue(canRetryReaderPage(listOf(vanished, empty), false, 1, 1, 0))
+        assertTrue(canRetryReaderPage(listOf(vanished, empty), false, 1, 1, 1))
+        assertFalse(canRetryReaderPage(listOf(kept), false, 1, 1, 0))
+    }
+
+    @Test fun failedRetryDoesNotRestoreDeletedCachedPage() {
+        val vanished = File.createTempFile("vanished-", ".png")
+        vanished.delete()
+        assertEquals(listOf(null, kept), mergeRetriedReaderPages(
+            listOf(vanished, kept), listOf(null, null)
+        ))
     }
 }

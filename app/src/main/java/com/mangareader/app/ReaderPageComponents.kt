@@ -93,16 +93,17 @@ internal fun ReaderPage(
             }
         }
 
-    val rotateWide = remember(file, widePageMode) {
-        if (file == null) {
+    val usableFile = file?.takeIf { it.isFile && it.length() > 0L }
+    val rotateWide = remember(usableFile, widePageMode) {
+        if (usableFile == null) {
             false
         } else {
-            val (width, height) = imageBounds(file)
+            val (width, height) = imageBounds(usableFile)
             shouldRotateWidePage(width, height, widePageMode)
         }
     }
 
-    if (file != null && rotateWide) {
+    if (usableFile != null && rotateWide) {
         BoxWithConstraints(modifier = placeholder, contentAlignment = Alignment.Center) {
             val density = LocalDensity.current
             val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -113,7 +114,7 @@ internal fun ReaderPage(
 
             if (zoomable) {
                 ZoomableAsyncImage(
-                    model = file,
+                    model = usableFile,
                     contentDescription = null,
                     modifier = rotatedModifier,
                     colorFilter = colorFilter,
@@ -126,7 +127,7 @@ internal fun ReaderPage(
                 )
             } else {
                 AsyncImage(
-                    model = file,
+                    model = usableFile,
                     contentDescription = null,
                     modifier = rotatedModifier,
                     contentScale = contentScale,
@@ -138,8 +139,8 @@ internal fun ReaderPage(
     }
 
     when {
-        file != null && zoomable -> ZoomableAsyncImage(
-            model = file,
+        usableFile != null && zoomable -> ZoomableAsyncImage(
+            model = usableFile,
             contentDescription = null,
             modifier = modifier,
             colorFilter = colorFilter,
@@ -149,11 +150,11 @@ internal fun ReaderPage(
                 onTap?.invoke(offset.x)
             }
         )
-        file != null -> {
-            var renderFailed by remember(file) { mutableStateOf(false) }
+        usableFile != null -> {
+            var renderFailed by remember(usableFile) { mutableStateOf(false) }
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
                 AsyncImage(
-                    model = file,
+                    model = usableFile,
                     contentDescription = null,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
                     contentScale = contentScale,
