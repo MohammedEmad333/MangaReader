@@ -75,4 +75,17 @@ class ChapterPagePayloadTest {
         assertFalse(isObviouslyInvalidPage(byteArrayOf(0, 0, 0, 24) + "ftypavif".toByteArray()))
         assertFalse(isObviouslyInvalidPage(byteArrayOf(-1, -40, -1, -32)))
     }
+
+    @Test fun rejectsIncompleteKnownImageHeadersButNotUnknownCodecs() {
+        assertTrue(isTruncatedKnownImage(byteArrayOf(-119, 80, 78, 71), 4))
+        assertFalse(isTruncatedKnownImage(byteArrayOf(-119, 80, 78, 71), 1024))
+        assertTrue(isTruncatedKnownImage(byteArrayOf(-1, -40, -1), 3))
+        assertFalse(isTruncatedKnownImage(byteArrayOf(-1, -40, -1, -32), 100))
+        assertTrue(isTruncatedKnownImage("GIF89a".toByteArray(), 6))
+        assertTrue(isTruncatedKnownImage("RIFF".toByteArray() + ByteArray(4) + "WEBP".toByteArray(), 12))
+        assertFalse(isTruncatedKnownImage("RIFF".toByteArray() + ByteArray(4) + "WEBP".toByteArray(), 1024))
+        assertTrue(isTruncatedKnownImage(byteArrayOf(0, 0, 0, 8) + "ftyp".toByteArray(), 8))
+        assertFalse(isTruncatedKnownImage(byteArrayOf(0, 0, 0, 24) + "ftypavif".toByteArray(), 64))
+        assertFalse(isTruncatedKnownImage(byteArrayOf(1, 2, 3), 3))
+    }
 }
