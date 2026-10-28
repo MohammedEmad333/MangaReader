@@ -104,6 +104,7 @@ internal fun ReaderPage(
     }
 
     if (usableFile != null && rotateWide) {
+        var rotatedRenderFailed by remember(usableFile) { mutableStateOf(false) }
         BoxWithConstraints(modifier = placeholder, contentAlignment = Alignment.Center) {
             val density = LocalDensity.current
             val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -132,7 +133,18 @@ internal fun ReaderPage(
                     modifier = rotatedModifier,
                     contentScale = contentScale,
                     colorFilter = colorFilter,
+                    onError = { rotatedRenderFailed = true },
+                    onSuccess = { rotatedRenderFailed = false },
                 )
+            }
+            if (rotatedRenderFailed) {
+                Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
+                    Text(
+                        text = "Page ${index + 1} could not be displayed.",
+                        modifier = Modifier.padding(20.dp),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         return
