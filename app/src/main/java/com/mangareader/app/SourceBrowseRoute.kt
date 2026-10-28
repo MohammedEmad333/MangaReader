@@ -11,6 +11,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -42,9 +48,22 @@ internal fun SourceBrowseRoute(
     scroll: ScrollMemory,
     onSolveChallenge: (() -> Unit)?
 ) {
+    var confirmReset by remember(source.id) { mutableStateOf(false) }
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Reset source statistics?") },
+            text = { Text("Clear the saved success and failure history for this source only?") },
+            confirmButton = {
+                Button(onClick = { confirmReset = false; onClearHealth() }) { Text("Reset") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         if (health != null) {
-            val lastAttempt = maxOf(health.lastSuccessAt ?: 0L, health.lastFailureAt ?: 0L)
+            val diagnostics = sourceHealthDiagnostics(health)
+            val lastAttempt = diagnostics.lastAttemptAt ?: 0L
             val checkedAt = if (lastAttempt > 0L) {
                 DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
                     .format(Date(lastAttempt))
@@ -72,7 +91,7 @@ internal fun SourceBrowseRoute(
                             },
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = onClearHealth, enabled = !loading && !loadingMore) {
+                            TextButton(onClick = { confirmReset = true }, enabled = !loading && !loadingMore) {
                                 Text("Reset stats")
                             }
                             TextButton(onClick = onRescan, enabled = !loading && !loadingMore) {
@@ -82,6 +101,11 @@ internal fun SourceBrowseRoute(
                     }
                     Text(
                         text = "Last checked: $checkedAt • Successes: ${health.successes} • Failures: ${health.failures}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "Observed requests: ${diagnostics.totalRequests} • Success rate: ${diagnostics.successPercent?.let { "$it%" } ?: "—"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
