@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SourceBrowseHealthTest {
@@ -28,5 +29,32 @@ class SourceBrowseHealthTest {
         assertNull(recovered.lastError)
         assertEquals(1, recovered.failures)
         assertEquals(1, recovered.successes)
+    }
+
+    @Test
+    fun diagnosticsHandlesNoObservationsAndLargeCounts() {
+        assertEquals(SourceHealthDiagnostics(0L, null, "Not checked", null), sourceHealthDiagnostics(null))
+        val maximum = SourceBrowseHealth(
+            successes = Int.MAX_VALUE,
+            failures = Int.MAX_VALUE,
+            lastSuccessAt = 123L,
+        )
+        val summary = sourceHealthDiagnostics(maximum)
+        assertEquals(4294967294L, summary.totalRequests)
+        assertEquals(50, summary.successPercent)
+        assertEquals("Last request successful", summary.currentStatus)
+    }
+
+    @Test
+    fun diagnosticsDistinguishesLatestFailureAndNeverClaimsLiveAvailability() {
+        val snapshot = SourceBrowseHealth(
+            lastSuccessAt = 100L, lastFailureAt = 200L,
+            lastError = "Connection refused", successes = 3, failures = 1,
+        )
+        val summary = sourceHealthDiagnostics(snapshot)
+        assertEquals(4L, summary.totalRequests)
+        assertEquals(75, summary.successPercent)
+        assertEquals("Last request failed", summary.currentStatus)
+        assertEquals(200L, summary.lastAttemptAt)
     }
 }
