@@ -155,7 +155,7 @@ internal fun ReaderPage(
                 AsyncImage(
                     model = file,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
                     contentScale = contentScale,
                     colorFilter = colorFilter,
                     onError = { renderFailed = true },
