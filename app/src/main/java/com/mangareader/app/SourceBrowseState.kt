@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
+import android.content.Context
+import org.json.JSONObject
 
 /** Latest observed browse request status, not a background connectivity probe. */
 internal data class SourceBrowseHealth(
@@ -19,20 +21,48 @@ internal class SourceBrowseState {
 
     fun healthFor(sourceId: String): SourceBrowseHealth? = healthBySource[sourceId]
 
-    fun recordSuccess(sourceId: String, timestamp: Long = System.currentTimeMillis()) {
+    fun restoreHealth(context: Context, sourceId: String) {
+        if (healthBySource.containsKey(sourceId)) return
+        val raw = context.getSharedPreferences("source_browse_health", Context.MODE_PRIVATE)
+            .getString(sourceId, null) ?: return
+        try {
+            val saved = JSONObject(raw)
+            healthBySource = healthBySource + (sourceId to SourceBrowseHealth(
+                lastSuccessAt = saved.optLong("success").takeIf { it > 0L },
+                lastFailureAt = saved.optLong("failure").takeIf { it > 0L },
+                lastError = saved.optString("error").takeIf { it.isNotBlank() },
+            ))
+        } catch (_: org.json.JSONException) {
+            // Malformed previous state should not prevent browsing.
+        }
+    }
+
+    private fun persistHealth(context: Context, sourceId: String) {
+        val value = healthBySource[sourceId] ?: return
+        val encoded = JSONObject()
+            .put("success", value.lastSuccessAt ?: 0L)
+            .put("failure", value.lastFailureAt ?: 0L)
+            .put("error", value.lastError ?: "")
+        context.getSharedPreferences("source_browse_health", Context.MODE_PRIVATE)
+            .edit().putString(sourceId, encoded.toString()).apply()
+    }
+
+    fun recordSuccess(context: Context, sourceId: String, timestamp: Long = System.currentTimeMillis()) {
         val previous = healthBySource[sourceId] ?: SourceBrowseHealth()
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastSuccessAt = timestamp,
             lastError = null,
         ))
+        persistHealth(context, sourceId)
     }
 
-    fun recordFailure(sourceId: String, message: String, timestamp: Long = System.currentTimeMillis()) {
+    fun recordFailure(context: Context, sourceId: String, message: String, timestamp: Long = System.currentTimeMillis()) {
         val previous = healthBySource[sourceId] ?: SourceBrowseHealth()
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastFailureAt = timestamp,
             lastError = message,
         ))
+        persistHealth(context, sourceId)
     }
 
     var sourceId by mutableStateOf<String?>(null)
@@ -79,6 +109,7 @@ internal suspend fun SourceBrowseState.loadFirstPage(
     mode: BrowseMode
 ): String? {
     resetListing(source, query, mode)
+    restoreHealth(context, source.id)
     SourcePrefs.setLastUsed(context, source.id)
     val generation = listingGeneration
 
@@ -87,18 +118,18 @@ internal suspend fun SourceBrowseState.loadFirstPage(
         if (generation != listingGeneration) return null
         series = result.series
         hasNext = result.hasNext
-        recordSuccess(source.id)
+        recordSuccess(context, source.id)
         null
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Throwable) {
         if (generation != listingGeneration) return null
         series = emptyList()
-        sourceFailureMessage(error, "Could not scan this source").also { recordFailure(source.id, it) }
+        sourceFailureMessage(error, "Could not scan this source").also { recordFailure(context, source.id, it) }
     }
 }
 
-internal suspend fun SourceBrowseState.loadNextPage(): String? {
+internal suspend fun SourceBrowseState.loadNextPage(context: Context): String? {
     val activeSource = source ?: return null
     if (loadingMore || !hasNext) return null
 
@@ -117,14 +148,14 @@ internal suspend fun SourceBrowseState.loadNextPage(): String? {
         series = (series ?: emptyList()) + result.series
         page = next
         hasNext = result.hasNext
-        recordSuccess(activeSource.id)
+        recordSuccess(context, activeSource.id)
         null
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Throwable) {
         if (generation != listingGeneration) return null
         hasNext = false
-        sourceFailureMessage(error, "Could not load more").also { recordFailure(activeSource.id, it) }
+        sourceFailureMessage(error, "Could not load more").also { recordFailure(context, activeSource.id, it) }
     } finally {
         if (generation == listingGeneration) loadingMore = false
     }
