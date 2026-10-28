@@ -295,7 +295,10 @@ internal class TachiyomiPageLoader(
         if (target.exists()) {
             // A zero-byte file is also a failed previous download, not a cache hit.
             if (target.length() > 0L &&
-                !isObviouslyInvalidPage(target.inputStream().use { it.readPagePrefix() })
+                target.inputStream().use { input ->
+                    val prefix = input.readPagePrefix()
+                    !isObviouslyInvalidPage(prefix) && !isTruncatedKnownImage(prefix, target.length())
+                }
             ) return target
             if (!target.delete()) {
                 throw IOException("Could not remove invalid cached chapter page")
@@ -318,7 +321,10 @@ internal class TachiyomiPageLoader(
                     input.copyTo(output)
                 }
             }
-            if (isObviouslyInvalidPage(partial.inputStream().use { it.readPagePrefix() })) {
+            if (partial.inputStream().use { input ->
+                    val prefix = input.readPagePrefix()
+                    isObviouslyInvalidPage(prefix) || isTruncatedKnownImage(prefix, partial.length())
+                }) {
                 throw IOException("The source returned an HTML/JSON response instead of a chapter image")
             }
             if (!partial.renameTo(target)) {
@@ -405,4 +411,26 @@ internal fun isObviouslyInvalidPage(prefix: ByteArray): Boolean {
         "too many requests", "rate limit exceeded", "error 403",
         "error 404", "upstream connect error", "cloudflare",
     ).any(start::startsWith)
+}
+
+
+/**
+ * Detect unmistakably incomplete image headers without rejecting unfamiliar
+ * formats (including extensionless AVIF/HEIF and newer codec variants).
+ */
+internal fun isTruncatedKnownImage(prefix: ByteArray, fileSize: Long): Boolean {
+    fun begins(vararg bytes: Int): Boolean =
+        prefix.size >= bytes.size &&
+            bytes.indices.all { prefix[it].toInt() and 0xff == bytes[it] }
+    return when {
+        begins(0x89, 0x50, 0x4e, 0x47) -> fileSize < 24L // PNG IHDR
+        begins(0xff, 0xd8, 0xff) -> fileSize < 4L // JPEG marker
+        begins(0x47, 0x49, 0x46, 0x38) -> fileSize < 10L // GIF header and dimensions
+        begins(0x52, 0x49, 0x46, 0x46) &&
+            prefix.size >= 12 &&
+            prefix.copyOfRange(8, 12).contentEquals("WEBP".toByteArray()) -> fileSize < 16L
+        prefix.size >= 8 &&
+            prefix.copyOfRange(4, 8).contentEquals("ftyp".toByteArray()) -> fileSize < 12L
+        else -> false
+    }
 }
