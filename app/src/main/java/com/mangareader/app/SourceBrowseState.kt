@@ -17,6 +17,29 @@ internal data class SourceBrowseHealth(
     val failures: Int = 0,
 )
 
+/** Derived diagnostics from observed requests; not a live connectivity probe. */
+internal data class SourceHealthDiagnostics(
+    val totalRequests: Long,
+    val successPercent: Int?,
+    val currentStatus: String,
+    val lastAttemptAt: Long?,
+)
+
+internal fun sourceHealthDiagnostics(health: SourceBrowseHealth?): SourceHealthDiagnostics {
+    if (health == null) return SourceHealthDiagnostics(0L, null, "Not checked", null)
+    val total = health.successes.toLong() + health.failures.toLong()
+    val successPercent = if (total == 0L) null else
+        ((health.successes.toLong() * 100L) / total).toInt()
+    val lastAttemptAt = maxOf(health.lastSuccessAt ?: 0L, health.lastFailureAt ?: 0L)
+        .takeIf { it > 0L }
+    val status = when {
+        health.lastError != null -> "Last request failed"
+        health.lastSuccessAt != null -> "Last request successful"
+        else -> "Not checked"
+    }
+    return SourceHealthDiagnostics(total, successPercent, status, lastAttemptAt)
+}
+
 internal class SourceBrowseState {
     var healthBySource by mutableStateOf<Map<String, SourceBrowseHealth>>(emptyMap())
         private set
