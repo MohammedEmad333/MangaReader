@@ -53,4 +53,32 @@ class ReaderPageRetryTest {
             listOf(vanished, kept), listOf(null, null)
         ))
     }
+
+    @Test fun htmlAndJsonCacheFilesBecomeRetryable() {
+        val html = File.createTempFile("reader-html-", ".page").apply {
+            writeText("<html>Access denied</html>")
+            deleteOnExit()
+        }
+        val json = File.createTempFile("reader-json-", ".page").apply {
+            writeText("{\"error\":\"rate limited\"}")
+            deleteOnExit()
+        }
+        assertFalse(isUsableReaderPage(html))
+        assertFalse(isUsableReaderPage(json))
+        assertTrue(canRetryReaderPage(listOf(html, json), false, 0, 0, 0))
+        assertTrue(canRetryReaderPage(listOf(html, json), false, 0, 0, 1))
+        assertEquals(listOf(null, kept), mergeRetriedReaderPages(
+            listOf(html, kept), listOf(null, null)
+        ))
+    }
+
+    @Test fun truncatedPngCacheIsNotTreatedAsValidImage() {
+        val broken = File.createTempFile("reader-png-", ".page").apply {
+            writeBytes(byteArrayOf(-119, 80, 78, 71))
+            deleteOnExit()
+        }
+        assertFalse(isUsableReaderPage(broken))
+        assertTrue(canRetryReaderPage(listOf(broken), false, 0, 0, 0))
+        assertTrue(isUsableReaderPage(kept))
+    }
 }
