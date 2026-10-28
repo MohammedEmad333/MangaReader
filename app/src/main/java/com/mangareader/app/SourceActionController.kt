@@ -35,7 +35,7 @@ internal class SourceActionController(
         val sourceGeneration = browseState.listingGeneration
         scope.launch {
             if (sourceGeneration != browseState.listingGeneration) return@launch
-            val error = browseState.loadNextPage()
+            val error = browseState.loadNextPage(context)
             if (sourceGeneration == browseState.listingGeneration && error != null) {
                 appState.error = error
             }
