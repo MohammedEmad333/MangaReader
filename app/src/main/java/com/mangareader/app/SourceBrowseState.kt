@@ -58,7 +58,7 @@ internal class SourceBrowseState {
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastSuccessAt = timestamp,
             lastError = null,
-            successes = (previous.successes + 1).coerceAtLeast(0),
+            successes = if (previous.successes == Int.MAX_VALUE) Int.MAX_VALUE else previous.successes + 1,
         ))
         persistHealth(context, sourceId)
     }
@@ -68,7 +68,7 @@ internal class SourceBrowseState {
         healthBySource = healthBySource + (sourceId to previous.copy(
             lastFailureAt = timestamp,
             lastError = message,
-            failures = (previous.failures + 1).coerceAtLeast(0),
+            failures = if (previous.failures == Int.MAX_VALUE) Int.MAX_VALUE else previous.failures + 1,
         ))
         persistHealth(context, sourceId)
     }
