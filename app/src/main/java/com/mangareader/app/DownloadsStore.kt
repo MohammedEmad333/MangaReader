@@ -295,19 +295,24 @@ internal fun planOfflinePageRepair(dir: File): OfflinePageRepairPlan {
         ambiguousIndices = emptyList(),
         canRepairAutomatically = false,
     )
-    val entries = dir.listFiles().orEmpty()
+    val storedPages = dir.listFiles().orEmpty()
         .filter { isStoredChapterPage(it) || isIndexedUnreadableChapterPage(it) }
+    val entries = storedPages
         .mapNotNull { it.name.substringBefore('.').toIntOrNull() }
         .groupingBy { it }.eachCount()
-    val ambiguous = report.invalidIndices.filter { index ->
+    // The persistent downloader writes extensionless numeric page names.
+    // A legacy .jpg/.png page with the same index would be duplicated by repair.
+    val legacyIndices = storedPages.filter { '.' in it.name }
+        .mapNotNull { it.name.substringBefore('.').toIntOrNull() }
+    val ambiguous = (report.invalidIndices.filter { index ->
         index !in 0 until expected || (entries[index] ?: 0) > 1
-    }
+    } + legacyIndices).distinct().sorted()
     val repairable = (report.missingIndices +
         report.invalidIndices.filter { it in 0 until expected && it !in ambiguous })
         .distinct().sorted()
     return OfflinePageRepairPlan(
         downloadIndices = repairable,
-        ambiguousIndices = ambiguous.sorted(),
+        ambiguousIndices = ambiguous,
         canRepairAutomatically = ambiguous.isEmpty(),
     )
 }
