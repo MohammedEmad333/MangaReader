@@ -255,6 +255,11 @@ internal fun ReaderPage(
                             TextButton(onClick = { renderFailed = false; decodeAttempt++ }) {
                                 Text("Retry display")
                             }
+                            if (canRedownload) {
+                                TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                    Text("Re-download page")
+                                }
+                            }
                         }
                     }
                 }
