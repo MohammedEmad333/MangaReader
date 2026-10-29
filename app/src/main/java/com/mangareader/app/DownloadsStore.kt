@@ -71,7 +71,9 @@ object Downloads {
     }
 
     fun isComplete(context: Context, chapterId: String): Boolean =
-        inspectOfflineChapter(dirFor(context, chapterId)).isComplete
+        completion.getOrPut(chapterId) {
+            inspectOfflineChapter(dirFor(context, chapterId)).isComplete
+        }
 
     fun markComplete(context: Context, chapterId: String, pageCount: Int) {
         val dir = dirFor(context, chapterId)
