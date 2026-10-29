@@ -71,9 +71,7 @@ object Downloads {
     }
 
     fun isComplete(context: Context, chapterId: String): Boolean =
-        completion.getOrPut(chapterId) {
-            inspectOfflineChapter(dirFor(context, chapterId)).isComplete
-        }
+        inspectOfflineChapter(dirFor(context, chapterId)).isComplete
 
     fun markComplete(context: Context, chapterId: String, pageCount: Int) {
         val dir = dirFor(context, chapterId)
@@ -232,9 +230,9 @@ internal data class OfflineChapterIntegrity(
 
 internal fun inspectOfflineChapter(dir: File): OfflineChapterIntegrity {
     val marker = File(dir, ".complete")
-    val expected = marker.takeIf { it.isFile }?.runCatching {
-        readText().trim().toIntOrNull()
-    }?.getOrNull()?.takeIf { it in 1..2000 }
+    val expected = marker.takeIf { it.isFile }?.let {
+        runCatching { it.readText().trim().toIntOrNull() }.getOrNull()
+    }?.takeIf { it in 1..2000 }
     val files = dir.listFiles().orEmpty().filter(::isStoredChapterPage)
     val indexed = files.mapNotNull { file ->
         file.name.substringBefore('.').toIntOrNull()?.let { it to file }
