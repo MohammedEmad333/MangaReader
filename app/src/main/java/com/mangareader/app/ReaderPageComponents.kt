@@ -95,6 +95,8 @@ internal fun ReaderPage(
             }
         }
 
+    val cacheRoot = LocalContext.current.cacheDir
+    val canRedownload = isReaderCachePage(file, cacheRoot)
     val usableFile = file?.takeIf(::isUsableReaderPage)
     val rotateWide = remember(usableFile, widePageMode) {
         if (usableFile == null) {
@@ -162,6 +164,11 @@ internal fun ReaderPage(
                         TextButton(onClick = { rotatedRenderFailed = false; decodeAttempt++ }) {
                             Text("Retry display")
                         }
+                        if (canRedownload) {
+                            TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                Text("Re-download page")
+                            }
+                        }
                     }
                 }
             }
@@ -200,6 +207,11 @@ internal fun ReaderPage(
                             Text("Page ${index + 1} could not be displayed.")
                             TextButton(onClick = { renderFailed = false; decodeAttempt++ }) {
                                 Text("Retry display")
+                            }
+                            if (canRedownload) {
+                                TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                Text("Re-download page")
+                            }
                             }
                         }
                     }
