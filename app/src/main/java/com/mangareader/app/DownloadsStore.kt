@@ -339,7 +339,9 @@ internal fun summarizeOfflineRepairs(directories: Collection<File>): OfflineRepa
     var repairable = 0
     var blocked = 0
     var pages = 0
-    directories.distinctBy { it.absolutePath }.forEach { directory ->
+    directories.distinctBy { directory ->
+        runCatching { directory.canonicalPath }.getOrDefault(directory.absolutePath)
+    }.forEach { directory ->
         val report = inspectOfflineChapter(directory)
         if (report.isComplete) {
             complete++
