@@ -74,10 +74,6 @@ object Downloads {
         // A positive cached result can become stale when Android storage cleanup,
         // SD-card removal or another process removes a page. Revalidate positive
         // results before treating the downloaded chapter as safe to open offline.
-        if (completion[chapterId] == false) {
-            val dir = dirFor(context, chapterId)
-            if (!File(dir, MARKER).isFile) return false
-        }
         return inspectOfflineChapter(dirFor(context, chapterId)).isComplete.also {
             completion[chapterId] = it
         }
