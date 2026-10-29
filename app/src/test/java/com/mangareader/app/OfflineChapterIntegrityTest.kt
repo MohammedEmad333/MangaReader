@@ -1,0 +1,54 @@
+package com.mangareader.app
+
+import java.io.File
+import java.nio.file.Files
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class OfflineChapterIntegrityTest {
+    private fun withChapter(block: (File) -> Unit) {
+        val dir = Files.createTempDirectory("chapter-integrity-").toFile()
+        try { block(dir) } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun completeIndexedChapterPasses() = withChapter { dir ->
+        File(dir, ".complete").writeText("3")
+        repeat(3) { File(dir, "%04d".format(it)).writeBytes(byteArrayOf(1, 2, 3)) }
+        val report = inspectOfflineChapter(dir)
+        assertTrue(report.isComplete)
+        assertEquals(3, report.expectedPages)
+        assertEquals(3, report.availablePages)
+        assertTrue(report.missingIndices.isEmpty())
+        assertTrue(report.invalidIndices.isEmpty())
+    }
+
+    @Test fun missingAndCorruptPagesInvalidateMarker() = withChapter { dir ->
+        File(dir, ".complete").writeText("3")
+        File(dir, "0000").writeBytes(byteArrayOf(1, 2, 3))
+        File(dir, "0001").writeText("<html>Access denied</html>")
+        val report = inspectOfflineChapter(dir)
+        assertFalse(report.isComplete)
+        assertEquals(listOf(2), report.missingIndices)
+        assertEquals(listOf(1), report.invalidIndices)
+    }
+
+    @Test fun malformedMarkerNeverClaimsComplete() = withChapter { dir ->
+        File(dir, ".complete").writeText("not-a-number")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        assertFalse(inspectOfflineChapter(dir).isComplete)
+        assertEquals(null, inspectOfflineChapter(dir).expectedPages)
+    }
+
+    @Test fun duplicatePageIndicesAndUnexpectedNumbersAreDetected() = withChapter { dir ->
+        File(dir, ".complete").writeText("2")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0000.png").writeBytes(byteArrayOf(2))
+        File(dir, "0001").writeBytes(byteArrayOf(3))
+        File(dir, "0002").writeBytes(byteArrayOf(4))
+        val report = inspectOfflineChapter(dir)
+        assertFalse(report.isComplete)
+        assertEquals(listOf(0, 2), report.invalidIndices)
+    }
+}
