@@ -123,4 +123,20 @@ class OfflineChapterIntegrityTest {
         assertFalse(plan.canRepairAutomatically)
         assertTrue(plan.downloadIndices.isEmpty())
     }
+
+    @Test fun repairRequiresMatchingSourcePageCount() = withChapter { dir ->
+        File(dir, ".complete").writeText("3")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        assertTrue(canSafelyRepairOfflineChapter(dir, 3))
+        assertFalse(canSafelyRepairOfflineChapter(dir, 2))
+        assertFalse(canSafelyRepairOfflineChapter(dir, 0))
+        assertTrue(File(dir, "0000").exists())
+    }
+
+    @Test fun ambiguousOfflineChapterIsBlockedBeforeRepair() = withChapter { dir ->
+        File(dir, ".complete").writeText("2")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0000.jpg").writeBytes(byteArrayOf(2))
+        assertFalse(canSafelyRepairOfflineChapter(dir, 2))
+    }
 }
