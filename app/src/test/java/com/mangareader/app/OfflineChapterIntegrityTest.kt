@@ -51,4 +51,25 @@ class OfflineChapterIntegrityTest {
         assertFalse(report.isComplete)
         assertEquals(listOf(0, 2), report.invalidIndices)
     }
+
+    @Test fun deletingPageAfterValidInspectionInvalidatesSubsequentInspection() = withChapter { dir ->
+        File(dir, ".complete").writeText("2")
+        val first = File(dir, "0000").apply { writeBytes(byteArrayOf(1, 2)) }
+        val second = File(dir, "0001").apply { writeBytes(byteArrayOf(3, 4)) }
+        assertTrue(inspectOfflineChapter(dir).isComplete)
+        assertTrue(second.delete())
+        val current = inspectOfflineChapter(dir)
+        assertFalse(current.isComplete)
+        assertEquals(listOf(1), current.missingIndices)
+        assertTrue(first.exists())
+    }
+
+    @Test fun replacingPreviouslyValidPageWithServerErrorInvalidatesInspection() = withChapter { dir ->
+        File(dir, ".complete").writeText("1")
+        val image = File(dir, "0000").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        assertTrue(inspectOfflineChapter(dir).isComplete)
+        image.writeText("<html>Blocked</html>")
+        assertFalse(inspectOfflineChapter(dir).isComplete)
+        assertEquals(listOf(0), inspectOfflineChapter(dir).invalidIndices)
+    }
 }
