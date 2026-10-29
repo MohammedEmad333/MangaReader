@@ -93,4 +93,34 @@ class OfflineChapterIntegrityTest {
         assertEquals(listOf(0), report.invalidIndices)
         assertTrue(report.missingIndices.isEmpty())
     }
+
+    @Test fun repairPlanTargetsOnlyMissingOrCorruptPages() = withChapter { dir ->
+        File(dir, ".complete").writeText("4")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0001").writeText("<html>blocked</html>")
+        File(dir, "0003").writeBytes(byteArrayOf(3))
+        val plan = planOfflinePageRepair(dir)
+        assertEquals(listOf(1, 2), plan.downloadIndices)
+        assertTrue(plan.ambiguousIndices.isEmpty())
+        assertTrue(plan.canRepairAutomatically)
+        assertTrue(File(dir, "0000").exists())
+    }
+
+    @Test fun repairPlanDoesNotOverwriteDuplicateOrOutOfRangePages() = withChapter { dir ->
+        File(dir, ".complete").writeText("2")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0000.jpg").writeBytes(byteArrayOf(2))
+        File(dir, "0003").writeBytes(byteArrayOf(3))
+        val plan = planOfflinePageRepair(dir)
+        assertEquals(listOf(1), plan.downloadIndices)
+        assertEquals(listOf(0, 3), plan.ambiguousIndices)
+        assertFalse(plan.canRepairAutomatically)
+    }
+
+    @Test fun repairPlanRejectsUnknownExpectedCount() = withChapter { dir ->
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        val plan = planOfflinePageRepair(dir)
+        assertFalse(plan.canRepairAutomatically)
+        assertTrue(plan.downloadIndices.isEmpty())
+    }
 }
