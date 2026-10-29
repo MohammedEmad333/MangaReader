@@ -147,13 +147,17 @@ internal fun ReaderPage(
             }
             if (rotatedRenderFailed) {
                 Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
-                    Text(
-                        text = "Page ${index + 1} could not be displayed.",
-                        modifier = Modifier.padding(20.dp),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    TextButton(onClick = { rotatedRenderFailed = false; decodeAttempt++ }) {
-                        Text("Retry display")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp),
+                    ) {
+                        Text(
+                            text = "Page ${index + 1} could not be displayed.",
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        TextButton(onClick = { rotatedRenderFailed = false; decodeAttempt++ }) {
+                            Text("Retry display")
+                        }
                     }
                 }
             }
