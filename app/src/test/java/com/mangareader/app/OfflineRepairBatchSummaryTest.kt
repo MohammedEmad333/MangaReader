@@ -39,4 +39,18 @@ class OfflineRepairBatchSummaryTest {
             assertEquals(0, summary.pagesToRedownload)
         } finally { base.deleteRecursively() }
     }
+
+    @Test fun alternatePathToSameChapterIsCountedOnce() {
+        val base = Files.createTempDirectory("offline-batch-alias-").toFile()
+        try {
+            val chapter = File(base, "chapter").apply { mkdirs() }
+            File(chapter, ".complete").writeText("2")
+            File(chapter, "0000").writeBytes(byteArrayOf(1))
+            val alias = File(base, "chapter/../chapter")
+            val summary = summarizeOfflineRepairs(listOf(chapter, alias))
+            assertEquals(1, summary.totalChapters)
+            assertEquals(1, summary.repairableChapters)
+            assertEquals(1, summary.pagesToRedownload)
+        } finally { base.deleteRecursively() }
+    }
 }
