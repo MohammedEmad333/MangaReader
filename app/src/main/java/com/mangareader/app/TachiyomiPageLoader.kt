@@ -56,6 +56,22 @@ internal class TachiyomiPageLoader(
         }
 
         val pages = cappedPageList(sChapter)
+        if (persist) {
+            val stored = Downloads.dirFor(context, chapter.id)
+            val marker = File(stored, ".complete")
+            if (marker.exists()) {
+                val repair = planOfflinePageRepair(stored)
+                val expected = inspectOfflineChapter(stored).expectedPages
+                if (expected == null || expected != pages.size || !repair.canRepairAutomatically) {
+                    throw ChapterDownloadException(
+                        0, pages.size,
+                        IllegalStateException(
+                            "Stored chapter needs manual review: ambiguous files or page count changed"
+                        )
+                    )
+                }
+            }
+        }
         val dir = if (persist) {
             Downloads.dirFor(context, chapter.id)
         } else {
