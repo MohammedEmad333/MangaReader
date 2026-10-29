@@ -111,7 +111,11 @@ internal fun ReaderPage(
         val context = LocalContext.current
         val rotatedModel = remember(usableFile, decodeAttempt) {
             ImageRequest.Builder(context).data(usableFile)
-                .memoryCacheKey("${usableFile.absolutePath}:rotated:$decodeAttempt").build()
+                .memoryCacheKey("${usableFile.absolutePath}:rotated:$decodeAttempt")
+                .listener(
+                    onError = { _, _ -> rotatedRenderFailed = true },
+                    onSuccess = { _, _ -> rotatedRenderFailed = false },
+                ).build()
         }
         BoxWithConstraints(modifier = placeholder, contentAlignment = Alignment.Center) {
             val density = LocalDensity.current
@@ -123,7 +127,7 @@ internal fun ReaderPage(
 
             if (zoomable) {
                 ZoomableAsyncImage(
-                    model = usableFile,
+                    model = rotatedModel,
                     contentDescription = null,
                     modifier = rotatedModifier,
                     colorFilter = colorFilter,
@@ -166,17 +170,42 @@ internal fun ReaderPage(
     }
 
     when {
-        usableFile != null && zoomable -> ZoomableAsyncImage(
-            model = usableFile,
-            contentDescription = null,
-            modifier = modifier,
-            colorFilter = colorFilter,
-            contentScale = contentScale,
-            // Its own, because a tap this consumes never reaches the pager.
-            onClick = { offset ->
-                onTap?.invoke(offset.x)
+        usableFile != null && zoomable -> {
+            var renderFailed by remember(usableFile) { mutableStateOf(false) }
+            var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+            val context = LocalContext.current
+            val zoomModel = remember(usableFile, decodeAttempt) {
+                ImageRequest.Builder(context).data(usableFile)
+                    .memoryCacheKey("${usableFile.absolutePath}:zoom:$decodeAttempt")
+                    .listener(
+                        onError = { _, _ -> renderFailed = true },
+                        onSuccess = { _, _ -> renderFailed = false },
+                    ).build()
             }
-        )
+            Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                ZoomableAsyncImage(
+                    model = zoomModel,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    colorFilter = colorFilter,
+                    contentScale = contentScale,
+                    onClick = { offset -> onTap?.invoke(offset.x) },
+                )
+                if (renderFailed) {
+                    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text("Page ${index + 1} could not be displayed.")
+                            TextButton(onClick = { renderFailed = false; decodeAttempt++ }) {
+                                Text("Retry display")
+                            }
+                        }
+                    }
+                }
+            }
+        }
         usableFile != null -> {
             var renderFailed by remember(usableFile) { mutableStateOf(false) }
             var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
