@@ -57,6 +57,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -105,6 +107,12 @@ internal fun ReaderPage(
 
     if (usableFile != null && rotateWide) {
         var rotatedRenderFailed by remember(usableFile) { mutableStateOf(false) }
+        var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+        val context = LocalContext.current
+        val rotatedModel = remember(usableFile, decodeAttempt) {
+            ImageRequest.Builder(context).data(usableFile)
+                .memoryCacheKey("${usableFile.absolutePath}:rotated:$decodeAttempt").build()
+        }
         BoxWithConstraints(modifier = placeholder, contentAlignment = Alignment.Center) {
             val density = LocalDensity.current
             val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -128,7 +136,7 @@ internal fun ReaderPage(
                 )
             } else {
                 AsyncImage(
-                    model = usableFile,
+                    model = rotatedModel,
                     contentDescription = null,
                     modifier = rotatedModifier,
                     contentScale = contentScale,
@@ -139,11 +147,18 @@ internal fun ReaderPage(
             }
             if (rotatedRenderFailed) {
                 Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
-                    Text(
-                        text = "Page ${index + 1} could not be displayed.",
-                        modifier = Modifier.padding(20.dp),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp),
+                    ) {
+                        Text(
+                            text = "Page ${index + 1} could not be displayed.",
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        TextButton(onClick = { rotatedRenderFailed = false; decodeAttempt++ }) {
+                            Text("Retry display")
+                        }
+                    }
                 }
             }
         }
@@ -164,9 +179,15 @@ internal fun ReaderPage(
         )
         usableFile != null -> {
             var renderFailed by remember(usableFile) { mutableStateOf(false) }
+            var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+            val context = LocalContext.current
+            val imageModel = remember(usableFile, decodeAttempt) {
+                ImageRequest.Builder(context).data(usableFile)
+                    .memoryCacheKey("${usableFile.absolutePath}:page:$decodeAttempt").build()
+            }
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
                 AsyncImage(
-                    model = usableFile,
+                    model = imageModel,
                     contentDescription = null,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
                     contentScale = contentScale,
@@ -186,10 +207,13 @@ internal fun ReaderPage(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             Text(
-                                text = "Reopen the chapter to try loading the image again.",
+                                text = "Retry display reloads the saved image; it does not download it again.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            TextButton(onClick = { renderFailed = false; decodeAttempt++ }) {
+                                Text("Retry display")
+                            }
                         }
                     }
                 }
