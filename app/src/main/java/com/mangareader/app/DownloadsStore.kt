@@ -87,8 +87,9 @@ object Downloads {
         val dir = dirFor(context, chapterId)
         val files = dir.listFiles() ?: return emptyList()
         return files
-            .filter { it.isFile && !it.name.startsWith(".") && !it.name.endsWith(".part") }
-            .sortedBy { it.name }
+            .filter(::isStoredChapterPage)
+            .sortedWith(compareBy<File> { it.name.substringBefore('.').toIntOrNull() ?: Int.MAX_VALUE }
+                .thenBy { it.name })
     }
 
     fun delete(context: Context, chapterId: String) {
@@ -199,4 +200,23 @@ object Downloads {
         }
 
     private fun hashOf(chapterId: String): String = offlineKey(chapterId)
+}
+
+
+/**
+ * Downloaded page directories may contain completion markers, temporary files,
+ * and index metadata. Only indexed image files should reach the reader.
+ * The downloader writes extensionless zero-padded numeric names; named image
+ * extensions are accepted for older imports.
+ */
+internal fun isStoredChapterPage(file: File): Boolean {
+    if (!file.isFile || file.length() <= 0L) return false
+    val name = file.name
+    if (name.startsWith(".") || name.endsWith(".part", ignoreCase = true)) return false
+    val stem = name.substringBeforeLast('.')
+    val extension = name.substringAfterLast('.', "")
+    val numeric = (if (extension.isEmpty()) name else stem)
+    if (numeric.length !in 1..8 || numeric.any { !it.isDigit() }) return false
+    return extension.isEmpty() || extension.lowercase() in
+        setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heif", "heic", "bmp")
 }
