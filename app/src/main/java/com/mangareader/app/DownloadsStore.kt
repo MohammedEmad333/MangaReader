@@ -311,3 +311,11 @@ internal fun planOfflinePageRepair(dir: File): OfflinePageRepairPlan {
         canRepairAutomatically = ambiguous.isEmpty(),
     )
 }
+
+/** A repair may reuse valid cached pages only when the source page list aligns. */
+internal fun canSafelyRepairOfflineChapter(dir: File, sourcePageCount: Int): Boolean {
+    if (sourcePageCount <= 0) return false
+    val report = inspectOfflineChapter(dir)
+    return report.expectedPages == sourcePageCount &&
+        planOfflinePageRepair(dir).canRepairAutomatically
+}
