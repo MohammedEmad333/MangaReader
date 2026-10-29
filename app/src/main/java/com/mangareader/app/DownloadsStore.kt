@@ -239,7 +239,9 @@ internal fun inspectOfflineChapter(dir: File): OfflineChapterIntegrity {
     val expected = marker.takeIf { it.isFile }?.let {
         runCatching { it.readText().trim().toIntOrNull() }.getOrNull()
     }?.takeIf { it in 1..2000 }
-    val files = dir.listFiles().orEmpty().filter(::isStoredChapterPage)
+    val files = dir.listFiles().orEmpty().filter { file ->
+        isStoredChapterPage(file) || isIndexedUnreadableChapterPage(file)
+    }
     val indexed = files.mapNotNull { file ->
         file.name.substringBefore('.').toIntOrNull()?.let { it to file }
     }.groupBy({ it.first }, { it.second })
@@ -257,4 +259,20 @@ internal fun inspectOfflineChapter(dir: File): OfflineChapterIntegrity {
         isComplete = expected != null && missing.isEmpty() && invalid.isEmpty() &&
             indexed.size == expected,
     )
+}
+
+/**
+ * Include numbered but empty or unreadable image files in integrity diagnostics.
+ * They must not be displayed, but ignoring them would incorrectly report
+ * "missing" instead of "invalid" and could hide duplicate indices.
+ */
+internal fun isIndexedUnreadableChapterPage(file: File): Boolean {
+    if (!file.isFile || file.length() > 0L) return false
+    val name = file.name
+    val stem = name.substringBeforeLast('.')
+    val extension = name.substringAfterLast('.', "")
+    val number = if (extension.isEmpty()) name else stem
+    if (number.length !in 1..8 || number.any { !it.isDigit() }) return false
+    return extension.isEmpty() || extension.lowercase() in
+        setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heif", "heic", "bmp")
 }

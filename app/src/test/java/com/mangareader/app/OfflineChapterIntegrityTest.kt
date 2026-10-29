@@ -72,4 +72,25 @@ class OfflineChapterIntegrityTest {
         assertFalse(inspectOfflineChapter(dir).isComplete)
         assertEquals(listOf(0), inspectOfflineChapter(dir).invalidIndices)
     }
+
+    @Test fun zeroByteImageIsReportedAsInvalidNotMissing() = withChapter { dir ->
+        File(dir, ".complete").writeText("2")
+        File(dir, "0000").writeBytes(byteArrayOf(1, 2))
+        File(dir, "0001").createNewFile()
+        val report = inspectOfflineChapter(dir)
+        assertFalse(report.isComplete)
+        assertTrue(report.missingIndices.isEmpty())
+        assertEquals(listOf(1), report.invalidIndices)
+        assertEquals(2, report.availablePages)
+    }
+
+    @Test fun duplicateIndexWithEmptyVariantIsInvalid() = withChapter { dir ->
+        File(dir, ".complete").writeText("1")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0000.jpg").createNewFile()
+        val report = inspectOfflineChapter(dir)
+        assertFalse(report.isComplete)
+        assertEquals(listOf(0), report.invalidIndices)
+        assertTrue(report.missingIndices.isEmpty())
+    }
 }
