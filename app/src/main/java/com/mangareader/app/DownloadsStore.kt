@@ -72,7 +72,7 @@ object Downloads {
 
     fun isComplete(context: Context, chapterId: String): Boolean =
         completion.getOrPut(chapterId) {
-            File(dirFor(context, chapterId), MARKER).exists()
+            inspectOfflineChapter(dirFor(context, chapterId)).isComplete
         }
 
     fun markComplete(context: Context, chapterId: String, pageCount: Int) {
@@ -219,4 +219,38 @@ internal fun isStoredChapterPage(file: File): Boolean {
     if (numeric.length !in 1..8 || numeric.any { !it.isDigit() }) return false
     return extension.isEmpty() || extension.lowercase() in
         setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heif", "heic", "bmp")
+}
+
+/** Read-only verification of downloaded chapter files; never removes user data. */
+internal data class OfflineChapterIntegrity(
+    val expectedPages: Int?,
+    val availablePages: Int,
+    val missingIndices: List<Int>,
+    val invalidIndices: List<Int>,
+    val isComplete: Boolean,
+)
+
+internal fun inspectOfflineChapter(dir: File): OfflineChapterIntegrity {
+    val marker = File(dir, ".complete")
+    val expected = marker.takeIf { it.isFile }?.runCatching {
+        readText().trim().toIntOrNull()
+    }?.getOrNull()?.takeIf { it in 1..2000 }
+    val files = dir.listFiles().orEmpty().filter(::isStoredChapterPage)
+    val indexed = files.mapNotNull { file ->
+        file.name.substringBefore('.').toIntOrNull()?.let { it to file }
+    }.groupBy({ it.first }, { it.second })
+    val missing = if (expected == null) emptyList() else
+        (0 until expected).filter { indexed[it].isNullOrEmpty() }
+    val invalid = indexed.entries.filter { (number, entries) ->
+        (expected != null && number !in 0 until expected) ||
+            entries.size != 1 || entries.any { !isUsableReaderPage(it) }
+    }.map { it.key }.sorted()
+    return OfflineChapterIntegrity(
+        expectedPages = expected,
+        availablePages = indexed.values.sumOf { it.size },
+        missingIndices = missing,
+        invalidIndices = invalid,
+        isComplete = expected != null && missing.isEmpty() && invalid.isEmpty() &&
+            indexed.size == expected,
+    )
 }
