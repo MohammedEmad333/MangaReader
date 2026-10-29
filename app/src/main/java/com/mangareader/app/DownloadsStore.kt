@@ -324,3 +324,40 @@ internal fun canSafelyRepairOfflineChapter(dir: File, sourcePageCount: Int): Boo
     return report.expectedPages == sourcePageCount &&
         planOfflinePageRepair(dir).canRepairAutomatically
 }
+
+/** Aggregate a bounded set of offline repairs without writing to chapter folders. */
+internal data class OfflineRepairBatchSummary(
+    val totalChapters: Int,
+    val completeChapters: Int,
+    val repairableChapters: Int,
+    val blockedChapters: Int,
+    val pagesToRedownload: Int,
+)
+
+internal fun summarizeOfflineRepairs(directories: Collection<File>): OfflineRepairBatchSummary {
+    var complete = 0
+    var repairable = 0
+    var blocked = 0
+    var pages = 0
+    directories.distinctBy { it.absolutePath }.forEach { directory ->
+        val report = inspectOfflineChapter(directory)
+        if (report.isComplete) {
+            complete++
+        } else {
+            val plan = planOfflinePageRepair(directory)
+            if (plan.canRepairAutomatically && plan.downloadIndices.isNotEmpty()) {
+                repairable++
+                pages += plan.downloadIndices.size
+            } else {
+                blocked++
+            }
+        }
+    }
+    return OfflineRepairBatchSummary(
+        totalChapters = complete + repairable + blocked,
+        completeChapters = complete,
+        repairableChapters = repairable,
+        blockedChapters = blocked,
+        pagesToRedownload = pages,
+    )
+}
