@@ -276,3 +276,38 @@ internal fun isIndexedUnreadableChapterPage(file: File): Boolean {
     return extension.isEmpty() || extension.lowercase() in
         setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heif", "heic", "bmp")
 }
+
+/**
+ * A read-only repair plan for a chapter whose expected page count is known.
+ * Existing valid files are never targets. Duplicate and out-of-range pages
+ * require manual resolution; automatic repair must not overwrite either copy.
+ */
+internal data class OfflinePageRepairPlan(
+    val downloadIndices: List<Int>,
+    val ambiguousIndices: List<Int>,
+    val canRepairAutomatically: Boolean,
+)
+
+internal fun planOfflinePageRepair(dir: File): OfflinePageRepairPlan {
+    val report = inspectOfflineChapter(dir)
+    val expected = report.expectedPages ?: return OfflinePageRepairPlan(
+        downloadIndices = emptyList(),
+        ambiguousIndices = emptyList(),
+        canRepairAutomatically = false,
+    )
+    val entries = dir.listFiles().orEmpty()
+        .filter { isStoredChapterPage(it) || isIndexedUnreadableChapterPage(it) }
+        .mapNotNull { it.name.substringBefore('.').toIntOrNull() }
+        .groupingBy { it }.eachCount()
+    val ambiguous = report.invalidIndices.filter { index ->
+        index !in 0 until expected || (entries[index] ?: 0) > 1
+    }
+    val repairable = (report.missingIndices +
+        report.invalidIndices.filter { it in 0 until expected && it !in ambiguous })
+        .distinct().sorted()
+    return OfflinePageRepairPlan(
+        downloadIndices = repairable,
+        ambiguousIndices = ambiguous.sorted(),
+        canRepairAutomatically = ambiguous.isEmpty(),
+    )
+}
