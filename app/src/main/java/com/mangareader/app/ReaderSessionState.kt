@@ -36,8 +36,18 @@ internal class ReaderSessionState {
         retryAt: Int? = null,
     ) {
         val chapter = chapters.getOrNull(index) ?: return
-        if (retryAt != null && !canRetryReaderPage(pages, loading, chapterIndex, index, retryAt)) return
-        val previousPages = if (retryAt != null) pages else emptyList()
+        if (retryAt != null) {
+            val retryFile = pages.getOrNull(retryAt)
+            val missingOrInvalid = canRetryReaderPage(pages, loading, chapterIndex, index, retryAt)
+            val cacheRedownload = !loading && chapterIndex == index &&
+                isReaderCachePage(retryFile, context.cacheDir)
+            if (!missingOrInvalid && !cacheRedownload) return
+            // The caller explicitly requested this page. Never delete offline downloads.
+            if (cacheRedownload && !invalidateReaderCachePage(retryFile, context.cacheDir)) return
+        }
+        val previousPages = if (retryAt != null) pages.toMutableList().apply {
+            if (retryAt in indices) this[retryAt] = null
+        } else emptyList()
         onClearError()
         loadJob?.cancel()
         // Release the previous screen's loading indicator before replacing its callback.

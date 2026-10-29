@@ -81,4 +81,41 @@ class ReaderPageRetryTest {
         assertTrue(canRetryReaderPage(listOf(broken), false, 0, 0, 0))
         assertTrue(isUsableReaderPage(kept))
     }
+
+    @Test fun redownloadDeletesOnlySelectedReaderCacheFile() {
+        val base = java.nio.file.Files.createTempDirectory("reader-cache-test-").toFile()
+        try {
+            val temporaryChapter = File(base, "pages/chapter1").apply { mkdirs() }
+            val image = File(temporaryChapter, "0001").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+            val sibling = File(temporaryChapter, "0002").apply { writeBytes(byteArrayOf(4, 5)) }
+            val offline = File(base, "offline/0001").apply {
+                parentFile!!.mkdirs()
+                writeBytes(byteArrayOf(8))
+            }
+            assertTrue(isReaderCachePage(image, base))
+            assertFalse(isReaderCachePage(offline, base))
+            assertFalse(invalidateReaderCachePage(offline, base))
+            assertTrue(offline.exists())
+            assertTrue(invalidateReaderCachePage(image, base))
+            assertFalse(image.exists())
+            assertTrue(sibling.exists())
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test fun redownloadNeverDeletesUnexpectedNamesOrDirectories() {
+        val base = java.nio.file.Files.createTempDirectory("reader-cache-guard-").toFile()
+        try {
+            val chapter = File(base, "pages/chapter").apply { mkdirs() }
+            val marker = File(chapter, ".complete").apply { writeText("1") }
+            val partial = File(chapter, "0001.part").apply { writeText("unfinished") }
+            assertFalse(invalidateReaderCachePage(marker, base))
+            assertFalse(invalidateReaderCachePage(partial, base))
+            assertTrue(marker.exists())
+            assertTrue(partial.exists())
+        } finally {
+            base.deleteRecursively()
+        }
+    }
 }
