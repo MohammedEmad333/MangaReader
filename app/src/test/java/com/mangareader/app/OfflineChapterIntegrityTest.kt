@@ -139,4 +139,26 @@ class OfflineChapterIntegrityTest {
         File(dir, "0000.jpg").writeBytes(byteArrayOf(2))
         assertFalse(canSafelyRepairOfflineChapter(dir, 2))
     }
+
+    @Test fun legacyExtensionPagesBlockAutomaticRepairToPreventDuplicates() = withChapter { dir ->
+        File(dir, ".complete").writeText("3")
+        File(dir, "0000.jpg").writeBytes(byteArrayOf(1, 2))
+        File(dir, "0001").writeBytes(byteArrayOf(3, 4))
+        val plan = planOfflinePageRepair(dir)
+        assertEquals(listOf(2), plan.downloadIndices)
+        assertEquals(listOf(0), plan.ambiguousIndices)
+        assertFalse(plan.canRepairAutomatically)
+        assertFalse(canSafelyRepairOfflineChapter(dir, 3))
+        assertTrue(File(dir, "0000.jpg").exists())
+    }
+
+    @Test fun extensionlessChapterMayStillRepairOnlyMissingPages() = withChapter { dir ->
+        File(dir, ".complete").writeText("3")
+        File(dir, "0000").writeBytes(byteArrayOf(1))
+        File(dir, "0002").writeBytes(byteArrayOf(3))
+        val plan = planOfflinePageRepair(dir)
+        assertTrue(plan.canRepairAutomatically)
+        assertEquals(listOf(1), plan.downloadIndices)
+        assertTrue(plan.ambiguousIndices.isEmpty())
+    }
 }
