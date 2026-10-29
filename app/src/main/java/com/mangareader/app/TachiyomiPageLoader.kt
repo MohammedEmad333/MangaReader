@@ -60,9 +60,7 @@ internal class TachiyomiPageLoader(
             val stored = Downloads.dirFor(context, chapter.id)
             val marker = File(stored, ".complete")
             if (marker.exists()) {
-                val repair = planOfflinePageRepair(stored)
-                val expected = inspectOfflineChapter(stored).expectedPages
-                if (expected == null || expected != pages.size || !repair.canRepairAutomatically) {
+                if (!canSafelyRepairOfflineChapter(stored, pages.size)) {
                     throw ChapterDownloadException(
                         0, pages.size,
                         IllegalStateException(
