@@ -45,3 +45,21 @@ internal fun mergeRetriedReaderPages(
             ?: previous[index]?.takeIf(::isUsableReaderPage)
     }
 }
+
+/** Only temporary reader cache pages may be discarded for a forced re-download. */
+internal fun isReaderCachePage(file: File?, cacheRoot: File): Boolean {
+    if (file == null || !file.isFile || !file.name.matches(Regex("[0-9]{4}"))) return false
+    return try {
+        val root = File(cacheRoot, "pages").canonicalFile
+        val parent = file.canonicalFile.parentFile ?: return false
+        parent.parentFile == root && parent.isDirectory
+    } catch (_: java.io.IOException) {
+        false
+    }
+}
+
+/** Never remove stored offline chapters, even when their image decoder fails. */
+internal fun invalidateReaderCachePage(file: File?, cacheRoot: File): Boolean {
+    if (!isReaderCachePage(file, cacheRoot)) return false
+    return file!!.delete()
+}
