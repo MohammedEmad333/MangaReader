@@ -21,7 +21,7 @@ internal suspend fun loadSeriesChapters(
     series: Series
 ): List<Chapter> =
     source.listChapters(series).also {
-        ChapterCache.save(context, series.id, it)
+        ChapterCache.save(context, source.id, series.id, it)
     }
 
 internal suspend fun loadAndHealSeriesDetails(
