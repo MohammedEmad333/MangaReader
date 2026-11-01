@@ -105,11 +105,8 @@ object DownloadQueue {
      */
     @Synchronized
     fun enqueue(context: Context, newItems: List<DownloadItem>): Int {
-        val known = items.map { it.chapterId }.toMutableSet()
-        val added = newItems.filter { item ->
-            item.chapterId !in known &&
-                !Downloads.isComplete(context, item.chapterId) &&
-                known.add(item.chapterId)
+        val added = eligibleNewDownloadItems(items, newItems) { chapterId ->
+            Downloads.isComplete(context, chapterId)
         }
         if (added.isEmpty()) return 0
         items = items + added
@@ -208,6 +205,7 @@ object DownloadQueue {
     }
 
     fun setPaused(context: Context, value: Boolean) {
+        if (paused == value) return
         paused = value
         save(context)
     }
@@ -217,6 +215,7 @@ object DownloadQueue {
     fun setItemPaused(context: Context, chapterId: String, value: Boolean) {
         // Do not persist pause entries for chapters no longer in the queue.
         if (value && items.none { it.chapterId == chapterId }) return
+        if ((chapterId in pausedIds) == value) return
         pausedIds = if (value) pausedIds + chapterId else pausedIds - chapterId
         save(context)
     }
@@ -235,6 +234,7 @@ object DownloadQueue {
      * has no other possible meaning.
      */
     fun clearItemPauses(context: Context) {
+        if (pausedIds.isEmpty()) return
         pausedIds = emptySet()
         save(context)
     }
