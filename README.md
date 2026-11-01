@@ -14,6 +14,7 @@ Anime episodes use the built-in Media3 player with stream selection, subtitles, 
 - `docs/ARCHITECTURE.md` — current module boundaries, compatibility constraints, and maintenance guidance
 - `docs/RELEASE_SIGNING.md` — secret-backed release signing migration
 - `CONTRIBUTING.md` — validation rules and contribution guidance
+- `docs/REPOSITORY_MAINTENANCE.md` — PR/CI policy, historical-branch recovery, and branch cleanup
 - `docs/archive/designs/` — historical design notes
 - `docs/archive/handoffs/` — historical implementation/debugging handoffs
 
