@@ -82,7 +82,7 @@ class ChapterUpdateCheckWorker(
                         if (chapters.isEmpty()) {
                             failed++
                         } else {
-                            val previous = ChapterCache.load(context, entry.seriesId)
+                            val previous = ChapterCache.load(context, entry.sourceId, entry.seriesId)
                             val fresh = ChapterUpdateDetector.newlyAvailable(previous, chapters)
                             if (fresh.isNotEmpty()) {
                                 newChapters += fresh.size
@@ -94,7 +94,7 @@ class ChapterUpdateCheckWorker(
                                     )
                                 })
                             }
-                            ChapterCache.save(context, entry.seriesId, chapters)
+                            ChapterCache.save(context, entry.sourceId, entry.seriesId, chapters)
                             SeriesIndex.record(context, entry.sourceId, entry.seriesId, chapters)
                             checked++
                             if (fresh.isNotEmpty()) {
