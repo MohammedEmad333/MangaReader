@@ -292,7 +292,7 @@ internal class TachiyomiPageLoader(
     }
 
     private fun isTransient(e: Throwable): Boolean = when (e) {
-        is HttpException -> e.code in TRANSIENT_HTTP_CODES
+        is HttpException -> isRetryablePageHttpStatus(e.code)
         is IOException -> true
         else -> false
     }
@@ -383,7 +383,6 @@ internal class TachiyomiPageLoader(
         const val HOST_CONNECT_FAILURE_LIMIT = 4
         const val CONNECT_RETRY_GIVE_UP_AT = 2
         const val CAUSE_CHAIN_LIMIT = 6
-        val TRANSIENT_HTTP_CODES = setOf(400, 408, 425, 429, 500, 502, 503, 504)
         val fallbackClient = OkHttpClient()
     }
 }
@@ -396,13 +395,25 @@ internal class TachiyomiPageLoader(
 internal fun InputStream.readPagePrefix(): ByteArray {
     val prefix = ByteArray(128)
     var total = 0
+    var emptyReads = 0
     while (total < prefix.size) {
         val read = read(prefix, total, prefix.size - total)
-        if (read <= 0) break
+        if (read < 0) break
+        if (read == 0) {
+            // Some extension-provided streams temporarily yield zero bytes.
+            // Bound retries to avoid looping forever on a broken stream.
+            if (++emptyReads >= 3) break
+            continue
+        }
+        emptyReads = 0
         total += read
     }
     return prefix.copyOf(total)
 }
+
+/** Retry network/server throttling; a malformed request (HTTP 400) is not transient. */
+internal fun isRetryablePageHttpStatus(code: Int): Boolean =
+    code in setOf(408, 425, 429, 500, 502, 503, 504) || code in 520..524
 
 /**
  * A 200 response can still contain a CDN block/rate-limit document instead of an image.
@@ -423,7 +434,10 @@ internal fun isObviouslyInvalidPage(prefix: ByteArray): Boolean {
         "403 forbidden", "404 not found", "429 too many requests",
         "502 bad gateway", "503 service unavailable", "504 gateway timeout",
         "too many requests", "rate limit exceeded", "error 403",
-        "error 404", "upstream connect error", "cloudflare",
+        "error 404", "error 500", "500 internal server error",
+        "520 web server returns an unknown error", "522 connection timed out",
+        "524 a timeout occurred", "service unavailable", "bad gateway",
+        "gateway timeout", "upstream connect error", "cloudflare",
     ).any(start::startsWith)
 }
 
