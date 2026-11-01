@@ -113,13 +113,9 @@ internal suspend fun loadHistoryResumeTarget(
         source,
         series
     )
-    val index = chapters.indexOfFirst {
-        chapterKeyOf(entry.sourceId, it) == entry.chapterKey
-    }
-
-    if (index < 0) {
-        throw IllegalStateException("That chapter is gone")
-    }
+    val index = findHistoryChapterIndex(
+        chapters, entry.sourceId, entry.chapterKey
+    ) ?: throw IllegalStateException("That chapter is gone or ambiguous")
 
     return ResumeTarget(
         source,
