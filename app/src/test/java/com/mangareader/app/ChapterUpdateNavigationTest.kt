@@ -12,6 +12,17 @@ class ChapterUpdateNavigationTest {
         assertNull(findUpdateChapterIndex(emptyList(), "chapter-a"))
     }
 
+    @Test fun blankAndDuplicateChapterIdentifiersDoNotNavigate() {
+        val chapters = listOf(
+            Chapter("same", "First"),
+            Chapter("same", "Second"),
+            Chapter("unique", "Third"),
+        )
+        assertNull(findUpdateChapterIndex(chapters, ""))
+        assertNull(findUpdateChapterIndex(chapters, "same"))
+        assertEquals(2, findUpdateChapterIndex(chapters, "unique"))
+    }
+
     private fun saved(source: String, series: String) =
         LibraryEntry(seriesId = series, sourceId = source, title = "Same title", cover = "", addedAt = 1L)
     private fun update(source: String, series: String) =
@@ -21,6 +32,14 @@ class ChapterUpdateNavigationTest {
         val other = saved("b", "same")
         val target = saved("a", "same")
         assertEquals(target, findUpdateLibraryEntry(listOf(other, target), update("a", "same")))
+    }
+
+    @Test fun duplicateAndBlankLibraryIdentifiersNeverChooseAnArbitraryEntry() {
+        val duplicate = saved("a", "same")
+        assertNull(findUpdateLibraryEntry(listOf(duplicate, duplicate), update("a", "same")))
+        assertNull(findUpdateLibraryEntry(listOf(saved("", "same")), update("", "same")))
+        assertNull(findUpdateLibraryEntry(listOf(saved("a", "")), update("a", "")))
+        assertNull(findUpdateLibraryEntry(listOf(saved("a", "same")), update("a", "")))
     }
 
     @Test fun removedSeriesCannotOpenUnrelatedTitle() {
