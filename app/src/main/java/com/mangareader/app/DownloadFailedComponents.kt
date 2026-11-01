@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -12,6 +13,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +37,28 @@ internal fun LazyListScope.downloadFailedSection(
     if (failed.isEmpty()) return
 
     item {
+        var confirmClearFailed by remember { mutableStateOf(false) }
+        if (confirmClearFailed) {
+            AlertDialog(
+                onDismissRequest = { confirmClearFailed = false },
+                title = { Text("Clear failed downloads?") },
+                text = {
+                    Text("Remove the failed-download entries from this list? Downloaded pages will not be deleted.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmClearFailed = false
+                        val appContext = context.applicationContext
+                        scope.launch(Dispatchers.IO) {
+                            DownloadQueue.clearFailed(appContext)
+                        }
+                    }) { Text("Clear failed") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmClearFailed = false }) { Text("Cancel") }
+                },
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -68,12 +95,7 @@ internal fun LazyListScope.downloadFailedSection(
                     },
                 ) { Text("Retry all") }
                 TextButton(
-                    onClick = {
-                        val appContext = context.applicationContext
-                        scope.launch(Dispatchers.IO) {
-                            DownloadQueue.clearFailed(appContext)
-                        }
-                    },
+                    onClick = { confirmClearFailed = true },
                 ) { Text("Clear") }
             }
         }
