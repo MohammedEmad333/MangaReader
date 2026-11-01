@@ -6,8 +6,12 @@ import android.content.Context
 internal fun findUpdateLibraryEntry(
     entries: List<LibraryEntry>,
     update: ChapterUpdateEvent,
-): LibraryEntry? = entries.firstOrNull {
-    it.seriesId == update.seriesId && it.sourceId == update.sourceId
+): LibraryEntry? {
+    if (update.seriesId.isBlank() || update.sourceId.isBlank()) return null
+    // Corrupt/duplicated library rows must not open an arbitrary source.
+    return entries.singleOrNull {
+        it.seriesId == update.seriesId && it.sourceId == update.sourceId
+    }
 }
 
 /** Chapter IDs must match exactly; never open an unrelated chapter by position. */
