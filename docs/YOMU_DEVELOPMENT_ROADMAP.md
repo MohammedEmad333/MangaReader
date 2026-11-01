@@ -3,11 +3,14 @@
 Status: in progress (partial reliability hardening). Baseline: main, November 2026.
 
 ## Delivered incremental fixes
-- PR #457: chapter update navigation refuses blank or duplicate chapter IDs (merged to main).
-- Reliability batch: exact source/series matching also refuses blank or duplicate library identities; failed download retry ignores blank IDs and avoids duplicate queue entries; failed-entry dismissal reports actual changes. Includes regression tests; do not mark complete until CI passes and the PR merges.
+- PR #457: reject blank or ambiguous chapter IDs in update navigation.
+- PR #458: exact source/series matching, safe failed-download retry and dismissal.
+- PR #459: retry policy for HTTP outages and expanded CDN error-page detection.
+- PR #460: queue input validation, deduplication, and reduced redundant disk writes.
+- Current batch (pending CI/merge): crash-safe atomic queue saves with legacy-file recovery, normalized queue restore, and unambiguous history/chapter resume paths.
 
 ## Still outstanding
-- Full page-loading error-state and bounded-backoff work; process-death download and reading-progress instrumentation; extension and device compatibility checks.
+- Full UI-level page-loading error states; process-death download/reading-progress instrumentation; extension and device compatibility checks.
 - Run on-device smoke tests for chapter switching, downloads interrupted by process death, and reading progress restoration before claiming reliability complete.
 
 ## Phase 1 — Reliability (P0)
