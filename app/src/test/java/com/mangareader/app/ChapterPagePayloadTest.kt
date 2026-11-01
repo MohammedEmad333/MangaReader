@@ -71,6 +71,46 @@ class ChapterPagePayloadTest {
         stream.use { assertArrayEquals("hello".toByteArray(), it.readPagePrefix()) }
     }
 
+    @Test fun httpRetryPolicySkipsPermanentErrorsAndRetriesTemporaryOutages() {
+        listOf(400, 401, 403, 404, 410, 422, 501).forEach { status ->
+            assertFalse("Permanent HTTP $status must not be retried", isRetryablePageHttpStatus(status))
+        }
+        listOf(408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524).forEach { status ->
+            assertTrue("Temporary HTTP $status should be retried", isRetryablePageHttpStatus(status))
+        }
+    }
+
+    @Test fun refusesPlaintextServerErrorsEvenWithSuccessStatus() {
+        listOf(
+            "500 Internal Server Error",
+            "Service Unavailable",
+            "Bad Gateway",
+            "Gateway Timeout",
+            "522 Connection Timed Out",
+            "524 A Timeout Occurred",
+        ).forEach { payload ->
+            assertTrue("Should reject: $payload", isObviouslyInvalidPage(payload.toByteArray()))
+        }
+    }
+
+    @Test fun toleratesBoundedTemporaryZeroByteReads() {
+        val input = object : ByteArrayInputStream("image bytes".toByteArray()) {
+            var first = true
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (first) {
+                    first = false
+                    return 0
+                }
+                return super.read(b, off, len)
+            }
+        }
+        input.use { assertArrayEquals("image bytes".toByteArray(), it.readPagePrefix()) }
+        val stuck = object : ByteArrayInputStream("unused".toByteArray()) {
+            override fun read(b: ByteArray, off: Int, len: Int): Int = 0
+        }
+        stuck.use { assertArrayEquals(byteArrayOf(), it.readPagePrefix()) }
+    }
+
     @Test fun retainsAvifAndOtherBinaryImageFiles() {
         assertFalse(isObviouslyInvalidPage(byteArrayOf(0, 0, 0, 24) + "ftypavif".toByteArray()))
         assertFalse(isObviouslyInvalidPage(byteArrayOf(-1, -40, -1, -32)))
