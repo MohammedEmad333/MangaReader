@@ -20,7 +20,7 @@ private suspend fun chaptersForBulk(
     entry: LibraryEntry,
     source: Source?
 ): List<Chapter> = withContext(Dispatchers.IO) {
-    val cached = ChapterCache.load(context, entry.seriesId)
+    val cached = ChapterCache.load(context, entry.sourceId, entry.seriesId)
         .map { source?.rehydrateChapter(it) ?: it }
 
     if (cached.isNotEmpty()) {
@@ -37,7 +37,7 @@ private suspend fun chaptersForBulk(
     runCatching { source.listChapters(series) }
         .onSuccess {
             if (it.isNotEmpty()) {
-                ChapterCache.save(context, entry.seriesId, it)
+                ChapterCache.save(context, entry.sourceId, entry.seriesId, it)
             }
         }
         .getOrDefault(emptyList())
@@ -150,7 +150,7 @@ internal suspend fun migrateLibrarySeries(
     toSeries: Series
 ): Boolean = withContext(Dispatchers.IO) {
     runCatching {
-        val readNumbers = ChapterCache.load(context, from.seriesId)
+        val readNumbers = ChapterCache.load(context, from.sourceId, from.seriesId)
             .filter {
                 it.number > Chapter.NO_NUMBER &&
                     ReadState.isRead(
@@ -166,7 +166,7 @@ internal suspend fun migrateLibrarySeries(
         }.getOrDefault(emptyList())
 
         if (targetChapters.isNotEmpty()) {
-            ChapterCache.save(context, toSeries.id, targetChapters)
+            ChapterCache.save(context, toSource.id, toSeries.id, targetChapters)
 
             val readKeys = targetChapters
                 .filter {
