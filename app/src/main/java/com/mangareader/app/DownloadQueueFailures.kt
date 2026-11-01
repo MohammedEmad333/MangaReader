@@ -32,7 +32,6 @@ internal object DownloadQueueFailures {
         failed: List<FailedDownload>,
         chapterId: String,
     ): DownloadQueueFailureEdit {
-        if (chapterId.isBlank()) return DownloadQueueFailureEdit(items, failed, 0)
         val remaining = failed.filterNot { it.item.chapterId == chapterId }
         return DownloadQueueFailureEdit(
             items = items,
