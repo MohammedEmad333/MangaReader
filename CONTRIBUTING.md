@@ -36,3 +36,9 @@ Shared versions belong in `gradle/libs.versions.toml` where possible.
 ## Pull requests
 
 Keep refactors separate from feature work when practical. A behavior-preserving cleanup is easier to review and safer to revert when it does not also change product behavior.
+
+## Branch lifecycle and CI gating
+
+Create topic branches from `main`; open a PR for each focused batch. Only merge once **Build APK** has succeeded for the current PR head SHA, and resolve failed checks rather than bypassing them. After a successful merge, allow GitHub's automatic branch deletion to remove the merged branch when enabled. For unmerged work, archive and verify the commit before deleting a branch.
+
+See [repository maintenance and historical-branch recovery](docs/REPOSITORY_MAINTENANCE.md) for the detailed procedure and recent dependency caveats.
