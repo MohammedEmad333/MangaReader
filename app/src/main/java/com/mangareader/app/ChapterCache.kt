@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -118,7 +119,15 @@ object ChapterCache {
                     }
                 )
             }
-            fileFor(context, sourceId, seriesId).writeText(arr.toString())
+            val atomic = AtomicFile(fileFor(context, sourceId, seriesId))
+            val output = atomic.startWrite()
+            try {
+                output.write(arr.toString().toByteArray(Charsets.UTF_8))
+                atomic.finishWrite(output)
+            } catch (error: Exception) {
+                atomic.failWrite(output)
+                throw error
+            }
         }
     }
 
@@ -126,13 +135,15 @@ object ChapterCache {
         if (sourceId.isBlank() || seriesId.isBlank()) return emptyList()
         val scoped = fileFor(context, sourceId, seriesId)
         val file = when {
-            scoped.exists() -> scoped
+            scoped.exists() || File(scoped.path + ".bak").exists() -> scoped
             canReadLegacyChapterCache(Library.list(context), sourceId, seriesId) ->
                 legacyFileFor(context, seriesId)
             else -> return emptyList()
         }
-        if (!file.exists()) return emptyList()
-        val arr = JSONArray(file.readText())
+        if (!file.exists() && !File(file.path + ".bak").exists()) return emptyList()
+        val arr = JSONArray(
+            AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+        )
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             Chapter(
