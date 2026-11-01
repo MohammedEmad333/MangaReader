@@ -20,8 +20,8 @@ internal object DownloadCovers {
     private fun dir(context: Context): File =
         File(context.applicationContext.filesDir, "download_covers").apply { mkdirs() }
 
-    private fun fileFor(context: Context, seriesId: String): File =
-        File(dir(context), offlineKey(seriesId) + ".cover")
+    private fun fileFor(context: Context, sourceId: String, seriesId: String): File =
+        File(dir(context), downloadCoverCacheKey(sourceId, seriesId) + ".cover")
 
     /**
      * Ensures the series cover exists locally and returns the local absolute path.
@@ -29,9 +29,11 @@ internal object DownloadCovers {
      * failure must never turn a successful chapter download into a failed one.
      */
     fun ensure(context: Context, item: DownloadItem): String {
-        if (item.cover.isBlank() || item.seriesId.isBlank()) return item.cover
+        if (item.cover.isBlank() || item.sourceId.isBlank() || item.seriesId.isBlank()) {
+            return item.cover
+        }
 
-        val target = fileFor(context, item.seriesId)
+        val target = fileFor(context, item.sourceId, item.seriesId)
         if (target.isFile && target.length() > 0L) return target.absolutePath
 
         val source = File(item.cover)
@@ -47,9 +49,11 @@ internal object DownloadCovers {
         return if (saved) target.absolutePath else item.cover
     }
 
-    fun delete(context: Context, seriesId: String) {
-        if (seriesId.isBlank()) return
-        runCatching { fileFor(context, seriesId).delete() }
+    fun delete(context: Context, sourceId: String, seriesId: String) {
+        if (sourceId.isBlank() || seriesId.isBlank()) return
+        // Keep old series-only covers: older download-index rows may still
+        // reference them, including rows belonging to another source.
+        runCatching { fileFor(context, sourceId, seriesId).delete() }
     }
 
     fun clear(context: Context) {
