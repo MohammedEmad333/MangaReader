@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -21,13 +22,36 @@ internal fun offlineKey(id: String): String =
         .digest(id.toByteArray())
         .joinToString("") { "%02x".format(it) }
 
-/** The last known chapter list for a series, so it can be opened without network. */
+/**
+ * Namespace chapter caches by both source and series ID.
+ * A series ID alone is not globally unique across installed extensions.
+ */
+internal fun chapterCacheScopeKey(sourceId: String, seriesId: String): String =
+    offlineKey("${sourceId.length}:$sourceId${seriesId.length}:$seriesId")
+
+/**
+ * Old caches lack a source identifier. Only consider one if the library contains
+ * exactly one matching series; ambiguous legacy IDs must not cross sources.
+ */
+internal fun canReadLegacyChapterCache(
+    entries: List<LibraryEntry>,
+    sourceId: String,
+    seriesId: String,
+): Boolean =
+    sourceId.isNotBlank() && seriesId.isNotBlank() &&
+        entries.count { it.seriesId == seriesId } == 1 &&
+        entries.any { it.sourceId == sourceId && it.seriesId == seriesId }
+
+/** The last known chapter list for a source-qualified series. */
 object ChapterCache {
 
     private fun dir(context: Context): File =
         File(context.applicationContext.filesDir, "chapterlists").apply { mkdirs() }
 
-    private fun fileFor(context: Context, seriesId: String): File =
+    private fun fileFor(context: Context, sourceId: String, seriesId: String): File =
+        File(dir(context), "${chapterCacheScopeKey(sourceId, seriesId)}.json")
+
+    private fun legacyFileFor(context: Context, seriesId: String): File =
         File(dir(context), "${offlineKey(seriesId)}.json")
 
     /** A conservative identity used only to reconnect downloads after an id change. */
@@ -44,6 +68,7 @@ object ChapterCache {
      */
     private fun reconcileDownloadAliases(
         context: Context,
+        sourceId: String,
         seriesId: String,
         chapters: List<Chapter>
     ) {
@@ -51,7 +76,7 @@ object ChapterCache {
         if (seriesId !in DownloadIndex.seriesIds(context)) return
 
         val downloaded = DownloadIndex.list(context)
-            .firstOrNull { it.seriesId == seriesId }
+            .firstOrNull { it.sourceId == sourceId && it.seriesId == seriesId }
             ?.chapters
             .orEmpty()
         if (downloaded.isEmpty()) return
@@ -78,9 +103,9 @@ object ChapterCache {
         if (changed) Downloads.invalidateCompletion()
     }
 
-    fun save(context: Context, seriesId: String, chapters: List<Chapter>) {
-        if (chapters.isEmpty()) return
-        runCatching { reconcileDownloadAliases(context, seriesId, chapters) }
+    fun save(context: Context, sourceId: String, seriesId: String, chapters: List<Chapter>) {
+        if (sourceId.isBlank() || seriesId.isBlank() || chapters.isEmpty()) return
+        runCatching { reconcileDownloadAliases(context, sourceId, seriesId, chapters) }
         runCatching {
             val arr = JSONArray()
             chapters.forEach { ch ->
@@ -94,14 +119,31 @@ object ChapterCache {
                     }
                 )
             }
-            fileFor(context, seriesId).writeText(arr.toString())
+            val atomic = AtomicFile(fileFor(context, sourceId, seriesId))
+            val output = atomic.startWrite()
+            try {
+                output.write(arr.toString().toByteArray(Charsets.UTF_8))
+                atomic.finishWrite(output)
+            } catch (error: Exception) {
+                atomic.failWrite(output)
+                throw error
+            }
         }
     }
 
-    fun load(context: Context, seriesId: String): List<Chapter> = runCatching {
-        val file = fileFor(context, seriesId)
-        if (!file.exists()) return emptyList()
-        val arr = JSONArray(file.readText())
+    fun load(context: Context, sourceId: String, seriesId: String): List<Chapter> = runCatching {
+        if (sourceId.isBlank() || seriesId.isBlank()) return emptyList()
+        val scoped = fileFor(context, sourceId, seriesId)
+        val file = when {
+            scoped.exists() || File(scoped.path + ".bak").exists() -> scoped
+            canReadLegacyChapterCache(Library.list(context), sourceId, seriesId) ->
+                legacyFileFor(context, seriesId)
+            else -> return emptyList()
+        }
+        if (!file.exists() && !File(file.path + ".bak").exists()) return emptyList()
+        val arr = JSONArray(
+            AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+        )
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             Chapter(

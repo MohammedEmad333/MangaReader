@@ -13,7 +13,7 @@ internal fun loadCachedChapters(
     context: Context,
     source: Source,
     seriesId: String
-): List<Chapter> = ChapterCache.load(context, seriesId)
+): List<Chapter> = ChapterCache.load(context, source.id, seriesId)
     .map { source.rehydrateChapter(it) }
 
 private suspend fun loadChaptersWithFallback(
@@ -22,7 +22,7 @@ private suspend fun loadChaptersWithFallback(
     series: Series
 ): List<Chapter> =
     runCatching { source.listChapters(series) }
-        .onSuccess { ChapterCache.save(context, series.id, it) }
+        .onSuccess { ChapterCache.save(context, source.id, series.id, it) }
         .getOrElse { error ->
             val cached = loadCachedChapters(
                 context,

@@ -50,7 +50,7 @@ internal object DownloadIndexBuilder {
 
         if (scanned) {
             for (entry in Library.list(context)) {
-                for (chapter in ChapterCache.load(context, entry.seriesId)) {
+                for (chapter in ChapterCache.load(context, entry.sourceId, entry.seriesId)) {
                     if (chapter.id in known) continue
                     if (!Downloads.isComplete(context, chapter.id)) continue
 

@@ -277,7 +277,7 @@ internal object DownloadPaths {
     fun recoverUnmarkedFromLibrary(context: Context, downloadsRoot: File): Int {
         val candidates = buildList {
             Library.list(context).forEach { entry ->
-                ChapterCache.load(context, entry.seriesId).forEach { chapter ->
+                ChapterCache.load(context, entry.sourceId, entry.seriesId).forEach { chapter ->
                     add(
                         RecoveryCandidate(
                             sourceId = entry.sourceId,

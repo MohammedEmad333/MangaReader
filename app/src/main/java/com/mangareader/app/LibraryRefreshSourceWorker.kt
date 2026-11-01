@@ -42,7 +42,7 @@ internal class LibraryRefreshSourceWorker(
                     // Capture the previous snapshot before replacing it. An
                     // empty snapshot is a baseline, never a signal to download
                     // the whole backlog on first enable/refresh.
-                    val previous = ChapterCache.load(context, entry.seriesId)
+                    val previous = ChapterCache.load(context, entry.sourceId, entry.seriesId)
                     val newlyAvailable = ChapterUpdateDetector.newlyAvailable(previous, chapters)
                     LibraryRefresh.newChapters.addAndGet(newlyAvailable.size)
                     if (newlyAvailable.isNotEmpty()) {
@@ -63,7 +63,7 @@ internal class LibraryRefreshSourceWorker(
                         safelyPostChapterUpdate { ChapterUpdateNotifier.post(context, entry.sourceId, entry.seriesId, entry.title, newlyAvailable.size) }
                     }
 
-                    ChapterCache.save(context, entry.seriesId, chapters)
+                    ChapterCache.save(context, entry.sourceId, entry.seriesId, chapters)
 
                     if (src.supportsDownload &&
                         AutoDownloadPrefs.enabled(context, entry.sourceId, entry.seriesId) &&
