@@ -55,9 +55,10 @@ class DownloadQueueFailuresTest {
         val missing = DownloadQueueFailures.dismiss(emptyList(), original, "missing")
         assertEquals(0, missing.changed)
         assertEquals(original, missing.failed)
+        // Corrupt blank-ID failures must remain dismissible, even though retry is blocked.
         val blank = DownloadQueueFailures.dismiss(emptyList(), original, "")
-        assertEquals(0, blank.changed)
-        assertEquals(original, blank.failed)
+        assertEquals(1, blank.changed)
+        assertEquals(listOf("a", "a"), blank.failed.map { it.item.chapterId })
         val removed = DownloadQueueFailures.dismiss(emptyList(), original, "a")
         assertEquals(2, removed.changed)
         assertEquals(listOf(""), removed.failed.map { it.item.chapterId })
