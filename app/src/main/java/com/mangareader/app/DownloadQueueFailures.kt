@@ -12,7 +12,9 @@ internal object DownloadQueueFailures {
         failed: List<FailedDownload>,
         chapterIds: Set<String>,
     ): DownloadQueueFailureEdit {
-        val back = failed.filter { it.item.chapterId in chapterIds }
+        // Blank chapter IDs cannot identify a unique download and are unsafe to retry.
+        val validIds = chapterIds.filterTo(mutableSetOf()) { it.isNotBlank() }
+        val back = failed.filter { it.item.chapterId in validIds }
         if (back.isEmpty()) {
             return DownloadQueueFailureEdit(items, failed, 0)
         }
@@ -20,7 +22,7 @@ internal object DownloadQueueFailures {
         val toQueue = back.map { it.item }.filter { queuedIds.add(it.chapterId) }
         return DownloadQueueFailureEdit(
             items = items + toQueue,
-            failed = failed.filterNot { it.item.chapterId in chapterIds },
+            failed = failed.filterNot { it.item.chapterId in validIds },
             changed = back.map { it.item.chapterId }.distinct().size,
         )
     }
@@ -29,11 +31,15 @@ internal object DownloadQueueFailures {
         items: List<DownloadItem>,
         failed: List<FailedDownload>,
         chapterId: String,
-    ): DownloadQueueFailureEdit = DownloadQueueFailureEdit(
-        items = items,
-        failed = failed.filterNot { it.item.chapterId == chapterId },
-        changed = 1,
-    )
+    ): DownloadQueueFailureEdit {
+        if (chapterId.isBlank()) return DownloadQueueFailureEdit(items, failed, 0)
+        val remaining = failed.filterNot { it.item.chapterId == chapterId }
+        return DownloadQueueFailureEdit(
+            items = items,
+            failed = remaining,
+            changed = failed.size - remaining.size,
+        )
+    }
 
     fun clear(
         items: List<DownloadItem>,
