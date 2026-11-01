@@ -1,6 +1,14 @@
 # Yomu Reliability and Reader 2.0 Roadmap
 
-Status: proposed; implementation not yet complete. Baseline: main, November 2026.
+Status: in progress (partial reliability hardening). Baseline: main, November 2026.
+
+## Delivered incremental fixes
+- PR #457: chapter update navigation refuses blank or duplicate chapter IDs (merged to main).
+- Reliability batch: exact source/series matching also refuses blank or duplicate library identities; failed download retry ignores blank IDs and avoids duplicate queue entries; failed-entry dismissal reports actual changes. Includes regression tests; do not mark complete until CI passes and the PR merges.
+
+## Still outstanding
+- Full page-loading error-state and bounded-backoff work; process-death download and reading-progress instrumentation; extension and device compatibility checks.
+- Run on-device smoke tests for chapter switching, downloads interrupted by process death, and reading progress restoration before claiming reliability complete.
 
 ## Phase 1 — Reliability (P0)
 1. Reader identity: ensure every page request and navigation result is scoped to immutable series/source/chapter IDs; cancel stale loads on navigation. Add tests for rapid chapter switching and source changes.
@@ -23,7 +31,7 @@ Acceptance: no cross-series navigation in regression tests; failed pages show ac
 
 ## Phase 4 — Search and Sources (P1)
 - Stable result keys, cancellation of outdated searches, deduplication, source health diagnostics, and migration fallbacks.
-- Maintain ABI/API compatibility for external Tachiyomi/Mihon/An iyomi extensions (Aniyomi); validate on real devices.
+- Maintain ABI/API compatibility for external Tachiyomi/Mihon/Aniyomi extensions; validate on real devices.
 
 ## Phase 5 — Anime (P2)
 - Stream fallback, subtitle/audio selection persistence, playback recovery, watch progress, and PiP regression checks.
