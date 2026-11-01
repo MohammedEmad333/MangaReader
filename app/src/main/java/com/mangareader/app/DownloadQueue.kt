@@ -259,12 +259,15 @@ object DownloadQueue {
 
     @Synchronized
     fun dismissFailed(context: Context, chapterId: String) {
-        failed = DownloadQueueFailures.dismiss(items, failed, chapterId).failed
+        val edit = DownloadQueueFailures.dismiss(items, failed, chapterId)
+        if (edit.changed == 0) return
+        failed = edit.failed
         save(context)
     }
 
     @Synchronized
     fun clearFailed(context: Context) {
+        if (failed.isEmpty()) return
         failed = DownloadQueueFailures.clear(items, failed).failed
         save(context)
     }
