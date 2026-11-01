@@ -37,6 +37,40 @@ class DownloadQueueFailuresTest {
         assertEquals(1, edited.changed)
     }
 
+    @Test fun blankIdentifiersAreNotRetriedOrRemoved() {
+        val original = listOf(failure(""), failure("valid"))
+        val noChange = DownloadQueueFailures.retry(emptyList(), original, setOf(""))
+        assertEquals(original, noChange.failed)
+        assertEquals(emptyList<DownloadItem>(), noChange.items)
+        assertEquals(0, noChange.changed)
+
+        val validOnly = DownloadQueueFailures.retry(emptyList(), original, setOf("", "valid"))
+        assertEquals(listOf("valid"), validOnly.items.map { it.chapterId })
+        assertEquals(listOf(""), validOnly.failed.map { it.item.chapterId })
+        assertEquals(1, validOnly.changed)
+    }
+
+    @Test fun dismissCountsActualChangesAndRejectsBlankIds() {
+        val original = listOf(failure("a"), failure("a"), failure(""))
+        val missing = DownloadQueueFailures.dismiss(emptyList(), original, "missing")
+        assertEquals(0, missing.changed)
+        assertEquals(original, missing.failed)
+        val blank = DownloadQueueFailures.dismiss(emptyList(), original, "")
+        assertEquals(0, blank.changed)
+        assertEquals(original, blank.failed)
+        val removed = DownloadQueueFailures.dismiss(emptyList(), original, "a")
+        assertEquals(2, removed.changed)
+        assertEquals(listOf(""), removed.failed.map { it.item.chapterId })
+    }
+
+    @Test fun clearCountsFailuresAndLeavesQueueUntouched() {
+        val queued = listOf(item("keep"))
+        val edited = DownloadQueueFailures.clear(queued, listOf(failure("x"), failure("y")))
+        assertEquals(queued, edited.items)
+        assertEquals(emptyList<FailedDownload>(), edited.failed)
+        assertEquals(2, edited.changed)
+    }
+
     @Test fun unrelatedFailuresRemainUntouched() {
         val original = listOf(item("queued"))
         val failed = listOf(failure("old"))
