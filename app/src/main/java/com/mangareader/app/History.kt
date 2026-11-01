@@ -100,13 +100,11 @@ object History {
      * `remove` and `touch` key off every stored row.
      *
      * `list` is newest-first, so `distinctBy` keeps the most recent chapter of
-     * each series. One-off single-file opens carry no seriesId and stay distinct
-     * by chapterKey, the same rule [touch] uses.
+     * each (sourceId, seriesId) pair. Two extensions may use the same seriesId,
+     * and must never collapse into one history row. Standalone files use chapterKey.
      */
     fun forDisplay(context: Context): List<HistoryEntry> =
-        list(context).distinctBy {
-            if (it.seriesId.isBlank()) "chap:${it.chapterKey}" else "series:${it.seriesId}"
-        }
+        list(context).distinctBy(::historyEntryIdentity)
 
     private fun save(context: Context, items: List<HistoryEntry>) {
         val arr = JSONArray()
@@ -126,15 +124,13 @@ object History {
      * also what makes the 40-entry cap hold 40 *series* rather than filling up
      * with one heavily-read series.
      *
-     * One-off single-file opens carry a blank seriesId and are kept distinct by
-     * chapterKey, exactly as before — collapsing those by their (empty) series
-     * would fold every unrelated single file into one row.
+     * Source-qualified series IDs are required: same IDs coming from two
+     * different sources stay separate. One-off files stay keyed by chapterKey.
      */
     @Synchronized
     fun touch(context: Context, entry: HistoryEntry) {
         val items = list(context).filterNot {
-            it.chapterKey == entry.chapterKey ||
-                (entry.seriesId.isNotBlank() && it.seriesId == entry.seriesId)
+            shouldReplaceHistoryEntry(it, entry)
         }.toMutableList()
         items.add(0, entry)
         while (items.size > CAP) items.removeAt(items.size - 1)
@@ -152,10 +148,7 @@ object History {
         if (entries.isEmpty()) return
         val items = list(context).toMutableList()
         entries.forEach { entry ->
-            items.removeAll {
-                it.chapterKey == entry.chapterKey ||
-                    (entry.seriesId.isNotBlank() && it.seriesId == entry.seriesId)
-            }
+            items.removeAll { shouldReplaceHistoryEntry(it, entry) }
             items.add(0, entry)
             while (items.size > CAP) items.removeAt(items.size - 1)
         }

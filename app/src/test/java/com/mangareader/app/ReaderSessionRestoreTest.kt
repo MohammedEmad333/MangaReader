@@ -27,6 +27,34 @@ class ReaderSessionRestoreTest {
         ))
     }
 
+    @Test fun duplicateMatchingHistoryRowsCannotRestoreArbitrarily() {
+        assertNull(findRestorableReaderHistory(
+            ReaderSessionCheckpoint("source", "series", "chapter", 5),
+            listOf(entry, entry.copy(page = 9, updatedAt = 2L)),
+        ))
+    }
+
+    @Test fun animeHistoryIsNotRestoredAsMangaSession() {
+        assertNull(findRestorableReaderHistory(
+            ReaderSessionCheckpoint("source", "series", "chapter", 5),
+            listOf(entry.copy(mediaType = "anime")),
+        ))
+    }
+
+    @Test fun historyChapterNavigationRequiresUniqueIdentity() {
+        val chapters = listOf(
+            Chapter("a", "First"),
+            Chapter("b", "Second"),
+        )
+        assertEquals(1, findHistoryChapterIndex(chapters, "source", "source|b"))
+        assertNull(findHistoryChapterIndex(chapters, "other", "source|b"))
+        assertNull(findHistoryChapterIndex(chapters, "", "|b"))
+        assertNull(findHistoryChapterIndex(chapters, "source", "source|"))
+        assertNull(findHistoryChapterIndex(
+            chapters + Chapter("b", "Duplicate"), "source", "source|b"
+        ))
+    }
+
     @Test fun differentSourceOrSeriesCannotResume() {
         assertNull(findRestorableReaderHistory(
             ReaderSessionCheckpoint("other", "series", "chapter", 5), listOf(entry)
