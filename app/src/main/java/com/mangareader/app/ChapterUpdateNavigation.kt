@@ -12,7 +12,9 @@ internal fun findUpdateLibraryEntry(
 
 /** Chapter IDs must match exactly; never open an unrelated chapter by position. */
 internal fun findUpdateChapterIndex(chapters: List<Chapter>, chapterId: String): Int? =
-    chapters.indexOfFirst { it.id == chapterId }.takeIf { it >= 0 }
+    chapterId.takeIf { it.isNotBlank() }?.let { id ->
+        chapters.indices.singleOrNull { chapters[it].id == id }
+    }
 
 /** Leave transient routes before showing the chapter update feed from a notification. */
 internal fun YomuStateBundle.openChapterUpdatesFromNotification(context: Context) {
