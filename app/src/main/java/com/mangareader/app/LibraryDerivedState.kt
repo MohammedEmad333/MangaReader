@@ -102,8 +102,8 @@ private fun rememberLibraryDerivedInputs(
             } else {
                 History.list(appContext)
                     .asSequence()
-                    .filter { it.seriesId.isNotBlank() }
-                    .groupBy { it.seriesId }
+                    .filter { it.seriesId.isNotBlank() && it.sourceId.isNotBlank() }
+                    .groupBy { libraryEntryKey(it.sourceId, it.seriesId) }
                     .mapValues { (_, rows) -> rows.maxOf { it.updatedAt } }
             }
 

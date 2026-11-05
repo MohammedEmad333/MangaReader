@@ -46,6 +46,7 @@ internal fun AddToLibraryDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
+    var saveError by remember(series.id, sourceId) { mutableStateOf<String?>(null) }
     var categoryBusy by remember { mutableStateOf(false) }
     var defaultCategory by remember { mutableStateOf<Category?>(null) }
     var cats by remember { mutableStateOf<List<Category>?>(null) }
@@ -90,6 +91,14 @@ internal fun AddToLibraryDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
+
+                saveError?.let { error ->
+                    Text(
+                        error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
 
@@ -200,15 +209,18 @@ internal fun AddToLibraryDialog(
                     )
                     val appContext = context.applicationContext
                     saving = true
+                    saveError = null
                     scope.launch {
-                        val saved = runCatching {
+                        val result = runCatching {
                             withContext(Dispatchers.IO) {
                                 Library.add(appContext, entry)
                                 Categories.setCategoriesFor(appContext, series.id, finalCats)
                             }
-                        }.isSuccess
+                        }
                         saving = false
-                        if (saved) onSaved()
+                        if (result.isSuccess) onSaved()
+                        else saveError = result.exceptionOrNull()?.message
+                            ?: "Could not save this series to the library."
                     }
                 },
             ) {

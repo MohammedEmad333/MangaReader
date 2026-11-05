@@ -168,8 +168,8 @@ internal fun SeriesScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isAnimeSource = sourceId.isAnimeExtensionSourceId()
-    var playbackStateTick by remember(series.id) { mutableIntStateOf(0) }
-    DisposableEffect(context, series.id) {
+    var playbackStateTick by remember(sourceId, series.id) { mutableIntStateOf(0) }
+    DisposableEffect(context, sourceId, series.id) {
         val lifecycle = (context as? ComponentActivity)?.lifecycle
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) playbackStateTick++
@@ -181,13 +181,13 @@ internal fun SeriesScreen(
     // The clipboard moved into GenreChips with the chips themselves.
     var showCategories by remember { mutableStateOf(false) }
     var showAddToLibrary by remember { mutableStateOf(false) }
-    var descriptionExpanded by remember(series.id) { mutableStateOf(false) }
-    var confirmDeleteChapter by remember(series.id) { mutableStateOf<Chapter?>(null) }
-    var confirmDeleteSelection by remember(series.id) { mutableStateOf(false) }
-    var confirmDeleteAllDownloads by remember(series.id) { mutableStateOf(false) }
+    var descriptionExpanded by remember(sourceId, series.id) { mutableStateOf(false) }
+    var confirmDeleteChapter by remember(sourceId, series.id) { mutableStateOf<Chapter?>(null) }
+    var confirmDeleteSelection by remember(sourceId, series.id) { mutableStateOf(false) }
+    var confirmDeleteAllDownloads by remember(sourceId, series.id) { mutableStateOf(false) }
     // Chapter ids, not indices: the list is re-fetched on rescan and after a
     // solved challenge, and indices would silently point at different chapters.
-    var selectedIds by remember(series.id) { mutableStateOf(emptySet<String>()) }
+    var selectedIds by remember(sourceId, series.id) { mutableStateOf(emptySet<String>()) }
     val selecting = selectedIds.isNotEmpty()
     val selectedChapters = remember(selectedIds, chapters) {
         chapters.filter { it.id in selectedIds }
@@ -200,10 +200,10 @@ internal fun SeriesScreen(
         if (selecting) selectedIds = emptySet() else onBack()
     }
     BackHandler { navigateBack() }
-    var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
-    var libraryBusy by remember(series.id) { mutableStateOf(false) }
+    var inLibrary by remember(sourceId, series.id) { mutableStateOf(Library.contains(context, sourceId, series.id)) }
+    var libraryBusy by remember(sourceId, series.id) { mutableStateOf(false) }
 
-    var coverOpen by remember(series.id) { mutableStateOf(false) }
+    var coverOpen by remember(sourceId, series.id) { mutableStateOf(false) }
     var showChapterOptions by remember { mutableStateOf(false) }
     // Bumped when the sheet writes a pref, so the derived list below recomputes.
     // The prefs are the store; this is only the signal that they moved.
@@ -269,7 +269,7 @@ internal fun SeriesScreen(
                     scope.launch {
                         val removed = runCatching {
                             withContext(Dispatchers.IO) {
-                                Library.remove(appContext, series.id)
+                                Library.remove(appContext, sourceId, series.id)
                             }
                         }.isSuccess
                         libraryBusy = false

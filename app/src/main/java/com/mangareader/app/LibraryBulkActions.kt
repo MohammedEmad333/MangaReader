@@ -207,7 +207,7 @@ internal suspend fun migrateLibrarySeries(
             categories
         )
 
-        Library.remove(context, from.seriesId)
+        Library.remove(context, from.sourceId, from.seriesId)
         Categories.setCategoriesFor(
             context,
             from.seriesId,

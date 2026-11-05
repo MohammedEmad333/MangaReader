@@ -95,7 +95,7 @@ internal fun LibraryGrid(
             ) {
                 items(
                     shown,
-                    key = { it.seriesId },
+                    key = { libraryEntryKey(it.sourceId, it.seriesId) },
                     contentType = { "library-list" },
                 ) { entry ->
                     val isSelected = entry.seriesId in selected
@@ -135,7 +135,7 @@ internal fun LibraryGrid(
                 ) {
                     items(
                         shown,
-                        key = { it.seriesId },
+                        key = { libraryEntryKey(it.sourceId, it.seriesId) },
                         contentType = { "library-grid" },
                     ) { entry ->
                         val isSelected = entry.seriesId in selected
