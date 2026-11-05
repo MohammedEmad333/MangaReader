@@ -92,12 +92,18 @@ object Library {
         listRaw = text
     }
 
-    fun contains(context: Context, seriesId: String): Boolean =
-        list(context).any { it.seriesId == seriesId }
+    fun contains(context: Context, sourceId: String, seriesId: String): Boolean =
+        list(context).any { it.sourceId == sourceId && it.seriesId == seriesId }
 
-    /** Upsert by seriesId, newest first. */
+    /** Reject cross-source ID collisions until bulk/category indexes are migrated. */
     fun add(context: Context, entry: LibraryEntry) {
-        val items = list(context).filterNot { it.seriesId == entry.seriesId }.toMutableList()
+        val existing = list(context)
+        check(!hasLibrarySourceCollision(existing, entry)) {
+            "This series ID already belongs to another source; cannot replace its library entry"
+        }
+        val items = existing.filterNot {
+            it.seriesId == entry.seriesId && it.sourceId == entry.sourceId
+        }.toMutableList()
         items.add(0, entry)
         save(context, items)
     }
@@ -112,10 +118,7 @@ object Library {
      */
     fun mergeAll(context: Context, entries: List<LibraryEntry>) {
         if (entries.isEmpty()) return
-        val uniqueEntries = entries.distinctBy { it.seriesId }
-        val incoming = uniqueEntries.map { it.seriesId }.toHashSet()
-        val kept = list(context).filterNot { it.seriesId in incoming }
-        save(context, uniqueEntries + kept)
+        save(context, mergeLibraryWithoutSourceCollisions(list(context), entries))
     }
 
     /**
@@ -129,7 +132,7 @@ object Library {
      * pointing at a loopback address, which an import from another device's
      * self-hosted source leaves behind and which can never load here.
      */
-    fun healCover(context: Context, seriesId: String, cover: Any?) {
+    fun healCover(context: Context, sourceId: String, seriesId: String, cover: Any?) {
         // Series.cover is Any? — a URL string from an extension, a File from the
         // local folder — while an entry stores a String. This is the same
         // narrowing LibraryScreens does where it builds one.
@@ -138,7 +141,9 @@ object Library {
             ?: return
         if (text.isBlank() || isLoopback(text)) return
         val items = list(context)
-        val index = items.indexOfFirst { it.seriesId == seriesId }
+        val index = items.indexOfFirst {
+            it.seriesId == seriesId && it.sourceId == sourceId
+        }
         if (index < 0) return
         val current = items[index].cover
         if (current.isNotBlank() && !isLoopback(current)) return
@@ -199,9 +204,18 @@ object Library {
     }
 
     /** Removes the series and clears its category assignments. */
-    fun remove(context: Context, seriesId: String) {
-        save(context, list(context).filterNot { it.seriesId == seriesId })
-        Categories.setCategoriesFor(context, seriesId, emptySet())
-        SeriesIndex.forget(context, setOf(seriesId))
+    fun remove(context: Context, sourceId: String, seriesId: String) {
+        val present = list(context)
+        val kept = present.filterNot {
+            it.seriesId == seriesId && it.sourceId == sourceId
+        }
+        if (kept.size == present.size) return
+        save(context, kept)
+        // Shared category/count stores remain seriesId-only. Do not purge their
+        // metadata while an older hidden entry from another source still exists.
+        if (kept.none { it.seriesId == seriesId }) {
+            Categories.setCategoriesFor(context, seriesId, emptySet())
+            SeriesIndex.forget(context, setOf(seriesId))
+        }
     }
 }
