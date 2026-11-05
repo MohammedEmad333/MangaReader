@@ -65,7 +65,7 @@ internal fun arrangeLibraryEntries(
             filtered.sortedBy { it.addedAt }
         LibrarySort.LAST_READ ->
             filtered.sortedBy {
-                spec.lastReadAt[it.seriesId] ?: Long.MIN_VALUE
+                spec.lastReadAt[libraryEntryKey(it.sourceId, it.seriesId)] ?: Long.MIN_VALUE
             }
         LibrarySort.UNREAD_COUNT ->
             filtered.sortedBy {
@@ -81,7 +81,9 @@ internal fun arrangeLibraryEntries(
             }
         LibrarySort.RANDOM ->
             filtered.sortedBy {
-                LibraryPrefs.shuffleKey(it.seriesId, spec.randomSeed)
+                LibraryPrefs.shuffleKey(
+                    libraryEntryKey(it.sourceId, it.seriesId), spec.randomSeed
+                )
             }
     }
 
