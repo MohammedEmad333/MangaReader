@@ -179,9 +179,8 @@ object DownloadQueue {
      * series. They are unreachable from this path and only [clear] removes them.
      */
     @Synchronized
-    fun removeSeries(context: Context, seriesId: String): Set<String> {
-        if (seriesId.isBlank()) return emptySet()
-        val hit = items.filter { it.seriesId == seriesId }.map { it.chapterId }.toSet()
+    fun removeSeries(context: Context, sourceId: String, seriesId: String): Set<String> {
+        val hit = queuedChapterIdsForSeries(items, sourceId, seriesId)
         if (hit.isEmpty()) return emptySet()
         items = items.filterNot { it.chapterId in hit }
         progress = progress - hit
@@ -191,9 +190,9 @@ object DownloadQueue {
         return hit
     }
 
-    /** True when any queued chapter belongs to [seriesId]. */
-    fun hasSeries(seriesId: String): Boolean =
-        seriesId.isNotBlank() && items.any { it.seriesId == seriesId }
+    /** True only when the given source-qualified series is queued. */
+    fun hasSeries(sourceId: String, seriesId: String): Boolean =
+        queuedChapterIdsForSeries(items, sourceId, seriesId).isNotEmpty()
 
     @Synchronized
     fun clear(context: Context) {
