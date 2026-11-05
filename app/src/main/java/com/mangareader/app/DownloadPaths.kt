@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONObject
 import java.io.File
 
@@ -385,14 +386,26 @@ internal object DownloadPaths {
         if (loaded) return
         loaded = true
         val f = file(context)
-        if (f.exists()) {
-            runCatching {
-                val root = JSONObject(f.readText())
-                sources = readMap(root.optJSONObject("sources"))
-                series = readMap(root.optJSONObject("series"))
-                chapters = readMap(root.optJSONObject("chapters"))
+        val atomic = AtomicFile(f)
+        if (f.exists() || File(f.path + ".bak").exists()) {
+            val parsed = runCatching {
+                val root = JSONObject(
+                    atomic.openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+                )
+                Triple(
+                    readMap(root.optJSONObject("sources"), false),
+                    readMap(root.optJSONObject("series"), false),
+                    readMap(root.optJSONObject("chapters"), true),
+                )
+            }.getOrNull()
+            if (parsed != null) {
+                sources = parsed.first
+                series = parsed.second
+                chapters = parsed.third
+                return
             }
-            return
+            // A corrupt index is not proof that downloads disappeared. Rebuild
+            // chapter paths from the markers, rather than leaving a blank cache.
         }
         // No index file: either a fresh install, or someone cleared app storage
         // while the downloads sat safely in a folder outside it. The second case
@@ -402,10 +415,18 @@ internal object DownloadPaths {
         if (chapters.isNotEmpty()) save(context)
     }
 
-    private fun readMap(obj: JSONObject?): MutableMap<String, String> {
+    private fun readMap(
+        obj: JSONObject?,
+        chapterPaths: Boolean,
+    ): MutableMap<String, String> {
         val out = mutableMapOf<String, String>()
         if (obj == null) return out
-        for (key in obj.keys()) out[key] = obj.optString(key)
+        for (key in obj.keys()) {
+            val value = obj.optString(key)
+            val valid = if (chapterPaths) isSafeStoredChapterPath(value)
+                else isSafeStoredDownloadFolder(value)
+            if (key.isNotBlank() && valid) out[key] = value
+        }
         return out
     }
 
@@ -415,7 +436,15 @@ internal object DownloadPaths {
                 .put("sources", writeMap(sources))
                 .put("series", writeMap(series))
                 .put("chapters", writeMap(chapters))
-            file(context).writeText(root.toString())
+            val atomic = AtomicFile(file(context))
+            val output = atomic.startWrite()
+            try {
+                output.write(root.toString().toByteArray(Charsets.UTF_8))
+                atomic.finishWrite(output)
+            } catch (error: Exception) {
+                atomic.failWrite(output)
+                throw error
+            }
         }
     }
 
