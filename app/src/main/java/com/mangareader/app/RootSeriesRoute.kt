@@ -30,7 +30,9 @@ internal fun RootSeriesRoute(
         onFindVideos = { actions.findVideos(it) },
         onDownload = { source, chapter -> actions.downloadChapter(source, chapter) },
         onDownloadAll = { source, chapters -> actions.downloadAll(source, chapters) },
-        onCancelDownloads = { actions.cancelSeriesDownloads(it) },
+        onCancelDownloads = { sourceId, seriesId ->
+            actions.cancelSeriesDownloads(sourceId, seriesId)
+        },
         onDownloadStateChanged = { appState.downloadTick++ },
         onOpenChapter = { actions.openChapter(it) },
         onRefresh = { actions.refreshChapters() },
