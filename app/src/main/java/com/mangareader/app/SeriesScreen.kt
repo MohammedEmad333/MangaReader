@@ -168,8 +168,8 @@ internal fun SeriesScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isAnimeSource = sourceId.isAnimeExtensionSourceId()
-    var playbackStateTick by remember(series.id) { mutableIntStateOf(0) }
-    DisposableEffect(context, series.id) {
+    var playbackStateTick by remember(sourceId, series.id) { mutableIntStateOf(0) }
+    DisposableEffect(context, sourceId, series.id) {
         val lifecycle = (context as? ComponentActivity)?.lifecycle
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) playbackStateTick++
@@ -200,7 +200,7 @@ internal fun SeriesScreen(
         if (selecting) selectedIds = emptySet() else onBack()
     }
     BackHandler { navigateBack() }
-    var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, series.id)) }
+    var inLibrary by remember(series.id) { mutableStateOf(Library.contains(context, sourceId, series.id)) }
     var libraryBusy by remember(series.id) { mutableStateOf(false) }
 
     var coverOpen by remember(series.id) { mutableStateOf(false) }
@@ -269,7 +269,7 @@ internal fun SeriesScreen(
                     scope.launch {
                         val removed = runCatching {
                             withContext(Dispatchers.IO) {
-                                Library.remove(appContext, series.id)
+                                Library.remove(appContext, sourceId, series.id)
                             }
                         }.isSuccess
                         libraryBusy = false
