@@ -127,8 +127,8 @@ internal class AppActionController(
     fun downloadAll(source: Source, chapters: List<Chapter>) =
         seriesActions.downloadAll(source, chapters)
 
-    fun cancelSeriesDownloads(seriesId: String) =
-        seriesActions.cancelDownloads(seriesId)
+    fun cancelSeriesDownloads(sourceId: String, seriesId: String) =
+        seriesActions.cancelDownloads(sourceId, seriesId)
 
     fun bulkSetRead(ids: Set<String>, value: Boolean) =
         libraryActions.bulkSetRead(ids, value)
