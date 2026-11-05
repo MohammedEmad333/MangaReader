@@ -10,7 +10,10 @@ Status: in progress (partial reliability hardening). Baseline: main, November 20
 - PR #461 (merged): crash-safe queue saves, normalized queue recovery, and source-qualified history identity.
 - PR #462 (merged): source-qualified chapter caches and safe legacy snapshots.
 - PR #463 (merged): source-qualified downloaded-series grouping and atomic download index.
-- Current batch (pending CI): atomic readable download-path index, backup-aware recovery, and path validation.
+- PR #465 (merged): atomic readable download-path index, backup-aware recovery, and path validation.
+- PR #466 (merged): source-collision guard for library operations and per-source UI state.
+- PR #467 (merged): source-qualified download Stop controls.
+- Current batch (pending CI): source-safe backup import/removal, category assignments and truthful import summaries.
 
 ## Still outstanding
 - Full UI-level page-loading error states; process-death download/reading-progress instrumentation; extension and device compatibility checks.

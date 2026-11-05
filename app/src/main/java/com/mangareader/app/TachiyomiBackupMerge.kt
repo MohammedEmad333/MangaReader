@@ -46,9 +46,9 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
     val entries = mutableListOf<LibraryEntry>()
     val readKeys = mutableListOf<String>()
     val pages = mutableMapOf<String, Int>()
-    val assignments = mutableListOf<Pair<String, Set<String>>>()
+    val assignments = mutableListOf<Pair<Pair<String, String>, Set<String>>>()
     val history = mutableListOf<HistoryEntry>()
-    val notInLibrary = mutableSetOf<String>()
+    val notInLibrary = mutableSetOf<Pair<String, String>>()
 
     backup.series.forEach { s ->
         val appSourceId = "tachi:${s.sourceId}"
@@ -66,9 +66,9 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
             )
 
             val catIds = s.categoryOrders.mapNotNull { byOrder[it] }.toSet()
-            if (catIds.isNotEmpty()) assignments.add(seriesId to catIds)
+            if (catIds.isNotEmpty()) assignments.add((appSourceId to seriesId) to catIds)
         } else {
-            notInLibrary.add(seriesId)
+            notInLibrary.add(appSourceId to seriesId)
         }
 
         // Progress is kept for everything, library or not. It's keyed by
@@ -102,19 +102,36 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
         }
     }
 
-    Library.removeAll(context, notInLibrary)
-    Library.mergeAll(context, entries)
+    // Decide which favourites can be imported BEFORE applying category
+    // assignments or replacing library rows. A colliding favourite that was
+    // skipped must not overwrite the saved owner's category assignments.
+    val before = Library.list(context)
+    val afterScopedRemovals = withoutLibraryIdentities(before, notInLibrary)
+    val accepted = acceptedLibraryImportEntries(afterScopedRemovals, entries)
+    val acceptedKeys = accepted.mapTo(mutableSetOf()) { it.sourceId to it.seriesId }
+    val skippedCollisions = entries.size - accepted.size
+
+    Library.removeAllScoped(context, notInLibrary)
+    Library.mergeAll(context, accepted)
     ReadState.setReadBulk(context, readKeys)
     savePageBulk(context, pages)
-    Categories.setCategoriesForMany(context, assignments.toMap())
+    Categories.setCategoriesForMany(
+        context,
+        acceptedBackupCategoryAssignments(assignments, acceptedKeys),
+    )
 
-    // History caps at 40, so only the newest are worth writing — and oldest
-    // first, because each touch moves its entry to the front. Apply the batch
-    // in memory and serialize the capped store once.
-    History.touchAll(context, history.sortedBy { it.updatedAt }.takeLast(40))
+    // Only history from imported favourites should replace saved reading history.
+    // Other chapter progress is still restored independently of library status.
+    History.touchAll(context, acceptedBackupHistory(history, acceptedKeys))
 
     return buildString {
-        appendLine("Imported ${entries.size} series.")
+        appendLine("Imported ${accepted.size} series.")
+        if (skippedCollisions > 0) {
+            appendLine(
+                "Skipped $skippedCollisions ambiguous source/series entries to " +
+                    "protect the existing library and category assignments."
+            )
+        }
         if (notInLibrary.isNotEmpty()) {
             appendLine(
                 "${notInLibrary.size} more were read but never added to the " +

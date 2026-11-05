@@ -203,6 +203,31 @@ object Library {
         SeriesIndex.forget(context, seriesIds)
     }
 
+    /**
+     * Backup-only removal: a missing favourite in one source must not delete
+     * an unrelated saved series whose extension reuses the same series ID.
+     */
+    fun removeAllScoped(
+        context: Context,
+        identities: Set<Pair<String, String>>,
+    ) {
+        if (identities.isEmpty()) return
+        val present = list(context)
+        val kept = withoutLibraryIdentities(present, identities)
+        if (kept.size == present.size) return
+        val retainedIds = kept.mapTo(mutableSetOf()) { it.seriesId }
+        val goneIds = present.asSequence()
+            .filter { (it.sourceId to it.seriesId) in identities }
+            .map { it.seriesId }
+            .filterNot { it in retainedIds }
+            .toSet()
+        save(context, kept)
+        if (goneIds.isNotEmpty()) {
+            Categories.removeAssignmentsFor(context, goneIds)
+            SeriesIndex.forget(context, goneIds)
+        }
+    }
+
     /** Removes the series and clears its category assignments. */
     fun remove(context: Context, sourceId: String, seriesId: String) {
         val present = list(context)

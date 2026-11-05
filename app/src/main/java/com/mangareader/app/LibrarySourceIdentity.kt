@@ -25,18 +25,31 @@ internal fun hasLibrarySourceCollision(
  * The caller can introduce source-qualified storage after dependent indexes
  * and bulk selection are migrated together.
  */
-internal fun mergeLibraryWithoutSourceCollisions(
+internal fun acceptedLibraryImportEntries(
     saved: List<LibraryEntry>,
     incoming: List<LibraryEntry>,
 ): List<LibraryEntry> {
     val existingById = saved.associateBy { it.seriesId }
-    val accepted = incoming.groupBy { it.seriesId }.mapNotNull { (id, candidates) ->
+    return incoming.groupBy { it.seriesId }.mapNotNull { (id, candidates) ->
         val previous = existingById[id]
         if (previous != null) candidates.firstOrNull { it.sourceId == previous.sourceId }
         else candidates.firstOrNull()?.takeIf { first ->
             candidates.all { it.sourceId == first.sourceId }
         }
     }
+}
+
+/** Match exactly the source-qualified entries being removed by a backup. */
+internal fun withoutLibraryIdentities(
+    saved: List<LibraryEntry>,
+    removed: Set<Pair<String, String>>,
+): List<LibraryEntry> = saved.filterNot { (it.sourceId to it.seriesId) in removed }
+
+internal fun mergeLibraryWithoutSourceCollisions(
+    saved: List<LibraryEntry>,
+    incoming: List<LibraryEntry>,
+): List<LibraryEntry> {
+    val accepted = acceptedLibraryImportEntries(saved, incoming)
     val replaced = accepted.mapTo(mutableSetOf()) { it.seriesId }
     return (accepted + saved.filterNot { it.seriesId in replaced })
         .distinctBy { it.seriesId }
