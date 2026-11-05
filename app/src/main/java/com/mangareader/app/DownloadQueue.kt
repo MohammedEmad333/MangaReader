@@ -174,7 +174,7 @@ object DownloadQueue {
      * was one of them, since that one is held by the service and has to be
      * skipped rather than merely delisted.
      *
-     * A blank [seriesId] matches nothing on purpose: items queued before the
+     * Blank [sourceId] or [seriesId] matches nothing on purpose: items queued before the
      * field was stored carry "", and those must not all be treated as one
      * series. They are unreachable from this path and only [clear] removes them.
      */
@@ -182,7 +182,9 @@ object DownloadQueue {
     fun removeSeries(context: Context, sourceId: String, seriesId: String): Set<String> {
         val hit = queuedChapterIdsForSeries(items, sourceId, seriesId)
         if (hit.isEmpty()) return emptySet()
-        items = items.filterNot { it.chapterId in hit }
+        items = items.filterNot {
+            it.sourceId == sourceId && it.seriesId == seriesId && it.chapterId in hit
+        }
         progress = progress - hit
         // Removed downloads must not retain per-chapter pause flags if re-queued.
         pausedIds = pausedIds - hit
