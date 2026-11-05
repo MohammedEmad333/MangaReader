@@ -117,21 +117,12 @@ internal fun applyTachiyomiBackup(context: Context, backup: TachiyomiBackup): St
     savePageBulk(context, pages)
     Categories.setCategoriesForMany(
         context,
-        assignments.asSequence()
-            .filter { it.first in acceptedKeys }
-            .associate { (identity, cats) -> identity.second to cats },
+        acceptedBackupCategoryAssignments(assignments, acceptedKeys),
     )
 
     // Only history from imported favourites should replace saved reading history.
     // Other chapter progress is still restored independently of library status.
-    History.touchAll(
-        context,
-        history.asSequence()
-            .filter { (it.sourceId to it.seriesId) in acceptedKeys }
-            .sortedBy { it.updatedAt }
-            .takeLast(40)
-            .toList(),
-    )
+    History.touchAll(context, acceptedBackupHistory(history, acceptedKeys))
 
     return buildString {
         appendLine("Imported ${accepted.size} series.")
