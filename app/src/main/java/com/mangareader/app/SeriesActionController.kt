@@ -139,11 +139,11 @@ internal class SeriesActionController(
         queueDownloads(source, chapters)
     }
 
-    fun cancelDownloads(seriesId: String) {
+    fun cancelDownloads(sourceId: String, seriesId: String) {
         val appContext = context.applicationContext
         scope.launch {
             val changed = withContext(Dispatchers.IO) {
-                cancelSeriesDownloadsAction(appContext, seriesId)
+                cancelSeriesDownloadsAction(appContext, sourceId, seriesId)
             }
             if (changed) {
                 appState.downloadTick++

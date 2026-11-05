@@ -23,7 +23,7 @@ internal fun SeriesRoute(
     onFindVideos: (Chapter) -> Unit,
     onDownload: (Source, Chapter) -> Unit,
     onDownloadAll: (Source, List<Chapter>) -> Unit,
-    onCancelDownloads: (String) -> Unit,
+    onCancelDownloads: (String, String) -> Unit,
     onDownloadStateChanged: () -> Unit,
     onOpenChapter: (Int) -> Unit,
     onRefresh: () -> Unit,
@@ -51,11 +51,11 @@ internal fun SeriesRoute(
         canDownload = source?.supportsDownload == true,
         downloadProgress = DownloadQueue.progress,
         downloadTick = localDownloadTick + DownloadQueue.tick,
-        downloadingAll = DownloadQueue.hasSeries(series.id),
+        downloadingAll = DownloadQueue.hasSeries(resolvedSourceId, series.id),
         onDownload = { chapter -> source?.let { onDownload(it, chapter) } },
         onDownloadBatch = { batch -> source?.let { onDownloadAll(it, batch) } },
         onDownloadAll = { source?.let { onDownloadAll(it, chapters) } },
-        onCancelDownloads = { onCancelDownloads(series.id) },
+        onCancelDownloads = { onCancelDownloads(resolvedSourceId, series.id) },
         onDeleteDownloads = {
             val snapshot = chapters.toList()
             scope.launch {
