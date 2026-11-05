@@ -36,6 +36,7 @@ internal suspend fun loadAndHealSeriesDetails(
     if (enriched != null) {
         Library.healCover(
             context,
+            source.id,
             series.id,
             enriched.cover
         )
