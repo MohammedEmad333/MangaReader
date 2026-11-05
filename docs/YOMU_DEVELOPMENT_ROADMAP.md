@@ -7,7 +7,10 @@ Status: in progress (partial reliability hardening). Baseline: main, November 20
 - PR #458: exact source/series matching, safe failed-download retry and dismissal.
 - PR #459: retry policy for HTTP outages and expanded CDN error-page detection.
 - PR #460: queue input validation, deduplication, and reduced redundant disk writes.
-- Current batch (pending CI/merge): crash-safe atomic queue saves with legacy-file recovery, normalized queue restore, unambiguous history/chapter resume paths, and source-qualified history identity (no cross-source series collision).
+- PR #461 (merged): crash-safe queue saves, normalized queue recovery, and source-qualified history identity.
+- PR #462 (merged): source-qualified chapter caches and safe legacy snapshots.
+- PR #463 (merged): source-qualified downloaded-series grouping and atomic download index.
+- Current batch (pending CI): atomic readable download-path index, backup-aware recovery, and path validation.
 
 ## Still outstanding
 - Full UI-level page-loading error states; process-death download/reading-progress instrumentation; extension and device compatibility checks.
