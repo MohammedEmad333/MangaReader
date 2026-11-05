@@ -37,7 +37,7 @@ data class DownloadedSeries(
  *   storage.
  * - **It backfills from the library.** Chapters downloaded before this index
  *   existed have no record. For anything saved to the library the mapping can be
- *   recovered anyway: `ChapterCache` is keyed by the same hash of the series id,
+ *   recovered anyway: `ChapterCache` now uses source-qualified series IDs,
  *   so its stored chapter lists can be re-checked against what's on disk.
  *   Downloads of series that were never saved to the library stay invisible here
  *   — nothing short of re-downloading them can recover that.
@@ -57,7 +57,9 @@ object DownloadIndex {
     @Synchronized
     fun record(context: Context, item: DownloadItem) {
         invalidate()
-        if (item.seriesId.isBlank()) return
+        if (item.seriesId.isBlank() || item.sourceId.isBlank() ||
+            item.chapterId.isBlank()
+        ) return
         // Keep the cover with the offline data as soon as the first chapter of
         // the series finishes. ensure() is idempotent, so later chapters reuse
         // the same file instead of fetching the image again.
@@ -208,7 +210,7 @@ object DownloadIndex {
         invalidate()
         val gone = series.chapters.map { it.chapterId }.toSet()
         Downloads.deleteMany(context, gone)
-        DownloadCovers.delete(context, series.seriesId)
+        DownloadCovers.delete(context, series.sourceId, series.seriesId)
         DownloadIndexStorage.write(context, DownloadIndexStorage.read(context).filterNot { it.chapterId in gone })
     }
 }

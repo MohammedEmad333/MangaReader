@@ -82,24 +82,9 @@ internal object DownloadIndexBuilder {
             DownloadIndexStorage.write(context, live + recovered)
         }
 
-        return (live + recovered)
-            .groupBy { it.seriesId }
-            .map { (seriesId, records) ->
-                val first = records.first()
-                DownloadedSeries(
-                    sourceId = first.sourceId,
-                    seriesId = seriesId,
-                    title = first.title.ifBlank { "Unknown series" },
-                    cover = records.firstOrNull { it.cover.isNotBlank() }?.cover ?: "",
-                    chapters = records.map {
-                        DownloadedChapter(it.chapterId, it.chapterName)
-                    },
-                    sizeBytes = records.sumOf {
-                        Downloads.sizeOf(context, it.chapterId)
-                    },
-                )
-            }
-            .sortedByDescending { it.sizeBytes }
+        return groupDownloadedRecords(live + recovered) { chapterId ->
+            Downloads.sizeOf(context, chapterId)
+        }
     }
 
     fun clearRecovery(context: Context) {

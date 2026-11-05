@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -22,9 +23,11 @@ internal object DownloadIndexStorage {
 
     fun read(context: Context): List<DownloadIndexRecord> = runCatching {
         val target = file(context)
-        if (!target.exists()) return emptyList()
+        if (!target.exists() && !File(target.path + ".bak").exists()) return emptyList()
 
-        val arr = JSONArray(target.readText())
+        val arr = JSONArray(
+            AtomicFile(target).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+        )
         (0 until arr.length()).map { index ->
             val obj = arr.getJSONObject(index)
             DownloadIndexRecord(
@@ -56,7 +59,15 @@ internal object DownloadIndexStorage {
                     },
                 )
             }
-            file(context).writeText(arr.toString())
+            val atomic = AtomicFile(file(context))
+            val output = atomic.startWrite()
+            try {
+                output.write(arr.toString().toByteArray(Charsets.UTF_8))
+                atomic.finishWrite(output)
+            } catch (error: Exception) {
+                atomic.failWrite(output)
+                throw error
+            }
         }
     }
 }
