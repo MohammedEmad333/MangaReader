@@ -43,10 +43,11 @@ internal fun queueSeriesDownloads(
 
 internal fun cancelSeriesDownloadsAction(
     context: Context,
+    sourceId: String,
     seriesId: String
 ): Boolean {
     val active = DownloadQueue.activeId
-    val removed = DownloadQueue.removeSeries(context, seriesId)
+    val removed = DownloadQueue.removeSeries(context, sourceId, seriesId)
     if (removed.isEmpty()) return false
 
     if (active != null && active in removed) {
