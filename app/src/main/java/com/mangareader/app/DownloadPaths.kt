@@ -94,14 +94,12 @@ internal object DownloadPaths {
         val seriesFolder = parts[1]
         val chapterFolder = parts.drop(2).joinToString("/")
 
-        val sourceId = sources.entries
-            .firstOrNull { it.value == sourceFolder }
-            ?.key
+        // Corrupt/merged indices can have two owners for one folder.
+        // Never guess one: a false match would assign another source's pages.
+        val sourceId = uniqueDownloadFolderOwner(sources, sourceFolder)
             ?: return null
         val prefix = "$sourceId|"
-        val seriesId = series.entries
-            .firstOrNull { (key, folder) -> key.startsWith(prefix) && folder == seriesFolder }
-            ?.key
+        val seriesId = uniqueDownloadFolderOwner(series, seriesFolder, prefix)
             ?.removePrefix(prefix)
             ?.takeIf { it.isNotBlank() }
             ?: return null
@@ -211,15 +209,16 @@ internal object DownloadPaths {
     @Synchronized
     fun rebuild(context: Context, downloadsRoot: File): Int {
         load(context)
+        val before = chapters.toMap()
         val found = scan(downloadsRoot)
-        if (found > 0) save(context)
+        if (found > 0 || chapters != before) save(context)
         return found
     }
 
     /** The walk itself, without the load/save around it, so [load] can reuse it. */
     private fun scan(downloadsRoot: File): Int {
         if (!downloadsRoot.isDirectory) return 0
-        var found = 0
+        val observed = mutableListOf<Pair<String, String>>()
         runCatching {
             downloadsRoot.listFiles()?.filter { it.isDirectory }?.forEach { sourceDir ->
                 sourceDir.listFiles()?.filter { it.isDirectory }?.forEach { seriesDir ->
@@ -228,14 +227,20 @@ internal object DownloadPaths {
                         if (!marker.isFile) return@forEach
                         val id = runCatching { marker.readText().trim() }.getOrNull()
                         if (id.isNullOrBlank()) return@forEach
-                        chapters[id] =
+                        val path =
                             "${sourceDir.name}/${seriesDir.name}/${chapterDir.name}"
-                        found++
+                        if (isSafeStoredChapterPath(path)) observed += id to path
                     }
                 }
             }
         }
-        return found
+        val unique = uniqueScannedChapterPaths(observed)
+        // A duplicated marker in different folders is ambiguous, not a reason
+        // to select whichever folder the filesystem listed last.
+        val ambiguous = observed.mapTo(mutableSetOf()) { it.first } - unique.keys
+        ambiguous.forEach(chapters::remove)
+        chapters.putAll(unique)
+        return unique.size
     }
 
     private data class RecoveryCandidate(
