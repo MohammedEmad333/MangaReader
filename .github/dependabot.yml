@@ -28,6 +28,11 @@ updates:
         versions: [">2024.09.03"]
       - dependency-name: "me.saket.telephoto:zoomable-image-coil"
         versions: [">0.14.0"]
+      # AVIF coder 3.0.1 requires compileSdk 37+, while this app currently
+      # compiles against SDK 36. Re-evaluate during an intentional AGP/SDK
+      # upgrade and validate native decoding on a real Android device.
+      - dependency-name: "io.github.awxkee:avif-coder"
+        versions: [">=3.0.0"]
 
     groups:
       kotlin-plugins:
