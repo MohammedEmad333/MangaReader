@@ -22,8 +22,8 @@ internal object ExtensionInstaller {
                 if (!tempDir.isDirectory && !tempDir.mkdirs()) {
                     throw IOException("Cannot create extension download directory")
                 }
-                apkFile = File.createTempFile("extension-", ".apk", tempDir)
-                val destination = apkFile
+                val destination = File.createTempFile("extension-", ".apk", tempDir)
+                apkFile = destination
 
                 val connection = openDownloadConnection(ext.apkUrl)
                 try {
