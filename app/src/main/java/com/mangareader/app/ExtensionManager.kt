@@ -209,9 +209,8 @@ object ExtensionManager {
     /**
      * 2. INSTALL: Downloads the APK and opens Android's package installer.
      */
-    suspend fun install(context: Context, ext: Extension) {
+    suspend fun install(context: Context, ext: Extension): Boolean =
         ExtensionInstaller.install(context, ext)
-    }
 
     /**
      * 3. RUN: Finds installed extensions and loads their Source classes dynamically.
