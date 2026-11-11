@@ -277,8 +277,11 @@ internal fun ExtensionsScreen(
         onInstall = { ext ->
             awaitingPackageChange = true
             scope.launch {
-                ExtensionManager.install(context, ext)
-                onInstalled()
+                if (ExtensionManager.install(context, ext)) {
+                    onInstalled()
+                } else {
+                    awaitingPackageChange = false
+                }
             }
         },
         onUninstall = startUninstall,
