@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Grants the installer permission to read APKs from your cache folder -->
-    <cache-path name="cache_apks" path="." />
+    <!-- Only share downloaded extension APKs with Android's package installer. -->
+    <cache-path name="cache_apks" path="extension-apks/" />
 </paths>
-
