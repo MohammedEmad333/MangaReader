@@ -219,7 +219,16 @@ internal fun rememberReaderNavigationState(
     // A last-page position may remain unchanged when streaming finishes.
     // Re-dispatch once loading completes so read status can be finalized.
     // The callback validates bounds and avoids persisting empty-page progress.
-    LaunchedEffect(currentPage, pages.size, stillLoading) { onProgress(currentPage) }
+    val persistedPage = readerPageToPersist(
+        mode = settings.mode,
+        visiblePage = currentPage,
+        settledPagerItem = pagerState.settledPage,
+        headRows = headRows,
+        pageCount = pages.size,
+    )
+    LaunchedEffect(persistedPage, pages.size, stillLoading) {
+        if (pages.isNotEmpty()) onProgress(persistedPage)
+    }
 
     // LazyColumn may show multiple pages simultaneously. Prioritize all of
     // them before offscreen prefetch, without recording them as read progress.
