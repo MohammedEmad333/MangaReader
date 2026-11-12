@@ -109,9 +109,10 @@ internal fun ReaderPage(
             readerPageInspection(file, cacheRoot, widePageMode, ::imageBounds)
         }
     }
-    val canRedownload = inspection?.canRedownload == true
-    val usableFile = file?.takeIf { inspection?.usable == true }
-    val rotateWide = inspection?.rotateWide == true
+    val inspected = inspection?.takeIf { it.file == file }
+    val canRedownload = inspected?.canRedownload == true
+    val usableFile = file?.takeIf { inspected?.usable == true }
+    val rotateWide = inspected?.rotateWide == true
 
     if (usableFile != null && rotateWide) {
         var rotatedRenderFailed by remember(usableFile) { mutableStateOf(false) }
@@ -271,7 +272,7 @@ internal fun ReaderPage(
                 }
             }
         }
-        file != null && inspection == null -> Box(
+        file != null && inspected == null -> Box(
             modifier = placeholder.heightIn(min = 240.dp),
             contentAlignment = Alignment.Center,
         ) {
