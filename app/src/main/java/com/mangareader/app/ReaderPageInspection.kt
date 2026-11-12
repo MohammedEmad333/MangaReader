@@ -35,3 +35,14 @@ internal fun readerPageInspection(
         canRedownload = isReaderCachePage(file, cacheRoot),
     )
 }
+
+/**
+ * An async result may still be remembered while Compose switches page or
+ * rotation mode. Only draw it when both keys match the current request.
+ */
+internal fun currentReaderPageInspection(
+    inspection: ReaderPageInspection?,
+    file: File?,
+    wideMode: ReaderWidePageMode,
+): ReaderPageInspection? =
+    inspection?.takeIf { file != null && it.file == file && it.wideMode == wideMode }
