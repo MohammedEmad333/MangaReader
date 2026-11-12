@@ -8,6 +8,7 @@ import java.io.File
  */
 internal data class ReaderPageInspection(
     val file: File,
+    val wideMode: ReaderWidePageMode,
     val usable: Boolean,
     val rotateWide: Boolean,
     val canRedownload: Boolean,
@@ -28,6 +29,7 @@ internal fun readerPageInspection(
     }
     return ReaderPageInspection(
         file = file,
+        wideMode = wideMode,
         usable = usable,
         rotateWide = rotate,
         canRedownload = isReaderCachePage(file, cacheRoot),
