@@ -32,6 +32,7 @@ internal fun ReaderRoute(
 
     key(routeIdentity) {
         var observedPage by remember { mutableIntStateOf(-1) }
+        val progressWriteGate = remember { ReaderProgressWriteGate() }
 
         // Check actual files only when the reader reaches the final page.
         // A large chapter can contain hundreds of cached images, so never
@@ -68,6 +69,7 @@ internal fun ReaderRoute(
                 if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
                 observedPage = page
                 ReaderPagePriority.update(chapterKey, page)
+                if (!progressWriteGate.shouldPersist(page, total)) return@ReaderScreen
                 savePage(context, chapterKey, page)
                 if (!isIncognito(context)) {
                     ReaderSessionCheckpointStore.save(
