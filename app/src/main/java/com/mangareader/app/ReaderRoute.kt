@@ -39,7 +39,7 @@ internal fun ReaderRoute(
         // React to updated page slots as well as the end of streaming so a
         // successful retry can finally mark a previously incomplete chapter.
         LaunchedEffect(observedPage, pages, stillLoading) {
-            if (!stillLoading && pages.isNotEmpty() && observedPage == pages.lastIndex) {
+            if (shouldValidateReaderCompletion(observedPage, pages.size, stillLoading)) {
                 val complete = withContext(Dispatchers.IO) {
                     isReaderChapterFullyLoadedAtEnd(observedPage, pages)
                 }
