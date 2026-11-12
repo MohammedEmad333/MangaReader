@@ -22,3 +22,11 @@ internal fun isReaderChapterFullyLoadedAtEnd(
 ): Boolean =
     isReaderChapterCompleted(pageIndex, pages.size, stillLoading) &&
         pages.all(::isUsableReaderPage)
+
+/** File validation is only needed when an unloaded chapter has reached its end. */
+internal fun shouldValidateReaderCompletion(
+    pageIndex: Int,
+    pageCount: Int,
+    stillLoading: Boolean,
+): Boolean =
+    isReaderChapterCompleted(pageIndex, pageCount, stillLoading)
