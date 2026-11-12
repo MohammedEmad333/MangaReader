@@ -2,6 +2,13 @@ package com.mangareader.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
 
@@ -24,6 +31,22 @@ internal fun ReaderRoute(
     val total = pages.size
 
     key(routeIdentity) {
+        var observedPage by remember { mutableIntStateOf(-1) }
+
+        // Check actual files only when the reader reaches the final page.
+        // A large chapter can contain hundreds of cached images, so never
+        // inspect them synchronously on Compose's UI/progress callback.
+        // React to updated page slots as well as the end of streaming so a
+        // successful retry can finally mark a previously incomplete chapter.
+        LaunchedEffect(observedPage, pages, stillLoading) {
+            if (!stillLoading && pages.isNotEmpty() && observedPage == pages.lastIndex) {
+                val complete = withContext(Dispatchers.IO) {
+                    isReaderChapterFullyLoadedAtEnd(observedPage, pages)
+                }
+                if (complete) ReadState.setRead(context, chapterKey, true)
+            }
+        }
+
         ReaderScreen(
             pages = pages,
             stillLoading = stillLoading,
@@ -43,6 +66,7 @@ internal fun ReaderRoute(
             onRetryPage = onRetryPage,
             onProgress = { page ->
                 if (!isValidReaderPageIndex(page, total)) return@ReaderScreen
+                observedPage = page
                 ReaderPagePriority.update(chapterKey, page)
                 savePage(context, chapterKey, page)
                 if (!isIncognito(context)) {
@@ -55,9 +79,6 @@ internal fun ReaderRoute(
                             page = page,
                         )
                     )
-                }
-                if (isReaderChapterFullyLoadedAtEnd(page, pages, stillLoading)) {
-                    ReadState.setRead(context, chapterKey, true)
                 }
                 if (!isIncognito(context)) {
                     ReaderHistoryWriter.submit(
