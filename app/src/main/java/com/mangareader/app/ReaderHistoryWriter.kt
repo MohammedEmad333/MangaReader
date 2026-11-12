@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,19 +10,16 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
- * Serial writer for reader-history updates.
+ * Serial history persistence. Reader progress and checkpoint still save
+ * immediately; the heavier history JSON is written on the IO dispatcher.
  *
- * A settled reader page used to call History.touch() directly from Compose's
- * onProgress callback. That reparses/serializes the capped history and schedules
- * a SharedPreferences write on the UI thread for every page turn. Keep page/read
- * flags synchronous — they are tiny scalar edits that define resume correctness
- * — but move the heavier history upsert onto one process-lifetime IO worker.
- *
- * One channel, rather than one coroutine per page, preserves update order. The
- * flush barrier lets the close path wait for everything queued before it before
- * refreshing the History tab's in-memory list.
+ * Adjacent queued writes are coalesced by series and persisted together.
+ * A flush message is a strict barrier: writes after it cannot enter its batch.
+ * Batches are capped so a busy producer cannot monopolize the IO worker.
  */
 internal object ReaderHistoryWriter {
+    private const val MAX_BATCH_IDENTITIES = 40
+
     private sealed interface Message {
         data class Write(
             val context: Context,
@@ -38,10 +36,43 @@ internal object ReaderHistoryWriter {
 
     init {
         scope.launch {
+            var errorSinceFlush: Throwable? = null
             for (message in messages) {
                 when (message) {
-                    is Message.Write -> History.touch(message.context, message.entry)
-                    is Message.Flush -> message.done.complete(Unit)
+                    is Message.Flush -> {
+                        val error = errorSinceFlush
+                        errorSinceFlush = null
+                        if (error == null) message.done.complete(Unit)
+                        else message.done.completeExceptionally(error)
+                    }
+                    is Message.Write -> {
+                        val batch = ReaderHistoryBatch()
+                        batch.add(message.entry)
+                        var barrier: Message.Flush? = null
+                        while (batch.size < MAX_BATCH_IDENTITIES) {
+                            val next = messages.tryReceive().getOrNull() ?: break
+                            when (next) {
+                                is Message.Write -> batch.add(next.entry)
+                                is Message.Flush -> {
+                                    barrier = next
+                                    break
+                                }
+                            }
+                        }
+                        try {
+                            History.touchAll(message.context, batch.entries())
+                        } catch (error: Exception) {
+                            // Keep the worker alive so a failure cannot strand future flushes.
+                            Log.e("ReaderHistoryWriter", "Could not save reading history", error)
+                            if (errorSinceFlush == null) errorSinceFlush = error
+                        }
+                        barrier?.let { flush ->
+                            val error = errorSinceFlush
+                            errorSinceFlush = null
+                            if (error == null) flush.done.complete(Unit)
+                            else flush.done.completeExceptionally(error)
+                        }
+                    }
                 }
             }
         }
