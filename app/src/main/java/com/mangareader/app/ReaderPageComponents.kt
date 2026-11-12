@@ -267,12 +267,11 @@ internal fun ReaderPage(
         }
         // Null while the chapter is still downloading means "not here yet";
         // null once it has finished means that page failed.
-        stillLoading -> Box(
+        stillLoading -> ReaderPageLoadingPlaceholder(
             modifier = placeholder.heightIn(min = 240.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
+            pageIndex = index,
+            textColor = textColor,
+        )
         else -> Box(
             modifier = placeholder.heightIn(min = 240.dp),
             contentAlignment = Alignment.Center
@@ -294,6 +293,47 @@ internal fun ReaderPage(
     }
 }
 
+
+/**
+ * Keep the spinner, but explain when a source is taking unusually long.
+ * This does not restart downloads or hide a page that is still in progress.
+ * The keyed effect resets elapsed time as soon as a new page takes this slot.
+ */
+@Composable
+private fun ReaderPageLoadingPlaceholder(
+    modifier: Modifier,
+    pageIndex: Int,
+    textColor: Color,
+) {
+    var elapsedMs by remember(pageIndex) { mutableLongStateOf(0L) }
+    LaunchedEffect(pageIndex) {
+        elapsedMs = 0L
+        delay(READER_PAGE_SLOW_LOAD_DELAY_MS)
+        elapsedMs = READER_PAGE_SLOW_LOAD_DELAY_MS
+        delay(READER_PAGE_LONG_LOAD_DELAY_MS - READER_PAGE_SLOW_LOAD_DELAY_MS)
+        elapsedMs = READER_PAGE_LONG_LOAD_DELAY_MS
+    }
+    val message = when (readerPageWaitLevel(elapsedMs)) {
+        ReaderPageWaitLevel.LOADING -> "Loading page ${pageIndex + 1}…"
+        ReaderPageWaitLevel.SLOW -> "Page ${pageIndex + 1} is taking longer than usual."
+        ReaderPageWaitLevel.VERY_SLOW ->
+            "Still waiting for page ${pageIndex + 1}. The source or your connection may be slow."
+    }
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        CircularProgressIndicator()
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = message,
+            color = textColor,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
+}
 
 internal fun shouldRotateWidePage(
     width: Int,
