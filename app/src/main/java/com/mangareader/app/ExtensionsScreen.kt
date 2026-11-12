@@ -335,7 +335,7 @@ internal fun ExtensionsScreen(
 
                                     val installed = withContext(Dispatchers.IO) {
                                         var upgraded = false
-                                        repeat(8) {
+                                        for (attempt in 0 until 8) {
                                             @Suppress("DEPRECATION")
                                             val installedVersion = runCatching {
                                                 context.packageManager.getPackageInfo(
@@ -346,9 +346,9 @@ internal fun ExtensionsScreen(
                                                 compareVersions(installedVersion, ext.versionName) >= 0
                                             ) {
                                                 upgraded = true
-                                                return@repeat
+                                                break
                                             }
-                                            delay(350L)
+                                            if (attempt < 7) delay(350L)
                                         }
                                         upgraded
                                     }
