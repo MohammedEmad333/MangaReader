@@ -38,6 +38,10 @@ internal fun ExtensionsContent(
     onDiagnose: () -> Unit,
     onInstall: (Extension) -> Unit,
     onUninstall: (String) -> Unit,
+    bulkProgress: ExtensionBatchProgress?,
+    onUpdateAll: (List<Extension>) -> Unit,
+    onCancelBulk: () -> Unit,
+    onDismissBulk: () -> Unit,
 ) {
     Column(modifier = modifier) {
         if (loading) {
@@ -123,6 +127,52 @@ internal fun ExtensionsContent(
             )
         }
 
+        if (bulkProgress != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val state = bulkProgress
+                Text(
+                    if (state.finished) {
+                        "Bulk update complete: ${state.updated} updated, ${state.failures.size} failed, ${state.skipped} skipped"
+                    } else {
+                        "Updating extensions: ${state.attempted} / ${state.total} checked"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (state.total > 0) {
+                    LinearProgressIndicator(
+                        progress = { state.attempted.toFloat() / state.total },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (state.currentName != null) {
+                    Text(
+                        "${state.currentName}: ${if (state.phase == ExtensionBatchPhase.DOWNLOADING) "Downloading" else "Waiting for Android installer"}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (state.failures.isNotEmpty()) {
+                    Text(
+                        state.failures.joinToString("\n") { "${it.name}: ${it.reason}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (state.finished) {
+                    TextButton(onClick = onDismissBulk) { Text("Dismiss summary") }
+                } else {
+                    TextButton(
+                        onClick = onCancelBulk,
+                        enabled = !state.cancelRequested,
+                    ) { Text(if (state.cancelRequested) "Stopping after current…" else "Cancel remaining") }
+                }
+            }
+        }
+
         if (shownExtensions.isEmpty() && !loading) {
             Box(
                 modifier = Modifier
@@ -179,7 +229,24 @@ internal fun ExtensionsContent(
                         key = "extensions:update-header",
                         contentType = "header",
                     ) {
-                        SectionHeader("Update available (${updatable.size})")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Update available (${updatable.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Button(
+                                onClick = { onUpdateAll(updatable) },
+                                enabled = bulkProgress?.finished != false,
+                            ) {
+                                Text("Update all")
+                            }
+                        }
                     }
                     items(
                         updatable,
@@ -188,6 +255,7 @@ internal fun ExtensionsContent(
                     ) { ext ->
                         ExtensionRow(
                             ext = ext,
+                            enabled = bulkProgress?.finished != false,
                             onInstall = { onInstall(ext) },
                             onUninstall = { onUninstall(ext.pkgName) },
                         )
@@ -206,6 +274,7 @@ internal fun ExtensionsContent(
                     ) { ext ->
                         ExtensionRow(
                             ext = ext,
+                            enabled = bulkProgress?.finished != false,
                             onInstall = {},
                             onUninstall = { onUninstall(ext.pkgName) },
                         )
@@ -224,6 +293,7 @@ internal fun ExtensionsContent(
                     ) { ext ->
                         ExtensionRow(
                             ext = ext,
+                            enabled = bulkProgress?.finished != false,
                             onInstall = { onInstall(ext) },
                         )
                     }
