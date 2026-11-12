@@ -90,7 +90,14 @@ internal fun RootTransientRoute(
                 readerSession.close()
                 appState.readTick++
                 root.scope.launch {
-                    ReaderHistoryWriter.flush()
+                    try {
+                        ReaderHistoryWriter.flush()
+                    } catch (error: Exception) {
+                        // Report a failed history write, but still refresh the
+                        // visible history and never leave the reader stuck open.
+                        appState.error = "Could not save reading history: " +
+                            (error.localizedMessage ?: "Storage error")
+                    }
                     appState.history = withContext(Dispatchers.IO) {
                         History.forDisplay(context)
                     }
