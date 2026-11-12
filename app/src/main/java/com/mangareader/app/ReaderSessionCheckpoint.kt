@@ -17,6 +17,13 @@ internal data class ReaderSessionCheckpoint(
             chapterId.isNotBlank() && page >= 0
 }
 
+/** Protect an unrelated series' resume checkpoint when a chapter is marked unread. */
+internal fun checkpointMatchesChapterKey(
+    checkpoint: ReaderSessionCheckpoint,
+    chapterKey: String,
+): Boolean = checkpoint.isValid() &&
+    chapterKey == "${checkpoint.sourceId}|${checkpoint.chapterId}"
+
 internal object ReaderSessionCheckpointStore {
     private const val SOURCE = "reader_session_source"
     private const val SERIES = "reader_session_series"
@@ -42,6 +49,11 @@ internal object ReaderSessionCheckpointStore {
             chapterId = values.getString(CHAPTER, "").orEmpty(),
             page = values.getInt(PAGE, -1),
         ).takeIf { it.isValid() }
+    }
+
+    fun clearMatching(context: Context, chapterKey: String) {
+        val existing = load(context) ?: return
+        if (checkpointMatchesChapterKey(existing, chapterKey)) clear(context)
     }
 
     fun clear(context: Context) {
