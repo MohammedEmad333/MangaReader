@@ -8,6 +8,7 @@ import java.io.File
  */
 internal data class ReaderPageInspection(
     val file: File,
+    val wideMode: ReaderWidePageMode,
     val usable: Boolean,
     val rotateWide: Boolean,
     val canRedownload: Boolean,
@@ -28,8 +29,20 @@ internal fun readerPageInspection(
     }
     return ReaderPageInspection(
         file = file,
+        wideMode = wideMode,
         usable = usable,
         rotateWide = rotate,
         canRedownload = isReaderCachePage(file, cacheRoot),
     )
 }
+
+/**
+ * An async result may still be remembered while Compose switches page or
+ * rotation mode. Only draw it when both keys match the current request.
+ */
+internal fun currentReaderPageInspection(
+    inspection: ReaderPageInspection?,
+    file: File?,
+    wideMode: ReaderWidePageMode,
+): ReaderPageInspection? =
+    inspection?.takeIf { file != null && it.file == file && it.wideMode == wideMode }
