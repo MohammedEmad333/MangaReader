@@ -9,20 +9,21 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
 
 internal object ExtensionInstaller {
-    suspend fun install(context: Context, ext: Extension): Boolean =
+    /**
+     * Download and validate one APK, but do not launch Android's installer.
+     * The batch updater uses this to await the system installer after each APK.
+     */
+    suspend fun prepare(context: Context, ext: Extension): Result<Intent> =
         withContext(Dispatchers.IO) {
             var apkFile: File? = null
             try {
                 ExtensionApkDownloadPolicy.requirePackageName(ext.pkgName)
-                // Randomized cache file names avoid untrusted path components and collisions.
                 val tempDir = File(context.cacheDir, "extension-apks")
                 if (!tempDir.isDirectory && !tempDir.mkdirs()) {
                     throw IOException("Cannot create extension download directory")
                 }
-                // Leave recently shared APKs for Android to finish installing.
                 ExtensionApkCacheRetention.cleanup(tempDir)
                 val destination = File.createTempFile("extension-", ".apk", tempDir)
                 apkFile = destination
@@ -48,38 +49,45 @@ internal object ExtensionInstaller {
                     destination.absolutePath,
                     PackageManager.GET_META_DATA,
                 ) ?: throw IOException("Downloaded file is not a valid Android APK")
-
                 if (archiveInfo.packageName != ext.pkgName) {
                     throw IOException("Downloaded APK package does not match the requested extension")
                 }
 
-                withContext(Dispatchers.Main) {
-                    val apkUri = FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        destination,
-                    )
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(apkUri, "application/vnd.android.package-archive")
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                }
-                true
+                val apkUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    destination,
+                )
+                Result.success(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
             } catch (e: Exception) {
                 apkFile?.delete()
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Install Error: ${e.localizedMessage ?: e.message}",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
-                e.printStackTrace()
-                false
+                Result.failure(e)
             }
         }
+
+    /** Existing single-extension installation keeps its original UX. */
+    suspend fun install(context: Context, ext: Extension): Boolean {
+        val prepared = prepare(context, ext)
+        return try {
+            val intent = prepared.getOrThrow()
+            withContext(Dispatchers.Main) { context.startActivity(intent) }
+            true
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Install Error: ${e.localizedMessage ?: e.message}",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+            e.printStackTrace()
+            false
+        }
+    }
 
     private fun openDownloadConnection(initialUrl: String): HttpURLConnection {
         var currentUrl = ExtensionApkDownloadPolicy.secureUrl(initialUrl)
