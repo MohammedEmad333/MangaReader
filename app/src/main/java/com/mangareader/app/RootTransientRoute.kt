@@ -68,7 +68,12 @@ internal fun RootTransientRoute(
     if (
         chapterIndex != null &&
         chapter != null &&
-        readerSession.pages.isNotEmpty()
+        readerSession.pages.isNotEmpty() &&
+        readerSession.activeIdentity == ReaderSessionIdentity(
+            browseState.sourceId.orEmpty(),
+            seriesState.active?.id.orEmpty(),
+            chapter.id,
+        )
     ) {
         ReaderRoute(
             pages = readerSession.pages,
