@@ -62,6 +62,8 @@ import androidx.compose.ui.platform.LocalContext
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -96,16 +98,21 @@ internal fun ReaderPage(
         }
 
     val cacheRoot = LocalContext.current.cacheDir
-    val canRedownload = isReaderCachePage(file, cacheRoot)
-    val usableFile = file?.takeIf(::isUsableReaderPage)
-    val rotateWide = remember(usableFile, widePageMode) {
-        if (usableFile == null) {
-            false
-        } else {
-            val (width, height) = imageBounds(usableFile)
-            shouldRotateWidePage(width, height, widePageMode)
+    // Image headers and BitmapFactory bounds decoding can block disk I/O.
+    // A null inspection means the file is still being checked off the UI thread.
+    val inspection by produceState<ReaderPageInspection?>(
+        initialValue = null,
+        key1 = file,
+        key2 = widePageMode,
+    ) {
+        value = if (file == null) null else withContext(Dispatchers.IO) {
+            readerPageInspection(file, cacheRoot, widePageMode, ::imageBounds)
         }
     }
+    val inspected = inspection?.takeIf { it.file == file }
+    val canRedownload = inspected?.canRedownload == true
+    val usableFile = file?.takeIf { inspected?.usable == true }
+    val rotateWide = inspected?.rotateWide == true
 
     if (usableFile != null && rotateWide) {
         var rotatedRenderFailed by remember(usableFile) { mutableStateOf(false) }
@@ -264,6 +271,12 @@ internal fun ReaderPage(
                     }
                 }
             }
+        }
+        file != null && inspected == null -> Box(
+            modifier = placeholder.heightIn(min = 240.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
         }
         // Null while the chapter is still downloading means "not here yet";
         // null once it has finished means that page failed.
