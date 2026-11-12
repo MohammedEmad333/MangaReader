@@ -173,7 +173,9 @@ object ExtensionManager {
         return try {
             conn.connectTimeout = 15_000
             conn.readTimeout = 30_000
-            conn.inputStream.bufferedReader().use { it.readText() }
+            conn.inputStream.use { input ->
+                ExtensionIndexDownloadPolicy.readUtf8(input, conn.contentLengthLong)
+            }
         } finally {
             conn.disconnect()
         }
