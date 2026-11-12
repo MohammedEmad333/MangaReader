@@ -28,7 +28,10 @@ object ReadState {
      */
     fun setRead(context: Context, chapterKey: String, read: Boolean) {
         prefs(context).edit().putBoolean("read:" + chapterKey, read).apply()
-        if (!read) clearPage(context, chapterKey)
+        if (!read) {
+            clearPage(context, chapterKey)
+            ReaderSessionCheckpointStore.clearMatching(context, chapterKey)
+        }
     }
 
     /**
