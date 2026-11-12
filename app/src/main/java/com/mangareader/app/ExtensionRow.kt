@@ -24,7 +24,8 @@ import androidx.compose.ui.unit.dp
 internal fun ExtensionRow(
     ext: Extension,
     onInstall: () -> Unit,
-    onUninstall: (() -> Unit)? = null
+    onUninstall: (() -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     ListItem(
         leadingContent = {
@@ -59,7 +60,7 @@ internal fun ExtensionRow(
                 // Updating is the same flow as installing: the system installer
                 // treats a higher versionCode on the same package as an upgrade.
                 if (!ext.isInstalled || ext.hasUpdate) {
-                    TextButton(onClick = onInstall) {
+                    TextButton(onClick = onInstall, enabled = enabled) {
                         Text(if (ext.hasUpdate) "Update" else "Install")
                     }
                 }
@@ -67,7 +68,7 @@ internal fun ExtensionRow(
                 // header above the row didn't already say, and it was sitting in
                 // the one place an action for an installed extension belongs.
                 if (ext.isInstalled && onUninstall != null) {
-                    IconButton(onClick = onUninstall) {
+                    IconButton(onClick = onUninstall, enabled = enabled) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Uninstall ${ext.name}"
