@@ -7,6 +7,7 @@ package com.mangareader.app
  * one monolithic Kotlin source file. Filtering/query behavior belongs in Changelog.
  */
 internal val releaseNotes: List<ReleaseNote> =
+    releaseNotes298To298 +
     releaseNotes297To297 +
     releaseNotes296To296 +
     releaseNotes295To295 +
