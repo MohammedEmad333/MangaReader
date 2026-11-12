@@ -56,7 +56,7 @@ internal fun ReaderRoute(
                         )
                     )
                 }
-                if (isReaderChapterCompleted(page, total, stillLoading)) {
+                if (isReaderChapterFullyLoadedAtEnd(page, pages, stillLoading)) {
                     ReadState.setRead(context, chapterKey, true)
                 }
                 if (!isIncognito(context)) {
