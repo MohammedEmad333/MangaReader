@@ -109,7 +109,7 @@ internal fun ReaderPage(
             readerPageInspection(file, cacheRoot, widePageMode, ::imageBounds)
         }
     }
-    val inspected = inspection?.takeIf { it.file == file }
+    val inspected = inspection?.takeIf { it.file == file && it.wideMode == widePageMode }
     val canRedownload = inspected?.canRedownload == true
     val usableFile = file?.takeIf { inspected?.usable == true }
     val rotateWide = inspected?.rotateWide == true
