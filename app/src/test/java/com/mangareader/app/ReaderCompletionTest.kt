@@ -6,6 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReaderCompletionTest {
+    @Test fun validationRunsOnlyWhenFinalPageIsReachedAndLoadingFinished() {
+        assertFalse(shouldValidateReaderCompletion(-1, 0, false))
+        assertFalse(shouldValidateReaderCompletion(0, 0, false))
+        assertFalse(shouldValidateReaderCompletion(0, 2, false))
+        assertFalse(shouldValidateReaderCompletion(1, 2, true))
+        assertFalse(shouldValidateReaderCompletion(2, 2, false))
+        assertTrue(shouldValidateReaderCompletion(1, 2, false))
+        assertTrue(shouldValidateReaderCompletion(0, 1, false))
+    }
+
     @Test fun emptyChapterIsNotComplete() {
         assertFalse(isReaderChapterCompleted(0, 0))
         assertFalse(isReaderChapterCompleted(-1, 0))
