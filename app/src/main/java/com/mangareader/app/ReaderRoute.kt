@@ -20,9 +20,10 @@ internal fun ReaderRoute(
 ) {
     val context = LocalContext.current
     val chapterKey = chapterKeyOf(sourceId, chapter)
+    val routeIdentity = readerRouteIdentity(sourceId, series?.id, chapter.id)
     val total = pages.size
 
-    key(chapterKey) {
+    key(routeIdentity) {
         ReaderScreen(
             pages = pages,
             stillLoading = stillLoading,

@@ -19,6 +19,8 @@ internal class ReaderSessionState {
         private set
     var loading by mutableStateOf(false)
         private set
+    var activeIdentity by mutableStateOf<ReaderSessionIdentity?>(null)
+        private set
 
     private var loadJob: Job? = null
     private var loadSequence = 0
@@ -28,6 +30,7 @@ internal class ReaderSessionState {
         context: Context,
         scope: CoroutineScope,
         source: Source,
+        seriesId: String,
         chapters: List<Chapter>,
         index: Int,
         onRootLoadingChanged: (Boolean) -> Unit,
@@ -36,7 +39,10 @@ internal class ReaderSessionState {
         retryAt: Int? = null,
     ) {
         val chapter = chapters.getOrNull(index) ?: return
+        val requestedIdentity = ReaderSessionIdentity(source.id, seriesId, chapter.id)
+        if (!requestedIdentity.isValid()) return
         if (retryAt != null) {
+            if (!canRetryReaderSession(activeIdentity, requestedIdentity, chapterIndex, index, loading)) return
             val retryFile = pages.getOrNull(retryAt)
             val missingOrInvalid = canRetryReaderPage(pages, loading, chapterIndex, index, retryAt)
             val cacheRedownload = !loading && chapterIndex == index &&
@@ -59,6 +65,7 @@ internal class ReaderSessionState {
             chapterKeyOf(source.id, chapter)
         )
         val token = ++loadSequence
+        activeIdentity = requestedIdentity
         rootLoadingCallback = onRootLoadingChanged
         if (retryAt == null) {
             // Never display the previous series/chapter while a new one loads.
@@ -130,6 +137,7 @@ internal class ReaderSessionState {
         rootLoadingCallback = null
         loading = false
         chapterIndex = null
+        activeIdentity = null
         pages = emptyList()
     }
 }
