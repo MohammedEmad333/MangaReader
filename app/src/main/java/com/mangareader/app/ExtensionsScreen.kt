@@ -58,7 +58,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import dalvik.system.PathClassLoader
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -146,6 +149,16 @@ internal fun ExtensionsScreen(
     // app) doesn't refetch the index for nothing.
     var awaitingPackageChange by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableIntStateOf(0) }
+
+    var bulkProgress by remember { mutableStateOf<ExtensionBatchProgress?>(null) }
+    var pendingBulkInstaller by remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
+    val bulkInstallerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // The platform result is only a signal to inspect the installed version.
+        // RESULT_OK alone is not proof that an APK was installed successfully.
+        pendingBulkInstaller?.complete(Unit)
+    }
 
     // Uninstall goes through a launcher rather than startActivity so the system
     // dialog stays in this task and this screen is told when it closes. The
@@ -285,6 +298,92 @@ internal fun ExtensionsScreen(
             }
         },
         onUninstall = startUninstall,
+        bulkProgress = bulkProgress,
+        onUpdateAll = { extensions ->
+            if (bulkProgress?.finished != false) {
+                val queued = extensionsEligibleForBulkUpdate(extensions)
+                if (queued.isNotEmpty()) {
+                    bulkProgress = ExtensionBatchProgress(total = queued.size)
+                    scope.launch {
+                        try {
+                            for (ext in queued) {
+                                if (bulkProgress?.cancelRequested == true) break
+                                bulkProgress = bulkProgress?.start(
+                                    ext.name,
+                                    ExtensionBatchPhase.DOWNLOADING,
+                                )
+                                try {
+                                    val intent = ExtensionInstaller.prepare(
+                                        context.applicationContext,
+                                        ext,
+                                    ).getOrThrow()
+                                    bulkProgress = bulkProgress?.start(
+                                        ext.name,
+                                        ExtensionBatchPhase.INSTALLING,
+                                    )
+                                    val returned = CompletableDeferred<Unit>()
+                                    pendingBulkInstaller = returned
+                                    // ActivityResultLauncher keeps the system installer
+                                    // in this task rather than starting a new one.
+                                    bulkInstallerLauncher.launch(
+                                        Intent(intent).apply {
+                                            removeFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                    )
+                                    returned.await()
+                                    pendingBulkInstaller = null
+
+                                    val installed = withContext(Dispatchers.IO) {
+                                        var upgraded = false
+                                        repeat(8) {
+                                            @Suppress("DEPRECATION")
+                                            val installedVersion = runCatching {
+                                                context.packageManager.getPackageInfo(
+                                                    ext.pkgName, 0
+                                                ).versionName
+                                            }.getOrNull()
+                                            if (installedVersion != null &&
+                                                compareVersions(installedVersion, ext.versionName) >= 0
+                                            ) {
+                                                upgraded = true
+                                                return@repeat
+                                            }
+                                            delay(350L)
+                                        }
+                                        upgraded
+                                    }
+                                    bulkProgress = bulkProgress?.record(
+                                        ext.name,
+                                        installed,
+                                        if (installed) "" else "Installation cancelled or version unchanged",
+                                    )
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (e: Exception) {
+                                    bulkProgress = bulkProgress?.record(
+                                        ext.name,
+                                        false,
+                                        e.localizedMessage ?: "Could not install",
+                                    )
+                                } finally {
+                                    pendingBulkInstaller = null
+                                }
+                            }
+                        } finally {
+                            bulkProgress = bulkProgress?.finish()
+                            refreshTick++
+                            if ((bulkProgress?.updated ?: 0) > 0) onInstalled()
+                        }
+                    }
+                }
+            }
+        },
+        onCancelBulk = {
+            bulkProgress = bulkProgress?.cancelRemaining()
+        },
+        onDismissBulk = {
+            if (bulkProgress?.finished == true) bulkProgress = null
+        },
     )
 
 
