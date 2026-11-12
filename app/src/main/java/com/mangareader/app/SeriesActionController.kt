@@ -106,6 +106,7 @@ internal class SeriesActionController(
             context = context,
             scope = scope,
             source = source,
+            seriesId = seriesState.active?.id.orEmpty(),
             chapters = seriesState.chapters,
             index = index,
             onRootLoadingChanged = { appState.loading = it },
