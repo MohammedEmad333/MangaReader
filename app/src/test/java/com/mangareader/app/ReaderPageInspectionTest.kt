@@ -33,6 +33,23 @@ class ReaderPageInspectionTest {
         }
     }
 
+    @Test fun onlyCurrentPageAndModeCanUseAsyncInspection() {
+        val first = File("/tmp/reader-a")
+        val second = File("/tmp/reader-b")
+        val cached = ReaderPageInspection(
+            file = first,
+            wideMode = ReaderWidePageMode.FIT,
+            usable = true,
+            rotateWide = false,
+            canRedownload = false,
+        )
+        assertEquals(cached, currentReaderPageInspection(cached, first, ReaderWidePageMode.FIT))
+        assertEquals(null, currentReaderPageInspection(cached, second, ReaderWidePageMode.FIT))
+        assertEquals(null, currentReaderPageInspection(cached, first, ReaderWidePageMode.ROTATE_RIGHT))
+        assertEquals(null, currentReaderPageInspection(cached, null, ReaderWidePageMode.FIT))
+        assertEquals(null, currentReaderPageInspection(null, first, ReaderWidePageMode.FIT))
+    }
+
     @Test fun onlyReaderCacheFilesAreEligibleForRedownload() {
         val root = java.nio.file.Files.createTempDirectory("reader-page-root").toFile()
         try {
