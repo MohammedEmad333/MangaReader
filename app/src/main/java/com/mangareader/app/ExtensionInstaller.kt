@@ -22,6 +22,8 @@ internal object ExtensionInstaller {
                 if (!tempDir.isDirectory && !tempDir.mkdirs()) {
                     throw IOException("Cannot create extension download directory")
                 }
+                // Leave recently shared APKs for Android to finish installing.
+                ExtensionApkCacheRetention.cleanup(tempDir)
                 val destination = File.createTempFile("extension-", ".apk", tempDir)
                 apkFile = destination
 
