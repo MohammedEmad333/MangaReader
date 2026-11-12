@@ -138,9 +138,8 @@ internal fun ExtensionsContent(
             }
         }
 
-        val uniqueExtensions = remember(shownExtensions) {
-            shownExtensions.distinctBy { it.pkgName }
-        }
+        // ExtensionManager already resolves duplicate package IDs before filtering.
+        val uniqueExtensions = shownExtensions
 
         val (updatable, installed, available) = remember(uniqueExtensions) {
             Triple(

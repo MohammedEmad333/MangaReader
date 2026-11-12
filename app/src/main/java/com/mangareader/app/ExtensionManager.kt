@@ -128,7 +128,9 @@ object ExtensionManager {
         }
 
         indexCache = cache
-        available
+        // Resolve duplicate package IDs before view filters, so a repository
+        // cannot hide an adult-content flag or a newer available version.
+        selectLatestExtensions(available)
     }
 
     /**
