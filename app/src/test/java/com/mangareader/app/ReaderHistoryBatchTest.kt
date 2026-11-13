@@ -46,6 +46,37 @@ class ReaderHistoryBatchTest {
         assertEquals(2, batch.size)
     }
 
+    @Test fun repeatedSingleSeriesUpdatesCountAgainstBatchWorkLimit() {
+        val batch = ReaderHistoryBatch()
+        repeat(79) { page ->
+            batch.add(entry("source", "series", "chapter", page))
+        }
+        assertEquals(1, batch.size)
+        org.junit.Assert.assertTrue(batch.canCoalesceMore(40, 80))
+        batch.add(entry("source", "series", "chapter", 79))
+        assertEquals(1, batch.size)
+        org.junit.Assert.assertFalse(batch.canCoalesceMore(40, 80))
+        assertEquals(79, batch.entries().single().page)
+    }
+
+    @Test fun distinctSeriesStillRespectIdentityLimit() {
+        val batch = ReaderHistoryBatch()
+        repeat(40) { index ->
+            batch.add(entry("source", "series$index", "chapter", index))
+        }
+        assertEquals(40, batch.size)
+        org.junit.Assert.assertFalse(batch.canCoalesceMore(40, 80))
+        org.junit.Assert.assertTrue(batch.canCoalesceMore(41, 80))
+    }
+
+    @Test fun batchLimitsAreIndependent() {
+        val batch = ReaderHistoryBatch()
+        batch.add(entry("source", "one", "chapter", 1))
+        org.junit.Assert.assertFalse(batch.canCoalesceMore(1, 80))
+        org.junit.Assert.assertFalse(batch.canCoalesceMore(40, 1))
+        org.junit.Assert.assertTrue(batch.canCoalesceMore(40, 80))
+    }
+
     @Test fun standaloneFileEntriesAreIndependentAndCoalesceByChapter() {
         val first = entry("", "", "first", 1)
         val second = entry("", "", "second", 2)
