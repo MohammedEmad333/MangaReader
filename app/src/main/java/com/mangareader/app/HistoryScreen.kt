@@ -137,9 +137,7 @@ internal fun HistoryScreen(
     }
 
     val historyOrdering = remember(shownHistory, mediaFilter) {
-        mediaFilter to shownHistory.map {
-            if (it.seriesId.isBlank()) it.chapterKey else it.seriesId
-        }
+        mediaFilter to shownHistory.map(::historyRowKey)
     }
     scroll.sync(historyOrdering)
 
@@ -214,13 +212,7 @@ internal fun HistoryScreen(
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
                     shownHistory,
-                    key = {
-                        if (it.seriesId.isBlank()) {
-                            "history:chapter:${it.chapterKey}"
-                        } else {
-                            "history:series:${it.seriesId}"
-                        }
-                    },
+                    key = ::historyRowKey,
                     contentType = { "history-entry" },
                 ) { entry ->
                     HistoryEntryRow(
