@@ -70,22 +70,24 @@ internal class AppShellActionController(
     fun deleteHistory(entry: HistoryEntry) {
         val appContext = context.applicationContext
         scope.launch {
-            val refreshed = withContext(Dispatchers.IO) {
-                History.remove(appContext, entry.chapterKey)
-                History.forDisplay(appContext)
+            try {
+                appState.history = ReaderHistoryWriter.remove(appContext, entry.chapterKey)
+            } catch (error: Exception) {
+                appState.error = "Could not remove reading history: " +
+                    (error.localizedMessage ?: "Storage error")
             }
-            appState.history = refreshed
         }
     }
 
     fun clearHistory() {
         val appContext = context.applicationContext
         scope.launch {
-            val refreshed = withContext(Dispatchers.IO) {
-                History.clear(appContext)
-                History.forDisplay(appContext)
+            try {
+                appState.history = ReaderHistoryWriter.clear(appContext)
+            } catch (error: Exception) {
+                appState.error = "Could not clear reading history: " +
+                    (error.localizedMessage ?: "Storage error")
             }
-            appState.history = refreshed
         }
     }
 
