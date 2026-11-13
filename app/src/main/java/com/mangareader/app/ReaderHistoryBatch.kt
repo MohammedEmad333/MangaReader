@@ -10,8 +10,12 @@ package com.mangareader.app
  */
 internal class ReaderHistoryBatch {
     private val latest = LinkedHashMap<Triple<Boolean, String, String>, HistoryEntry>()
+    private var acceptedUpdates = 0
 
     fun add(entry: HistoryEntry) {
+        // Multiple updates of one series still occupy worker time. Count every
+        // accepted message, not just the number of distinct series.
+        acceptedUpdates++
         val identity = historyEntryIdentity(entry)
         latest.remove(identity)
         latest[identity] = entry
@@ -20,4 +24,7 @@ internal class ReaderHistoryBatch {
     fun entries(): List<HistoryEntry> = latest.values.toList()
 
     val size: Int get() = latest.size
+
+    fun canCoalesceMore(maxIdentities: Int, maxUpdates: Int): Boolean =
+        size < maxIdentities && acceptedUpdates < maxUpdates
 }
