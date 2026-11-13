@@ -17,6 +17,27 @@ class HistoryIdentityTest {
         updatedAt = 1L,
     )
 
+    @Test fun historyRowKeysSeparateSameSeriesFromDifferentSources() {
+        val first = entry("source-a", "123", "chapter")
+        val second = entry("source-b", "123", "chapter")
+        assertFalse(historyRowKey(first) == historyRowKey(second))
+        assertEquals(historyRowKey(first), historyRowKey(first.copy(page = 9)))
+        assertFalse(historyRowKey(first).contains("Same name"))
+    }
+
+    @Test fun historyRowKeysCannotCollideAcrossDelimiterBoundaries() {
+        val first = entry("a:b", "c", "chapter")
+        val second = entry("a", "b:c", "chapter")
+        assertFalse(historyRowKey(first) == historyRowKey(second))
+    }
+
+    @Test fun standaloneHistoryRowKeysFollowChapterIdentity() {
+        val first = entry("", "", "first")
+        val second = entry("", "", "second")
+        assertFalse(historyRowKey(first) == historyRowKey(second))
+        assertEquals(historyRowKey(first), historyRowKey(first.copy(page = 4)))
+    }
+
     @Test fun sameSeriesIdFromDifferentSourcesStaysDistinct() {
         val a = entry("source-a", "123", "first")
         val b = entry("source-b", "123", "first")
