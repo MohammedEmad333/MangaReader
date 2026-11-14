@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +87,10 @@ internal fun ReaderScreen(
     val view = LocalView.current
     val context = view.context
     val scope = rememberCoroutineScope()
+    val previewDensity = LocalDensity.current.density
+    val (previewWidthPx, previewHeightPx) = remember(previewDensity) {
+        readerPreviewDecodeSize(previewDensity)
+    }
 
     val globalSettings = remember(sourceId, seriesId) { ReaderPrefs.load(context) }
     val initialSeriesSettings = remember(sourceId, seriesId) {
@@ -365,8 +370,14 @@ internal fun ReaderScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (file != null) {
+                            val previewModel = remember(file, previewWidthPx, previewHeightPx) {
+                                ImageRequest.Builder(context)
+                                    .data(file)
+                                    .size(previewWidthPx, previewHeightPx)
+                                    .build()
+                            }
                             AsyncImage(
-                                model = file,
+                                model = previewModel,
                                 contentDescription = "Preview page ${index + 1}",
                                 modifier = Modifier.size(width = 72.dp, height = 96.dp),
                                 contentScale = ContentScale.Fit,
