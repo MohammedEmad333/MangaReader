@@ -374,6 +374,9 @@ internal fun ReaderScreen(
                                 ImageRequest.Builder(context)
                                     .data(file)
                                     .size(previewWidthPx, previewHeightPx)
+                                    .memoryCachePolicy(
+                                        readerImageMemoryCachePolicy(ReaderImageUsage.PAGE_PREVIEW)
+                                    )
                                     .build()
                             }
                             AsyncImage(
