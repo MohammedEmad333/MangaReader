@@ -39,6 +39,7 @@ class ReaderPageInspectionTest {
         val cached = ReaderPageInspection(
             file = first,
             wideMode = ReaderWidePageMode.FIT,
+            revision = requireNotNull(readerImageFileRevision(first)),
             usable = true,
             rotateWide = false,
             canRedownload = false,
@@ -48,6 +49,31 @@ class ReaderPageInspectionTest {
         assertEquals(null, currentReaderPageInspection(cached, first, ReaderWidePageMode.ROTATE_RIGHT))
         assertEquals(null, currentReaderPageInspection(cached, null, ReaderWidePageMode.FIT))
         assertEquals(null, currentReaderPageInspection(null, first, ReaderWidePageMode.FIT))
+    }
+
+    @Test fun samePathReplacementInvalidatesPriorInspection() {
+        val page = File.createTempFile("reader-revision", ".img")
+        try {
+            page.writeBytes(byteArrayOf(1, 2, 3))
+            val original = requireNotNull(readerImageFileRevision(page))
+            val checked = readerPageInspection(
+                page, page.parentFile!!, ReaderWidePageMode.FIT,
+                bounds = { throw AssertionError("No bounds in FIT mode") },
+                revision = original,
+            )
+            page.writeBytes(byteArrayOf(1, 2, 3, 4, 5, 6))
+            val replaced = requireNotNull(readerImageFileRevision(page))
+            assertEquals(page, replaced.file)
+            assertFalse(original == replaced)
+            assertEquals(null, currentReaderPageInspection(checked, page, ReaderWidePageMode.FIT, replaced))
+            assertEquals(replaced, readerPageInspection(
+                page, page.parentFile!!, ReaderWidePageMode.FIT,
+                bounds = { throw AssertionError("No bounds in FIT mode") },
+                revision = replaced,
+            ).revision)
+        } finally {
+            page.delete()
+        }
     }
 
     @Test fun onlyReaderCacheFilesAreEligibleForRedownload() {
