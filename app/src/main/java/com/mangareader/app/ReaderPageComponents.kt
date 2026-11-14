@@ -120,6 +120,7 @@ internal fun ReaderPage(
         val context = LocalContext.current
         val rotatedModel = remember(usableFile, decodeAttempt) {
             ImageRequest.Builder(context).data(usableFile)
+                .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
                 .memoryCacheKey("${usableFile.absolutePath}:rotated:$decodeAttempt")
                 .listener(
                     onError = { _, _ -> rotatedRenderFailed = true },
@@ -190,6 +191,7 @@ internal fun ReaderPage(
             val context = LocalContext.current
             val zoomModel = remember(usableFile, decodeAttempt) {
                 ImageRequest.Builder(context).data(usableFile)
+                .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
                     .memoryCacheKey("${usableFile.absolutePath}:zoom:$decodeAttempt")
                     .listener(
                         onError = { _, _ -> renderFailed = true },
@@ -231,6 +233,7 @@ internal fun ReaderPage(
             val context = LocalContext.current
             val imageModel = remember(usableFile, decodeAttempt) {
                 ImageRequest.Builder(context).data(usableFile)
+                .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
                     .memoryCacheKey("${usableFile.absolutePath}:page:$decodeAttempt").build()
             }
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
