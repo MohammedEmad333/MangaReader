@@ -96,7 +96,8 @@ internal class TachiyomiPageLoader(
             val chunk = prioritizedPageOrder(
                 pages.size, priorityTicket?.get() ?: startAt, started,
                 if (priorityTicket == null) emptyList() else ReaderPagePriority.visiblePages(priorityKey),
-                if (priorityTicket == null) 1 else ReaderPagePriority.direction(priorityKey)
+                if (priorityTicket == null) 1 else ReaderPagePriority.direction(priorityKey),
+                if (priorityTicket == null) 1 else ReaderPagePriority.stride(priorityKey)
             ).take(PAGE_CONCURRENCY)
             if (chunk.isEmpty()) break
             started.addAll(chunk)
