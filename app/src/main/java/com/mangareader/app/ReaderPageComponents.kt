@@ -98,30 +98,39 @@ internal fun ReaderPage(
         }
 
     val cacheRoot = LocalContext.current.cacheDir
+    // A retry may replace the image at the same path. Force a fresh request even
+    // when the filesystem timestamp happens not to change between downloads.
+    var redownloadGeneration by remember(file) { mutableIntStateOf(0) }
+    val revision = readerImageFileRevision(file, redownloadGeneration)
+    val retryPage: () -> Unit = {
+        redownloadGeneration++
+        onRetry()
+    }
     // Image headers and BitmapFactory bounds decoding can block disk I/O.
     // A null inspection means the file is still being checked off the UI thread.
     val inspection by produceState<ReaderPageInspection?>(
         initialValue = null,
-        key1 = file,
+        key1 = revision,
         key2 = widePageMode,
+        key3 = stillLoading,
     ) {
-        value = if (file == null) null else withContext(Dispatchers.IO) {
-            readerPageInspection(file, cacheRoot, widePageMode, ::imageBounds)
+        value = if (revision == null) null else withContext(Dispatchers.IO) {
+            readerPageInspection(revision.file, cacheRoot, widePageMode, ::imageBounds, revision)
         }
     }
-    val inspected = currentReaderPageInspection(inspection, file, widePageMode)
+    val inspected = currentReaderPageInspection(inspection, file, widePageMode, revision)
     val canRedownload = inspected?.canRedownload == true
     val usableFile = file?.takeIf { inspected?.usable == true }
     val rotateWide = inspected?.rotateWide == true
 
     if (usableFile != null && rotateWide) {
-        var rotatedRenderFailed by remember(usableFile) { mutableStateOf(false) }
-        var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+        var rotatedRenderFailed by remember(revision) { mutableStateOf(false) }
+        var decodeAttempt by remember(revision) { mutableIntStateOf(0) }
         val context = LocalContext.current
-        val rotatedModel = remember(usableFile, decodeAttempt) {
+        val rotatedModel = remember(revision, decodeAttempt) {
             ImageRequest.Builder(context).data(usableFile)
                 .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
-                .memoryCacheKey("${usableFile.absolutePath}:rotated:$decodeAttempt")
+                .memoryCacheKey(requireNotNull(revision).cacheKey("rotated", decodeAttempt))
                 .listener(
                     onError = { _, _ -> rotatedRenderFailed = true },
                     onSuccess = { _, _ -> rotatedRenderFailed = false },
@@ -173,7 +182,7 @@ internal fun ReaderPage(
                             Text("Retry display")
                         }
                         if (canRedownload) {
-                            TextButton(onClick = onRetry, enabled = !stillLoading) {
+                            TextButton(onClick = retryPage, enabled = !stillLoading) {
                                 Text("Re-download page")
                             }
                         }
@@ -186,13 +195,13 @@ internal fun ReaderPage(
 
     when {
         usableFile != null && zoomable -> {
-            var renderFailed by remember(usableFile) { mutableStateOf(false) }
-            var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+            var renderFailed by remember(revision) { mutableStateOf(false) }
+            var decodeAttempt by remember(revision) { mutableIntStateOf(0) }
             val context = LocalContext.current
-            val zoomModel = remember(usableFile, decodeAttempt) {
+            val zoomModel = remember(revision, decodeAttempt) {
                 ImageRequest.Builder(context).data(usableFile)
                 .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
-                    .memoryCacheKey("${usableFile.absolutePath}:zoom:$decodeAttempt")
+                    .memoryCacheKey(requireNotNull(revision).cacheKey("zoom", decodeAttempt))
                     .listener(
                         onError = { _, _ -> renderFailed = true },
                         onSuccess = { _, _ -> renderFailed = false },
@@ -218,7 +227,7 @@ internal fun ReaderPage(
                                 Text("Retry display")
                             }
                             if (canRedownload) {
-                                TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                TextButton(onClick = retryPage, enabled = !stillLoading) {
                                 Text("Re-download page")
                             }
                             }
@@ -228,13 +237,13 @@ internal fun ReaderPage(
             }
         }
         usableFile != null -> {
-            var renderFailed by remember(usableFile) { mutableStateOf(false) }
-            var decodeAttempt by remember(usableFile) { mutableIntStateOf(0) }
+            var renderFailed by remember(revision) { mutableStateOf(false) }
+            var decodeAttempt by remember(revision) { mutableIntStateOf(0) }
             val context = LocalContext.current
-            val imageModel = remember(usableFile, decodeAttempt) {
+            val imageModel = remember(revision, decodeAttempt) {
                 ImageRequest.Builder(context).data(usableFile)
                 .memoryCachePolicy(readerImageMemoryCachePolicy(ReaderImageUsage.FULL_PAGE))
-                    .memoryCacheKey("${usableFile.absolutePath}:page:$decodeAttempt").build()
+                    .memoryCacheKey(requireNotNull(revision).cacheKey("page", decodeAttempt)).build()
             }
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
                 AsyncImage(
@@ -266,7 +275,7 @@ internal fun ReaderPage(
                                 Text("Retry display")
                             }
                             if (canRedownload) {
-                                TextButton(onClick = onRetry, enabled = !stillLoading) {
+                                TextButton(onClick = retryPage, enabled = !stillLoading) {
                                     Text("Re-download page")
                                 }
                             }
@@ -301,7 +310,7 @@ internal fun ReaderPage(
                     color = textColor,
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Button(onClick = onRetry) {
+                Button(onClick = retryPage) {
                     Text("Retry page ${index + 1}")
                 }
             }

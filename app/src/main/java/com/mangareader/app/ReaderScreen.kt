@@ -370,10 +370,12 @@ internal fun ReaderScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (file != null) {
-                            val previewModel = remember(file, previewWidthPx, previewHeightPx) {
+                            val previewRevision = requireNotNull(readerImageFileRevision(file))
+                            val previewModel = remember(previewRevision, previewWidthPx, previewHeightPx) {
                                 ImageRequest.Builder(context)
                                     .data(file)
                                     .size(previewWidthPx, previewHeightPx)
+                                    .memoryCacheKey(previewRevision.cacheKey("preview-${previewWidthPx}x${previewHeightPx}"))
                                     .memoryCachePolicy(
                                         readerImageMemoryCachePolicy(ReaderImageUsage.PAGE_PREVIEW)
                                     )

@@ -9,6 +9,7 @@ import java.io.File
 internal data class ReaderPageInspection(
     val file: File,
     val wideMode: ReaderWidePageMode,
+    val revision: ReaderImageFileRevision,
     val usable: Boolean,
     val rotateWide: Boolean,
     val canRedownload: Boolean,
@@ -19,6 +20,7 @@ internal fun readerPageInspection(
     cacheRoot: File,
     wideMode: ReaderWidePageMode,
     bounds: (File) -> Pair<Int, Int>,
+    revision: ReaderImageFileRevision = requireNotNull(readerImageFileRevision(file)),
 ): ReaderPageInspection {
     val usable = isUsableReaderPage(file)
     val rotate = if (usable && wideMode == ReaderWidePageMode.ROTATE_RIGHT) {
@@ -30,6 +32,7 @@ internal fun readerPageInspection(
     return ReaderPageInspection(
         file = file,
         wideMode = wideMode,
+        revision = revision,
         usable = usable,
         rotateWide = rotate,
         canRedownload = isReaderCachePage(file, cacheRoot),
@@ -44,5 +47,8 @@ internal fun currentReaderPageInspection(
     inspection: ReaderPageInspection?,
     file: File?,
     wideMode: ReaderWidePageMode,
+    revision: ReaderImageFileRevision? = readerImageFileRevision(file),
 ): ReaderPageInspection? =
-    inspection?.takeIf { file != null && it.file == file && it.wideMode == wideMode }
+    inspection?.takeIf {
+        file != null && it.file == file && it.wideMode == wideMode && it.revision == revision
+    }
