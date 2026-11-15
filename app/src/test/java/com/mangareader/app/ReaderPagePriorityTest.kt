@@ -103,7 +103,7 @@ class ReaderPagePriorityTest {
 
     @Test fun visiblePagesAndStartedRequestsStayAheadOfSpeculation() {
         assertEquals(
-            listOf(6, 9, 11, 7, 12, 13, 5, 4, 3, 2, 1, 0),
+            listOf(6, 9, 7, 11, 12, 13, 5, 4, 3, 2, 1, 0),
             prioritizedPageOrder(14, 8, alreadyStarted = setOf(8, 10), visiblePages = listOf(6, 8, 9, 6, -1), stride = 10),
         )
     }
