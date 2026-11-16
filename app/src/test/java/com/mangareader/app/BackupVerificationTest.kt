@@ -65,9 +65,8 @@ class BackupVerificationTest {
     @Test fun boundedReadStopsAtLimit() {
         val bytes = backup()
         assertEquals(bytes.toList(), BackupVerification.readBounded(ByteArrayInputStream(bytes)).toList())
-        val huge = ByteArray(64 * 1024 * 1024 + 1)
         assertThrows(IllegalStateException::class.java) {
-            BackupVerification.readBounded(ByteArrayInputStream(huge))
+            BackupVerification.readBounded(ByteArrayInputStream(bytes), maxBytes = 8)
         }
     }
 }
