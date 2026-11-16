@@ -67,6 +67,7 @@ internal fun ReaderSplitWidePage(
             contentDescription = "Page ${index + 1}, ${if (half == 0) "first" else "second"} half",
             modifier = Modifier
                 .offset(x = if (right) -maxWidth else 0.dp)
+                .wrapContentSize(unbounded = true, align = Alignment.TopStart)
                 .width(maxWidth * 2)
                 .height(maxHeight),
             contentScale = ContentScale.Fit,
