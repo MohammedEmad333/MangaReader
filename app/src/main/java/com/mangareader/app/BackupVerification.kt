@@ -92,9 +92,15 @@ internal object BackupVerification {
                 val value = entry.opt("v")
                 val valid = when (entry.optString("t")) {
                     "b" -> value is Boolean
-                    "i", "l" -> value is Number && value.toDouble().isFinite() &&
-                        value.toDouble() % 1.0 == 0.0
-                    "f" -> value is Number && value.toDouble().isFinite()
+                    "i" -> value is Number && value.toDouble().isFinite() &&
+                        value.toDouble() % 1.0 == 0.0 &&
+                        value.toDouble() in Int.MIN_VALUE.toDouble()..Int.MAX_VALUE.toDouble()
+                    "l" -> value is Number && value.toDouble().isFinite() &&
+                        value.toDouble() % 1.0 == 0.0 &&
+                        value.toDouble() >= Long.MIN_VALUE.toDouble() &&
+                        value.toDouble() < 9223372036854775808.0
+                    "f" -> value is Number && value.toDouble().isFinite() &&
+                        value.toDouble() in -Float.MAX_VALUE.toDouble()..Float.MAX_VALUE.toDouble()
                     "s" -> value is String
                     "ss" -> value is JSONArray &&
                         (0 until value.length()).all { value.opt(it) is String }
