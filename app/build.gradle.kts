@@ -22,6 +22,10 @@ android {
     // .github/workflows moves too).
     compileSdk = 36
 
+    // Instrumentation uses a non-minified variant so Compose test hooks remain
+    // available. Published debug keeps its normal R8 settings.
+    testBuildType = "deviceTest"
+
     defaultConfig {
         applicationId = "com.mangareader.app"
         minSdk = 24
@@ -126,8 +130,6 @@ android {
         // ---------------------------------------------------------------
         getByName("debug") {
             isMinifyEnabled = true
-            // These rules apply only to the test APK; app shrinking stays untouched.
-            testProguardFiles("proguard-android-test.pro")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -148,6 +150,12 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
+        }
+        create("deviceTest") {
+            initWith(getByName("debug"))
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -250,11 +258,10 @@ dependencies {
     // and Compose pager rendering on an Android emulator.
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    // R8 minifies the test APK as well and needs these AndroidX test annotations.
-    androidTestImplementation("com.google.errorprone:error_prone_annotations:2.36.0")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    deviceTestImplementation("androidx.compose.ui:ui-test-manifest")
     // The Android SDK ships stub org.json methods to local JVM tests.
     testImplementation("org.json:json:20240303")
 }
