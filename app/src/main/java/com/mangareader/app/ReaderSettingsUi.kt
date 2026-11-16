@@ -83,6 +83,11 @@ internal fun ReaderSettingsSheet(
                         onSelect = { onChange(settings.copy(rotation = ReaderRotation.entries[it])) }
                     )
                     if (settings.mode != ReaderMode.LONG_STRIP) {
+                        Text(
+                            "Auto rotates wide pages only while the screen is portrait; Fit and Rotate 90° remain available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         ChipRow(
                             label = "Wide pages",
                             options = ReaderWidePageMode.entries.map { it.label },
