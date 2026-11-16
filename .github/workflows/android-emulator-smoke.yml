@@ -21,6 +21,11 @@ on:
 permissions:
   contents: read
 
+# A new PR commit supersedes old emulator sessions and conserves CI minutes.
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-24.04
