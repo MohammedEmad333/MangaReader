@@ -13,11 +13,11 @@ class ChapterTransientRetryPolicyTest {
         ChapterDownloadException(count, total, PageDownloadException(0, null, cause))
 
     @Test fun transientNetworkFailureGetsOneExtraPass() {
-        val failed = failed(SocketTimeoutException("timeout"))
-        assertTrue(shouldRetryTransientChapterFailure(failed, 0))
-        assertFalse(shouldRetryTransientChapterFailure(failed, 1))
-        assertFalse(shouldRetryTransientChapterFailure(failed, 20))
-        assertFalse(shouldRetryTransientChapterFailure(failed, -1))
+        val timeoutFailure = failed(SocketTimeoutException("timeout"))
+        assertTrue(shouldRetryTransientChapterFailure(timeoutFailure, 0))
+        assertFalse(shouldRetryTransientChapterFailure(timeoutFailure, 1))
+        assertFalse(shouldRetryTransientChapterFailure(timeoutFailure, 20))
+        assertFalse(shouldRetryTransientChapterFailure(timeoutFailure, -1))
         assertTrue(shouldRetryTransientChapterFailure(failed(ConnectException("refused")), 0))
         assertTrue(shouldRetryTransientChapterFailure(failed(UnknownHostException("dns")), 0))
     }
