@@ -299,6 +299,7 @@ internal fun ReaderScreen(
                     }
                 },
                 widePageMode = settings.widePageMode,
+                twoPageTablet = navigation.twoPageTablet,
                 onRetryPage = onRetryPage,
             )
         }

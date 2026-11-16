@@ -92,6 +92,7 @@ internal data class ReaderSettings(
     /** Outer thirds turn pages in paged modes; centre third toggles controls. */
     val tapZones: Boolean = true,
     val tapZoneSize: ReaderTapZoneSize = ReaderTapZoneSize.NORMAL,
+    val twoPageTablet: Boolean = false,
     /** Seconds before reader chrome hides itself. 0 keeps controls visible. */
     val controlsAutoHideSeconds: Int = 4,
     val showPageNumber: Boolean = true,
@@ -115,6 +116,7 @@ internal object ReaderPrefs {
     private const val WIDE_PAGE_MODE = "reader_wide_page_mode"
     private const val TAP_ZONES = "reader_tap_zones"
     private const val TAP_ZONE_SIZE = "reader_tap_zone_size"
+    private const val TWO_PAGE_TABLET = "reader_two_page_tablet"
     private const val CONTROLS_AUTO_HIDE_SECONDS = "reader_controls_auto_hide_seconds"
     private const val PAGE_NUMBER = "reader_page_number"
     private const val SLIDER_POSITION = "reader_slider_position"
@@ -137,6 +139,7 @@ internal object ReaderPrefs {
             widePageMode = ReaderWidePageMode.from(p.getString(WIDE_PAGE_MODE, null)),
             tapZones = p.getBoolean(TAP_ZONES, defaults.tapZones),
             tapZoneSize = ReaderTapZoneSize.from(p.getString(TAP_ZONE_SIZE, null)),
+            twoPageTablet = p.getBoolean(TWO_PAGE_TABLET, false),
             controlsAutoHideSeconds = p.getInt(
                 CONTROLS_AUTO_HIDE_SECONDS,
                 defaults.controlsAutoHideSeconds,
@@ -167,6 +170,7 @@ internal object ReaderPrefs {
             .putString(WIDE_PAGE_MODE, settings.widePageMode.key)
             .putBoolean(TAP_ZONES, settings.tapZones)
             .putString(TAP_ZONE_SIZE, settings.tapZoneSize.key)
+            .putBoolean(TWO_PAGE_TABLET, settings.twoPageTablet)
             .putInt(CONTROLS_AUTO_HIDE_SECONDS, settings.controlsAutoHideSeconds)
             .putBoolean(PAGE_NUMBER, settings.showPageNumber)
             .putString(SLIDER_POSITION, settings.sliderPosition.key)
@@ -215,6 +219,7 @@ internal object ReaderSeriesPrefs {
                 ),
                 tapZones = o.optBoolean("tapZones", true),
                 tapZoneSize = ReaderTapZoneSize.from(o.optString("tapZoneSize")),
+                twoPageTablet = o.optBoolean("twoPageTablet", false),
                 controlsAutoHideSeconds = o.optInt("controlsAutoHideSeconds", 4)
                     .coerceIn(0, 10),
                 showPageNumber = o.optBoolean("showPageNumber", true),
@@ -247,6 +252,7 @@ internal object ReaderSeriesPrefs {
             .put("widePageMode", settings.widePageMode.key)
             .put("tapZones", settings.tapZones)
             .put("tapZoneSize", settings.tapZoneSize.key)
+            .put("twoPageTablet", settings.twoPageTablet)
             .put("controlsAutoHideSeconds", settings.controlsAutoHideSeconds)
             .put("showPageNumber", settings.showPageNumber)
             .put("sliderPosition", settings.sliderPosition.key)

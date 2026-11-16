@@ -4,6 +4,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -22,6 +23,7 @@ internal data class ReaderNavigationState(
     val lastPage: Int,
     val seekTargetState: MutableState<Float?>,
     val rtl: Boolean,
+    val twoPageTablet: Boolean,
     val commitSeek: () -> Unit,
     val previousPage: () -> Unit,
     val nextPage: () -> Unit,
@@ -63,14 +65,22 @@ internal fun rememberReaderNavigationState(
      * silently.
      */
     val headRows = 1
+    val viewport = LocalConfiguration.current
+    val twoPageTablet = readerTwoPageTabletEnabled(
+        settings.twoPageTablet, settings.mode,
+        viewport.screenWidthDp, viewport.screenHeightDp,
+    )
+    val visiblePageCount = if (twoPageTablet) readerSpreadCount(pages.size) else pages.size
 
     // Two extra pages in the pager: a transition at each end, the same pair the
     // strip has carried since 0.104. Both counts come from `headRows` rather
     // than a literal, so the offset has one source — a second copy of it drifts
     // the moment either is edited, which is the shape 0.100 fixed for the
     // refresh cursor.
-    val pagerState = rememberPagerState(initialPage = initialPage + headRows) {
-        if (pages.isEmpty()) 0 else pages.size + headRows * 2
+    val pagerState = rememberPagerState(
+        initialPage = (if (twoPageTablet) readerSpreadForPage(initialPage) else initialPage) + headRows,
+    ) {
+        if (pages.isEmpty()) 0 else visiblePageCount + headRows * 2
     }
 
     // Seeded past the header so a chapter opens on its first page, with the
@@ -137,16 +147,16 @@ internal fun rememberReaderNavigationState(
     // a position nobody stopped at, which is exactly what settledPage exists to
     // prevent one mode over. `!isScrollInProgress` is the strip's settledPage:
     // it says the same thing to a LazyColumn that settledPage says to a pager.
-    val atTailRow by remember(pages.size, headRows, settings.mode) {
+    val atTailRow by remember(pages.size, headRows, settings.mode, twoPageTablet) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
                 rowFullyVisible(pages.size + headRows) && !listState.isScrollInProgress
             } else {
-                pagerState.settledPage == pages.size + headRows
+                pagerState.settledPage == visiblePageCount + headRows
             }
         }
     }
-    val atHeadRow by remember(pages.size, headRows, settings.mode) {
+    val atHeadRow by remember(pages.size, headRows, settings.mode, twoPageTablet) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
                 rowFullyVisible(0) && !listState.isScrollInProgress
@@ -201,7 +211,8 @@ internal fun rememberReaderNavigationState(
         // page, which is what makes the tail count as "finished" for
         // read-marking rather than as a page past the end.
         settings.mode != ReaderMode.LONG_STRIP ->
-            (pagerState.currentPage - headRows).coerceIn(0, lastPage)
+            if (twoPageTablet) readerSpreadLastPage(pagerState.currentPage - headRows, pages.size)
+            else (pagerState.currentPage - headRows).coerceIn(0, lastPage)
 
         // A strip's last page is visible at the bottom of the screen long
         // before it is ever the *first* item on it, so firstVisibleItemIndex
@@ -219,15 +230,33 @@ internal fun rememberReaderNavigationState(
     // A last-page position may remain unchanged when streaming finishes.
     // Re-dispatch once loading completes so read status can be finalized.
     // The callback validates bounds and avoids persisting empty-page progress.
-    val persistedPage = readerPageToPersist(
-        mode = settings.mode,
-        visiblePage = currentPage,
-        settledPagerItem = pagerState.settledPage,
-        headRows = headRows,
-        pageCount = pages.size,
-    )
-    LaunchedEffect(persistedPage, pages.size, stillLoading) {
-        if (pages.isNotEmpty()) onProgress(persistedPage)
+    val persistedPage = if (twoPageTablet && settings.mode != ReaderMode.LONG_STRIP) {
+        readerSpreadLastPage(pagerState.settledPage - headRows, pages.size)
+    } else {
+        readerPageToPersist(
+            mode = settings.mode,
+            visiblePage = currentPage,
+            settledPagerItem = pagerState.settledPage,
+            headRows = headRows,
+            pageCount = pages.size,
+        )
+    }
+    var lastStableLogicalPage by remember(chapterIndex) { mutableIntStateOf(initialPage) }
+    var previousTwoPageMode by remember(chapterIndex) { mutableStateOf(twoPageTablet) }
+    LaunchedEffect(twoPageTablet, chapterIndex) {
+        if (previousTwoPageMode != twoPageTablet) {
+            val target = if (twoPageTablet) readerSpreadForPage(lastStableLogicalPage)
+                else lastStableLogicalPage
+            pagerState.scrollToPage((target + headRows)
+                .coerceIn(0, visiblePageCount + headRows))
+            previousTwoPageMode = twoPageTablet
+        }
+    }
+    LaunchedEffect(persistedPage, pages.size, stillLoading, twoPageTablet) {
+        if (pages.isNotEmpty() && previousTwoPageMode == twoPageTablet) {
+            lastStableLogicalPage = persistedPage
+            onProgress(persistedPage)
+        }
     }
 
     // LazyColumn may show multiple pages simultaneously. Prioritize all of
@@ -242,6 +271,15 @@ internal fun rememberReaderNavigationState(
             }.distinctUntilChanged().collect { onVisiblePages(it) }
         } else {
             onVisiblePages(emptyList())
+        }
+    }
+    LaunchedEffect(pagerState, pages.size, twoPageTablet) {
+        if (twoPageTablet) {
+            snapshotFlow { pagerState.currentPage }.distinctUntilChanged().collect { slot ->
+                val first = readerSpreadFirstPage(slot - headRows, pages.size)
+                onVisiblePages((first..(first + 1).coerceAtMost(pages.lastIndex))
+                    .filter { it in pages.indices })
+            }
         }
     }
 
@@ -266,7 +304,7 @@ internal fun rememberReaderNavigationState(
     fun nextPage() {
         if (settings.mode == ReaderMode.LONG_STRIP || pages.isEmpty()) return
         scope.launch {
-            val tail = pages.size + headRows
+            val tail = visiblePageCount + headRows
             pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(tail))
         }
     }
@@ -277,7 +315,7 @@ internal fun rememberReaderNavigationState(
         if (target == null || pages.isEmpty()) return
         scope.launch {
             if (settings.mode == ReaderMode.LONG_STRIP) listState.scrollToItem(target + headRows)
-            else pagerState.scrollToPage(target + headRows)
+            else pagerState.scrollToPage((if (twoPageTablet) readerSpreadForPage(target) else target) + headRows)
         }
     }
 
@@ -308,6 +346,7 @@ internal fun rememberReaderNavigationState(
         lastPage = lastPage,
         seekTargetState = seekTargetState,
         rtl = rtl,
+        twoPageTablet = twoPageTablet,
         commitSeek = { commitSeek() },
         previousPage = { previousPage() },
         nextPage = { nextPage() },
