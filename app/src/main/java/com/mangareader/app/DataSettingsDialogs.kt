@@ -24,6 +24,7 @@ internal fun DataSettingsDialogs(
     message: String?,
     onDismissMessage: () -> Unit,
     pendingRestore: Uri?,
+    restoreVerification: BackupVerificationReport?,
     onDismissRestore: () -> Unit,
     onConfirmRestore: (Uri) -> Unit,
     confirmDownloads: Boolean,
@@ -127,17 +128,21 @@ internal fun DataSettingsDialogs(
         )
     }
 
-    if (pendingRestore != null) {
+    if (pendingRestore != null && restoreVerification != null) {
         AlertDialog(
             onDismissRequest = onDismissRestore,
             title = { Text("Restore this backup?") },
             text = {
                 Text(
-                    "Everything currently in the app is replaced: library, " +
-                        "categories, history, read marks and source settings. This " +
-                        "can't be undone, and it isn't a merge — anything added " +
-                        "since the backup was made is lost. Downloaded chapters stay " +
-                        "on disk either way.",
+                    "Backup verified (read-only).\n" +
+                        "Created by Yomu: ${restoreVerification.appVersion.ifBlank { "unknown" }}\n" +
+                        "Preference stores: ${restoreVerification.storeCount}\n" +
+                        "Settings: ${restoreVerification.settingCount}\n" +
+                        "Size: ${restoreVerification.byteCount} bytes\n" +
+                        "Fingerprint: ${restoreVerification.fingerprint.take(12)}…\n\n" +
+                        "Confirming will REPLACE your library, categories, history, " +
+                        "read marks and source settings. Downloads stay on disk. " +
+                        "The file is checked again before any settings are replaced.",
                 )
             },
             confirmButton = {
