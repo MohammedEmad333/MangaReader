@@ -20,6 +20,6 @@ internal fun readerSpreadFirstPage(spread: Int, pageCount: Int): Int {
 }
 
 internal fun readerSpreadLastPage(spread: Int, pageCount: Int): Int {
-    if (pageCount <= 0) return 0
-    return (spread.coerceAtLeast(0).toLong() * 2 + 1).coerceAtMost((pageCount - 1).toLong()).toInt()
+    if (pageCount <= 0 || spread < 0) return 0
+    return (spread.toLong() * 2 + 1).coerceAtMost((pageCount - 1).toLong()).toInt()
 }
