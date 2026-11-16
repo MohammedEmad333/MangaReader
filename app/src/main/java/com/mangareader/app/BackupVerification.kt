@@ -35,7 +35,7 @@ internal object BackupVerification {
     private const val VERSION = 1
     private const val APP_STORE = "manga_reader"
 
-    fun readBounded(stream: InputStream): ByteArray {
+    fun readBounded(stream: InputStream, maxBytes: Int = MAX_BYTES): ByteArray {
         val result = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
         while (true) {
