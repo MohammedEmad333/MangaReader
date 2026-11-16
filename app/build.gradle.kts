@@ -30,8 +30,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 317
-        versionName = "0.317"
+        versionCode = 318
+        versionName = "0.318"
     }
 
     signingConfigs {
@@ -242,4 +242,6 @@ dependencies {
     // library sorts. Nothing here ships in the APK; it's the debug unit-test
     // classpath only.
     testImplementation("junit:junit:4.13.2")
+    // The Android SDK ships stub org.json methods to local JVM tests.
+    testImplementation("org.json:json:20240303")
 }
