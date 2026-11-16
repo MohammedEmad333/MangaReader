@@ -3,6 +3,7 @@ package com.mangareader.app
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /**
  * Executes one queued chapter download.
@@ -68,13 +69,29 @@ internal class DownloadItemRunner(
         t !is ChapterDownloadException || t.totalPages == 0
 
     private suspend fun fetchPages(src: Source, item: DownloadItem, chapter: Chapter) {
-        src.loadPagesProgressively(chapter, persist = true) { partial ->
-            DownloadQueue.setProgress(
-                item.chapterId,
-                ready = partial.count { it != null },
-                total = partial.size
-            )
-            notifyProgress()
+        var retries = 0
+        while (true) {
+            try {
+                src.loadPagesProgressively(chapter, persist = true) { partial ->
+                    DownloadQueue.setProgress(
+                        item.chapterId,
+                        ready = partial.count { it != null },
+                        total = partial.size,
+                    )
+                    notifyProgress()
+                }
+                return
+            } catch (cancelled: CancellationException) {
+                // Pause, cancel and skip must never schedule another attempt.
+                throw cancelled
+            } catch (failure: ChapterDownloadException) {
+                if (!shouldRetryTransientChapterFailure(failure, retries)) throw failure
+                retries++
+                Log.w(TAG, "Temporary page transfer error in ${item.chapterId}; retrying remaining pages", failure)
+                // Previously verified pages remain in the chapter directory.
+                // The page loader skips those files on the next pass.
+                delay(TRANSIENT_CHAPTER_RETRY_DELAY_MS)
+            }
         }
     }
 
