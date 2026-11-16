@@ -126,6 +126,8 @@ android {
         // ---------------------------------------------------------------
         getByName("debug") {
             isMinifyEnabled = true
+            // These rules apply only to the test APK; app shrinking stays untouched.
+            testProguardFiles("proguard-android-test.pro")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
