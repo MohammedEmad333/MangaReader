@@ -248,6 +248,8 @@ dependencies {
     // and Compose pager rendering on an Android emulator.
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    // R8 minifies the test APK as well and needs these AndroidX test annotations.
+    androidTestImplementation("com.google.errorprone:error_prone_annotations:2.36.0")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
