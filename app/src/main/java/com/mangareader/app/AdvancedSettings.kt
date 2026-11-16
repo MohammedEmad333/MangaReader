@@ -34,6 +34,7 @@ internal fun AdvancedSettings() {
     var running by remember { mutableStateOf(false) }
     var crashPresent by remember { mutableStateOf(CrashLog.exists(context)) }
     var confirmCookies by remember { mutableStateOf(false) }
+    var showSourceHealth by remember { mutableStateOf(false) }
 
     SettingsColumn {
         SectionHeader("Diagnostics")
@@ -68,6 +69,11 @@ internal fun AdvancedSettings() {
                     }) { Text("Clear") }
                 }
             },
+        )
+        SettingsActionCard(
+            title = "Source Health Center",
+            summary = "Installed sources, failed chapters, and manual connection checks",
+            onClick = { showSourceHealth = true },
         )
         SettingsActionCard(
             title = "Extension diagnostics",
@@ -147,6 +153,10 @@ internal fun AdvancedSettings() {
             },
             confirmButton = { Button(onClick = { diagnostics = null }) { Text("Done") } },
         )
+    }
+
+    if (showSourceHealth) {
+        SourceHealthCenterDialog(onDismiss = { showSourceHealth = false })
     }
 
     if (confirmCookies) {
