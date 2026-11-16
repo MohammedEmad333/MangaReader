@@ -33,6 +33,28 @@ class ReaderPageInspectionTest {
         }
     }
 
+    @Test fun splitInspectionOnlyReadsBoundsForUsablePages() {
+        val file = java.nio.file.Files.createTempFile("reader-split", ".png").toFile()
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3, 4))
+            var calls = 0
+            val checked = readerPageInspection(
+                file, file.parentFile!!, ReaderWidePageMode.SPLIT_SPREAD,
+                bounds = { calls++; 2400 to 1500 },
+            )
+            assertTrue(checked.splitWide)
+            assertFalse(checked.rotateWide)
+            assertEquals(1, calls)
+            val missing = File(file.parentFile, "missing-split")
+            assertFalse(readerPageInspection(
+                missing, file.parentFile!!, ReaderWidePageMode.SPLIT_SPREAD,
+                bounds = { throw AssertionError("invalid page should not decode bounds") },
+            ).splitWide)
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun onlyCurrentPageAndModeCanUseAsyncInspection() {
         val first = File("/tmp/reader-a")
         val second = File("/tmp/reader-b")
