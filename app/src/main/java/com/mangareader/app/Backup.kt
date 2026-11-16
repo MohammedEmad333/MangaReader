@@ -202,52 +202,28 @@ internal object Backup {
      * Clearing first is what makes a restore a restore — merging would leave a
      * series in the library that the backup had deleted.
      */
-    fun restoreFrom(context: Context, uri: Uri): Result<Int> = runCatching {
+    fun verifyFrom(context: Context, uri: Uri): Result<BackupVerificationReport> = runCatching {
         val bytes = context.contentResolver.openInputStream(uri)
-            ?.use { it.readBytes() }
+            ?.use(BackupVerification::readBounded)
             ?: error("Couldn't open the file")
+        BackupVerification.validate(bytes).report
+    }
 
-        // What the file actually is, checked before anything tries to parse it.
-        //
-        // "Restore backup" is the phrase people reach for, so a Tachiyomi
-        // backup gets picked here rather than at the import row — and the JSON
-        // parser's reply is to quote the first byte it can't print, which tells
-        // nobody anything. These two checks turn the two likely wrong files into
-        // sentences.
-        if (bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
-            error(
-                "That's a Tachiyomi backup (.tachibk), not a Yomu one. " +
-                    "Use \u201cImport Tachiyomi backup\u201d further up this screen."
-            )
+    fun restoreFrom(
+        context: Context,
+        uri: Uri,
+        expectedFingerprint: String? = null,
+    ): Result<Int> = runCatching {
+        val bytes = context.contentResolver.openInputStream(uri)
+            ?.use(BackupVerification::readBounded)
+            ?: error("Couldn't open the file")
+        val verified = BackupVerification.validate(bytes)
+        if (expectedFingerprint != null) {
+            require(verified.report.fingerprint == expectedFingerprint) {
+                "The backup file changed since verification. Inspect it again before restoring."
+            }
         }
-        val text = bytes.toString(Charsets.UTF_8)
-        if (!text.trimStart().startsWith("{")) {
-            error("That isn't a Yomu backup \u2014 it should be a .json file this app wrote.")
-        }
-
-        val root = JSONObject(text)
-        val version = root.optInt("version", -1)
-        if (version < 1) error("This doesn't look like a Yomu backup")
-        if (version > VERSION) error("That backup is from a newer version of Yomu")
-
-        val stores = root.optJSONObject("stores") ?: error("Backup has no data in it")
-
-        // Everything is validated before anything is cleared. The alternative —
-        // wipe, then discover halfway down that the file was truncated — turns a
-        // bad file into data loss, which is precisely the thing this feature is
-        // supposed to prevent.
-        //
-        // The name filter is part of that: a hand-edited backup shouldn't be
-        // able to name any pref file it likes and have it overwritten.
-        val accepted = LinkedHashMap<String, JSONObject>()
-        var incoming = 0
-        for (name in stores.keys()) {
-            if (name != APP_PREFS && !name.startsWith("source_")) continue
-            val entries = stores.optJSONObject(name) ?: continue
-            accepted[name] = entries
-            incoming += entries.length()
-        }
-        if (incoming == 0) error("Backup was readable but empty")
+        val accepted = verified.stores
 
         // Held across the wipe: a path belonging to this device, not the backup.
         val localDir = prefs(context).getString(KEY_DIR, null)
@@ -260,7 +236,7 @@ internal object Backup {
             editor.clear()
             restored += BackupCodec.decodeInto(editor, entries)
             if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
-            editor.commit()
+            check(editor.commit()) { "Could not write backup settings." }
         }
 
         // The frequency came out of the backup; the schedule has to be re-armed
