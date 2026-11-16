@@ -40,8 +40,8 @@ jobs:
         with:
           gradle-version: "8.14.5"
 
-      - name: Build debug and instrumentation APKs with standard debug signing
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --build-cache
+      - name: Build non-minified device-test APK and instrumentation APK
+        run: gradle :app:assembleDeviceTest :app:assembleDeviceTestAndroidTest --build-cache
 
       - name: Verify UI smoke helper
         run: python3 scripts/android_updates_smoke.py --self-test
@@ -65,8 +65,8 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none -memory 3072 -cores 2
           disable-animations: true
           script: |
-            bash scripts/android_emulator_launch.sh
-            gradle :app:connectedDebugAndroidTest --build-cache
+            YOMU_SMOKE_APK=app/build/outputs/apk/deviceTest/app-deviceTest.apk bash scripts/android_emulator_launch.sh
+            gradle :app:connectedDeviceTestAndroidTest --build-cache
 
       - name: Upload Android instrumentation reports
         if: always()
