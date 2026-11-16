@@ -42,7 +42,7 @@ internal object BackupVerification {
             val count = stream.read(buffer)
             if (count < 0) break
             if (count == 0) continue
-            if (result.size().toLong() + count > MAX_BYTES) {
+            if (result.size().toLong() + count > maxBytes) {
                 error("Backup is too large to verify safely (64 MB limit).")
             }
             result.write(buffer, 0, count)
