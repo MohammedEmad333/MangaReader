@@ -88,7 +88,7 @@ class BackupRestoreDeviceTest {
             file.writeText("{\"version\":1,\"stores\":{")
             val uri = Uri.fromFile(file)
             assertTrue(Backup.verifyFrom(context, uri).isFailure)
-            assertTrue(Backup.restoreFrom(context, uri).isFailure)
+            assertTrue(Backup.restoreFrom(context, uri, null).isFailure)
             assertEquals("must-survive", prefs.getString(key, null))
         } finally {
             val editor = prefs.edit()
