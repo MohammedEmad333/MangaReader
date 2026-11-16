@@ -101,6 +101,16 @@ internal fun ReaderSettingsSheet(
                             }
                         )
                     }
+                    if (settings.mode != ReaderMode.LONG_STRIP) {
+                        SwitchRow("Two pages on tablets", settings.twoPageTablet) {
+                            onChange(settings.copy(twoPageTablet = it))
+                        }
+                        Text(
+                            "Shows paired pages in landscape on tablets at least 840 dp wide. Phones remain single-page.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     ChipRow(
                         label = "Page slider",
                         options = ReaderSliderPosition.entries.map { it.label },
