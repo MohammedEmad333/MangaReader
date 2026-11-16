@@ -32,7 +32,8 @@ internal enum class ReaderRotation(val key: String, val label: String) {
 
 internal enum class ReaderWidePageMode(val key: String, val label: String) {
     FIT("fit", "Fit"),
-    ROTATE_RIGHT("rotate_right", "Rotate 90°");
+    ROTATE_RIGHT("rotate_right", "Rotate 90°"),
+    AUTO_PORTRAIT("auto_portrait", "Auto (portrait)");
 
     companion object {
         fun from(key: String?) = entries.firstOrNull { it.key == key } ?: FIT

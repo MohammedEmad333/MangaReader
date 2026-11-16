@@ -97,6 +97,14 @@ internal fun ReaderPage(
             }
         }
 
+    // In portrait, a landscape scan is easier to read rotated. In landscape,
+    // preserve the image orientation and zoom rather than forcing rotation.
+    val configuration = LocalConfiguration.current
+    val effectiveWidePageMode = effectiveReaderWidePageMode(
+        widePageMode,
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    )
     val cacheRoot = LocalContext.current.cacheDir
     // A retry may replace the image at the same path. Force a fresh request even
     // when the filesystem timestamp happens not to change between downloads.
@@ -111,14 +119,14 @@ internal fun ReaderPage(
     val inspection by produceState<ReaderPageInspection?>(
         initialValue = null,
         key1 = revision,
-        key2 = widePageMode,
+        key2 = effectiveWidePageMode,
         key3 = stillLoading,
     ) {
         value = if (revision == null) null else withContext(Dispatchers.IO) {
-            readerPageInspection(revision.file, cacheRoot, widePageMode, ::imageBounds, revision)
+            readerPageInspection(revision.file, cacheRoot, effectiveWidePageMode, ::imageBounds, revision)
         }
     }
-    val inspected = currentReaderPageInspection(inspection, file, widePageMode, revision)
+    val inspected = currentReaderPageInspection(inspection, file, effectiveWidePageMode, revision)
     val canRedownload = inspected?.canRedownload == true
     val usableFile = file?.takeIf { inspected?.usable == true }
     val rotateWide = inspected?.rotateWide == true
