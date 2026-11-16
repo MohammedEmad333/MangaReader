@@ -2,6 +2,10 @@ package com.mangareader.app
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -17,6 +21,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import java.io.File
 
 @Composable
@@ -113,8 +118,10 @@ internal fun ReaderPagedPages(
     textColor: Color,
     onTap: (Float) -> Unit,
     widePageMode: ReaderWidePageMode,
+    twoPageTablet: Boolean,
     onRetryPage: (Int) -> Unit,
 ) {
+    val slots = if (twoPageTablet) readerSpreadCount(pages.size) else pages.size
     HorizontalPager(
         state = pagerState,
         reverseLayout = mode == ReaderMode.PAGED_RTL,
@@ -131,7 +138,7 @@ internal fun ReaderPagedPages(
                 onClick = if (hasPrev) onPrev else null,
             )
 
-            pages.size + headRows -> ChapterTransitionRow(
+            slots + headRows -> ChapterTransitionRow(
                 topLabel = "Finished",
                 topName = chapterName,
                 bottomLabel = if (hasNext) "Next" else null,
@@ -141,20 +148,54 @@ internal fun ReaderPagedPages(
                 onClick = if (hasNext) onNext else null,
             )
 
-            else -> ReaderPage(
-                file = pages.getOrNull(index - headRows),
-                index = index - headRows,
-                stillLoading = stillLoading,
-                colorFilter = colorFilter,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                textColor = textColor,
-                zoomable = true,
-                onTap = onTap,
-                widePageMode = widePageMode,
-                rightToLeft = mode == ReaderMode.PAGED_RTL,
-                onRetry = { onRetryPage(index - headRows) },
-            )
+            else -> {
+                if (!twoPageTablet) {
+                    ReaderPage(
+                        file = pages.getOrNull(index - headRows),
+                        index = index - headRows,
+                        stillLoading = stillLoading,
+                        colorFilter = colorFilter,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        textColor = textColor,
+                        zoomable = true,
+                        onTap = onTap,
+                        widePageMode = widePageMode,
+                        rightToLeft = mode == ReaderMode.PAGED_RTL,
+                        onRetry = { onRetryPage(index - headRows) },
+                    )
+                } else {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val halfWidthPx = with(LocalDensity.current) { maxWidth.toPx() / 2f }
+                        val first = readerSpreadFirstPage(index - headRows, pages.size)
+                        val second = first + 1
+                        val left = if (mode == ReaderMode.PAGED_RTL) second else first
+                        val right = if (mode == ReaderMode.PAGED_RTL) first else second
+                        Row(Modifier.fillMaxSize()) {
+                            for ((position, pageIndex) in listOf(left, right).withIndex()) {
+                                if (pageIndex in pages.indices) {
+                                    ReaderPage(
+                                        file = pages[pageIndex],
+                                        index = pageIndex,
+                                        stillLoading = stillLoading,
+                                        colorFilter = colorFilter,
+                                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                                        contentScale = ContentScale.Fit,
+                                        textColor = textColor,
+                                        zoomable = true,
+                                        onTap = { x -> onTap(x + position * halfWidthPx) },
+                                        widePageMode = widePageMode,
+                                        rightToLeft = mode == ReaderMode.PAGED_RTL,
+                                        onRetry = { onRetryPage(pageIndex) },
+                                    )
+                                } else {
+                                    Spacer(Modifier.weight(1f).fillMaxHeight())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
