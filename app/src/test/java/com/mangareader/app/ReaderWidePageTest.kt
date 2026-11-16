@@ -55,6 +55,25 @@ class ReaderWidePageTest {
     }
 
     @Test
+    fun splitModeRequiresLandscapeSpreadAspectRatio() {
+        assertTrue(shouldSplitWideReaderPage(2400, 1500, ReaderWidePageMode.SPLIT_SPREAD))
+        assertFalse(shouldSplitWideReaderPage(1400, 1200, ReaderWidePageMode.SPLIT_SPREAD))
+        assertFalse(shouldSplitWideReaderPage(1500, 2400, ReaderWidePageMode.SPLIT_SPREAD))
+        assertFalse(shouldSplitWideReaderPage(0, 1200, ReaderWidePageMode.SPLIT_SPREAD))
+        assertFalse(shouldSplitWideReaderPage(2400, -1, ReaderWidePageMode.SPLIT_SPREAD))
+        assertFalse(shouldSplitWideReaderPage(2400, 1500, ReaderWidePageMode.FIT))
+        assertTrue(ReaderWidePageMode.from("split_spread") == ReaderWidePageMode.SPLIT_SPREAD)
+    }
+
+    @Test
+    fun splitHalfOrderRespectsReadingDirection() {
+        assertFalse(readerSplitHalfShowsRight(0, false))
+        assertTrue(readerSplitHalfShowsRight(1, false))
+        assertTrue(readerSplitHalfShowsRight(0, true))
+        assertFalse(readerSplitHalfShowsRight(1, true))
+    }
+
+    @Test
     fun invalidBounds_neverRotate() {
         assertFalse(
             shouldRotateWidePage(

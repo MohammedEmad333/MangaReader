@@ -13,6 +13,7 @@ internal data class ReaderPageInspection(
     val usable: Boolean,
     val rotateWide: Boolean,
     val canRedownload: Boolean,
+    val splitWide: Boolean = false,
 )
 
 internal fun readerPageInspection(
@@ -23,12 +24,11 @@ internal fun readerPageInspection(
     revision: ReaderImageFileRevision = requireNotNull(readerImageFileRevision(file)),
 ): ReaderPageInspection {
     val usable = isUsableReaderPage(file)
-    val rotate = if (usable && wideMode == ReaderWidePageMode.ROTATE_RIGHT) {
-        val (width, height) = bounds(file)
-        shouldRotateWidePage(width, height, wideMode)
-    } else {
-        false
-    }
+    val needsBounds = usable && (wideMode == ReaderWidePageMode.ROTATE_RIGHT ||
+        wideMode == ReaderWidePageMode.SPLIT_SPREAD)
+    val (width, height) = if (needsBounds) bounds(file) else 0 to 0
+    val rotate = shouldRotateWidePage(width, height, wideMode)
+    val split = shouldSplitWideReaderPage(width, height, wideMode)
     return ReaderPageInspection(
         file = file,
         wideMode = wideMode,
@@ -36,6 +36,7 @@ internal fun readerPageInspection(
         usable = usable,
         rotateWide = rotate,
         canRedownload = isReaderCachePage(file, cacheRoot),
+        splitWide = split,
     )
 }
 

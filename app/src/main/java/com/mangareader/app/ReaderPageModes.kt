@@ -152,6 +152,7 @@ internal fun ReaderPagedPages(
                 zoomable = true,
                 onTap = onTap,
                 widePageMode = widePageMode,
+                rightToLeft = mode == ReaderMode.PAGED_RTL,
                 onRetry = { onRetryPage(index - headRows) },
             )
         }

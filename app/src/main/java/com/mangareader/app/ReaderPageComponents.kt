@@ -84,6 +84,7 @@ internal fun ReaderPage(
     /** Non-null when this page is responsible for its own taps. */
     onTap: ((Float) -> Unit)? = null,
     widePageMode: ReaderWidePageMode = ReaderWidePageMode.FIT,
+    rightToLeft: Boolean = false,
     onRetry: () -> Unit,
 ) {
     // A placeholder handles no gestures of its own, so where the page owns the
@@ -130,6 +131,7 @@ internal fun ReaderPage(
     val canRedownload = inspected?.canRedownload == true
     val usableFile = file?.takeIf { inspected?.usable == true }
     val rotateWide = inspected?.rotateWide == true
+    val splitWide = inspected?.splitWide == true
 
     if (usableFile != null && rotateWide) {
         var rotatedRenderFailed by remember(revision) { mutableStateOf(false) }
@@ -198,6 +200,22 @@ internal fun ReaderPage(
                 }
             }
         }
+        return
+    }
+
+    if (usableFile != null && splitWide && zoomable) {
+        ReaderSplitWidePage(
+            file = usableFile,
+            revision = requireNotNull(revision),
+            index = index,
+            modifier = modifier,
+            colorFilter = colorFilter,
+            rtl = rightToLeft,
+            canRedownload = canRedownload,
+            stillLoading = stillLoading,
+            onTap = onTap,
+            onRetry = retryPage,
+        )
         return
     }
 
