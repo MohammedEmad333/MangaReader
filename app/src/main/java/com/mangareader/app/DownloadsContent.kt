@@ -17,6 +17,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -42,6 +43,8 @@ internal fun DownloadsHeader(
     queued: Int,
     failedCount: Int,
     onOpenQueue: () -> Unit,
+    onCheckOffline: () -> Unit,
+    checkingOffline: Boolean,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -78,6 +81,12 @@ internal fun DownloadsHeader(
                         },
                     )
                 }
+            }
+            OutlinedButton(
+                onClick = onCheckOffline,
+                enabled = !checkingOffline,
+            ) {
+                Text(if (checkingOffline) "Checking offline chapters…" else "Check offline chapters")
             }
         }
     }
