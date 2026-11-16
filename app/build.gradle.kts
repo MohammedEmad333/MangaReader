@@ -261,7 +261,8 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    deviceTestImplementation("androidx.compose.ui:ui-test-manifest")
+    // Custom build-type configurations have no generated Kotlin DSL accessor.
+    add("deviceTestImplementation", "androidx.compose.ui:ui-test-manifest")
     // The Android SDK ships stub org.json methods to local JVM tests.
     testImplementation("org.json:json:20240303")
 }
