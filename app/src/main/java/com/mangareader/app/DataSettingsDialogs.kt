@@ -134,12 +134,12 @@ internal fun DataSettingsDialogs(
             title = { Text("Restore this backup?") },
             text = {
                 Text(
-                    "Backup verified (read-only).\\n" +
-                        "Created by Yomu: ${restoreVerification.appVersion.ifBlank { "unknown" }}\\n" +
-                        "Preference stores: ${restoreVerification.storeCount}\\n" +
-                        "Settings: ${restoreVerification.settingCount}\\n" +
-                        "Size: ${restoreVerification.byteCount} bytes\\n" +
-                        "Fingerprint: ${restoreVerification.fingerprint.take(12)}…\\n\\n" +
+                    "Backup verified (read-only).\n" +
+                        "Created by Yomu: ${restoreVerification.appVersion.ifBlank { "unknown" }}\n" +
+                        "Preference stores: ${restoreVerification.storeCount}\n" +
+                        "Settings: ${restoreVerification.settingCount}\n" +
+                        "Size: ${restoreVerification.byteCount} bytes\n" +
+                        "Fingerprint: ${restoreVerification.fingerprint.take(12)}…\n\n" +
                         "Confirming will REPLACE your library, categories, history, " +
                         "read marks and source settings. Downloads stay on disk. " +
                         "The file is checked again before any settings are replaced.",
