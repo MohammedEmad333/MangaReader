@@ -147,7 +147,7 @@ internal fun rememberReaderNavigationState(
     // a position nobody stopped at, which is exactly what settledPage exists to
     // prevent one mode over. `!isScrollInProgress` is the strip's settledPage:
     // it says the same thing to a LazyColumn that settledPage says to a pager.
-    val atTailRow by remember(pages.size, headRows, settings.mode) {
+    val atTailRow by remember(pages.size, headRows, settings.mode, twoPageTablet) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
                 rowFullyVisible(pages.size + headRows) && !listState.isScrollInProgress
@@ -156,7 +156,7 @@ internal fun rememberReaderNavigationState(
             }
         }
     }
-    val atHeadRow by remember(pages.size, headRows, settings.mode) {
+    val atHeadRow by remember(pages.size, headRows, settings.mode, twoPageTablet) {
         derivedStateOf {
             pages.isNotEmpty() && if (settings.mode == ReaderMode.LONG_STRIP) {
                 rowFullyVisible(0) && !listState.isScrollInProgress
