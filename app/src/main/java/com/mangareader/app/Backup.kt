@@ -204,7 +204,7 @@ internal object Backup {
      */
     fun verifyFrom(context: Context, uri: Uri): Result<BackupVerificationReport> = runCatching {
         val bytes = context.contentResolver.openInputStream(uri)
-            ?.use(BackupVerification::readBounded)
+            ?.use { BackupVerification.readBounded(it) }
             ?: error("Couldn't open the file")
         BackupVerification.validate(bytes).report
     }
@@ -215,7 +215,7 @@ internal object Backup {
         expectedFingerprint: String? = null,
     ): Result<Int> = runCatching {
         val bytes = context.contentResolver.openInputStream(uri)
-            ?.use(BackupVerification::readBounded)
+            ?.use { BackupVerification.readBounded(it) }
             ?: error("Couldn't open the file")
         val verified = BackupVerification.validate(bytes)
         if (expectedFingerprint != null) {
