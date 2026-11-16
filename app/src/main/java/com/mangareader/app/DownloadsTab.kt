@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -180,6 +182,10 @@ internal fun DownloadsTab(
     val totalSummary = remember(series) { summarizeDownloads(series) }
     val visibleSummary = remember(visibleSeries) { summarizeDownloads(visibleSeries) }
     var confirmDelete by remember { mutableStateOf<DownloadedSeries?>(null) }
+    var repairScan by remember { mutableStateOf<OfflineRepairScan?>(null) }
+    var checkingOffline by remember { mutableStateOf(false) }
+    var repairMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val queued = DownloadQueue.items.size
     val failedCount = DownloadQueue.failed.size
@@ -192,6 +198,21 @@ internal fun DownloadsTab(
             queued = queued,
             failedCount = failedCount,
             onOpenQueue = onOpenQueue,
+            checkingOffline = checkingOffline,
+            onCheckOffline = {
+                if (!checkingOffline) scope.launch {
+                    checkingOffline = true
+                    try {
+                        repairScan = withContext(Dispatchers.IO) {
+                            scanStoredOfflineRepairs(context)
+                        }
+                    } catch (_: Exception) {
+                        repairMessage = "Could not check offline chapters. Your files were not changed."
+                    } finally {
+                        checkingOffline = false
+                    }
+                }
+            },
         )
 
         if (loaded != null && (series.isNotEmpty() || offlineAnimeCount > 0)) {
@@ -282,6 +303,72 @@ internal fun DownloadsTab(
                 )
             }
         }
+    }
+
+    val scan = repairScan
+    if (scan != null) {
+        val summary = scan.summary
+        AlertDialog(
+            onDismissRequest = { if (!checkingOffline) repairScan = null },
+            title = { Text("Offline chapter check") },
+            text = {
+                Text(
+                    "${summary.completeChapters} complete · " +
+                        "${summary.repairableChapters} repairable · " +
+                        "${summary.blockedChapters} need manual review.\n" +
+                        "${summary.pagesToRedownload} missing or invalid pages can be retried. " +
+                        "Complete pages are kept. Ambiguous folders will not be changed."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !checkingOffline && scan.repairItems.isNotEmpty(),
+                    onClick = {
+                        scope.launch {
+                            checkingOffline = true
+                            try {
+                                // Re-audit immediately before queueing: files may
+                                // have changed since the dialog was first opened.
+                                val current = withContext(Dispatchers.IO) {
+                                    scanStoredOfflineRepairs(context)
+                                }
+                                val added = DownloadQueue.enqueue(context, current.repairItems)
+                                if (added > 0) DownloadService.start(context)
+                                repairScan = null
+                                repairMessage = if (added > 0) {
+                                    "$added chapters added to the repair queue. " +
+                                        "Existing valid pages will be reused."
+                                } else {
+                                    "No new repairs were queued. Downloads may already be complete or queued."
+                                }
+                            } catch (_: Exception) {
+                                repairMessage = "Could not queue the repairs. No chapter files were deleted."
+                                repairScan = null
+                            } finally {
+                                checkingOffline = false
+                            }
+                        }
+                    },
+                ) { Text("Queue safe repairs") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !checkingOffline,
+                    onClick = { repairScan = null },
+                ) { Text("Close") }
+            },
+        )
+    }
+
+    repairMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { repairMessage = null },
+            title = { Text("Offline repair") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { repairMessage = null }) { Text("OK") }
+            },
+        )
     }
 
     DownloadsDeleteDialog(
