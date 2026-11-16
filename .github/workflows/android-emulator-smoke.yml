@@ -7,6 +7,13 @@ on:
       - ".github/workflows/android-emulator-smoke.yml"
       - "scripts/android_updates_smoke.py"
       - "scripts/android_emulator_launch.sh"
+      - "app/src/androidTest/**"
+      - "app/src/main/java/com/mangareader/app/Backup.kt"
+      - "app/src/main/java/com/mangareader/app/BackupVerification.kt"
+      - "app/src/main/java/com/mangareader/app/ReaderPageModes.kt"
+      - "app/src/main/java/com/mangareader/app/ReaderTabletSpreads.kt"
+      - "app/src/main/java/com/mangareader/app/ReaderPagePriority.kt"
+      - "app/build.gradle.kts"
       - "app/src/main/java/com/mangareader/app/ChapterUpdatesTab.kt"
       - "app/src/main/java/com/mangareader/app/MainBottomNavigation.kt"
       - "app/src/main/java/com/mangareader/app/ChapterUpdateJournal.kt"
@@ -14,10 +21,15 @@ on:
 permissions:
   contents: read
 
+# A new PR commit supersedes old emulator sessions and conserves CI minutes.
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,8 +45,8 @@ jobs:
         with:
           gradle-version: "8.14.5"
 
-      - name: Build debug APK with standard debug signing
-        run: gradle :app:assembleDebug --build-cache
+      - name: Build non-minified device-test APK and instrumentation APK
+        run: gradle :app:assembleDeviceTest :app:assembleDeviceTestAndroidTest --build-cache
 
       - name: Verify UI smoke helper
         run: python3 scripts/android_updates_smoke.py --self-test
@@ -57,7 +69,20 @@ jobs:
           profile: pixel_6
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none -memory 3072 -cores 2
           disable-animations: true
-          script: bash scripts/android_emulator_launch.sh
+          script: |
+            YOMU_SMOKE_APK=app/build/outputs/apk/deviceTest/app-deviceTest.apk bash scripts/android_emulator_launch.sh
+            gradle :app:connectedDeviceTestAndroidTest --build-cache
+
+      - name: Upload Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-device-test-reports
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Updates screen capture
         if: success()

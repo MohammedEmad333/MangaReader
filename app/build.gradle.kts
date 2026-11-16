@@ -22,6 +22,10 @@ android {
     // .github/workflows moves too).
     compileSdk = 36
 
+    // Instrumentation uses a non-minified variant so Compose test hooks remain
+    // available. Published debug keeps its normal R8 settings.
+    testBuildType = "deviceTest"
+
     defaultConfig {
         applicationId = "com.mangareader.app"
         minSdk = 24
@@ -30,8 +34,9 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 318
-        versionName = "0.318"
+        versionCode = 319
+        versionName = "0.319"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -146,6 +151,12 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
         }
+        create("deviceTest") {
+            initWith(getByName("debug"))
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     buildFeatures {
@@ -242,6 +253,16 @@ dependencies {
     // library sorts. Nothing here ships in the APK; it's the debug unit-test
     // classpath only.
     testImplementation("junit:junit:4.13.2")
+
+    // Device-backed regression tests: real SharedPreferences/ContentResolver,
+    // and Compose pager rendering on an Android emulator.
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    // Custom build-type configurations have no generated Kotlin DSL accessor.
+    add("deviceTestImplementation", "androidx.compose.ui:ui-test-manifest")
     // The Android SDK ships stub org.json methods to local JVM tests.
     testImplementation("org.json:json:20240303")
 }

@@ -1,0 +1,100 @@
+package com.mangareader.app
+
+import android.content.Context
+import android.net.Uri
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * Real Android ContentResolver and SharedPreferences, isolated to the emulator.
+ * Never uses a user's external storage, installed backups or downloaded pages.
+ */
+@RunWith(AndroidJUnit4::class)
+class BackupRestoreDeviceTest {
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    private fun archive(file: File, value: String): Uri {
+        val store = JSONObject().put(
+            "test_saved_bookmark",
+            JSONObject().put("t", "s").put("v", value),
+        )
+        val payload = JSONObject()
+            .put("version", 1)
+            .put("app", "0.319-test")
+            .put("stores", JSONObject().put("manga_reader", store))
+        file.writeText(payload.toString())
+        return Uri.fromFile(file)
+    }
+
+    @Test fun verifyThenRestoreRoundTripUsesRealAndroidPreferences() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val before = prefs.getString(key, null)
+        val file = File(context.cacheDir, "device-backup-roundtrip.json")
+        try {
+            val uri = archive(file, "chapter-12-page-7")
+            val checked = Backup.verifyFrom(context, uri).getOrThrow()
+            assertEquals(1, checked.storeCount)
+            assertEquals(1, checked.settingCount)
+            // Inspecting the archive must not change existing local preferences.
+            assertEquals(before, prefs.getString(key, null))
+            assertTrue(prefs.edit().putString(key, "local-newer-value").commit())
+            val restored = Backup.restoreFrom(context, uri, checked.fingerprint).getOrThrow()
+            assertEquals(1, restored)
+            assertEquals("chapter-12-page-7", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit()
+            if (before == null) editor.remove(key) else editor.putString(key, before)
+            editor.commit()
+            file.delete()
+        }
+    }
+
+    @Test fun changedBackupMustNotOverwriteLocalSettings() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val before = prefs.getString(key, null)
+        val file = File(context.cacheDir, "device-backup-tamper.json")
+        try {
+            val uri = archive(file, "before")
+            val fingerprint = Backup.verifyFrom(context, uri).getOrThrow().fingerprint
+            assertTrue(prefs.edit().putString(key, "untouched-local").commit())
+            archive(file, "after")
+            val result = Backup.restoreFrom(context, uri, fingerprint)
+            assertTrue(result.isFailure)
+            assertEquals("untouched-local", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit()
+            if (before == null) editor.remove(key) else editor.putString(key, before)
+            editor.commit()
+            file.delete()
+        }
+    }
+
+    @Test fun corruptArchiveDoesNotModifyLocalPreferences() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val before = prefs.getString(key, null)
+        val file = File(context.cacheDir, "device-backup-invalid.json")
+        try {
+            assertTrue(prefs.edit().putString(key, "must-survive").commit())
+            file.writeText("{\"version\":1,\"stores\":{")
+            val uri = Uri.fromFile(file)
+            assertTrue(Backup.verifyFrom(context, uri).isFailure)
+            assertTrue(Backup.restoreFrom(context, uri, null).isFailure)
+            assertEquals("must-survive", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit()
+            if (before == null) editor.remove(key) else editor.putString(key, before)
+            editor.commit()
+            file.delete()
+        }
+    }
+}
