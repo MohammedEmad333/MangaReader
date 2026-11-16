@@ -2,7 +2,7 @@
 set -euo pipefail
 
 adb wait-for-device
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r "${YOMU_SMOKE_APK:-app/build/outputs/apk/debug/app-debug.apk}"
 adb shell am force-stop com.mangareader.app || true
 adb shell monkey -p com.mangareader.app -c android.intent.category.LAUNCHER 1
 sleep 15
