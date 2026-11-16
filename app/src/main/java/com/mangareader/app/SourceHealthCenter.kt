@@ -61,7 +61,7 @@ internal fun SourceHealthCenterDialog(onDismiss: () -> Unit) {
         }
     }
 
-    AlertDialog(
+    if (selected == null) AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Source Health Center") },
         text = {
