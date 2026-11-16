@@ -292,16 +292,10 @@ internal fun ReaderScreen(
                 textColor = onBackground,
                 onTap = { x ->
                     val fraction = (x / pageWidthPx).coerceIn(0f, 1f)
-                    if (!settings.tapZones) {
-                        showControls = !showControls
-                    } else when {
-                        fraction < 1f / 3f -> {
-                            if (rtl) navigation.nextPage() else navigation.previousPage()
-                        }
-                        fraction > 2f / 3f -> {
-                            if (rtl) navigation.previousPage() else navigation.nextPage()
-                        }
-                        else -> showControls = !showControls
+                    when (readerTapAction(fraction, settings.tapZones, settings.tapZoneSize, rtl)) {
+                        ReaderTapAction.PREVIOUS -> navigation.previousPage()
+                        ReaderTapAction.NEXT -> navigation.nextPage()
+                        ReaderTapAction.CONTROLS -> showControls = !showControls
                     }
                 },
                 widePageMode = settings.widePageMode,

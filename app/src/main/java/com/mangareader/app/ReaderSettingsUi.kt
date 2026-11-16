@@ -133,8 +133,14 @@ internal fun ReaderSettingsSheet(
                             onChange(settings.copy(tapZones = it))
                         }
                         if (settings.tapZones) {
+                            ChipRow(
+                                label = "Tap zone size",
+                                options = ReaderTapZoneSize.entries.map { it.label },
+                                selected = ReaderTapZoneSize.entries.indexOf(settings.tapZoneSize),
+                                onSelect = { onChange(settings.copy(tapZoneSize = ReaderTapZoneSize.entries[it])) },
+                            )
                             Text(
-                                "Outer thirds turn pages; the centre third toggles controls.",
+                                "Tap the edges to change pages, or the centre to show controls.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 8.dp),
