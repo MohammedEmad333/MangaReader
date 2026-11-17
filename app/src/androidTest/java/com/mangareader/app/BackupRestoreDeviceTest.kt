@@ -57,6 +57,52 @@ class BackupRestoreDeviceTest {
         }
     }
 
+    @Test fun interruptedMultiStoreRestoreRollsBackAllPreferences() {
+        val appPrefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val extensionPrefs = context.getSharedPreferences("source_device_rollback", Context.MODE_PRIVATE)
+        val originalApp = appPrefs.all.toMap()
+        val originalExtension = extensionPrefs.all.toMap()
+        val file = File(context.cacheDir, "device-backup-rollback.json")
+        try {
+            assertTrue(appPrefs.edit().putString("rollback_marker", "keep-original").commit())
+            assertTrue(extensionPrefs.edit()
+                .putString("secret", "original")
+                .putBoolean("enabled", true)
+                .putLong("count", 17L)
+                .commit())
+
+            val archive = JSONObject().put("version", 1).put("stores", JSONObject()
+                .put("manga_reader", JSONObject().put("rollback_marker",
+                    JSONObject().put("t", "s").put("v", "replacement")))
+                .put("source_device_rollback", JSONObject().put("secret",
+                    JSONObject().put("t", "s").put("v", "replacement"))))
+            file.writeText(archive.toString())
+            val uri = Uri.fromFile(file)
+            val fingerprint = Backup.verifyFrom(context, uri).getOrThrow().fingerprint
+            val outcome = Backup.restoreFrom(
+                context = context,
+                uri = uri,
+                expectedFingerprint = fingerprint,
+                beforeStoreCommit = { store ->
+                    if (store == "source_device_rollback") throw IllegalStateException("Simulated write failure")
+                },
+            )
+            assertTrue(outcome.isFailure)
+            assertEquals("keep-original", appPrefs.getString("rollback_marker", null))
+            assertEquals("original", extensionPrefs.getString("secret", null))
+            assertTrue(extensionPrefs.getBoolean("enabled", false))
+            assertEquals(17L, extensionPrefs.getLong("count", 0L))
+        } finally {
+            val appEditor = appPrefs.edit().clear()
+            BackupCodec.writeValues(appEditor, originalApp)
+            assertTrue(appEditor.commit())
+            val sourceEditor = extensionPrefs.edit().clear()
+            BackupCodec.writeValues(sourceEditor, originalExtension)
+            assertTrue(sourceEditor.commit())
+            file.delete()
+        }
+    }
+
     @Test fun changedBackupMustNotOverwriteLocalSettings() {
         val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
         val key = "test_saved_bookmark"

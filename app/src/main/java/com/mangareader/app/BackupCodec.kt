@@ -72,6 +72,28 @@ internal object BackupCodec {
         return count
     }
 
+    /** Restore a pre-write SharedPreferences snapshot without losing value types. */
+    fun writeValues(editor: SharedPreferences.Editor, values: Map<String, *>): Int {
+        var count = 0
+        values.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> {
+                    // Android preferences only support String sets.
+                    require(value.all { it is String }) { "Unsupported preference set" }
+                    editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+                else -> error("Unsupported preference type")
+            }
+            count++
+        }
+        return count
+    }
+
     fun storeNames(
         context: Context,
         appPrefs: String,
