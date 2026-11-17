@@ -63,6 +63,8 @@ internal object Backup {
     private const val KEY_DIR = "storage_dir"
     private const val KEY_FREQUENCY = "backup_frequency_hours"
     private const val KEY_LAST = "backup_last_at"
+    private const val KEY_ATTEMPT = "backup_last_attempt_at"
+    private const val KEY_FAILURE = "backup_last_failure"
 
     /** How many automatic backups are kept in the folder before the oldest go. */
     private const val KEEP = 5
@@ -94,6 +96,15 @@ internal object Backup {
 
     /** Epoch millis of the last successful automatic backup, or 0. */
     fun lastBackupAt(context: Context): Long = prefs(context).getLong(KEY_LAST, 0L)
+
+    /** Coarse status only: do not persist paths or raw error messages. */
+    fun lastAttemptAt(context: Context): Long = prefs(context).getLong(KEY_ATTEMPT, 0L)
+
+    fun lastFailure(context: Context): AutomaticBackupFailure? =
+        AutomaticBackupFailure.from(prefs(context).getString(KEY_FAILURE, null))
+
+    fun scanHealth(context: Context): AutomaticBackupHealth =
+        inspectAutomaticBackupHealth(backupsDir(context))
 
     // ---------- scheduling ----------
 
@@ -161,22 +172,37 @@ internal object Backup {
      * grant has been revoked — both are states the worker should stop retrying
      * on, because no amount of retrying fixes them.
      */
-    fun runAutomatic(context: Context): Boolean = runCatching {
-        val folder = backupsDir(context)
-        if (!StorageLocation.ensureWritable(folder)) return false
+    fun runAutomatic(context: Context): Boolean {
+        val started = System.currentTimeMillis()
+        fun record(failure: AutomaticBackupFailure?): Boolean {
+            val editor = prefs(context).edit().putLong(KEY_ATTEMPT, started)
+            if (failure == null) {
+                editor.putLong(KEY_LAST, System.currentTimeMillis())
+                    .remove(KEY_FAILURE)
+            } else {
+                editor.putString(KEY_FAILURE, failure.key)
+            }
+            editor.apply()
+            return failure == null
+        }
+        val folder = runCatching { backupsDir(context) }
+            .getOrElse { return record(AutomaticBackupFailure.STORAGE) }
+        val writable = runCatching { StorageLocation.ensureWritable(folder) }
+            .getOrDefault(false)
+        if (!writable) return record(AutomaticBackupFailure.STORAGE)
 
-        val generated = payload(context).toByteArray(Charsets.UTF_8)
-        val saved = AutomaticBackupFileWriter.writeVerified(
-            folder = folder,
-            bytes = generated,
-            timestamp = System.currentTimeMillis(),
-            keep = KEEP,
-        )
-        if (!saved) return false
-
-        prefs(context).edit().putLong(KEY_LAST, System.currentTimeMillis()).apply()
-        true
-    }.getOrDefault(false)
+        val generated = runCatching { payload(context).toByteArray(Charsets.UTF_8) }
+            .getOrElse { return record(AutomaticBackupFailure.DATA) }
+        val saved = runCatching {
+            AutomaticBackupFileWriter.writeVerified(
+                folder = folder,
+                bytes = generated,
+                timestamp = started,
+                keep = KEEP,
+            )
+        }.getOrDefault(false)
+        return record(if (saved) null else AutomaticBackupFailure.WRITE)
+    }
 
     // ---------- reading ----------
 
