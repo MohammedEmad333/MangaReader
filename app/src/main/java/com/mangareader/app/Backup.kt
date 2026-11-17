@@ -213,6 +213,8 @@ internal object Backup {
         context: Context,
         uri: Uri,
         expectedFingerprint: String? = null,
+        /** Android device tests can simulate an interruption after a prior store commits. */
+        beforeStoreCommit: (String) -> Unit = {},
     ): Result<Int> = runCatching {
         val bytes = context.contentResolver.openInputStream(uri)
             ?.use { BackupVerification.readBounded(it) }
@@ -244,6 +246,7 @@ internal object Backup {
                     .getSharedPreferences(name, Context.MODE_PRIVATE)
                     .edit()
                 touched += name
+                beforeStoreCommit(name)
                 editor.clear()
                 val written = BackupCodec.decodeInto(editor, entries)
                 if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
