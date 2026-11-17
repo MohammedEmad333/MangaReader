@@ -228,15 +228,45 @@ internal object Backup {
         // Held across the wipe: a path belonging to this device, not the backup.
         val localDir = prefs(context).getString(KEY_DIR, null)
 
+        // Capture a complete in-memory snapshot before the first destructive write.
+        // If a later store fails, restore all touched stores, including the one
+        // whose commit failed. This is a best-effort rollback, not a transaction
+        // across Android SharedPreferences files or a power-loss guarantee.
+        val original = accepted.keys.associateWith { name ->
+            context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
+                .all.toMap()
+        }
         var restored = 0
-        accepted.forEach { (name, entries) ->
-            val editor = context.applicationContext
-                .getSharedPreferences(name, Context.MODE_PRIVATE)
-                .edit()
-            editor.clear()
-            restored += BackupCodec.decodeInto(editor, entries)
-            if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
-            check(editor.commit()) { "Could not write backup settings." }
+        val touched = mutableListOf<String>()
+        try {
+            accepted.forEach { (name, entries) ->
+                val editor = context.applicationContext
+                    .getSharedPreferences(name, Context.MODE_PRIVATE)
+                    .edit()
+                touched += name
+                editor.clear()
+                val written = BackupCodec.decodeInto(editor, entries)
+                if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
+                check(editor.commit()) { "Could not write backup settings." }
+                restored += written
+            }
+        } catch (failure: Exception) {
+            val rollbackFailures = mutableListOf<String>()
+            touched.asReversed().forEach { name ->
+                val reverted = runCatching {
+                    val editor = context.applicationContext
+                        .getSharedPreferences(name, Context.MODE_PRIVATE).edit()
+                    editor.clear()
+                    BackupCodec.writeValues(editor, original.getValue(name))
+                    check(editor.commit()) { "Could not roll back backup settings." }
+                }
+                if (reverted.isFailure) rollbackFailures += name
+            }
+            if (rollbackFailures.isNotEmpty()) {
+                error("Restore failed and some settings could not be rolled back: " +
+                    rollbackFailures.joinToString(", "))
+            }
+            throw failure
         }
 
         // The frequency came out of the backup; the schedule has to be re-armed
