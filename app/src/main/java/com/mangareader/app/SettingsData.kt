@@ -102,6 +102,11 @@ internal fun DataSettings() {
 
     var frequency by remember { mutableStateOf(Backup.frequency(context)) }
     var lastBackup by remember { mutableStateOf(Backup.lastBackupAt(context)) }
+    var lastBackupAttempt by remember { mutableStateOf(Backup.lastAttemptAt(context)) }
+    var lastBackupFailure by remember { mutableStateOf(Backup.lastFailure(context)) }
+    var backupHealth by remember { mutableStateOf<AutomaticBackupHealth?>(null) }
+    var checkingBackupHealth by remember { mutableStateOf(false) }
+    var backupScanTick by remember { mutableIntStateOf(0) }
 
     // Re-read on every entry rather than held: All files access is granted on a
     // system screen this app doesn't own, and can be taken away on the same one
@@ -194,6 +199,27 @@ internal fun DataSettings() {
             frequency = frequency,
             lastBackup = lastBackup,
             customDirectorySelected = customDir != null,
+            backupHealth = backupHealth,
+            checkingBackupHealth = checkingBackupHealth,
+            lastBackupAttempt = lastBackupAttempt,
+            backupFailure = lastBackupFailure,
+            onCheckBackups = { backupScanTick++ },
+            onRetryAutomaticBackup = {
+                busy = true
+                scope.launch {
+                    val succeeded = withContext(Dispatchers.IO) {
+                        Backup.runAutomatic(context.applicationContext)
+                    }
+                    busy = false
+                    backupScanTick++
+                    message = if (succeeded) {
+                        "Automatic backup verified and saved successfully."
+                    } else {
+                        Backup.lastFailure(context)?.help
+                            ?: "Could not create an automatic backup. Older files were kept."
+                    }
+                }
+            },
             onCreateBackup = launchers.createBackup,
             onRestoreBackup = launchers.restoreBackup,
             onFrequencyChange = {
@@ -371,6 +397,18 @@ internal fun DataSettings() {
     // screen was closed doesn't leave a stale "Never" on the row.
     LaunchedEffect(Unit) { refreshLocation() }
     LaunchedEffect(tick) { lastBackup = Backup.lastBackupAt(context) }
+    // Verify disk bytes off the UI thread rather than trusting a stored date.
+    LaunchedEffect(backupScanTick, customDir, storageActive) {
+        checkingBackupHealth = true
+        backupHealth = withContext(Dispatchers.IO) {
+            runCatching { Backup.scanHealth(context.applicationContext) }
+                .getOrElse { AutomaticBackupHealth(folderUnreadable = true) }
+        }
+        lastBackup = Backup.lastBackupAt(context)
+        lastBackupAttempt = Backup.lastAttemptAt(context)
+        lastBackupFailure = Backup.lastFailure(context)
+        checkingBackupHealth = false
+    }
 }
 
 // ---------- security and privacy ----------
