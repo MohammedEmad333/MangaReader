@@ -165,32 +165,18 @@ internal object Backup {
         val folder = backupsDir(context)
         if (!StorageLocation.ensureWritable(folder)) return false
 
-        val name = "yomu_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date()) + ".json"
-        // Written to a temp name and renamed, so a backup killed halfway through
-        // isn't left looking like a complete one for the next restore to trust.
-        val temp = File(folder, "$name.part")
-        temp.writeText(payload(context))
-        val target = File(folder, name)
-        if (!temp.renameTo(target)) {
-            temp.delete()
-            return false
-        }
+        val generated = payload(context).toByteArray(Charsets.UTF_8)
+        val saved = AutomaticBackupFileWriter.writeVerified(
+            folder = folder,
+            bytes = generated,
+            timestamp = System.currentTimeMillis(),
+            keep = KEEP,
+        )
+        if (!saved) return false
 
-        prune(folder)
         prefs(context).edit().putLong(KEY_LAST, System.currentTimeMillis()).apply()
         true
     }.getOrDefault(false)
-
-    /** Names carry a sortable timestamp, so lexicographic order is age order. */
-    private fun prune(folder: File) {
-        runCatching {
-            folder.listFiles()
-                ?.filter { it.isFile && it.name.startsWith("yomu_") && it.name.endsWith(".json") }
-                ?.sortedBy { it.name }
-                ?.dropLast(KEEP)
-                ?.forEach { it.delete() }
-        }
-    }
 
     // ---------- reading ----------
 
