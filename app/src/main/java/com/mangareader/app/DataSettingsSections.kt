@@ -86,6 +86,12 @@ internal fun DataBackupSettingsSection(
     frequency: BackupFrequency,
     lastBackup: Long,
     customDirectorySelected: Boolean,
+    backupHealth: AutomaticBackupHealth?,
+    checkingBackupHealth: Boolean,
+    lastBackupAttempt: Long,
+    backupFailure: AutomaticBackupFailure?,
+    onCheckBackups: () -> Unit,
+    onRetryAutomaticBackup: () -> Unit,
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onFrequencyChange: (BackupFrequency) -> Unit,
@@ -150,17 +156,65 @@ internal fun DataBackupSettingsSection(
     )
 
     DataActionCard(
-        title = "Last automatic backup",
-        summary = if (lastBackup <= 0L) {
-            "Never"
-        } else {
-            DateUtils.getRelativeTimeSpanString(
-                lastBackup,
-                System.currentTimeMillis(),
-                DateUtils.MINUTE_IN_MILLIS,
-            ).toString()
+        title = "Last automatic backup attempt",
+        summary = when {
+            lastBackupAttempt <= 0L -> "Not attempted on this installation"
+            backupFailure != null -> backupFailure.help
+            else -> "Last attempt completed successfully"
         },
     )
+
+    DataActionCard(
+        title = "Most recent verified automatic backup",
+        summary = when {
+            checkingBackupHealth -> "Checking backup integrity…"
+            backupHealth == null -> "Not checked yet"
+            backupHealth.folderUnreadable -> "Backup folder could not be read. Check storage."
+            backupHealth.verifiedAt != null -> {
+                val relative = DateUtils.getRelativeTimeSpanString(
+                    backupHealth.verifiedAt,
+                    System.currentTimeMillis(),
+                    DateUtils.MINUTE_IN_MILLIS,
+                ).toString()
+                "$relative · verified on disk" +
+                    if (backupHealth.newestArchiveInvalid) {
+                        " · A newer backup is invalid; the earlier valid one is kept."
+                    } else ""
+            }
+            backupHealth.checkedArchives == 0 -> "No automatic backup file found"
+            else -> "No valid backup in the last ${backupHealth.checkedArchives} checked files"
+        },
+        actionLabel = "Check",
+        enabled = !busy && !checkingBackupHealth,
+        onAction = onCheckBackups,
+    )
+
+    if (backupHealth != null && !checkingBackupHealth &&
+        (backupHealth.invalidArchives > 0 || backupHealth.moreArchivesToCheck)) {
+        PrefNote(
+            "${backupHealth.invalidArchives} invalid among " +
+                "${backupHealth.checkedArchives} checked archives. " +
+                if (backupHealth.moreArchivesToCheck) {
+                    "Older files were not scanned. Nothing was deleted."
+                } else {
+                    "Nothing was deleted."
+                },
+        )
+    }
+
+    DataActionCard(
+        title = "Back up now",
+        summary = "Safely try a new automatic backup in the configured storage location. " +
+            "Valid existing files stay untouched if this attempt fails.",
+        actionLabel = if (busy) "Working" else "Retry",
+        enabled = !busy && !checkingBackupHealth,
+        onAction = onRetryAutomaticBackup,
+    )
+
+    if (lastBackup > 0L && backupHealth?.verifiedAt == null) {
+        PrefNote("The previous success timestamp is not proof that a backup is " +
+            "still accessible. Use Check to verify the files stored now.")
+    }
 }
 
 @Composable
