@@ -64,7 +64,7 @@ internal object AutomaticBackupFileWriter {
             // Verify the actual final file before deleting any older archive.
             check(verify(destination)) { "Published backup failed verification." }
 
-            pruneOldBackups(folder, keep)
+            pruneOldBackups(folder, keep, destination)
             published = null
             return true
         } catch (_: Exception) {
@@ -78,13 +78,18 @@ internal object AutomaticBackupFileWriter {
     }
 
     /** Never prune on failure; this is called only after the new file verifies. */
-    private fun pruneOldBackups(folder: File, keep: Int) {
+    private fun pruneOldBackups(folder: File, keep: Int, justPublished: File) {
         runCatching {
-            folder.listFiles()
+            val archives = folder.listFiles()
                 ?.filter { it.isFile && it.name.startsWith("yomu_") && it.name.endsWith(".json") }
-                ?.sortedBy { it.name }
-                ?.dropLast(keep)
-                ?.forEach { it.delete() }
+                .orEmpty()
+            // The clock may have changed since a previous automatic backup.
+            // Never prune the archive this successful run just published.
+            archives.asSequence()
+                .filterNot { it == justPublished }
+                .sortedBy { it.name }
+                .take((archives.size - keep).coerceAtLeast(0))
+                .forEach { it.delete() }
         }
     }
 }
