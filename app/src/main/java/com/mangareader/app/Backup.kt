@@ -241,7 +241,8 @@ internal object Backup {
         var restored = 0
         val touched = mutableListOf<String>()
         try {
-            accepted.forEach { (name, entries) ->
+            accepted.entries.sortedWith(compareBy { it.key != APP_PREFS })
+                .forEach { (name, entries) ->
                 val editor = context.applicationContext
                     .getSharedPreferences(name, Context.MODE_PRIVATE)
                     .edit()
