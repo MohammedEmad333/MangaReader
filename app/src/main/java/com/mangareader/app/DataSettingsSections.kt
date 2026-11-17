@@ -152,11 +152,11 @@ internal fun DataBackupSettingsSection(
         },
     )
 
-    if (lastAttempt > 0L && !lastAttemptSucceeded) {
+    val backupHealth = automaticBackupHealth(lastBackup, lastAttempt, lastAttemptSucceeded)
+    if (backupHealth.retryRecommended) {
         DataActionCard(
             title = "Automatic backup needs attention",
-            summary = "Last attempt failed. The last successful backup was kept. " +
-                "Check your storage location, then try again.",
+            summary = backupHealth.status,
             actionLabel = "Retry",
             enabled = !busy,
             onAction = onRetryAutomaticBackup,
