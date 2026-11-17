@@ -110,6 +110,19 @@ class AutomaticBackupFileWriterTest {
         assertEquals("incomplete", partial.readText())
     }
 
+    @Test fun backwardsClockStillRetainsJustPublishedBackup() = withFolder { folder ->
+        val newest = File(folder, "yomu_2099-12-31_2359.json")
+        newest.writeBytes(payload("future"))
+        assertTrue(
+            AutomaticBackupFileWriter.writeVerified(
+                folder, payload("current"), timestamp = 1700000000000L, keep = 1,
+            ),
+        )
+        val files = archives(folder).filter { it.name.startsWith("yomu_") }
+        assertEquals(1, files.size)
+        assertArrayEquals(payload("current"), files.single().readBytes())
+    }
+
     @Test fun noWritableFolderOrInvalidRetentionNeverPublishes() = withFolder { folder ->
         assertFalse(AutomaticBackupFileWriter.writeVerified(File(folder, "missing"), payload(), 1L))
         assertFalse(AutomaticBackupFileWriter.writeVerified(folder, payload(), 1L, keep = 0))
