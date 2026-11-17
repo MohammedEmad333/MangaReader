@@ -63,6 +63,8 @@ internal object Backup {
     private const val KEY_DIR = "storage_dir"
     private const val KEY_FREQUENCY = "backup_frequency_hours"
     private const val KEY_LAST = "backup_last_at"
+    private const val KEY_ATTEMPT = "backup_last_attempt_at"
+    private const val KEY_OUTCOME = "backup_last_attempt_succeeded"
 
     /** How many automatic backups are kept in the folder before the oldest go. */
     private const val KEEP = 5
@@ -94,6 +96,11 @@ internal object Backup {
 
     /** Epoch millis of the last successful automatic backup, or 0. */
     fun lastBackupAt(context: Context): Long = prefs(context).getLong(KEY_LAST, 0L)
+
+    fun lastAttemptAt(context: Context): Long = prefs(context).getLong(KEY_ATTEMPT, 0L)
+
+    fun lastAttemptSucceeded(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_OUTCOME, false)
 
     // ---------- scheduling ----------
 
@@ -161,22 +168,32 @@ internal object Backup {
      * grant has been revoked — both are states the worker should stop retrying
      * on, because no amount of retrying fixes them.
      */
-    fun runAutomatic(context: Context): Boolean = runCatching {
-        val folder = backupsDir(context)
-        if (!StorageLocation.ensureWritable(folder)) return false
+    fun runAutomatic(context: Context): Boolean {
+        val attemptAt = System.currentTimeMillis()
+        val saved = runCatching {
+            val folder = backupsDir(context)
+            if (!StorageLocation.ensureWritable(folder)) return@runCatching false
 
-        val generated = payload(context).toByteArray(Charsets.UTF_8)
-        val saved = AutomaticBackupFileWriter.writeVerified(
-            folder = folder,
-            bytes = generated,
-            timestamp = System.currentTimeMillis(),
-            keep = KEEP,
-        )
-        if (!saved) return false
+            AutomaticBackupFileWriter.writeVerified(
+                folder = folder,
+                bytes = payload(context).toByteArray(Charsets.UTF_8),
+                timestamp = attemptAt,
+                keep = KEEP,
+            )
+        }.getOrDefault(false)
 
-        prefs(context).edit().putLong(KEY_LAST, System.currentTimeMillis()).apply()
-        true
-    }.getOrDefault(false)
+        // Commit the outcome so the settings screen can distinguish a missed
+        // backup from an old success. Do not overwrite the last-good timestamp
+        // on failure. Do not store paths, source settings or error details.
+        prefs(context).edit()
+            .putLong(KEY_ATTEMPT, attemptAt)
+            .putBoolean(KEY_OUTCOME, saved)
+            .apply()
+        if (saved) {
+            prefs(context).edit().putLong(KEY_LAST, attemptAt).apply()
+        }
+        return saved
+    }
 
     // ---------- reading ----------
 
