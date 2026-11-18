@@ -95,6 +95,7 @@ internal fun DataSettings() {
     var confirmChapterLists by remember { mutableStateOf(false) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var verifiedRestore by remember { mutableStateOf<BackupVerificationReport?>(null) }
+    var showBackupArchiveAudit by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var storageBusy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -214,6 +215,7 @@ internal fun DataSettings() {
                     }
                 }
             },
+            onCheckSavedBackups = { showBackupArchiveAudit = true },
             customDirectorySelected = customDir != null,
             onCreateBackup = launchers.createBackup,
             onRestoreBackup = launchers.restoreBackup,
@@ -260,6 +262,10 @@ internal fun DataSettings() {
             },
             onClearChapterLists = { confirmChapterLists = true },
         )
+    }
+
+    if (showBackupArchiveAudit) {
+        BackupArchiveAuditDialog(onDismiss = { showBackupArchiveAudit = false })
     }
 
     DataSettingsDialogs(
