@@ -66,6 +66,29 @@ class BackupArchiveAuditTest {
         assertEquals("yomu_2026-01-07.json", audit.newestVerified?.fileName)
     }
 
+    @Test fun restoreSelectionRejectsTraversalAndUnrelatedFiles() = withFolder { dir ->
+        val good = File(dir, "yomu_2026-11-18_120000.json").apply { writeText(json()) }
+        val unrelated = File(dir, "private.json").apply { writeText(json()) }
+        assertEquals(good.canonicalFile, resolveVerifiedBackupArchive(dir, good.name))
+        assertNull(resolveVerifiedBackupArchive(dir, unrelated.name))
+        assertNull(resolveVerifiedBackupArchive(dir, "../${good.name}"))
+        assertNull(resolveVerifiedBackupArchive(dir, "yomu_../../private.json"))
+        assertNull(resolveVerifiedBackupArchive(dir, "yomu_missing.json"))
+        assertNull(resolveVerifiedBackupArchive(dir, "yomu_partial.part"))
+    }
+
+    @Test fun restoreSelectionRejectsSymlinkOutsideBackupDirectory() = withFolder { dir ->
+        val external = Files.createTempFile("yomu-external", ".json")
+        try {
+            Files.write(external, json().toByteArray(Charsets.UTF_8))
+            val link = File(dir, "yomu_2026-11-18_140000.json")
+            Files.createSymbolicLink(link.toPath(), external)
+            assertNull(resolveVerifiedBackupArchive(dir, link.name))
+        } finally {
+            Files.deleteIfExists(external)
+        }
+    }
+
     @Test fun invalidBackupIsNotClaimedAsSafeEvenIfNamedLikeOne() = withFolder { dir ->
         File(dir, "yomu_2026-12-31.json").writeText("""{"version":999,"stores":{}}""")
         File(dir, "yomu_2026-01-01.json").writeText(json("0.316"))
