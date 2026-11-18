@@ -80,7 +80,7 @@ class BackupArchiveAuditTest {
     @Test fun restoreSelectionRejectsSymlinkOutsideBackupDirectory() = withFolder { dir ->
         val external = Files.createTempFile("yomu-external", ".json")
         try {
-            Files.writeString(external, json())
+            Files.write(external, json().toByteArray(Charsets.UTF_8))
             val link = File(dir, "yomu_2026-11-18_140000.json")
             Files.createSymbolicLink(link.toPath(), external)
             assertNull(resolveVerifiedBackupArchive(dir, link.name))
