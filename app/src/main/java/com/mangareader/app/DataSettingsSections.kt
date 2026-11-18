@@ -88,6 +88,7 @@ internal fun DataBackupSettingsSection(
     lastAttempt: Long,
     lastAttemptSucceeded: Boolean,
     onRetryAutomaticBackup: () -> Unit,
+    onCheckSavedBackups: () -> Unit,
     customDirectorySelected: Boolean,
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
@@ -162,6 +163,14 @@ internal fun DataBackupSettingsSection(
             onAction = onRetryAutomaticBackup,
         )
     }
+
+    DataActionCard(
+        title = "Check saved backup files",
+        summary = "Verify older backups and identify unreadable or damaged files without deleting anything.",
+        actionLabel = "Check",
+        enabled = !busy,
+        onAction = onCheckSavedBackups,
+    )
 
     DataActionCard(
         title = "Last automatic backup",
