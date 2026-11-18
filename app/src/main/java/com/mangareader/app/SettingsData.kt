@@ -139,6 +139,24 @@ internal fun DataSettings() {
         }
     }
 
+    fun previewRestore(uri: Uri) {
+        verifiedRestore = null
+        pendingRestore = uri
+        busy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { Backup.verifyFrom(context, uri) }
+            busy = false
+            result.fold(
+                onSuccess = { verifiedRestore = it },
+                onFailure = {
+                    pendingRestore = null
+                    message = "Backup verification failed: " +
+                        (it.message ?: it::class.java.simpleName)
+                },
+            )
+        }
+    }
+
     val launchers = rememberDataSettingsLaunchers(
         context = context,
         scope = scope,
@@ -146,23 +164,7 @@ internal fun DataSettings() {
         onNeedAccess = { askAccess = true },
         onMessage = { message = it },
         onPendingMove = { pendingMove = it },
-        onPendingRestore = { uri ->
-            verifiedRestore = null
-            pendingRestore = uri
-            busy = true
-            scope.launch {
-                val result = withContext(Dispatchers.IO) { Backup.verifyFrom(context, uri) }
-                busy = false
-                result.fold(
-                    onSuccess = { verifiedRestore = it },
-                    onFailure = {
-                        pendingRestore = null
-                        message = "Backup verification failed: " +
-                            (it.message ?: it::class.java.simpleName)
-                    },
-                )
-            }
-        },
+        onPendingRestore = { previewRestore(it) },
         onBusyChange = { busy = it },
     )
 
@@ -265,7 +267,25 @@ internal fun DataSettings() {
     }
 
     if (showBackupArchiveAudit) {
-        BackupArchiveAuditDialog(onDismiss = { showBackupArchiveAudit = false })
+        BackupArchiveAuditDialog(
+            onDismiss = { showBackupArchiveAudit = false },
+            onChooseVerified = { fileName ->
+                showBackupArchiveAudit = false
+                scope.launch {
+                    // The audit result may already be stale. Resolve a direct
+                    // child only, then use the existing read-only verification,
+                    // fingerprint and explicit destructive restore confirmation.
+                    val file = withContext(Dispatchers.IO) {
+                        resolveVerifiedBackupArchive(Backup.backupsDir(context), fileName)
+                    }
+                    if (file == null) {
+                        message = "That backup is no longer accessible. Check saved backups again."
+                    } else {
+                        previewRestore(Uri.fromFile(file))
+                    }
+                }
+            },
+        )
     }
 
     DataSettingsDialogs(
