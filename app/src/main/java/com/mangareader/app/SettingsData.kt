@@ -102,6 +102,8 @@ internal fun DataSettings() {
 
     var frequency by remember { mutableStateOf(Backup.frequency(context)) }
     var lastBackup by remember { mutableStateOf(Backup.lastBackupAt(context)) }
+    var lastAttempt by remember { mutableStateOf(Backup.lastAttemptAt(context)) }
+    var lastAttemptSucceeded by remember { mutableStateOf(Backup.lastAttemptSucceeded(context)) }
 
     // Re-read on every entry rather than held: All files access is granted on a
     // system screen this app doesn't own, and can be taken away on the same one
@@ -193,6 +195,25 @@ internal fun DataSettings() {
             busy = busy,
             frequency = frequency,
             lastBackup = lastBackup,
+            lastAttempt = lastAttempt,
+            lastAttemptSucceeded = lastAttemptSucceeded,
+            onRetryAutomaticBackup = {
+                busy = true
+                scope.launch {
+                    val success = withContext(Dispatchers.IO) {
+                        Backup.runAutomatic(context.applicationContext)
+                    }
+                    lastBackup = Backup.lastBackupAt(context)
+                    lastAttempt = Backup.lastAttemptAt(context)
+                    lastAttemptSucceeded = Backup.lastAttemptSucceeded(context)
+                    busy = false
+                    message = if (success) {
+                        "Verified automatic backup created successfully."
+                    } else {
+                        "Could not create a verified automatic backup. Existing backups were preserved. Check storage access and available space."
+                    }
+                }
+            },
             customDirectorySelected = customDir != null,
             onCreateBackup = launchers.createBackup,
             onRestoreBackup = launchers.restoreBackup,

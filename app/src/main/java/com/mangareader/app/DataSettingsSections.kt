@@ -85,6 +85,9 @@ internal fun DataBackupSettingsSection(
     busy: Boolean,
     frequency: BackupFrequency,
     lastBackup: Long,
+    lastAttempt: Long,
+    lastAttemptSucceeded: Boolean,
+    onRetryAutomaticBackup: () -> Unit,
     customDirectorySelected: Boolean,
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
@@ -148,6 +151,17 @@ internal fun DataBackupSettingsSection(
                 "and every source's settings — not the downloaded pages themselves."
         },
     )
+
+    val backupHealth = automaticBackupHealth(lastBackup, lastAttempt, lastAttemptSucceeded)
+    if (backupHealth.retryRecommended) {
+        DataActionCard(
+            title = "Automatic backup needs attention",
+            summary = backupHealth.status,
+            actionLabel = "Retry",
+            enabled = !busy,
+            onAction = onRetryAutomaticBackup,
+        )
+    }
 
     DataActionCard(
         title = "Last automatic backup",
