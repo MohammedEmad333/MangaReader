@@ -264,5 +264,5 @@ dependencies {
     // Custom build-type configurations have no generated Kotlin DSL accessor.
     add("deviceTestImplementation", "androidx.compose.ui:ui-test-manifest")
     // The Android SDK ships stub org.json methods to local JVM tests.
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 }
