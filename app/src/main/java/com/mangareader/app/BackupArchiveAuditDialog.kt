@@ -29,7 +29,10 @@ import kotlinx.coroutines.withContext
 
 /** The scan is opt-in; opening settings doesn't read old backups. */
 @Composable
-internal fun BackupArchiveAuditDialog(onDismiss: () -> Unit) {
+internal fun BackupArchiveAuditDialog(
+    onDismiss: () -> Unit,
+    onChooseVerified: (String) -> Unit,
+) {
     val context = LocalContext.current.applicationContext
     var generation by remember { mutableIntStateOf(0) }
     var working by remember { mutableStateOf(true) }
@@ -56,9 +59,9 @@ internal fun BackupArchiveAuditDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Read-only check of published Yomu backups. No files are changed " +
-                        "or deleted. A verified file is readable now, but restore will " +
-                        "check it again before replacing your settings.",
+                    "Check previous Yomu backups without changing any files. " +
+                        "Choose Review restore to verify that file again and see a " +
+                        "separate confirmation before any settings are replaced.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (working) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -105,6 +108,14 @@ internal fun BackupArchiveAuditDialog(onDismiss: () -> Unit) {
                                             },
                                             style = MaterialTheme.typography.labelSmall,
                                         )
+                                    }
+                                    if (entry.status == BackupArchiveStatus.VERIFIED) {
+                                        TextButton(
+                                            onClick = { onChooseVerified(entry.fileName) },
+                                            enabled = !working,
+                                        ) {
+                                            Text("Review restore")
+                                        }
                                     }
                                     HorizontalDivider()
                                 }
