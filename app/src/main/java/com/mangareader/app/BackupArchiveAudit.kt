@@ -86,3 +86,30 @@ internal fun auditAutomaticBackupArchives(
         folderAvailable = true,
     )
 }
+
+/**
+ * Only directly-contained, published automatic archives may be selected.
+ * Rejects traversal, symlinks escaping the backup folder, partial files and
+ * unrelated JSON files. Actual restore re-verifies the full file afterwards.
+ */
+internal fun resolveVerifiedBackupArchive(folder: File, fileName: String): File? {
+    if (!fileName.startsWith("yomu_") || !fileName.endsWith(".json") ||
+        fileName.length > 250 || fileName.contains('/') || fileName.contains('\\') ||
+        fileName == "." || fileName == ".."
+    ) return null
+
+    return runCatching {
+        val root = folder.canonicalFile
+        val candidate = File(root, fileName)
+        val canonical = candidate.canonicalFile
+        canonical.takeIf {
+            root.isDirectory &&
+                it.parentFile == root &&
+                it.isFile &&
+                it.canRead() &&
+                // A symlink to another archive (or outside the folder)
+                // is never a direct published backup.
+                canonical.absolutePath == candidate.absolutePath
+        }
+    }.getOrNull()
+}
