@@ -81,6 +81,58 @@ class BackupRestoreDeviceTest {
         }
     }
 
+    @Test fun staleLocalSettingsPreviewCannotOverwriteNewReadingProgress() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val previous = prefs.getString(key, null)
+        val file = File(context.cacheDir, "device-backup-stale-preview.json")
+        try {
+            assertTrue(prefs.edit().putString(key, "page-15").commit())
+            val uri = archive(file, "page-8")
+            val preview = Backup.previewFrom(context, uri).getOrThrow()
+            assertEquals(1, preview.impact.settingsChanged)
+            assertTrue(prefs.edit().putString(key, "page-16").commit())
+            val result = Backup.restoreFrom(
+                context = context,
+                uri = uri,
+                expectedFingerprint = preview.report.fingerprint,
+                expectedCurrentStateFingerprint = preview.currentStateFingerprint,
+            )
+            assertTrue(result.isFailure)
+            assertEquals("page-16", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit()
+            if (previous == null) editor.remove(key) else editor.putString(key, previous)
+            assertTrue(editor.commit())
+            file.delete()
+        }
+    }
+
+    @Test fun unchangedLocalSettingsPermitConfirmedRestore() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val original = prefs.all.toMap()
+        val file = File(context.cacheDir, "device-backup-confirmed-preview.json")
+        try {
+            assertTrue(prefs.edit().putString(key, "page-15").commit())
+            val uri = archive(file, "page-8")
+            val preview = Backup.previewFrom(context, uri).getOrThrow()
+            val restored = Backup.restoreFrom(
+                context = context,
+                uri = uri,
+                expectedFingerprint = preview.report.fingerprint,
+                expectedCurrentStateFingerprint = preview.currentStateFingerprint,
+            )
+            assertTrue(restored.isSuccess)
+            assertEquals("page-8", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit().clear()
+            BackupCodec.writeValues(editor, original)
+            assertTrue(editor.commit())
+            file.delete()
+        }
+    }
+
     @Test fun interruptedMultiStoreRestoreRollsBackAllPreferences() {
         val appPrefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
         val extensionPrefs = context.getSharedPreferences("source_device_rollback", Context.MODE_PRIVATE)
