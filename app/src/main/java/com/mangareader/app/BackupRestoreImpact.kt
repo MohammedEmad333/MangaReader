@@ -15,6 +15,7 @@ internal data class BackupRestoreImpact(
 internal data class BackupRestorePreview(
     val report: BackupVerificationReport,
     val impact: BackupRestoreImpact,
+    val currentStateFingerprint: String,
 )
 
 /**
