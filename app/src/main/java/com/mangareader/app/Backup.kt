@@ -222,9 +222,11 @@ internal object Backup {
             ?.use { BackupVerification.readBounded(it) }
             ?: error("Couldn't open the file")
         val verified = BackupVerification.validate(bytes)
-        val current = verified.stores.keys.associateWith { name ->
-            val values = context.applicationContext
-                .getSharedPreferences(name, Context.MODE_PRIVATE).all
+        val localState = verified.stores.keys.associateWith { name ->
+            context.applicationContext
+                .getSharedPreferences(name, Context.MODE_PRIVATE).all.toMap()
+        }
+        val current = localState.mapValues { (name, values) ->
             BackupCodec.encode(
                 values,
                 skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet(),
@@ -233,6 +235,7 @@ internal object Backup {
         BackupRestorePreview(
             report = verified.report,
             impact = calculateBackupRestoreImpact(verified.stores, current),
+            currentStateFingerprint = backupLocalStateFingerprint(localState),
         )
     }
 
@@ -240,6 +243,7 @@ internal object Backup {
         context: Context,
         uri: Uri,
         expectedFingerprint: String? = null,
+        expectedCurrentStateFingerprint: String? = null,
         /** Android device tests can simulate an interruption after a prior store commits. */
         beforeStoreCommit: (String) -> Unit = {},
     ): Result<Int> = runCatching {
@@ -264,6 +268,11 @@ internal object Backup {
         val original = accepted.keys.associateWith { name ->
             context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
                 .all.toMap()
+        }
+        if (expectedCurrentStateFingerprint != null) {
+            require(backupLocalStateFingerprint(original) == expectedCurrentStateFingerprint) {
+                "Local settings changed since preview. Review the backup impact again before restoring."
+            }
         }
         var restored = 0
         val touched = mutableListOf<String>()
