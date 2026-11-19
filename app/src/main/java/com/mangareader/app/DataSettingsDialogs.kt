@@ -25,6 +25,7 @@ internal fun DataSettingsDialogs(
     onDismissMessage: () -> Unit,
     pendingRestore: Uri?,
     restoreVerification: BackupVerificationReport?,
+    restoreImpact: BackupRestoreImpact?,
     onDismissRestore: () -> Unit,
     onConfirmRestore: (Uri) -> Unit,
     confirmDownloads: Boolean,
@@ -140,6 +141,11 @@ internal fun DataSettingsDialogs(
                         "Settings: ${restoreVerification.settingCount}\n" +
                         "Size: ${restoreVerification.byteCount} bytes\n" +
                         "Fingerprint: ${restoreVerification.fingerprint.take(12)}…\n\n" +
+                        (restoreImpact?.let {
+                            "Estimated changes in ${it.storesReplaced} backup stores:\n" +
+                                "${it.settingsAdded} new settings, ${it.settingsChanged} changed, " +
+                                "${it.settingsRemoved} removed, ${it.settingsUnchanged} unchanged.\n\n"
+                        } ?: "") +
                         "Confirming will REPLACE your library, categories, history, " +
                         "read marks and source settings. Downloads stay on disk. " +
                         "The file is checked again before any settings are replaced.",
