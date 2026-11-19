@@ -96,6 +96,7 @@ internal fun DataSettings() {
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var verifiedRestore by remember { mutableStateOf<BackupVerificationReport?>(null) }
     var restoreImpact by remember { mutableStateOf<BackupRestoreImpact?>(null) }
+    var currentRestoreFingerprint by remember { mutableStateOf<String?>(null) }
     var showBackupArchiveAudit by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var storageBusy by remember { mutableStateOf(false) }
@@ -143,13 +144,18 @@ internal fun DataSettings() {
     fun previewRestore(uri: Uri) {
         verifiedRestore = null
         restoreImpact = null
+        currentRestoreFingerprint = null
         pendingRestore = uri
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) { Backup.previewFrom(context, uri) }
             busy = false
             result.fold(
-                onSuccess = { verifiedRestore = it.report; restoreImpact = it.impact },
+                onSuccess = {
+                    verifiedRestore = it.report
+                    restoreImpact = it.impact
+                    currentRestoreFingerprint = it.currentStateFingerprint
+                },
                 onFailure = {
                     pendingRestore = null
                     message = "Backup verification failed: " +
@@ -361,16 +367,27 @@ internal fun DataSettings() {
         pendingRestore = if (verifiedRestore != null) pendingRestore else null,
         restoreVerification = verifiedRestore,
         restoreImpact = restoreImpact,
-        onDismissRestore = { pendingRestore = null; verifiedRestore = null; restoreImpact = null },
+        onDismissRestore = {
+            pendingRestore = null
+            verifiedRestore = null
+            restoreImpact = null
+            currentRestoreFingerprint = null
+        },
         onConfirmRestore = { restoreUri ->
             pendingRestore = null
             val fingerprint = verifiedRestore?.fingerprint
+            val localFingerprint = currentRestoreFingerprint
             verifiedRestore = null
             restoreImpact = null
+            currentRestoreFingerprint = null
             busy = true
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    Backup.restoreFrom(context, restoreUri, fingerprint)
+                    Backup.restoreFrom(
+                        context, restoreUri,
+                        expectedFingerprint = fingerprint,
+                        expectedCurrentStateFingerprint = localFingerprint,
+                    )
                 }
                 busy = false
                 result.fold(
