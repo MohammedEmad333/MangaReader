@@ -20,7 +20,7 @@ internal data class BackupRestorePreview(
 
 /**
  * Compare recognized typed settings in stores that the backup will replace.
- * Local storage_dir is device-specific and is explicitly preserved by restore.
+ * Device-local paths and backup-worker status are preserved and excluded from counts.
  * A missing store in the archive is not touched by the current restore path.
  */
 internal fun calculateBackupRestoreImpact(
@@ -35,7 +35,7 @@ internal fun calculateBackupRestoreImpact(
         val existing = current[store] ?: JSONObject()
         val keys = (existing.keys().asSequence() + backupEntries.keys().asSequence()).toSet()
         for (key in keys) {
-            if (store == "manga_reader" && key == "storage_dir") continue
+            if (store == "manga_reader" && key in backupLocalOnlyPreferenceKeys) continue
             val before = existing.optJSONObject(key)?.let(::normalizedBackupPreference)
             val after = backupEntries.optJSONObject(key)?.let(::normalizedBackupPreference)
             when {

@@ -2,13 +2,19 @@ package com.mangareader.app
 
 import java.security.MessageDigest
 
+internal val backupLocalOnlyPreferenceKeys = setOf(
+    "storage_dir",
+    "backup_last_at",
+    "backup_last_attempt_at",
+    "backup_last_attempt_succeeded",
+)
+
 /**
  * A stable SHA-256 of the exact local preference stores selected for restore.
  * No preference keys, values, filenames or source credentials leave this method.
  *
- * The device-local storage path is intentionally preserved by restore and is
- * excluded. Worker-owned backup timestamps can change while a confirmation
- * dialog is open, so they are excluded as well.
+ * Device-local storage paths and worker-owned backup status are preserved by
+ * restore and excluded, so housekeeping cannot invalidate a confirmation.
  */
 internal fun backupLocalStateFingerprint(
     stores: Map<String, Map<String, *>>,
@@ -30,11 +36,7 @@ internal fun backupLocalStateFingerprint(
         append(storeName)
         val keys = values.keys.sorted()
         for (key in keys) {
-            if (storeName == "manga_reader" && key in setOf(
-                    "storage_dir", "backup_last_at", "backup_last_attempt_at",
-                    "backup_last_attempt_succeeded",
-                )
-            ) continue
+            if (storeName == "manga_reader" && key in backupLocalOnlyPreferenceKeys) continue
             val value = values[key]
             append(key)
             when (value) {

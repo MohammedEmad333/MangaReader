@@ -74,6 +74,30 @@ class BackupRestoreImpactTest {
         assertEquals(0, result.settingsRemoved)
     }
 
+    @Test fun localStorageAndBackupWorkerMetadataAreExcludedFromImpact() {
+        val existing = JSONObject()
+            .put("storage_dir", entry("s", "/local/device"))
+            .put("backup_last_at", entry("l", 200L))
+            .put("backup_last_attempt_at", entry("l", 300L))
+            .put("backup_last_attempt_succeeded", entry("b", false))
+        val backup = JSONObject()
+            .put("storage_dir", entry("s", "/old/device"))
+            .put("backup_last_at", entry("l", 10L))
+            .put("backup_last_attempt_at", entry("l", 20L))
+            .put("backup_last_attempt_succeeded", entry("b", true))
+
+        val result = calculateBackupRestoreImpact(
+            archive = mapOf("manga_reader" to backup),
+            current = mapOf("manga_reader" to existing),
+        )
+
+        assertEquals(1, result.storesReplaced)
+        assertEquals(0, result.settingsAdded)
+        assertEquals(0, result.settingsChanged)
+        assertEquals(0, result.settingsRemoved)
+        assertEquals(0, result.settingsUnchanged)
+    }
+
     @Test fun unknownPreferenceTypesAreNotCountedAsWritten() {
         val incoming = JSONObject()
             .put("unsupported", entry("future", "not-restored"))

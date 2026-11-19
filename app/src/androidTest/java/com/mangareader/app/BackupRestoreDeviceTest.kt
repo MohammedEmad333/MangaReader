@@ -20,11 +20,21 @@ import org.junit.runner.RunWith
 class BackupRestoreDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    private fun archive(file: File, value: String): Uri {
+    private fun archive(
+        file: File,
+        value: String,
+        includeLocalMetadata: Boolean = false,
+    ): Uri {
         val store = JSONObject().put(
             "test_saved_bookmark",
             JSONObject().put("t", "s").put("v", value),
         )
+        if (includeLocalMetadata) {
+            store.put("storage_dir", JSONObject().put("t", "s").put("v", "/archive/device"))
+            store.put("backup_last_at", JSONObject().put("t", "l").put("v", 10L))
+            store.put("backup_last_attempt_at", JSONObject().put("t", "l").put("v", 20L))
+            store.put("backup_last_attempt_succeeded", JSONObject().put("t", "b").put("v", true))
+        }
         val payload = JSONObject()
             .put("version", 1)
             .put("app", "0.319-test")
@@ -125,6 +135,52 @@ class BackupRestoreDeviceTest {
             )
             assertTrue(restored.isSuccess)
             assertEquals("page-8", prefs.getString(key, null))
+        } finally {
+            val editor = prefs.edit().clear()
+            BackupCodec.writeValues(editor, original)
+            assertTrue(editor.commit())
+            file.delete()
+        }
+    }
+
+    @Test fun olderArchiveKeepsCurrentDeviceStorageAndBackupStatus() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val original = prefs.all.toMap()
+        val key = "test_saved_bookmark"
+        val file = File(context.cacheDir, "device-backup-local-metadata.json")
+        try {
+            assertTrue(prefs.edit()
+                .putString(key, "page-15")
+                .putString("storage_dir", "/local/device")
+                .putLong("backup_last_at", 200L)
+                .putLong("backup_last_attempt_at", 300L)
+                .putBoolean("backup_last_attempt_succeeded", false)
+                .commit())
+
+            val generated = JSONObject(Backup.payload(context))
+                .getJSONObject("stores")
+                .getJSONObject("manga_reader")
+            assertFalse(generated.has("storage_dir"))
+            assertFalse(generated.has("backup_last_at"))
+            assertFalse(generated.has("backup_last_attempt_at"))
+            assertFalse(generated.has("backup_last_attempt_succeeded"))
+
+            val uri = archive(file, "page-8", includeLocalMetadata = true)
+            val preview = Backup.previewFrom(context, uri).getOrThrow()
+            assertEquals(1, preview.impact.settingsChanged)
+
+            val restored = Backup.restoreFrom(
+                context = context,
+                uri = uri,
+                expectedFingerprint = preview.report.fingerprint,
+                expectedCurrentStateFingerprint = preview.currentStateFingerprint,
+            )
+            assertTrue(restored.isSuccess)
+            assertEquals("page-8", prefs.getString(key, null))
+            assertEquals("/local/device", prefs.getString("storage_dir", null))
+            assertEquals(200L, prefs.getLong("backup_last_at", 0L))
+            assertEquals(300L, prefs.getLong("backup_last_attempt_at", 0L))
+            assertFalse(prefs.getBoolean("backup_last_attempt_succeeded", true))
         } finally {
             val editor = prefs.edit().clear()
             BackupCodec.writeValues(editor, original)

@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Backup and restore.
  *
- * **What a backup is here: every SharedPreferences file, verbatim.** That reads
+ * **What a backup is here: the app's user settings and library state from SharedPreferences.** That reads
  * like laziness and isn't. This app has no database — [Library], [Categories],
  * [History], [ReadState], [SourceManager], [ExtensionRepos], [SourcePrefs] and
  * [ReaderPrefs] are all JSON strings or scalars in one store called
@@ -51,16 +51,12 @@ internal object Backup {
     private const val APP_PREFS = "manga_reader"
 
     /**
-     * The one key deliberately left out of the payload — [StorageLocation]'s.
+     * Device-local and worker-owned preferences deliberately left out of the payload.
      *
-     * It holds a filesystem path, and a path is device-local even when it looks
-     * portable: `/storage/1A2B-3C4D/Manga` is a card that exists in one phone.
-     * Carrying it across would point a restored install at a folder that isn't
-     * there and silently strand its downloads in internal storage, with a
-     * settings row still naming the card. Restore keeps whatever the local
-     * install already had.
+     * The storage path is tied to one phone or SD card. Backup timestamps and
+     * the last-attempt outcome describe this installation's own worker history,
+     * not portable app settings. Restore keeps the current device's values.
      */
-    private const val KEY_DIR = "storage_dir"
     private const val KEY_FREQUENCY = "backup_frequency_hours"
     private const val KEY_LAST = "backup_last_at"
     private const val KEY_ATTEMPT = "backup_last_attempt_at"
@@ -70,6 +66,13 @@ internal object Backup {
     private const val KEEP = 5
 
     private const val WORK_NAME = "auto_backup"
+
+    private fun withoutDeviceLocalPreferences(store: String, entries: JSONObject): JSONObject {
+        if (store != APP_PREFS) return entries
+        return JSONObject(entries.toString()).apply {
+            backupLocalOnlyPreferenceKeys.forEach { remove(it) }
+        }
+    }
 
     // ---------- settings ----------
 
@@ -143,7 +146,7 @@ internal object Backup {
             val map = context.applicationContext
                 .getSharedPreferences(name, Context.MODE_PRIVATE)
                 .all
-            stores.put(name, BackupCodec.encode(map, skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet()))
+            stores.put(name, BackupCodec.encode(map, skip = if (name == APP_PREFS) backupLocalOnlyPreferenceKeys else emptySet()))
         }
         return JSONObject()
             .put("version", VERSION)
@@ -214,7 +217,7 @@ internal object Backup {
 
     /**
      * Read-only impact preview. Never applies, clears, or rewrites preferences.
-     * Only backup-listed stores are compared; storage_dir is kept device-local.
+     * Only backup-listed stores are compared; device-local and worker-owned values stay local.
      * The final restore revalidates the complete file and its fingerprint.
      */
     fun previewFrom(context: Context, uri: Uri): Result<BackupRestorePreview> = runCatching {
@@ -229,12 +232,15 @@ internal object Backup {
         val current = localState.mapValues { (name, values) ->
             BackupCodec.encode(
                 values,
-                skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet(),
+                skip = if (name == APP_PREFS) backupLocalOnlyPreferenceKeys else emptySet(),
             )
+        }
+        val impactArchive = verified.stores.mapValues { (name, entries) ->
+            withoutDeviceLocalPreferences(name, entries)
         }
         BackupRestorePreview(
             report = verified.report,
-            impact = calculateBackupRestoreImpact(verified.stores, current),
+            impact = calculateBackupRestoreImpact(impactArchive, current),
             currentStateFingerprint = backupLocalStateFingerprint(localState),
         )
     }
@@ -256,10 +262,9 @@ internal object Backup {
                 "The backup file changed since verification. Inspect it again before restoring."
             }
         }
-        val accepted = verified.stores
-
-        // Held across the wipe: a path belonging to this device, not the backup.
-        val localDir = prefs(context).getString(KEY_DIR, null)
+        val accepted = verified.stores.mapValues { (name, entries) ->
+            withoutDeviceLocalPreferences(name, entries)
+        }
 
         // Capture a complete in-memory snapshot before the first destructive write.
         // If a later store fails, restore all touched stores, including the one
@@ -269,6 +274,9 @@ internal object Backup {
             context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
                 .all.toMap()
         }
+        // Device-local paths and worker-owned backup status belong to this install.
+        val localDevicePreferences = original[APP_PREFS].orEmpty()
+            .filterKeys { it in backupLocalOnlyPreferenceKeys }
         if (expectedCurrentStateFingerprint != null) {
             require(backupLocalStateFingerprint(original) == expectedCurrentStateFingerprint) {
                 "Local settings changed since preview. Review the backup impact again before restoring."
@@ -286,7 +294,7 @@ internal object Backup {
                 beforeStoreCommit(name)
                 editor.clear()
                 val written = BackupCodec.decodeInto(editor, entries)
-                if (name == APP_PREFS && localDir != null) editor.putString(KEY_DIR, localDir)
+                if (name == APP_PREFS) BackupCodec.writeValues(editor, localDevicePreferences)
                 check(editor.commit()) { "Could not write backup settings." }
                 restored += written
             }
