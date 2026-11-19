@@ -212,6 +212,30 @@ internal object Backup {
         BackupVerification.validate(bytes).report
     }
 
+    /**
+     * Read-only impact preview. Never applies, clears, or rewrites preferences.
+     * Only backup-listed stores are compared; storage_dir is kept device-local.
+     * The final restore revalidates the complete file and its fingerprint.
+     */
+    fun previewFrom(context: Context, uri: Uri): Result<BackupRestorePreview> = runCatching {
+        val bytes = context.contentResolver.openInputStream(uri)
+            ?.use { BackupVerification.readBounded(it) }
+            ?: error("Couldn't open the file")
+        val verified = BackupVerification.validate(bytes)
+        val current = verified.stores.keys.associateWith { name ->
+            val values = context.applicationContext
+                .getSharedPreferences(name, Context.MODE_PRIVATE).all
+            BackupCodec.encode(
+                values,
+                skip = if (name == APP_PREFS) setOf(KEY_DIR) else emptySet(),
+            )
+        }
+        BackupRestorePreview(
+            report = verified.report,
+            impact = calculateBackupRestoreImpact(verified.stores, current),
+        )
+    }
+
     fun restoreFrom(
         context: Context,
         uri: Uri,
