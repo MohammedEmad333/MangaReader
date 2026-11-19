@@ -57,6 +57,30 @@ class BackupRestoreDeviceTest {
         }
     }
 
+    @Test fun impactPreviewDoesNotChangeAndroidPreferences() {
+        val prefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
+        val key = "test_saved_bookmark"
+        val before = prefs.getString(key, null)
+        val file = File(context.cacheDir, "device-backup-impact-preview.json")
+        try {
+            assertTrue(prefs.edit().putString(key, "local-value").commit())
+            val uri = archive(file, "archive-value")
+            val preview = Backup.previewFrom(context, uri).getOrThrow()
+            assertEquals(1, preview.impact.settingsChanged)
+            assertEquals(1, preview.impact.storesReplaced)
+            assertEquals("local-value", prefs.getString(key, null))
+            assertEquals(
+                Backup.verifyFrom(context, uri).getOrThrow().fingerprint,
+                preview.report.fingerprint,
+            )
+        } finally {
+            val editor = prefs.edit()
+            if (before == null) editor.remove(key) else editor.putString(key, before)
+            assertTrue(editor.commit())
+            file.delete()
+        }
+    }
+
     @Test fun interruptedMultiStoreRestoreRollsBackAllPreferences() {
         val appPrefs = context.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
         val extensionPrefs = context.getSharedPreferences("source_device_rollback", Context.MODE_PRIVATE)
