@@ -84,6 +84,9 @@ class BackupArchiveAuditTest {
             val link = File(dir, "yomu_2026-11-18_140000.json")
             Files.createSymbolicLink(link.toPath(), external)
             assertNull(resolveVerifiedBackupArchive(dir, link.name))
+            val audit = auditAutomaticBackupArchives(dir)
+            assertEquals(0, audit.verified)
+            assertEquals(1, audit.unreadable)
         } finally {
             Files.deleteIfExists(external)
         }

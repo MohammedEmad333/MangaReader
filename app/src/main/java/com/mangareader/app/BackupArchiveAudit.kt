@@ -51,11 +51,19 @@ internal fun auditAutomaticBackupArchives(
     // thousands of archives. We report, rather than silently ignore, the rest.
     val entries = matching.take(limit).map { file ->
         val name = file.name
-        if (!file.canRead()) {
-            BackupArchiveEntry(name, BackupArchiveStatus.UNREADABLE, reason = "Cannot read this file.")
+        // Keep audit classification consistent with the later restore
+        // selection. A symlink can point to valid JSON but cannot be safely
+        // selected, so never advertise it as a verified restore candidate.
+        val selectable = resolveVerifiedBackupArchive(folder, name)
+        if (selectable == null) {
+            BackupArchiveEntry(
+                name,
+                BackupArchiveStatus.UNREADABLE,
+                reason = "Not a readable direct backup file.",
+            )
         } else {
             val result = runCatching {
-                file.inputStream().use { stream ->
+                selectable.inputStream().use { stream ->
                     BackupVerification.validate(BackupVerification.readBounded(stream)).report
                 }
             }
