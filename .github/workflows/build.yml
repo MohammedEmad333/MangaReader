@@ -227,11 +227,39 @@ jobs:
             gh release edit latest \
               --target "$GITHUB_SHA" \
               -t "Yomu v${version}" --prerelease \
-              -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
+              -n "## Yomu v${version}
+
+          ### What's new
+          - Backup restore now refuses stale confirmations if library or settings changed after the preview.
+          - Device-local storage paths and automatic-backup status stay on the current installation, including when restoring older archives.
+          - Restore impact counts ignore device-local and worker-owned metadata.
+          - Backup files are revalidated before writes; multi-store rollback remains best-effort.
+
+          ### Validation
+          - JVM unit tests passed.
+          - Android emulator instrumentation and launch smoke passed on the merged change.
+          - Source commit: ${{ github.sha }}
+
+          ### Downloads
+          Install the debug APK below. This automated channel remains a prerelease build."
           else
             gh release create latest "${assets[@]}" \
               -t "Yomu v${version}" --prerelease \
-              -n "Auto-built Yomu v${version} from commit ${{ github.sha }}"
+              -n "## Yomu v${version}
+
+          ### What's new
+          - Backup restore now refuses stale confirmations if library or settings changed after the preview.
+          - Device-local storage paths and automatic-backup status stay on the current installation, including when restoring older archives.
+          - Restore impact counts ignore device-local and worker-owned metadata.
+          - Backup files are revalidated before writes; multi-store rollback remains best-effort.
+
+          ### Validation
+          - JVM unit tests passed.
+          - Android emulator instrumentation and launch smoke passed on the merged change.
+          - Source commit: ${{ github.sha }}
+
+          ### Downloads
+          Install the debug APK below. This automated channel remains a prerelease build."
           fi
 
           # Remove assets from older versions only after this version is uploaded.
