@@ -1,6 +1,9 @@
 package com.mangareader.app
 
 import android.content.Context
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * Which library covers are wrong, and how each one came to be known.
@@ -25,62 +28,112 @@ import android.content.Context
  * thing in this app that walks the whole library on a schedule the user chose.
  * This object is just the list of what to fix when it gets there.
  */
-object CoverRepair {
-    private const val KEY = "cover_repair_ids"
+internal const val COVER_REPAIR_PREFS_KEY = "cover_repair_ids"
 
-    /**
-     * A bound on how many stale covers are remembered at once.
-     *
-     * A source that moves its whole CDN would otherwise report every entry it
-     * has, and this is one SharedPreferences string set — the same shape the
-     * library itself is, with the same rewrite-everything cost. Repairs drain
-     * the set as they land, so hitting the cap delays a repair rather than
-     * losing it: the next scroll past that cover reports it again.
-     */
+object CoverRepair {
     private const val LIMIT = 2000
+    private const val PERSIST_BATCH_SIZE = 32
+    private const val PERSIST_DELAY_MS = 350L
 
     private fun prefs(c: Context) =
         c.getSharedPreferences("manga_reader", Context.MODE_PRIVATE)
 
-    // Read on every sweep candidate check and written from the grid's error
-    // callback, so it is worth not going to disk each time. Same memo shape as
-    // Library.list, minus the parse — a string set needs none.
-    @Volatile
-    private var cached: Set<String>? = null
+    // UI image failures update this state synchronously, but never serialize or
+    // write the growing SharedPreferences set from the callback.
+    private val lock = Any()
+    private var cached: CoverRepairState? = null
+    private var changesSincePersist = 0
+    private var pendingWrite: ScheduledFuture<*>? = null
+    private var pendingWriteImmediate = false
+
+    // A single daemon writer keeps preference commits ordered and off the UI
+    // thread. It is process-scoped, like the cached repair set.
+    private val writer = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "cover-repair-persist").apply { isDaemon = true }
+    }
+
+    private fun stateLocked(context: Context): CoverRepairState =
+        cached ?: CoverRepairState(
+            initialIds = prefs(context)
+                .getStringSet(COVER_REPAIR_PREFS_KEY, emptySet())
+                .orEmpty(),
+            limit = LIMIT,
+        ).also { cached = it }
 
     fun reported(context: Context): Set<String> =
-        cached ?: (prefs(context).getStringSet(KEY, emptySet()) ?: emptySet())
-            .toSet()
-            .also { cached = it }
+        synchronized(lock) { stateLocked(context).snapshot() }
 
     /**
      * Records that [seriesId]'s stored cover is gone.
      *
-     * Called from a composable's error callback, so it has to be cheap on the
-     * common path: a cover that fails twice, or a grid cell recycled over the
-     * same failing entry, must not be a write. The membership test is what makes
-     * that true — the disk write happens once per newly discovered failure.
+     * Called from a composable's error callback. The in-memory set is updated
+     * immediately, while disk persistence is coalesced: at most one pending
+     * timer, with an early flush every [PERSIST_BATCH_SIZE] mutations. This
+     * avoids copying and rewriting the entire set once per failed cover.
      */
     fun report(context: Context, seriesId: String) {
         if (seriesId.isBlank()) return
-        val current = reported(context)
-        if (seriesId in current || current.size >= LIMIT) return
-        val next = current + seriesId
-        cached = next
-        // A fresh set each time. SharedPreferences does not copy the set it is
-        // given and returns the same instance to the next reader, so mutating a
-        // stored one edits a value that has already been handed out.
-        prefs(context).edit().putStringSet(KEY, next).apply()
+        synchronized(lock) {
+            if (!stateLocked(context).report(seriesId)) return
+            changesSincePersist++
+            schedulePersistLocked(context.applicationContext)
+        }
     }
 
     /** Drops ids whose covers have been rewritten. */
     fun clear(context: Context, seriesIds: Set<String>) {
         if (seriesIds.isEmpty()) return
-        val current = reported(context)
-        val next = current - seriesIds
-        if (next.size == current.size) return
-        cached = next
-        prefs(context).edit().putStringSet(KEY, next).apply()
+        synchronized(lock) {
+            if (!stateLocked(context).clear(seriesIds)) return
+            changesSincePersist++
+            schedulePersistLocked(context.applicationContext)
+        }
+    }
+
+    /**
+     * Schedule one bounded batch. Small bursts are written after the first
+     * pending change's short window; sustained bursts flush every 32 mutations.
+     */
+    private fun schedulePersistLocked(context: Context) {
+        val immediate = changesSincePersist >= PERSIST_BATCH_SIZE
+        val pending = pendingWrite
+        if (pending != null && !pending.isDone) {
+            if (!immediate || pendingWriteImmediate) return
+            pending.cancel(false)
+        }
+
+        pendingWriteImmediate = immediate
+        val delay = if (immediate) 0L else PERSIST_DELAY_MS
+        pendingWrite = writer.schedule(
+            { persist(context) },
+            delay,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    private fun persist(context: Context) {
+        val snapshot = synchronized(lock) {
+            val current = cached?.snapshot() ?: emptySet()
+            pendingWrite = null
+            pendingWriteImmediate = false
+            changesSincePersist = 0
+            current
+        }
+
+        // commit() is safe here because this is the dedicated background
+        // writer. On failure, mark the set dirty and retry through the same
+        // batching path rather than losing the repair hints.
+        val saved = runCatching {
+            prefs(context).edit()
+                .putStringSet(COVER_REPAIR_PREFS_KEY, snapshot)
+                .commit()
+        }.getOrDefault(false)
+        if (!saved) {
+            synchronized(lock) {
+                changesSincePersist = maxOf(changesSincePersist, 1)
+                schedulePersistLocked(context)
+            }
+        }
     }
 
     /**
