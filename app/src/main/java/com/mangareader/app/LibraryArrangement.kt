@@ -38,8 +38,8 @@ private fun FilterState.accepts(value: Boolean): Boolean = when (this) {
 internal fun arrangeLibraryEntries(
     list: List<LibraryEntry>,
     spec: LibraryArrangeSpec,
+    searchQuery: LibrarySearchQuery = LibrarySearchQuery.from(spec.search),
 ): List<LibraryEntry> {
-    val terms = librarySearchTerms(spec.search)
 
     // Keep this allocation-free per entry. The old version built a seven-Pair
     // List for every series, which turns a quick search/re-sort over a large
@@ -53,7 +53,7 @@ internal fun arrangeLibraryEntries(
             spec.filterStarted.accepts(counts?.started ?: false) &&
             spec.filterCompleted.accepts(counts?.completed ?: false) &&
             spec.filterNsfw.accepts(spec.nsfwSources[entry.sourceId] ?: false) &&
-            libraryTitleMatches(entry.title, terms)
+            searchQuery.matches(entry.title)
     }
 
     val ordered = when (spec.sort) {
@@ -101,12 +101,15 @@ internal fun buildLibraryGroups(
     grouping: LibraryGroup,
     spec: LibraryArrangeSpec,
 ): List<LibraryGroupView> {
+    // Share one normalized query across every source/category group. The query
+    // used to be normalized again for every title in every group.
+    val searchQuery = LibrarySearchQuery.from(spec.search)
     return when (grouping) {
         LibraryGroup.UNGROUPED -> listOf(
             LibraryGroupView(
                 key = "all",
                 label = "All",
-                items = arrangeLibraryEntries(entries, spec),
+                items = arrangeLibraryEntries(entries, spec, searchQuery),
             ),
         )
 
@@ -118,7 +121,7 @@ internal fun buildLibraryGroups(
                         key = sourceId,
                         label = names[sourceId]?.takeIf { it.isNotBlank() }
                             ?: SourceNames.unnamed(sourceId),
-                        items = arrangeLibraryEntries(items, spec),
+                        items = arrangeLibraryEntries(items, spec, searchQuery),
                     )
                 }
                 .sortedBy { it.label.lowercase() }
@@ -148,7 +151,7 @@ internal fun buildLibraryGroups(
                 LibraryGroupView(
                     key = category.id,
                     label = category.name,
-                    items = arrangeLibraryEntries(base, spec),
+                    items = arrangeLibraryEntries(base, spec, searchQuery),
                 )
             }
         }
@@ -156,19 +159,45 @@ internal fun buildLibraryGroups(
 }
 
 /** Match each query word independently so order and extra whitespace do not matter. */
+private val LIBRARY_SEARCH_WORD_SEPARATOR = Regex("[\\s\\p{Zs}]+")
+private val LIBRARY_SEARCH_MARKS = Regex("\\p{M}+")
+private val LIBRARY_SEARCH_ARABIC_ALEF = Regex("[أإآٱ]")
+
 internal fun librarySearchTerms(query: String): List<String> =
-    query.trim().split(Regex("[\\s\\p{Zs}]+")).filter { it.isNotEmpty() }
+    query.trim().split(LIBRARY_SEARCH_WORD_SEPARATOR).filter { it.isNotEmpty() }
 
 private fun searchableLibraryText(value: String): String =
     Normalizer.normalize(value, Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "")
-        .replace(Regex("[أإآٱ]"), "ا")
+        .replace(LIBRARY_SEARCH_MARKS, "")
+        .replace(LIBRARY_SEARCH_ARABIC_ALEF, "ا")
         .replace("ى", "ي")
         .replace("ـ", "")
         .lowercase(Locale.ROOT)
 
-internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean {
-    if (terms.isEmpty()) return true
-    val normalizedTitle = searchableLibraryText(title)
-    return terms.all { normalizedTitle.contains(searchableLibraryText(it)) }
+/**
+ * A compiled library query. Query terms are normalized once and can then be
+ * reused for every title, including titles split across multiple groups.
+ */
+internal class LibrarySearchQuery private constructor(
+    private val normalizedTerms: List<String>,
+) {
+    fun matches(title: String): Boolean {
+        if (normalizedTerms.isEmpty()) return true
+        val normalizedTitle = searchableLibraryText(title)
+        return normalizedTerms.all { term -> normalizedTitle.contains(term) }
+    }
+
+    companion object {
+        fun from(query: String): LibrarySearchQuery =
+            LibrarySearchQuery(
+                normalizedTerms = librarySearchTerms(query).map(::searchableLibraryText),
+            )
+
+        internal fun fromTerms(terms: List<String>): LibrarySearchQuery =
+            LibrarySearchQuery(terms.map(::searchableLibraryText))
+    }
 }
+
+/** Compatibility helper for callers/tests that already have raw query terms. */
+internal fun libraryTitleMatches(title: String, terms: List<String>): Boolean =
+    LibrarySearchQuery.fromTerms(terms).matches(title)
