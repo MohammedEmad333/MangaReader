@@ -47,6 +47,17 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest --build-cache
 
+      - name: Verify versioned release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          notes="docs/releases/v${version}.md"
+          if [ -z "$version" ] || [ ! -s "$notes" ]; then
+            echo "::error::Missing release notes for app version: ${version:-unknown}"
+            exit 1
+          fi
+
       # Catch emulator UI helper regressions without booting a device on each PR.
       - name: Verify Android emulator smoke helper
         run: python3 scripts/android_updates_smoke.py --self-test
@@ -222,46 +233,24 @@ jobs:
           fi
 
           # Upload first so a failed upload cannot remove the installable release.
+          notes_file="docs/releases/v${version}.md"
+          if [ ! -s "$notes_file" ]; then
+            echo "::error::Missing release notes file: $notes_file"
+            exit 1
+          fi
+          release_notes="$(cat "$notes_file")"
+          release_body="$(printf '## Yomu v%s\n\n%s\n\n---\n\nSource commit: `%s`\n\nThis automated channel publishes the signed debug APK as a prerelease build.' "$version" "$release_notes" "$GITHUB_SHA")"
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest "${assets[@]}" --clobber
             gh release edit latest \
               --target "$GITHUB_SHA" \
               -t "Yomu v${version}" --prerelease \
-              -n "## Yomu v${version}
-
-          ### What's new
-          - Backup restore now refuses stale confirmations if library or settings changed after the preview.
-          - Device-local storage paths and automatic-backup status stay on the current installation, including when restoring older archives.
-          - Restore impact counts ignore device-local and worker-owned metadata.
-          - Backup files are revalidated before writes; multi-store rollback remains best-effort.
-
-          ### Validation
-          - JVM unit tests passed.
-          - Android emulator instrumentation and launch smoke passed on the merged change.
-          - Source commit: ${{ github.sha }}
-
-          ### Downloads
-          Install the debug APK below. This automated channel remains a prerelease build."
+              -n "$release_body"
           else
             gh release create latest "${assets[@]}" \
               -t "Yomu v${version}" --prerelease \
-              -n "## Yomu v${version}
-
-          ### What's new
-          - Backup restore now refuses stale confirmations if library or settings changed after the preview.
-          - Device-local storage paths and automatic-backup status stay on the current installation, including when restoring older archives.
-          - Restore impact counts ignore device-local and worker-owned metadata.
-          - Backup files are revalidated before writes; multi-store rollback remains best-effort.
-
-          ### Validation
-          - JVM unit tests passed.
-          - Android emulator instrumentation and launch smoke passed on the merged change.
-          - Source commit: ${{ github.sha }}
-
-          ### Downloads
-          Install the debug APK below. This automated channel remains a prerelease build."
+              -n "$release_body"
           fi
-
           # Remove assets from older versions only after this version is uploaded.
           # Do not delete anything if listing fails (set -e is active).
           gh release view latest --json assets --jq '.assets[].name' |
