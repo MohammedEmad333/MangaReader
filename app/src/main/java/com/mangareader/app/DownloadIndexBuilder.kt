@@ -103,7 +103,10 @@ internal object DownloadIndexBuilder {
         // New evidence on disk always wins over an old "recovery done" stamp.
         // A previous build may have stamped recovery before path metadata or a
         // chapter cache was available.
-        if (DownloadPaths.knownChapterIds(context).any { it !in known }) return true
+        // Incomplete queued chapters do not justify a full-library scan.
+        if (DownloadPaths.knownChapterIds(context).any { chapterId ->
+                chapterId !in known && Downloads.isComplete(context, chapterId)
+            }) return true
         if (prefs(context).getBoolean(RECOVERY_DONE, false)) return false
 
         return StorageLocation.legacyRoots(context).any { root ->
