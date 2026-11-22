@@ -1,5 +1,14 @@
 package com.mangareader.app
 
+/** Only complete, unambiguously owned local chapters should appear offline. */
+internal fun verifiedIndexedDownloadRecords(
+    records: List<DownloadIndexRecord>,
+    isComplete: (String) -> Boolean,
+): List<DownloadIndexRecord> = records.filter { record ->
+    record.chapterId.isNotBlank() && record.sourceId.isNotBlank() &&
+        record.seriesId.isNotBlank() && isComplete(record.chapterId)
+}
+
 /** Never aggregate downloads from different extensions under the same series ID. */
 internal fun groupDownloadedRecords(
     records: List<DownloadIndexRecord>,

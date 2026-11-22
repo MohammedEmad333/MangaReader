@@ -43,6 +43,19 @@ internal data class RecoveredDownloadIdentity(
     val seriesTitle: String,
 )
 
+/** True only when a complete legacy folder has no usable chapter ID marker. */
+internal fun hasUnmarkedCompleteDownloadFolders(root: File): Boolean {
+    if (!root.isDirectory) return false
+    return root.listFiles().orEmpty().any { source ->
+        source.isDirectory && source.listFiles().orEmpty().any { series ->
+            series.isDirectory && series.listFiles().orEmpty().any { chapter ->
+                chapter.isDirectory && File(chapter, ".complete").isFile &&
+                    File(chapter, ".chapterid").let { !it.isFile || it.length() == 0L }
+            }
+        }
+    }
+}
+
 internal object DownloadPaths {
 
     private const val FILE = "download_paths.json"
@@ -281,6 +294,9 @@ internal object DownloadPaths {
      */
     @Synchronized
     fun recoverUnmarkedFromLibrary(context: Context, downloadsRoot: File): Int {
+        // Most current readable folders already carry their identity marker.
+        // Avoid touching every library chapter cache in that common case.
+        if (!hasUnmarkedCompleteDownloadFolders(downloadsRoot)) return 0
         val candidates = buildList {
             Library.list(context).forEach { entry ->
                 ChapterCache.load(context, entry.sourceId, entry.seriesId).forEach { chapter ->

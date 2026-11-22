@@ -33,6 +33,22 @@ class DownloadedSeriesGroupingTest {
         assertEquals("cover-b", grouped[1].cover)
     }
 
+    @Test fun offlineIndexPreviewExcludesPartialAndMalformedChapters() {
+        val checks = mutableListOf<String>()
+        val records = listOf(
+            record("source-a", "series-a", "saved"),
+            record("source-a", "series-a", "partial"),
+            record("source-b", "series-b", "also-saved"),
+            record("", "series-c", "missing-source"),
+        )
+        val filtered = verifiedIndexedDownloadRecords(records) { chapterId ->
+            checks += chapterId
+            chapterId != "partial"
+        }
+        assertEquals(listOf("saved", "also-saved"), filtered.map { it.chapterId })
+        assertEquals(listOf("saved", "partial", "also-saved"), checks)
+    }
+
     @Test fun emptyGroupsAreSafe() {
         assertTrue(groupDownloadedRecords(emptyList()) { error("No size reads") }.isEmpty())
     }

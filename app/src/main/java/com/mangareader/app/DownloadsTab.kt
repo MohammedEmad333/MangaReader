@@ -49,6 +49,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,6 +134,14 @@ internal fun filterAndSortDownloads(
     return if (descending) sorted.asReversed() else sorted
 }
 
+/** The verified local view remains usable while legacy recovery runs. */
+private data class DownloadsLoadState(
+    val items: List<DownloadedSeries>? = null,
+    val complete: Boolean = false,
+    val error: String? = null,
+    val storageUnavailable: Boolean = false,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DownloadsTab(
@@ -157,9 +167,51 @@ internal fun DownloadsTab(
     }
 
     val revision = downloadTick + localTick
-    val loaded by produceState<List<DownloadedSeries>?>(null, revision) {
-        value = withContext(Dispatchers.IO) { DownloadIndex.list(context) }
+    val load by produceState(DownloadsLoadState(), revision) {
+        val app = context.applicationContext
+        var indexed: List<DownloadedSeries>? = null
+        var unavailable = false
+        try {
+            val snapshot = withContext(Dispatchers.IO) {
+                DownloadIndex.listIndexed(app) to
+                    (StorageLocation.chosen(app) != null && !StorageLocation.active(app))
+            }
+            indexed = snapshot.first
+            unavailable = snapshot.second
+            value = DownloadsLoadState(items = indexed, storageUnavailable = unavailable)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            // Legacy recovery may still reconstruct a missing local index.
+        }
+        try {
+            val recovered = withContext(Dispatchers.IO) {
+                DownloadIndex.list(app) to
+                    (StorageLocation.chosen(app) != null && !StorageLocation.active(app))
+            }
+            value = DownloadsLoadState(
+                items = recovered.first, complete = true,
+                storageUnavailable = recovered.second,
+            )
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            value = DownloadsLoadState(
+                items = indexed, complete = true, storageUnavailable = unavailable,
+                error = if (indexed == null) {
+                    "Could not read the download folder. Check storage access and retry."
+                } else {
+                    "Older folders could not be checked. Saved downloads remain available."
+                },
+            )
+        }
     }
+    // UI timer is independent from potentially blocking disk IO.
+    val scanSlow by produceState(false, revision) {
+        delay(12_000L)
+        value = true
+    }
+    val loaded = load.items
     val offlineAnimeCount = remember(revision) { AnimeOfflineIndex.list(context).size }
     val series = loaded ?: emptyList()
     val sortMode = runCatching { DownloadsSortMode.valueOf(sortModeName) }
@@ -215,6 +267,42 @@ internal fun DownloadsTab(
             },
         )
 
+        if (load.storageUnavailable) {
+            Text(
+                "Selected download folder unavailable. Reconnect storage or restore " +
+                    "file permission; your saved files were not deleted.",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        val loadWarning = load.error ?: if (scanSlow && !load.complete) {
+            "Reading local download folders is taking longer than expected."
+        } else null
+        if (loadWarning != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    loadWarning,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = {
+                    Downloads.invalidateCompletion()
+                    localTick++
+                }) { Text("Retry") }
+            }
+        }
+        if (loaded != null && !load.complete && series.isNotEmpty()) {
+            Text(
+                "Showing verified saved chapters while checking older folders…",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
         if (loaded != null && (series.isNotEmpty() || offlineAnimeCount > 0)) {
             DownloadsTools(
                 query = searchQuery,
@@ -238,20 +326,26 @@ internal fun DownloadsTab(
             )
         }
 
-        if (loaded == null) {
+        if (loaded == null || (loaded.isEmpty() && !load.complete)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Reading the download folder…",
-                    style = MaterialTheme.typography.bodyMedium
+                    if (scanSlow || load.error != null) {
+                        "Download folder needs attention. Tap Retry above."
+                    } else {
+                        "Checking locally saved chapters…"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
         } else if (series.isEmpty() && offlineAnimeCount == 0) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Nothing downloaded yet.",
+                    if (load.storageUnavailable) {
+                        "Reconnect the selected download folder to view your saved files."
+                    } else "Nothing downloaded yet.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
