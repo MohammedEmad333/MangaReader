@@ -51,4 +51,21 @@ class LibrarySearchTermsTest {
     fun singleWordStillMatchesPartialTitle() {
         assertTrue(libraryTitleMatches("Naruto Shippuden", librarySearchTerms("ship")))
     }
+
+    @Test
+    fun compiledQueryCanBeReusedAcrossTitlesAndGroups() {
+        val query = LibrarySearchQuery.from("  ابطال   pokemon  ")
+
+        assertTrue(query.matches("أبطال Pokémon"))
+        assertTrue(query.matches("ابطال POKÉMON"))
+        assertFalse(query.matches("أبطال Naruto"))
+    }
+
+    @Test
+    fun compiledEmptyQueryMatchesEveryTitle() {
+        val query = LibrarySearchQuery.from("\u00a0 \u3000")
+
+        assertTrue(query.matches("Any title"))
+        assertTrue(query.matches("أي عنوان"))
+    }
 }
