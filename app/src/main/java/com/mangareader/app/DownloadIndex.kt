@@ -106,6 +106,17 @@ object DownloadIndex {
         cachedIds = null
     }
 
+    /** Quickly display locally verified records without legacy recovery. */
+    fun listIndexed(context: Context): List<DownloadedSeries> {
+        cached?.let { return it }
+        val app = context.applicationContext
+        val valid = DownloadIndexStorage.read(app).filter { record ->
+            record.chapterId.isNotBlank() && record.sourceId.isNotBlank() &&
+                record.seriesId.isNotBlank() && Downloads.isComplete(app, record.chapterId)
+        }
+        return groupDownloadedRecords(valid) { Downloads.sizeOf(app, it) }
+    }
+
     /**
      * Downloaded series, largest first.
      *
