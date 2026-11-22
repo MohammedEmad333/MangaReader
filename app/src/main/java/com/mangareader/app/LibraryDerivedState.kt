@@ -100,11 +100,9 @@ private fun rememberLibraryDerivedInputs(
             val lastReadAt = if (sort != LibrarySort.LAST_READ) {
                 emptyMap()
             } else {
-                History.list(appContext)
-                    .asSequence()
-                    .filter { it.seriesId.isNotBlank() && it.sourceId.isNotBlank() }
-                    .groupBy { libraryEntryKey(it.sourceId, it.seriesId) }
-                    .mapValues { (_, rows) -> rows.maxOf { it.updatedAt } }
+                // Keep only each series' latest timestamp without allocating
+                // a separate history list for each series.
+                libraryLastReadIndex(History.list(appContext))
             }
 
             LibraryDerivedInputs(

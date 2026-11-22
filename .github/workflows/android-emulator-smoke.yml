@@ -14,6 +14,8 @@ on:
       - "app/src/main/java/com/mangareader/app/ReaderTabletSpreads.kt"
       - "app/src/main/java/com/mangareader/app/ReaderPagePriority.kt"
       - "app/src/main/java/com/mangareader/app/LibraryArrangement.kt"
+      - "app/src/main/java/com/mangareader/app/LibraryDerivedState.kt"
+      - "app/src/main/java/com/mangareader/app/LibraryHistoryRecency.kt"
       - "app/src/main/java/com/mangareader/app/CoverRepair.kt"
       - "app/src/main/java/com/mangareader/app/CoverRepairState.kt"
       - "app/build.gradle.kts"
