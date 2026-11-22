@@ -332,8 +332,11 @@ internal fun DownloadsTab(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (scanSlow) "Download folder needs attention. Tap Retry above."
-                    else "Checking locally saved chapters…",
+                    if (scanSlow || load.error != null) {
+                        "Download folder needs attention. Tap Retry above."
+                    } else {
+                        "Checking locally saved chapters…"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
