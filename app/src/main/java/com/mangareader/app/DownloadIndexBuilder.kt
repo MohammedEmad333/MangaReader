@@ -21,7 +21,9 @@ internal object DownloadIndexBuilder {
         )
         Downloads.invalidateCompletion()
 
-        val live = stored.filter { Downloads.isComplete(context, it.chapterId) }
+        val live = verifiedIndexedDownloadRecords(stored) {
+            Downloads.isComplete(context, it)
+        }
         val known = live.map { it.chapterId }.toMutableSet()
 
         val recovered = mutableListOf<DownloadIndexRecord>()
