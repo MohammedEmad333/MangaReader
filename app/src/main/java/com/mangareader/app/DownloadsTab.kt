@@ -169,6 +169,9 @@ internal fun DownloadsTab(
     val revision = downloadTick + localTick
     val load by produceState(DownloadsLoadState(), revision) {
         val app = context.applicationContext
+        // The selected SD card may have returned since an earlier access
+        // failure. Re-resolve its location before reading any saved chapters.
+        StorageLocation.invalidate()
         var indexed: List<DownloadedSeries>? = null
         var unavailable = false
         try {
@@ -290,6 +293,7 @@ internal fun DownloadsTab(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 TextButton(onClick = {
+                    StorageLocation.invalidate()
                     Downloads.invalidateCompletion()
                     localTick++
                 }) { Text("Retry") }
