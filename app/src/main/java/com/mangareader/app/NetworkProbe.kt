@@ -2,6 +2,7 @@ package com.mangareader.app
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.webkit.CookieManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -28,9 +29,13 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.ClearanceUserAgents
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -149,8 +154,9 @@ private suspend fun probePopularBrowse(
 ): String {
     val selector = reflectedString(source, "archiveSelector")
     val popularUrl = reflectedPopularArchiveUrl(source)
+    val parsed = runCatching { source.getPopularManga(1) }
 
-    return buildString {
+    val browseReport = buildString {
         appendLine("POPULAR BROWSE DIAGNOSTIC")
         appendLine("  parser class: ${source.javaClass.name}")
         appendLine("  archive selector: ${selector ?: "unavailable"}")
@@ -172,7 +178,6 @@ private suspend fun probePopularBrowse(
 
         appendLine()
         appendLine("POPULAR SOURCE PARSER")
-        val parsed = runCatching { source.getPopularManga(1) }
         parsed.fold(
             onSuccess = { page ->
                 appendLine("  titles returned: ${page.mangas.size}")
@@ -186,6 +191,117 @@ private suspend fun probePopularBrowse(
                 appendLine("  ${error.message ?: "no message"}")
             },
         )
+    }
+
+    val manga = parsed.getOrNull()?.mangas
+        ?.firstOrNull { it.title.equals("Overgeared", ignoreCase = true) }
+        ?: parsed.getOrNull()?.mangas?.firstOrNull()
+        ?: return browseReport
+
+    return browseReport + "\n\n" + probeSeriesContent(source, client, headers, manga)
+}
+
+/**
+ * The base and Popular probes do not exercise the request that actually opens
+ * a series. This follows one real manga through the combined update API and
+ * its first non-premium chapter page list, with bounded waits and no cookie
+ * values in the report.
+ */
+private suspend fun probeSeriesContent(
+    source: HttpSource,
+    client: OkHttpClient,
+    headers: Headers,
+    manga: SManga,
+): String {
+    val mangaUrl = runCatching { source.getMangaUrl(manga) }.getOrNull()
+    val pageSnapshot = mangaUrl?.let {
+        probeHttpRequest(
+            client = client,
+            headers = headers,
+            requestedUrl = it,
+            sectionTitle = "SERIES PAGE HTTP SNAPSHOT (basic GET)",
+        )
+    } ?: "SERIES PAGE HTTP SNAPSHOT\n  URL unavailable: ${source.name} could not build the manga URL"
+
+    val updateStarted = SystemClock.elapsedRealtime()
+    var update: eu.kanade.tachiyomi.source.model.SMangaUpdate? = null
+    var updateError: Throwable? = null
+    try {
+        update = withTimeout(30_000L) {
+            source.getMangaUpdateWithLock(manga, emptyList(), true, true)
+        }
+    } catch (timeout: TimeoutCancellationException) {
+        updateError = timeout
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Throwable) {
+        updateError = error
+    }
+    val updateElapsed = SystemClock.elapsedRealtime() - updateStarted
+
+    val chapter = update?.chapters.orEmpty()
+        .firstOrNull { chapter ->
+            !runCatching { chapter.name }.getOrDefault("").startsWith("🔒")
+        }
+        ?: update?.chapters.orEmpty().firstOrNull()
+
+    var pageCount: Int? = null
+    var pageError: Throwable? = null
+    var chapterUrl: String? = null
+    var pageElapsed = 0L
+    if (chapter != null) {
+        chapterUrl = runCatching { source.getChapterUrl(chapter) }
+            .getOrElse {
+                pageError = it
+                null
+            }
+        if (chapterUrl != null) {
+            val pageStarted = SystemClock.elapsedRealtime()
+            try {
+                pageCount = withTimeout(30_000L) { source.getPageList(chapter).size }
+            } catch (timeout: TimeoutCancellationException) {
+                pageError = timeout
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                pageError = error
+            }
+            pageElapsed = SystemClock.elapsedRealtime() - pageStarted
+        }
+    }
+
+    return buildString {
+        appendLine("SERIES CONTENT DIAGNOSTIC")
+        appendLine("  title: ${runCatching { manga.title }.getOrDefault("(unavailable)")}")
+        appendLine("  source URL: ${runCatching { manga.url }.getOrDefault("(unavailable)")}")
+        appendLine("  memo has slug: ${runCatching { manga.memo.containsKey("slug") }.getOrDefault(false)}")
+        appendLine("  extension manga URL: ${mangaUrl ?: "(unavailable)"}")
+        appendLine()
+        appendLine(pageSnapshot)
+        appendLine()
+        appendLine("COMBINED DETAILS + CHAPTERS")
+        appendLine("  elapsed: ${updateElapsed}ms")
+        if (updateError != null) {
+            appendLine("  FAILED: ${updateError!!::class.java.simpleName}")
+            appendLine("  ${updateError!!.message ?: "no message"}")
+        } else {
+            appendLine("  details title: ${update?.manga?.let { runCatching { it.title }.getOrDefault("(unavailable)") } ?: "(none returned)"}")
+            appendLine("  chapters returned: ${update?.chapters?.size ?: 0}")
+        }
+        if (chapter != null) {
+            appendLine()
+            appendLine("FIRST AVAILABLE CHAPTER")
+            appendLine("  chapter URL: ${chapterUrl ?: "(getChapterUrl failed)"}")
+            if (pageCount != null) {
+                appendLine("  page-list count: $pageCount")
+                appendLine("  elapsed: ${pageElapsed}ms")
+            } else if (pageError != null) {
+                appendLine("  page-list FAILED: ${pageError!!::class.java.simpleName}")
+                appendLine("  ${pageError!!.message ?: "no message"}")
+            }
+        } else if (updateError == null) {
+            appendLine("  no chapter available to test page loading")
+        }
     }
 }
 
@@ -295,8 +411,8 @@ internal fun NetworkProbeDialog(source: Source, onDismiss: () -> Unit) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Testing the base URL and the source's Popular browse path. " +
-                            "Cloudflare retries can make this take up to 30 seconds.",
+                        "Testing the base URL, Popular, a real series page, combined chapter loading, " +
+                            "and one chapter's page list. This can take up to 90 seconds.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
