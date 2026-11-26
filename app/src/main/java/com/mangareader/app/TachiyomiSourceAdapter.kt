@@ -232,7 +232,7 @@ class TachiyomiSourceAdapter(
             return SeriesLoadResult(loadDetails(series), listChapters(series))
         }
         return onSourceThread {
-            val update = http.getMangaUpdate(manga, emptyList(), true, true)
+            val update = http.getMangaUpdateWithLock(manga, emptyList(), true, true)
             val fresh = update.manga
             val merged = if (fresh == null) series else {
                 modelMapper.ensureUrl(fresh, modelMapper.safeUrl(manga))

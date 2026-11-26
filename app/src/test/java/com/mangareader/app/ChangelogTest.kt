@@ -21,6 +21,12 @@ class ChangelogTest {
     }
 
     @Test
+    fun since_includesVersion334MangaUpdateLockFix() {
+        assertEquals(listOf(334), Changelog.since(installed = 333, current = 334).map { it.code })
+        assertTrue(Changelog.notes.first().body.contains("per-series mutex"))
+    }
+
+    @Test
     fun since_returnsNothingWhenAlreadyCurrent() {
         assertTrue(Changelog.since(installed = 206, current = 206).isEmpty())
     }
