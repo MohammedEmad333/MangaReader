@@ -242,10 +242,12 @@ abstract class HttpSource : CatalogueSource {
      * @return the updated manga.
      */
     override suspend fun getMangaDetails(manga: SManga): SManga =
-        withMangaUpdateLock(manga) {
-            getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false)
-                .manga ?: manga
-        }
+        getMangaUpdateWithLock(
+            manga,
+            emptyList(),
+            fetchDetails = true,
+            fetchChapters = false,
+        ).manga ?: manga
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getMangaDetails"))
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
@@ -285,10 +287,12 @@ abstract class HttpSource : CatalogueSource {
         if (manga.status == SManga.LICENSED) {
             throw LicensedMangaChaptersException()
         }
-        return withMangaUpdateLock(manga) {
-            getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true)
-                .chapters ?: emptyList()
-        }
+        return getMangaUpdateWithLock(
+            manga,
+            emptyList(),
+            fetchDetails = false,
+            fetchChapters = true,
+        ).chapters ?: emptyList()
     }
 
     /**
@@ -319,6 +323,24 @@ abstract class HttpSource : CatalogueSource {
      * doesn't yet. This is the version that fits in the interface as it stands.
      */
     private val mangaUpdateLocks = ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * Runs the combined update API under the same per-series lock used by
+     * [getMangaDetails] and [getChapterList].
+     *
+     * Calling [getMangaUpdate] directly bypasses that lock. Hosts that want
+     * details and chapters in one request must use this entry point so a
+     * concurrent details, chapter-list, or refresh request for the same manga
+     * cannot overlap inside an extension such as KeiSource.
+     */
+    suspend fun getMangaUpdateWithLock(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate = withMangaUpdateLock(manga) {
+        getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+    }
 
     private suspend fun <T> withMangaUpdateLock(manga: SManga, block: suspend () -> T): T =
         mangaUpdateLocks.getOrPut(manga.url) { Mutex() }.withLock { block() }
