@@ -15,6 +15,12 @@ class ChangelogTest {
     }
 
     @Test
+    fun since_includesVersion333ReleaseNotes() {
+        assertEquals(listOf(333), Changelog.since(installed = 332, current = 333).map { it.code })
+        assertTrue(Changelog.notes.first().body.contains("Asura Scans"))
+    }
+
+    @Test
     fun since_returnsNothingWhenAlreadyCurrent() {
         assertTrue(Changelog.since(installed = 206, current = 206).isEmpty())
     }

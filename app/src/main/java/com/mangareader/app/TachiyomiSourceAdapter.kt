@@ -225,6 +225,35 @@ class TachiyomiSourceAdapter(
     override fun rehydrateChapter(chapter: Chapter): Chapter =
         modelMapper.rehydrateChapter(chapter)
 
+    override suspend fun loadSeriesContent(series: Series): SeriesLoadResult {
+        val manga = series.handle as? SManga ?: return SeriesLoadResult(series, emptyList())
+        val http = delegate as? HttpSource
+        if (http == null || !hasCombinedMangaUpdateImplementation(http.javaClass)) {
+            return SeriesLoadResult(loadDetails(series), listChapters(series))
+        }
+        return onSourceThread {
+            val update = http.getMangaUpdate(manga, emptyList(), true, true)
+            val fresh = update.manga
+            val merged = if (fresh == null) series else {
+                modelMapper.ensureUrl(fresh, modelMapper.safeUrl(manga))
+                val mapped = modelMapper.toSeries(fresh)
+                series.copy(
+                    title = mapped.title.ifBlank { series.title },
+                    cover = mapped.cover ?: series.cover,
+                    handle = fresh,
+                    author = mapped.author ?: series.author,
+                    artist = mapped.artist ?: series.artist,
+                    description = mapped.description ?: series.description,
+                    genres = mapped.genres.ifEmpty { series.genres },
+                    status = mapped.status ?: series.status,
+                )
+            }
+            val title = fresh?.let { modelMapper.safeTitle(it) }?.takeIf(String::isNotBlank) ?: series.title
+            val chapters = update.chapters.orEmpty().asReversed().map { modelMapper.toChapter(it, title) }
+            SeriesLoadResult(merged, chapters)
+        }
+    }
+
     override suspend fun listChapters(series: Series): List<Chapter> = onSourceThread {
         val manga = series.handle as? SManga ?: return@onSourceThread emptyList()
         // Extensions return newest-first; this interface wants reading order.
@@ -250,3 +279,13 @@ class TachiyomiSourceAdapter(
     }
 
 }
+
+internal fun hasCombinedMangaUpdateImplementation(sourceClass: Class<*>): Boolean =
+    runCatching {
+        var current: Class<*>? = sourceClass
+        while (current != null && current != HttpSource::class.java) {
+            if (current.declaredMethods.any { it.name == "getMangaUpdate" }) return@runCatching true
+            current = current.superclass
+        }
+        false
+    }.getOrDefault(false)

@@ -80,6 +80,8 @@ data class Chapter(
  * failure that names nothing costs more than the request that would have named
  * it.
  */
+data class SeriesLoadResult(val series: Series, val chapters: List<Chapter>)
+
 data class VideoSubtitle(
     val url: String,
     val language: String = "",

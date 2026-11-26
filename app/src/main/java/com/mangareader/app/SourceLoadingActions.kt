@@ -15,33 +15,27 @@ internal suspend fun loadSourcePage(
     else -> source.browseSeries(page)
 }
 
-internal suspend fun loadSeriesChapters(
+internal suspend fun loadSeriesContentAndCache(
     context: Context,
     source: Source,
     series: Series
-): List<Chapter> =
-    source.listChapters(series).also {
-        ChapterCache.save(context, source.id, series.id, it)
-    }
+): SeriesLoadResult {
+    val loaded = source.loadSeriesContent(series)
+    ChapterCache.save(context, source.id, series.id, loaded.chapters)
+    Library.healCover(context, source.id, series.id, loaded.series.cover)
+    return loaded
+}
 
+/** Optional metadata enrichment used by Library cards independently of chapters. */
 internal suspend fun loadAndHealSeriesDetails(
     context: Context,
     source: Source,
     series: Series
 ): Series? {
-    val enriched = runCatching {
-        source.loadDetails(series)
-    }.getOrNull()
-
+    val enriched = runCatching { source.loadDetails(series) }.getOrNull()
     if (enriched != null) {
-        Library.healCover(
-            context,
-            source.id,
-            series.id,
-            enriched.cover
-        )
+        Library.healCover(context, source.id, series.id, enriched.cover)
     }
-
     return enriched
 }
 

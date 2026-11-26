@@ -19,16 +19,9 @@ internal class SeriesActionController(
         val generation = seriesState.snapshotGeneration()
         scope.launch {
             val enriched = withContext(Dispatchers.IO) {
-                loadAndHealSeriesDetails(
-                    context,
-                    source,
-                    series
-                )
+                loadAndHealSeriesDetails(context, source, series)
             }
-            if (
-                enriched != null &&
-                seriesState.isCurrent(series.id, generation)
-            ) {
+            if (enriched != null && seriesState.isCurrent(series.id, generation)) {
                 seriesState.active = enriched
             }
         }
@@ -41,12 +34,11 @@ internal class SeriesActionController(
         seriesState.begin(series, SeriesOrigin.BROWSE)
         seriesState.tagReturn = null
         appState.error = null
-        enrich(source, series)
         val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            val error = seriesState.reloadChapters(context, source, series)
+            val error = seriesState.reloadSeriesContent(context, source, series)
             if (seriesState.isCurrent(series.id, generation)) {
                 appState.error = error
                 appState.loading = false
@@ -82,12 +74,11 @@ internal class SeriesActionController(
         appState.error = null
         Downloads.invalidateCompletion()
         appState.downloadTick++
-        enrich(source, series)
         val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            val error = seriesState.reloadChapters(context, source, series)
+            val error = seriesState.reloadSeriesContent(context, source, series)
             if (seriesState.isCurrent(series.id, generation)) {
                 appState.error = error
                 appState.loading = false
