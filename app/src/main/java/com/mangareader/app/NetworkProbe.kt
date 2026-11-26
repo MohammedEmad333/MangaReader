@@ -198,7 +198,7 @@ private suspend fun probePopularBrowse(
         ?: parsed.getOrNull()?.mangas?.firstOrNull()
         ?: return browseReport
 
-    return browseReport + "\\n\\n" + probeSeriesContent(source, client, headers, manga)
+    return browseReport + "\n\n" + probeSeriesContent(source, client, headers, manga)
 }
 
 /**
@@ -221,7 +221,7 @@ private suspend fun probeSeriesContent(
             requestedUrl = it,
             sectionTitle = "SERIES PAGE HTTP SNAPSHOT (basic GET)",
         )
-    } ?: "SERIES PAGE HTTP SNAPSHOT\\n  URL unavailable: ${source.name} could not build the manga URL"
+    } ?: "SERIES PAGE HTTP SNAPSHOT\n  URL unavailable: ${source.name} could not build the manga URL"
 
     val updateStarted = SystemClock.elapsedRealtime()
     var update: eu.kanade.tachiyomi.source.model.SMangaUpdate? = null
