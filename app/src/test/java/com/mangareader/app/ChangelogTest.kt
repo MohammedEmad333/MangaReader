@@ -27,6 +27,12 @@ class ChangelogTest {
     }
 
     @Test
+    fun since_includesVersion335SeriesProbe() {
+        assertEquals(listOf(335), Changelog.since(installed = 334, current = 335).map { it.code })
+        assertTrue(Changelog.notes.first().body.contains("series page"))
+    }
+
+    @Test
     fun since_returnsNothingWhenAlreadyCurrent() {
         assertTrue(Changelog.since(installed = 206, current = 206).isEmpty())
     }
