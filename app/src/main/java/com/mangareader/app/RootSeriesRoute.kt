@@ -11,10 +11,16 @@ internal fun RootSeriesRoute(
     val seriesState = root.series
     val actions = root.actions
     val series = seriesState.active ?: return
-    val seriesSite = browseState.source?.siteUrl()
-    val solveFromSeries: (() -> Unit)? = if (seriesSite == null) null else fun() {
-        appState.challengeUrl = seriesSite
+    val seriesChallengeUrl = browseState.source?.let { source ->
+        challengeUrlForSeries(
+            seriesUrl = source.seriesUrl(series),
+            siteUrl = source.siteUrl(),
+        )
     }
+    val solveFromSeries: (() -> Unit)? =
+        if (seriesChallengeUrl == null) null else fun() {
+            appState.challengeUrl = seriesChallengeUrl
+        }
 
     SeriesRoute(
         series = series,
