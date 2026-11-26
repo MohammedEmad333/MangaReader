@@ -26,6 +26,19 @@ internal suspend fun loadSeriesContentAndCache(
     return loaded
 }
 
+/** Optional metadata enrichment used by Library cards independently of chapters. */
+internal suspend fun loadAndHealSeriesDetails(
+    context: Context,
+    source: Source,
+    series: Series
+): Series? {
+    val enriched = runCatching { source.loadDetails(series) }.getOrNull()
+    if (enriched != null) {
+        Library.healCover(context, source.id, series.id, enriched.cover)
+    }
+    return enriched
+}
+
 
 internal fun resolveSourceConfig(
     context: Context,
