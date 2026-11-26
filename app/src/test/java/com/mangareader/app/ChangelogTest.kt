@@ -17,19 +17,19 @@ class ChangelogTest {
     @Test
     fun since_includesVersion333ReleaseNotes() {
         assertEquals(listOf(333), Changelog.since(installed = 332, current = 333).map { it.code })
-        assertTrue(Changelog.notes.first().body.contains("Asura Scans"))
+        assertTrue(Changelog.notes.single { it.code == 333 }.body.contains("Asura Scans"))
     }
 
     @Test
     fun since_includesVersion334MangaUpdateLockFix() {
         assertEquals(listOf(334), Changelog.since(installed = 333, current = 334).map { it.code })
-        assertTrue(Changelog.notes.first().body.contains("per-series mutex"))
+        assertTrue(Changelog.notes.single { it.code == 334 }.body.contains("per-series mutex"))
     }
 
     @Test
     fun since_includesVersion335SeriesProbe() {
         assertEquals(listOf(335), Changelog.since(installed = 334, current = 335).map { it.code })
-        assertTrue(Changelog.notes.first().body.contains("series page"))
+        assertTrue(Changelog.notes.single { it.code == 335 }.body.contains("series page"))
     }
 
     @Test
