@@ -223,11 +223,32 @@ private suspend fun probeSeriesContent(
         )
     } ?: "SERIES PAGE HTTP SNAPSHOT\n  URL unavailable: ${source.name} could not build the manga URL"
 
+    // The basic series-page request already traverses CloudflareInterceptor.
+    // If it returns an interactive challenge, repeating the same URL through
+    // getMangaUpdate only burns another headless 30-second attempt. Report the
+    // block clearly and let the visible WebView solve this exact series URL.
+    if (pageSnapshot.contains("cf-mitigated: challenge", ignoreCase = true)) {
+        return buildString {
+            appendLine("SERIES CONTENT DIAGNOSTIC")
+            appendLine("  title: ${runCatching { manga.title }.getOrDefault("(unavailable)")}")
+            appendLine("  source URL: ${runCatching { manga.url }.getOrDefault("(unavailable)")}")
+            appendLine("  memo has slug: ${runCatching { manga.memo.containsKey("slug") }.getOrDefault(false)}")
+            appendLine("  extension manga URL: ${mangaUrl ?: "(unavailable)"}")
+            appendLine()
+            appendLine(pageSnapshot)
+            appendLine()
+            appendLine("COMBINED DETAILS + CHAPTERS")
+            appendLine("  SKIPPED: the exact series URL already returned a Cloudflare challenge.")
+            appendLine("  Open this series in Yomu and use Open in WebView to complete the challenge.")
+            appendLine("  The WebView must open the series URL above, not only the source homepage.")
+        }
+    }
+
     val updateStarted = SystemClock.elapsedRealtime()
     var update: eu.kanade.tachiyomi.source.model.SMangaUpdate? = null
     var updateError: Throwable? = null
     try {
-        update = withTimeout(30_000L) {
+        update = withTimeout(45_000L) {
             source.getMangaUpdateWithLock(manga, emptyList(), true, true)
         }
     } catch (timeout: TimeoutCancellationException) {
@@ -258,7 +279,7 @@ private suspend fun probeSeriesContent(
         if (chapterUrl != null) {
             val pageStarted = SystemClock.elapsedRealtime()
             try {
-                pageCount = withTimeout(30_000L) { source.getPageList(chapter).size }
+                pageCount = withTimeout(45_000L) { source.getPageList(chapter).size }
             } catch (timeout: TimeoutCancellationException) {
                 pageError = timeout
             } catch (cancelled: CancellationException) {
