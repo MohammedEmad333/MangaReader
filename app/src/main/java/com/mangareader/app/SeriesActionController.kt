@@ -15,6 +15,18 @@ internal class SeriesActionController(
     private val readerSession: ReaderSessionState,
     private val mediaState: MediaNavigationState
 ) {
+    fun enrich(source: Source, series: Series) {
+        val generation = seriesState.snapshotGeneration()
+        scope.launch {
+            val enriched = withContext(Dispatchers.IO) {
+                loadAndHealSeriesDetails(context, source, series)
+            }
+            if (enriched != null && seriesState.isCurrent(series.id, generation)) {
+                seriesState.active = enriched
+            }
+        }
+    }
+
     fun open(series: Series) {
         val source = browseState.source ?: return
         // Cancel pending page streams before the active series identity changes.
