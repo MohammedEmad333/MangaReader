@@ -15,25 +15,6 @@ internal class SeriesActionController(
     private val readerSession: ReaderSessionState,
     private val mediaState: MediaNavigationState
 ) {
-    fun enrich(source: Source, series: Series) {
-        val generation = seriesState.snapshotGeneration()
-        scope.launch {
-            val enriched = withContext(Dispatchers.IO) {
-                loadAndHealSeriesDetails(
-                    context,
-                    source,
-                    series
-                )
-            }
-            if (
-                enriched != null &&
-                seriesState.isCurrent(series.id, generation)
-            ) {
-                seriesState.active = enriched
-            }
-        }
-    }
-
     fun open(series: Series) {
         val source = browseState.source ?: return
         // Cancel pending page streams before the active series identity changes.
@@ -41,12 +22,11 @@ internal class SeriesActionController(
         seriesState.begin(series, SeriesOrigin.BROWSE)
         seriesState.tagReturn = null
         appState.error = null
-        enrich(source, series)
         val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            val error = seriesState.reloadChapters(context, source, series)
+            val error = seriesState.reloadSeriesContent(context, source, series)
             if (seriesState.isCurrent(series.id, generation)) {
                 appState.error = error
                 appState.loading = false
@@ -82,12 +62,11 @@ internal class SeriesActionController(
         appState.error = null
         Downloads.invalidateCompletion()
         appState.downloadTick++
-        enrich(source, series)
         val generation = seriesState.snapshotGeneration()
 
         scope.launch {
             appState.loading = true
-            val error = seriesState.reloadChapters(context, source, series)
+            val error = seriesState.reloadSeriesContent(context, source, series)
             if (seriesState.isCurrent(series.id, generation)) {
                 appState.error = error
                 appState.loading = false

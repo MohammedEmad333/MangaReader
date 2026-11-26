@@ -37,7 +37,7 @@ internal class SeriesNavigationState {
 }
 
 
-internal suspend fun SeriesNavigationState.reloadChapters(
+internal suspend fun SeriesNavigationState.reloadSeriesContent(
     context: android.content.Context,
     source: Source,
     series: Series
@@ -45,10 +45,11 @@ internal suspend fun SeriesNavigationState.reloadChapters(
     val generation = snapshotGeneration()
     return try {
         val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            loadSeriesChapters(context, source, series)
+            loadSeriesContentAndCache(context, source, series)
         }
         if (!isCurrent(series.id, generation)) return null
-        chapters = loaded
+        active = loaded.series
+        chapters = loaded.chapters
         fetched = true
         null
     } catch (error: kotlinx.coroutines.CancellationException) {

@@ -34,8 +34,8 @@ android {
         // versionCode has to keep increasing or Android refuses the APK as an
         // upgrade - the installed build is replaced in place, so a repeat or a
         // decrease silently leaves the old one on the phone.
-        versionCode = 332
-        versionName = "0.332"
+        versionCode = 333
+        versionName = "0.333"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

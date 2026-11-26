@@ -37,6 +37,10 @@ interface Source {
     /** Chapters of one series, in reading order. */
     suspend fun listChapters(series: Series): List<Chapter>
 
+    /** Fetches details and chapters together where the source supports it. */
+    suspend fun loadSeriesContent(series: Series): SeriesLoadResult =
+        SeriesLoadResult(loadDetails(series), listChapters(series))
+
     /** Extract/download the pages of a chapter, ready to display. */
     suspend fun loadPages(chapter: Chapter): List<File>
 
