@@ -35,7 +35,7 @@ class ChangelogTest {
     @Test
     fun since_includesVersion336SeriesSpecificCloudflareRecovery() {
         assertEquals(listOf(336), Changelog.since(installed = 335, current = 336).map { it.code })
-        assertTrue(Changelog.notes.single { it.code == 336 }.body.contains("series-specific URL"))
+        assertTrue(Changelog.notes.single { it.code == 336 }.body.contains("exact manga URL"))
     }
 
     @Test
