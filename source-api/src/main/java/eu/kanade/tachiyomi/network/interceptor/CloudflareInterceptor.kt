@@ -34,12 +34,9 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * **The User-Agent has to match, and the WebView picks it.** `cf_clearance` is
  * issued against the UA that solved the challenge and rejected if a later
- * request presents a different one. This used to force the WebView to claim the
- * app's default UA so they agreed; that default is a desktop Chrome string, and
- * a challenge run inside an Android WebView weighs platform, touch and renderer
- * alongside it. They contradicted each other and the challenge was unpassable.
- * So the WebView now keeps its own UA and the winning string is recorded in
- * [ClearanceUserAgents], which the UA interceptor consults per host.
+ * request presents a different one. The visible WebView also records its native
+ * UA when it can load a protected page without receiving a clearance cookie.
+ * [ClearanceUserAgents] lets OkHttp reuse that host-specific browser identity.
  *
  * **What this does not do.** Cloudflare's interactive challenges — the ones with
  * a checkbox — cannot be solved by a WebView nobody can see. Those still fail,
