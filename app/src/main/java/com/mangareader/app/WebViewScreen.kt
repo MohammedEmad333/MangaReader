@@ -89,6 +89,7 @@ internal fun ChallengeWebViewScreen(
     val context = LocalContext.current
     var progress by remember { mutableIntStateOf(0) }
     var solved by remember { mutableStateOf(false) }
+    var clearancePresent by remember(url) { mutableStateOf(hasClearanceCookie(url)) }
 
     // The renderer is a separate process and can die under us. When it does the
     // WebView is unusable and must not be touched again — but the screen is
@@ -159,11 +160,15 @@ internal fun ChallengeWebViewScreen(
     // reasoning as the interceptor, which learned it the hard way.
     LaunchedEffect(url) {
         // A dead renderer will never write the cookie, so the poll has to end
-        // rather than spin for as long as the screen is open.
-        while (!rendererDied && !hasClearanceCookie(url)) {
+        // rather than spin for as long as the screen is open. Keep the visible
+        // state in sync so the user can distinguish a passed check from a page
+        // that merely finished loading.
+        while (!rendererDied) {
+            clearancePresent = hasClearanceCookie(url)
+            if (clearancePresent) break
             delay(POLL_MS)
         }
-        if (rendererDied) return@LaunchedEffect
+        if (rendererDied || !clearancePresent) return@LaunchedEffect
         // Flush before handing back: the cookie store is written asynchronously,
         // and the retry is about to read it from another process-level store.
         runCatching { CookieManager.getInstance().flush() }
@@ -211,19 +216,14 @@ internal fun ChallengeWebViewScreen(
             },
             navigationIcon = { BackButton { navigateBack() } },
             actions = {
-                // Manual escape hatch: the poll only fires on a cookie that
-                // appears while the screen is open, and some sources hand out
-                // clearance in ways this can't see. Done retries regardless —
-                // recording the UA first, because if clearance *was* obtained
-                // it belongs to this WebView's UA and not the app's.
+                // Never let a manual tap pretend the challenge passed. Retrying
+                // without cf_clearance just repeats the same 403 and leaves the
+                // user staring at a spinner. The screen returns automatically
+                // only after the browser cookie store confirms clearance.
                 TextButton(
-                    onClick = {
-                        nativeUserAgent?.let { ua ->
-                            runCatching { ClearanceUserAgents.set(context, hostOf(url), ua) }
-                        }
-                        onSolved()
-                    }
-                ) { Text("Done") }
+                    onClick = { if (!rendererDied && !clearancePresent) webView.reload() },
+                    enabled = !rendererDied && !clearancePresent,
+                ) { Text("Reload page") }
             }
         )
 
@@ -238,14 +238,15 @@ internal fun ChallengeWebViewScreen(
             text = when {
                 rendererDied -> "The browser view stopped unexpectedly. Go " +
                     "back and try again."
-                solved -> "Challenge solved \u2014 returning\u2026"
-                else -> "Complete the check below. This closes by itself once " +
-                    "it passes."
+                solved -> "Cloudflare verification received \u2014 returning\u2026"
+                clearancePresent -> "Cloudflare verification received. Returning automatically."
+                else -> "Waiting for Cloudflare verification. Complete any check shown in the page. " +
+                    "If no check appears, tap Reload page. Yomu returns automatically when clearance is saved."
             },
             style = MaterialTheme.typography.bodySmall,
             color = when {
                 rendererDied -> MaterialTheme.colorScheme.error
-                solved -> MaterialTheme.colorScheme.primary
+                solved || clearancePresent -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
             modifier = Modifier
