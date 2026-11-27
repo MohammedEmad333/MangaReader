@@ -39,6 +39,12 @@ class ChangelogTest {
     }
 
     @Test
+    fun since_includesVersion337RequiresRealClearanceBeforeRetry() {
+        assertEquals(listOf(337), Changelog.since(installed = 336, current = 337).map { it.code })
+        assertTrue(Changelog.notes.single { it.code == 337 }.body.contains("Reload page"))
+    }
+
+    @Test
     fun since_returnsNothingWhenAlreadyCurrent() {
         assertTrue(Changelog.since(installed = 206, current = 206).isEmpty())
     }
