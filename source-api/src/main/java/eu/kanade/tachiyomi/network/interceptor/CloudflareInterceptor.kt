@@ -65,6 +65,13 @@ class CloudflareInterceptor(
     /** One solve at a time per host — see [solveChallenge]. */
     private val locks = ConcurrentHashMap<String, Any>()
 
+    /**
+     * A failed hidden WebView attempt means this host needs the visible
+     * challenge flow. Do not make every queued image/chapter request start
+     * another hidden WebView and wait again.
+     */
+    private val failureBackoff = CloudflareChallengeBackoff(FAILURE_BACKOFF_MS)
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val response = chain.proceed(request)
@@ -118,13 +125,11 @@ class CloudflareInterceptor(
             .fragment(null)
             .build()
 
-        // Serialised per host, and the clearance check repeated inside the lock.
-        //
-        // Image loading runs through this client too, so a browse grid can 403
-        // twenty times at once. Unsynchronised, that is twenty WebViews and
-        // twenty separate thirty-second waits for one challenge. Queued behind
-        // the lock, the first solves it and the rest find the cookie already
-        // there and return immediately.
+        // Serialised per host, and the clearance/backoff checks repeated inside
+        // the lock. Image loading runs through this client too, so a browse grid
+        // can 403 many times at once. The first request gets one short automatic
+        // attempt; if it fails, queued requests fail fast during the cooldown
+        // instead of each creating another hidden WebView.
         //
         // The lock is a `synchronized` block rather than a hand-held monitor
         // precisely so no failure path has to remember to release it — the
@@ -143,8 +148,20 @@ class CloudflareInterceptor(
                     CookieManager.getInstance().flush()
                     ClearanceUserAgents.remove(context, origin.host)
                 }
+                failureBackoff.clear(origin.host)
             }
-            runChallenge(request, origin)
+
+            if (failureBackoff.isCoolingDown(origin.host)) {
+                return@synchronized false
+            }
+
+            val solved = runChallenge(request, origin)
+            if (solved) {
+                failureBackoff.clear(origin.host)
+            } else {
+                failureBackoff.recordFailure(origin.host)
+            }
+            solved
         }
     }
 
@@ -258,9 +275,11 @@ class CloudflareInterceptor(
     private companion object {
         const val CLEARANCE_COOKIE = "cf_clearance"
 
-        /** A JS challenge normally resolves in well under ten seconds. This has
-         *  to stay comfortably inside OkHttp's two-minute call timeout. */
-        const val TIMEOUT_MS = 30_000L
+        /** Give an automatic JS challenge a short chance before showing the
+         *  visible WebView action. Interactive challenges need the user and
+         *  should not hold the series screen behind a 30-second hidden wait. */
+        const val TIMEOUT_MS = 8_000L
+        const val FAILURE_BACKOFF_MS = 60_000L
         const val POLL_MS = 250L
     }
 }
