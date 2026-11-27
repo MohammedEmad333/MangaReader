@@ -78,9 +78,10 @@ class NetworkHelper(context: Context) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(2, TimeUnit.MINUTES)
-        // Clearance UA and the browser-ish headers. Deliberately *not* the
-        // default User-Agent — that moved to the real UserAgentInterceptor
-        // below, and this runs first so the two compose correctly.
+        // Host-specific browser UA and the browser-ish headers. Deliberately
+        // *not* the default User-Agent — that moved to the real
+        // UserAgentInterceptor below, and this runs first so the two compose
+        // correctly.
         //
         // Accept and Accept-Language ride along because a request carrying a
         // browser's User-Agent and nothing else a browser sends is a fairly
@@ -91,15 +92,13 @@ class NetworkHelper(context: Context) {
             val patched = request.newBuilder()
             var changed = false
 
-            // A host we hold Cloudflare clearance for gets the UA that earned
-            // it, overriding even a UA the extension set itself. That looks
-            // rude, and is nevertheless right: cf_clearance is rejected under
-            // any other string, so honouring the extension's preference here
-            // would throw away the challenge the user just solved by hand and
-            // put the source straight back to 403.
-            val clearanceUserAgent = ClearanceUserAgents.get(context, request.url.host)
-            if (clearanceUserAgent != null) {
-                patched.header("User-Agent", clearanceUserAgent)
+            // A host whose page was successfully opened in WebView gets the
+            // same browser UA here. Some sites serve that WebView session
+            // without issuing cf_clearance but reject the app's default UA.
+            // The override is scoped to that host and preserves session identity.
+            val browserUserAgent = ClearanceUserAgents.get(context, request.url.host)
+            if (browserUserAgent != null) {
+                patched.header("User-Agent", browserUserAgent)
                 changed = true
             }
             if (request.header("Accept").isNullOrEmpty()) {

@@ -1,6 +1,7 @@
 package com.mangareader.app
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
@@ -8,6 +9,7 @@ import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -62,21 +64,14 @@ import kotlinx.coroutines.delay
  * reason this screen exists: it is the same WebView, on screen, with the user
  * supplying the one thing automation can't.
  *
- * **There is no cookie plumbing here either**, for the same reason there is none
- * in the interceptor: `AndroidCookieJar` reads `android.webkit.CookieManager`,
- * which is the store this WebView writes to. Solving the challenge is the whole
- * job; OkHttp picks up `cf_clearance` by itself on the next request.
+ * `AndroidCookieJar` and WebView share `android.webkit.CookieManager`, so
+ * cookies written by the visible browser are already available to OkHttp.
  *
- * **The WebView keeps its own User-Agent, and OkHttp follows it.** `cf_clearance`
- * is bound to the UA that earned it, so the two have to agree — but the first
- * attempt made them agree by forcing this WebView to claim the app's desktop
- * Chrome default, and that is a challenge nobody can pass: the checkbox exists
- * to catch a client whose UA and runtime disagree, and inside an Android WebView
- * a Windows UA disagrees with everything. It looped on the checkbox forever.
- *
- * So the agreement runs the other way. The WebView presents what it honestly is,
- * and whatever string passes gets recorded in [ClearanceUserAgents] for OkHttp to
- * reuse against that host.
+ * A protected page can also load successfully in WebView without Cloudflare
+ * issuing a `cf_clearance` cookie. In that case the browser's native User-Agent
+ * still matters: OkHttp must use the same host-specific UA or it can be blocked
+ * even though the visible page loaded. A successful, same-host main-frame load
+ * therefore syncs both the browser cookies and its UA before retrying Yomu.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +85,8 @@ internal fun ChallengeWebViewScreen(
     var progress by remember { mutableIntStateOf(0) }
     var solved by remember { mutableStateOf(false) }
     var clearancePresent by remember(url) { mutableStateOf(hasClearanceCookie(url)) }
+    var browserPageReady by remember(url) { mutableStateOf(false) }
+    var mainFrameHttpStatusCode by remember(url) { mutableIntStateOf(0) }
 
     // The renderer is a separate process and can die under us. When it does the
     // WebView is unusable and must not be touched again — but the screen is
@@ -98,8 +95,8 @@ internal fun ChallengeWebViewScreen(
     // would close the app.
     var rendererDied by remember(url) { mutableStateOf(false) }
 
-    // The UA this WebView presents. Read rather than set — see the note above —
-    // and held so it can be recorded against the host once a challenge passes.
+    // The UA this WebView presents. Read rather than set. Once this exact
+    // host's page is accessible, OkHttp reuses the same UA for its requests.
     var nativeUserAgent by remember(url) { mutableStateOf<String?>(null) }
 
     val webView = remember(url) {
@@ -109,6 +106,7 @@ internal fun ChallengeWebViewScreen(
         // fresh verification can actually be issued.
         if (hasClearanceCookie(url)) {
             clearClearanceCookie(url)
+            clearancePresent = false
             ClearanceUserAgents.remove(context, hostOf(url))
         }
 
@@ -131,6 +129,52 @@ internal fun ChallengeWebViewScreen(
         // kills the app — with no Java exception, so CrashLog never sees it and
         // the user just watches the app vanish. Returning true keeps us alive.
         view.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(
+                view: WebView?,
+                pageUrl: String?,
+                favicon: Bitmap?
+            ) {
+                if (
+                    pageUrl != null &&
+                    isSameHostOrSubdomain(hostOf(url), hostOf(pageUrl))
+                ) {
+                    mainFrameHttpStatusCode = 200
+                    browserPageReady = false
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                if (
+                    request?.isForMainFrame == true &&
+                    isSameHostOrSubdomain(hostOf(url), request.url.host.orEmpty())
+                ) {
+                    mainFrameHttpStatusCode = errorResponse?.statusCode ?: 599
+                }
+            }
+
+            override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                if (
+                    view == null ||
+                    finishedUrl.isNullOrBlank() ||
+                    !isSameHostOrSubdomain(hostOf(url), hostOf(finishedUrl))
+                ) {
+                    return
+                }
+
+                val responseCode = mainFrameHttpStatusCode
+                view.evaluateJavascript(CLOUDFLARE_CHALLENGE_DETECT_SCRIPT) { result ->
+                    if (rendererDied) return@evaluateJavascript
+                    val challengeDetected = result == "true"
+                    if (shouldAcceptWebViewPage(responseCode, challengeDetected)) {
+                        browserPageReady = true
+                    }
+                }
+            }
+
             override fun onRenderProcessGone(
                 v: WebView?,
                 detail: RenderProcessGoneDetail?
@@ -155,25 +199,22 @@ internal fun ChallengeWebViewScreen(
         view
     }
 
-    // Polling, not onPageFinished: a challenge runs through several navigations
-    // and the only event that means anything is the cookie turning up. Same
-    // reasoning as the interceptor, which learned it the hard way.
+    // A cookie is the strongest success signal, but not the only one: Asura can
+    // serve the complete manga page to WebView without issuing cf_clearance.
+    // In that case the successful main-frame response is enough to sync the
+    // shared browser cookies and native UA before OkHttp retries.
     LaunchedEffect(url) {
-        // A dead renderer will never write the cookie, so the poll has to end
-        // rather than spin for as long as the screen is open. Keep the visible
-        // state in sync so the user can distinguish a passed check from a page
-        // that merely finished loading.
         while (!rendererDied) {
             clearancePresent = hasClearanceCookie(url)
-            if (clearancePresent) break
+            if (clearancePresent || browserPageReady) break
             delay(POLL_MS)
         }
-        if (rendererDied || !clearancePresent) return@LaunchedEffect
-        // Flush before handing back: the cookie store is written asynchronously,
-        // and the retry is about to read it from another process-level store.
+        if (rendererDied || (!clearancePresent && !browserPageReady)) return@LaunchedEffect
+
         runCatching { CookieManager.getInstance().flush() }
-        // Record the UA that passed, or the retry goes out under the app default
-        // and the clearance just earned is rejected on arrival.
+        // Reuse the exact UA that loaded this host in WebView. This is required
+        // both for UA-bound Cloudflare clearance and for hosts that allow the
+        // browser page but reject the app's desktop default UA.
         nativeUserAgent?.let { ua ->
             runCatching { ClearanceUserAgents.set(context, hostOf(url), ua) }
         }
@@ -216,13 +257,17 @@ internal fun ChallengeWebViewScreen(
             },
             navigationIcon = { BackButton { navigateBack() } },
             actions = {
-                // Never let a manual tap pretend the challenge passed. Retrying
-                // without cf_clearance just repeats the same 403 and leaves the
-                // user staring at a spinner. The screen returns automatically
-                // only after the browser cookie store confirms clearance.
+                // Reload is useful when a challenge widget did not render.
+                // A normal successful page load will return automatically after
+                // its cookies and native User-Agent are synced to OkHttp.
                 TextButton(
-                    onClick = { if (!rendererDied && !clearancePresent) webView.reload() },
-                    enabled = !rendererDied && !clearancePresent,
+                    onClick = {
+                        if (!rendererDied && !clearancePresent && !browserPageReady) {
+                            mainFrameHttpStatusCode = 0
+                            webView.reload()
+                        }
+                    },
+                    enabled = !rendererDied && !clearancePresent && !browserPageReady,
                 ) { Text("Reload page") }
             }
         )
@@ -238,15 +283,16 @@ internal fun ChallengeWebViewScreen(
             text = when {
                 rendererDied -> "The browser view stopped unexpectedly. Go " +
                     "back and try again."
-                solved -> "Cloudflare verification received \u2014 returning\u2026"
-                clearancePresent -> "Cloudflare verification received. Returning automatically."
-                else -> "Waiting for Cloudflare verification. Complete any check shown in the page. " +
-                    "If no check appears, tap Reload page. Yomu returns automatically when clearance is saved."
+                solved -> "Browser session synced \u2014 returning to Yomu\u2026"
+                clearancePresent -> "Cloudflare clearance received. Returning automatically."
+                browserPageReady -> "The series page loaded successfully. Syncing its cookies and browser identity with Yomu..."
+                else -> "Waiting for Cloudflare. Complete any check shown in the page. " +
+                    "If the site page loads without a check, Yomu will sync that browser session automatically."
             },
             style = MaterialTheme.typography.bodySmall,
             color = when {
                 rendererDied -> MaterialTheme.colorScheme.error
-                solved || clearancePresent -> MaterialTheme.colorScheme.primary
+                solved || clearancePresent || browserPageReady -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
             modifier = Modifier
