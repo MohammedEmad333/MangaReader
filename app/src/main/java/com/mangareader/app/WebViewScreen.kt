@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import eu.kanade.tachiyomi.network.ClearanceUserAgents
+import eu.kanade.tachiyomi.network.interceptor.CloudflareChallengeBackoff
 import kotlinx.coroutines.delay
 
 /**
@@ -218,6 +219,11 @@ internal fun ChallengeWebViewScreen(
         nativeUserAgent?.let { ua ->
             runCatching { ClearanceUserAgents.set(context, hostOf(url), ua) }
         }
+        // The hidden OkHttp attempt may have recorded a 60-second host cooldown
+        // before the user opened this visible WebView. Clear that shared state
+        // before returning, otherwise the immediate chapter retry is rejected
+        // without making a network request.
+        CloudflareChallengeBackoff.clearHost(hostOf(url))
         solved = true
         // A beat so the user sees the challenge complete rather than the screen
         // vanishing out from under the tap.

@@ -51,6 +51,12 @@ class ChangelogTest {
     }
 
     @Test
+    fun since_includesVersion339ClearsCloudflareCooldownAfterWebView() {
+        assertEquals(listOf(339), Changelog.since(installed = 338, current = 339).map { it.code })
+        assertTrue(Changelog.notes.single { it.code == 339 }.body.contains("shared cooldown"))
+    }
+
+    @Test
     fun since_returnsNothingWhenAlreadyCurrent() {
         assertTrue(Changelog.since(installed = 206, current = 206).isEmpty())
     }

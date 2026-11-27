@@ -9,6 +9,7 @@ class CloudflareChallengeBackoffTest {
     @Test
     fun failedHostIsSuppressedUntilCooldownExpires() {
         val backoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
+        backoff.clear("asurascans.com")
 
         assertFalse(backoff.isCoolingDown("asurascans.com", nowMillis = 1_000L))
         backoff.recordFailure("asurascans.com", nowMillis = 1_000L)
@@ -21,6 +22,8 @@ class CloudflareChallengeBackoffTest {
     @Test
     fun cooldownIsScopedPerHost() {
         val backoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
+        backoff.clear("asurascans.com")
+        backoff.clear("example.com")
         backoff.recordFailure("asurascans.com", nowMillis = 1_000L)
 
         assertTrue(backoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
@@ -30,10 +33,24 @@ class CloudflareChallengeBackoffTest {
     @Test
     fun successfulRetryClearsCooldown() {
         val backoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
+        backoff.clear("asurascans.com")
         backoff.recordFailure("asurascans.com", nowMillis = 1_000L)
 
         backoff.clear("asurascans.com")
 
         assertFalse(backoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
+    }
+
+    @Test
+    fun visibleWebViewCanClearCooldownCreatedByInterceptorInstance() {
+        val interceptorBackoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
+        val visibleWebViewBackoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
+        interceptorBackoff.clear("asurascans.com")
+        interceptorBackoff.recordFailure("asurascans.com", nowMillis = 1_000L)
+        assertTrue(interceptorBackoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
+
+        visibleWebViewBackoff.clearHost("asurascans.com")
+
+        assertFalse(interceptorBackoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
     }
 }
