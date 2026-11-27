@@ -47,7 +47,7 @@ class ChangelogTest {
     @Test
     fun since_includesVersion338SuccessfulWebViewSessionSync() {
         assertEquals(listOf(338), Changelog.since(installed = 337, current = 338).map { it.code })
-        assertTrue(Changelog.notes.single { it.code == 338 }.body.contains("successful WebView page"))
+        assertTrue(Changelog.notes.single { it.code == 338 }.body.contains("successful same-host WebView page"))
     }
 
     @Test
