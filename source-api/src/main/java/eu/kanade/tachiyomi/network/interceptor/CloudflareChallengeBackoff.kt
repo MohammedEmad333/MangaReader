@@ -4,13 +4,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Suppresses repeated automatic WebView challenges for a host after one
- * unsuccessful attempt. The visible WebView remains available to the user.
+ * unsuccessful attempt. The visible WebView can clear the shared host cooldown
+ * after it confirms that the protected page loaded successfully.
  */
 class CloudflareChallengeBackoff(
     private val cooldownMillis: Long,
 ) {
-    private val retryAfterByHost = ConcurrentHashMap<String, Long>()
-
     init {
         require(cooldownMillis >= 0L)
     }
@@ -30,5 +29,17 @@ class CloudflareChallengeBackoff(
 
     fun clear(host: String) {
         retryAfterByHost.remove(host)
+    }
+
+    companion object {
+        // Shared by the OkHttp interceptor and the visible app WebView. An
+        // instance-local map cannot be cleared by the manual recovery screen.
+        private val retryAfterByHost = ConcurrentHashMap<String, Long>()
+
+        /** Clears a host cooldown after the visible WebView confirms success. */
+        @JvmStatic
+        fun clearHost(host: String) {
+            retryAfterByHost.remove(host)
+        }
     }
 }
