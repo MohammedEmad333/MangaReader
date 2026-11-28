@@ -44,12 +44,11 @@ class CloudflareChallengeBackoffTest {
     @Test
     fun visibleWebViewCanClearCooldownCreatedByInterceptorInstance() {
         val interceptorBackoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
-        val visibleWebViewBackoff = CloudflareChallengeBackoff(cooldownMillis = 60_000L)
         interceptorBackoff.clear("asurascans.com")
         interceptorBackoff.recordFailure("asurascans.com", nowMillis = 1_000L)
         assertTrue(interceptorBackoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
 
-        visibleWebViewBackoff.clearHost("asurascans.com")
+        CloudflareChallengeBackoff.clearHost("asurascans.com")
 
         assertFalse(interceptorBackoff.isCoolingDown("asurascans.com", nowMillis = 2_000L))
     }
